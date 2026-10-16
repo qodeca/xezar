@@ -145,7 +145,7 @@ export interface EventDispatch {
 }
 
 /**
- * The client-specific half (#108 Claude Code, #109 Codex, #110 OpenCode). Nothing here can start a
+ * The client-specific half (#108 Claude Code, #109 Codex, #1045 Qwen Code). Nothing here can start a
  * model turn on the controller's behalf: that is the adapter's decision, reported back through
  * `EventController.recordReaction`.
  */

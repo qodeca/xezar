@@ -57,15 +57,15 @@ const DEFAULTS: AgentProfile[] = [
   }),
 ]
 
-/** pi's discovered account — kept out of `DEFAULTS` so the existing two-provider cases are untouched. */
-const PI_DEFAULT: AgentProfile = profile({
+/** Qwen Code's discovered account — kept out of `DEFAULTS` so the existing two-provider cases are untouched. */
+const QWEN_DEFAULT: AgentProfile = profile({
   id: 'default',
-  provider: 'pi',
+  provider: 'qwen',
   label: 'Default',
-  configDir: '/home/u/.pi/agent',
-  path: '/home/u/.pi/agent',
+  configDir: '/home/u/.qwen',
+  path: '/home/u/.qwen',
   isDefault: true,
-  status: { provider: 'pi', status: 'disconnected' },
+  status: { provider: 'qwen', status: 'disconnected' },
   files: [],
 })
 
@@ -824,13 +824,13 @@ describe('the agent accounts section', () => {
     renderAccounts()
 
     await waitFor(() => expect(rows()).toHaveLength(2))
-    // OpenCode and pi get a group too: it is where "is this agent installed?" is answered, and
+    // Qwen Code gets a group too: it is where "is this agent installed?" is answered, and
     // hiding the ones that cannot carry a second login would only move that question elsewhere.
     expect(
       [...document.querySelectorAll('[data-slot="accounts-provider"]')].map((el) =>
         el.getAttribute('data-provider'),
       ),
-    ).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi'])
+    ).toEqual(['claude', 'codex', 'qwen'])
   })
 
   it('offers no Add on an agent that cannot carry a second account, and says why', async () => {
@@ -839,7 +839,7 @@ describe('the agent accounts section', () => {
       selections: {}, profiles: DEFAULTS })
     renderAccounts()
 
-    const group = await groupFor('opencode')
+    const group = await groupFor('qwen')
     expect(group.querySelector('[data-action="accounts-add"]')).toBeNull()
     expect(group.querySelector('[data-slot="accounts-single-only"]')?.textContent).toContain(
       'credentials outside its config folder',
@@ -1024,19 +1024,18 @@ describe('the add-account dialog', () => {
   })
 
   /**
-   * pi entered this dropdown the moment it became profile-capable (#329), and the placeholder was
-   * a ternary that fell through to `~/.claude-second` for anything that was not codex — so the
-   * first thing a pi account was offered was a Claude folder name.
+   * The placeholder was once a ternary that fell through to `~/.claude-second` for anything that
+   * was not codex — so the first thing another agent's account was offered was a Claude folder name.
    */
-  it('suggests pi\'s OWN folder for a pi account, not Claude\'s', async () => {
-    serve({ editable: true, profileCapableProviders: ['claude', 'codex', 'pi'],
+  it('suggests Qwen Code\'s OWN folder for a Qwen Code account, not Claude\'s', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex', 'qwen'],
       defaults: {},
-      selections: {}, profiles: [...DEFAULTS, PI_DEFAULT] })
+      selections: {}, profiles: [...DEFAULTS, QWEN_DEFAULT] })
     renderAccounts()
-    await openDialog('pi')
+    await openDialog('qwen')
 
-    expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('pi')
-    expect(dirField().placeholder).toBe('~/.pi/agent-second')
+    expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('qwen')
+    expect(dirField().placeholder).toBe('~/.qwen-second')
     expect(dirField().placeholder).not.toContain('claude')
   })
 
@@ -1413,16 +1412,16 @@ describe('plan limits in the account rows (#867 S5)', () => {
     )
 
   // Break: the limits half not wired into AccountRow, or wired into every agent's rows.
-  it('gives the Claude Code and Codex rows their limits half, and leaves pi alone', async () => {
+  it('gives the Claude Code and Codex rows their limits half, and leaves Qwen Code alone', async () => {
     serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
-      profiles: [...DEFAULTS, PI_DEFAULT] })
+      profiles: [...DEFAULTS, QWEN_DEFAULT] })
     renderAccounts({ quota: QUOTA })
 
     await waitFor(() => expect(limitsOf('claude')).not.toBeNull())
     expect(limitsOf('claude')?.getAttribute('aria-label')).toBe('Plan limits of Built-in login, Claude Code')
     expect(limitsOf('claude')?.textContent).toContain('92% used')
     expect(limitsOf('codex')?.textContent).toContain('Credits: none — balance 0.')
-    expect(limitsOf('pi')).toBeNull()
+    expect(limitsOf('qwen')).toBeNull()
     // The Plan limits block sits above the groups, with one line per agent.
     expect(document.querySelector('[data-slot="agent-quota-summary"]')?.textContent).toContain('Claude Code: 1 of 3 logins can work.')
 

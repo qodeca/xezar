@@ -9,7 +9,6 @@ import { HEALTH_TOOL, SERVICE_DISCONNECTED_NOTICE, runBridge } from './bridge.ts
 import { EventJournal } from './event-journal.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { LEADER_ROLE_INSTRUCTION, LeaderDelivery } from './leader-delivery.ts';
-import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 import { toolListing, type McpToolContext } from './tool.ts';
 import { tools } from './tools/index.ts';
 import { executionControlTool } from './tools/execution-control.ts';
@@ -202,7 +201,6 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     const journal = EventJournal.open({ dataDir, projectId: 'leader', secretValues: [], warn: () => {} });
     const texts: string[] = [];
     const collect = (value: unknown): void => void texts.push(JSON.stringify(value));
-    let oc: FakeOpenCodeSession | undefined;
     const make = (over: Record<string, unknown> = {}) =>
       new LeaderDelivery({ projectId: 'leader', projectRoot: dataDir, journal, ownership: { projectId: 'leader', sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {}, heartbeatMs: 60_000, ...over });
     try {
@@ -210,11 +208,9 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
       collect(d.status());
       for (const [key, transport] of [
         ['unknown', { clientName: 'x' }],
-        ['opencode', { clientName: 'opencode' }],
         ['old', { clientName: 'claude-code' }],
-        ['foreign', { clientName: 'opencode', leaderPush: true }],
+        ['foreign', { clientName: 'codex-mcp-client', leaderPush: true }],
         ['unregistered', { clientName: 'claude-code', leaderPush: true, channelAdvertised: false }],
-        ['pi', { clientName: 'pi-mcp-xezar' }],
         ['codex', { clientName: 'codex-mcp-client' }],
       ] as const) {
         d.sessionOpened(key, { push: async () => {}, ...transport });
@@ -224,11 +220,12 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
         collect(await d.act({ action: 'attach', client: 'claude-code' }));
       }
       collect(await d.attachSession('stale'));
-      d.sessionOpened('owner', { push: async () => {}, clientName: 'claude-code', leaderPush: true });
-      // A live fake, because #651 refuses an OpenCode session that cannot be checked — and this
-      // sweep needs an attached OpenCode leader to reach `leader-attached-elsewhere` below.
-      oc = await fakeOpenCodeSession({ directory: dataDir });
-      await d.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
+      d.sessionOpened('claude-owner', { push: async () => {}, clientName: 'claude-code', leaderPush: true });
+      // An attached Claude Code leader, then a Codex session owning the project: this sweep needs a
+      // leader of another client to reach `leader-attached-elsewhere` below.
+      await d.act({ action: 'attach', client: 'claude-code' });
+      d.sessionOpened('owner', { push: async () => {}, clientName: 'codex-mcp-client' });
+      d.codexAnnounced('owner', { threadId: 'thread-owner' });
       collect(await d.attachSession('owner'));
       collect(await d.stopSession('owner'));
       d.close();
@@ -241,12 +238,11 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
       collect(channelMeta(dispatch, []));
       collect(SERVICE_DISCONNECTED_NOTICE('leader'));
     } finally {
-      await oc?.stop();
       journal.close();
     }
     const all = texts.join('\n');
     // Populated input: the codes this sweep must have reached, so an empty sweep cannot pass.
-    for (const code of ['no-leader-session', 'client-unknown', 'client-needs-address', 'claude-code-bridge-too-old', 'not a Claude Code session', 'claude-code-channel-not-advertised', 'not-owner', 'leader-attached-elsewhere', 'leader-not-this-session', 'hosted-mode', 'delivery-unavailable', 'xezar stopped serving this project']) {
+    for (const code of ['no-leader-session', 'client-unknown', 'claude-code-bridge-too-old', 'not a Claude Code session', 'claude-code-channel-not-advertised', 'not-owner', 'leader-attached-elsewhere', 'leader-not-this-session', 'hosted-mode', 'delivery-unavailable', 'xezar stopped serving this project']) {
       expect(all).toContain(code);
     }
     clean('runtime texts', all);

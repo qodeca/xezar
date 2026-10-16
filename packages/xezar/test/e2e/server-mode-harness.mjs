@@ -261,7 +261,7 @@ try {
   const env = { PATH: process.env.PATH, HOME: join(fixture, 'home'), CI: '1', NO_COLOR: '1',
     XEZ_HOME: join(fixture, 'xez-home'), XEZ_REMOTE: '1', XEZ_DRY_RUN: '1', XEZ_SKILLS_AUTO_UPDATE: '0',
     CLAUDE_CONFIG_DIR: join(fixture, 'claude'), CODEX_HOME: join(fixture, 'codex'),
-    OPENCODE_CONFIG_DIR: join(fixture, 'opencode'), PI_CODING_AGENT_DIR: join(fixture, 'pi'),
+    QWEN_HOME: join(fixture, 'qwen'),
     XDG_CONFIG_HOME: join(fixture, 'xdg-config'), XDG_CACHE_HOME: join(fixture, 'xdg-cache'),
     XDG_DATA_HOME: join(fixture, 'xdg-data'), TMPDIR: join(fixture, 'tmp'),
   };

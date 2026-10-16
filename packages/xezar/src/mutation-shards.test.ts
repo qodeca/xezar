@@ -65,7 +65,7 @@ describe('the MCP mutation shard plan (#377)', () => {
       'packages/xezar/src/mcp/index.ts',
       'packages/xezar/src/mcp/bridge.ts',
       'packages/xezar/src/mcp/tools/task-reads.ts',
-      'packages/xezar/src/mcp/adapters/pi.ts',
+      'packages/xezar/src/mcp/adapters/qwen-code.ts',
     ]) {
       expect(
         scope.map((f) => f.path),

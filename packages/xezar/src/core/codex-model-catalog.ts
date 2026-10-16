@@ -48,7 +48,7 @@ const MAX_MODELS = 500;
 
 /** The fixture `XEZ_DRY_RUN=1` answers with (AGENTS.md: "XEZ_DRY_RUN=1 must keep working,
  *  bundled mock, no real CLI"). Every other backend's discovery either has this same early
- *  return (`backend-detect.ts`'s claude/pi probes) or spawns a bundled mock binary that answers
+ *  return (`backend-detect.ts`'s claude probe) or spawns a bundled mock binary that answers
  *  in-process; Codex had neither, so a dry-run boot with no real `codex` on PATH (every CI
  *  runner) still tried to spawn `codex app-server` and always got `models: []` — the composer's
  *  Codex model menu was structurally empty under dry-run, not just when Codex is genuinely

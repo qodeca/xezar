@@ -15,7 +15,7 @@ import { SETTINGS_SECTIONS, visibleSettingsSections } from './registry'
  *
  * U-M01 is required: from project settings the user identifies the bound project, learns the
  * client and xezar must be on the same machine, sees configuration readiness, and gets one-time
- * setup guidance for Claude Code, Codex, OpenCode and pi — and the automatically generated project
+ * setup guidance for Claude Code, Qwen Code and Codex — and the automatically generated project
  * file is NOT described as automatically discovered by every client (F-14, U-M01).
  *
  * The status the section shows comes from the SERVER (the project registry and `/api/health`'s
@@ -63,7 +63,7 @@ const REGISTRY: ProjectsResponse = {
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code session, or a pi without xezar’s leader extension, reads its events with the leader_events tool.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code session started without the channel flag reads its events with the leader_events tool.',
   fix: 'Keep using leader_events from your own leader, or attach one. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`), let the session call a xezar tool once, then attach it.',
 }
 
@@ -139,21 +139,19 @@ describe('MCP connection section content (issue #111)', () => {
     expect(text).toContain('Local-only scope')
   })
 
-  it('renders one-time setup guidance for each of the four clients', async () => {
+  it('renders one-time setup guidance for each of the three clients', async () => {
     const { container } = renderSection()
     await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
 
     expect(container.querySelector('[data-slot="mcp-client-claude-code"]')?.textContent).toContain('Claude Code')
     expect(container.querySelector('[data-slot="mcp-client-codex"]')?.textContent).toContain('Codex')
-    expect(container.querySelector('[data-slot="mcp-client-opencode"]')?.textContent).toContain('OpenCode')
-    expect(container.querySelector('[data-slot="mcp-client-pi"] h3')?.textContent).toBe('pi')
+    expect(container.querySelector('[data-slot="mcp-client-qwen-code"] h3')?.textContent).toBe('Qwen Code')
 
     // Each card carries the one-time user command / file block, and a plainly-stated NOT-automatic line.
     const text = container.textContent ?? ''
     expect(text).toContain('claude mcp add --scope local')
     expect(text).toContain('mcp_servers.xezar')
-    expect(text).toContain('opencode.json')
-    expect(text).toContain('pi install npm:pi-mcp-adapter')
+    expect(text).toContain('qwen mcp add --scope project')
     expect(text).toContain('One-time')
   })
 
@@ -208,7 +206,7 @@ describe('MCP connection section hard boundaries (F-15, U-M02, U-M01)', () => {
     expect(text).not.toContain('automatically detects')
     // …and it must state the negation plainly for each client.
     expect(text).toContain('does not discover')
-    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(5)
+    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(3)
     for (const line of container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')) {
       expect(line.textContent).toMatch(/^Not automatic: .+ does not discover \.local\/xezar\/mcp-connection\.json/)
     }
@@ -225,7 +223,7 @@ describe('MCP connection section copy (#301, the design pass on #296)', () => {
     expect(container.textContent).not.toContain('`')
     const codes = [...container.querySelectorAll('[data-slot="mcp-connection-section"] code')].map((el) => el.textContent)
     expect(codes).toContain('.local/xezar/mcp-connection.json')
-    expect(codes).toContain('opencode.json')
+    expect(codes).toContain('.codex/config.toml')
   })
 
   it('speaks to the user, not in the requirement document’s or the code’s voice (C2, C4, C7)', async () => {
@@ -266,127 +264,6 @@ describe('MCP connection section copy (#301, the design pass on #296)', () => {
     expect(container.querySelector('[data-slot="mcp-api-link"]')?.getAttribute('href')).toContain('/settings/mcp-api')
     // The one fact the dropped bullets held that no other section said.
     expect(container.textContent).toContain('one client may own it at a time')
-  })
-})
-
-describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
-  /** The pi card, once the section has rendered; fails loudly if it never appears. */
-  async function piCard(): Promise<Element> {
-    const { container } = renderSection()
-    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-pi"]')).toBeTruthy())
-    return container.querySelector('[data-slot="mcp-client-pi"]')!
-  }
-
-  it('says pi adds MCP through an extension by design and puts the extension install before the entry', async () => {
-    const card = await piCard()
-    const user = card.querySelector('[data-slot="mcp-client-user"]')!
-    // A choice pi made, not a lack (design review on #343).
-    expect(user.textContent).toContain('pi adds MCP through an extension, by design, so its setup has two steps, both required')
-    expect(user.textContent).toContain('third-party extension (source on GitHub, MIT licence)')
-    const blocks = [...user.querySelectorAll('pre')].map((pre) => pre.textContent?.trim() ?? '')
-    expect(blocks).toHaveLength(2)
-    // The install comes first, pinned to the version the evidence record ran (PI-5).
-    expect(blocks[0]).toBe('pi install npm:pi-mcp-adapter@2.32.1')
-    expect(blocks[1]).toContain('mcpServers')
-    const steps = [...user.querySelectorAll('ol > li')]
-    expect(steps).toHaveLength(2)
-    expect(steps[0]!.textContent).toContain('pi-mcp-adapter')
-    expect(steps[1]!.textContent).toContain('.pi/mcp.json')
-  })
-
-  it('gives an entry that is valid JSON and carries the two keys the evidence measured as needed', async () => {
-    const card = await piCard()
-    const entry = JSON.parse(card.querySelectorAll('[data-slot="mcp-client-user"] pre')[1]!.textContent ?? '') as {
-      settings?: { directTools?: unknown }
-      mcpServers?: Record<string, { command?: unknown; args?: unknown; lifecycle?: unknown }>
-    }
-    expect(entry.settings?.directTools).toBe(true)
-    expect(entry.mcpServers?.xezar).toEqual({ command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'], lifecycle: 'keep-alive' })
-    // What each key is for, in the user's words: without keep-alive an idle pi gives up the project.
-    const user = card.querySelector('[data-slot="mcp-client-user"]')!.textContent ?? ''
-    expect(user).toContain('without it, pi gives the project up after 10 idle minutes')
-  })
-
-  it('states what keep-alive costs: a pi started here holds the project and other clients are refused (#343 review)', async () => {
-    const card = await piCard()
-    // D-04 § 3.4 run `root`: pi in the project root held the project from start, with no prompt,
-    // and a second client got project-occupied until pi exited. The card must say so, not only the upside.
-    expect(card.querySelector('[data-slot="mcp-client-pi-leader"]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'So any pi started in this folder, including a pi task xezar runs here with Worktree off, becomes this project’s leader client, and every other client, Claude Code included, is refused until that pi exits. Start pi in another folder for other work.',
-    )
-    // Whether to commit the file, and what committing it does.
-    const user = card.querySelector('[data-slot="mcp-client-user"]')!.textContent ?? ''
-    expect(user).toContain('The file holds no secret, so it is safe to commit.')
-    expect(user).toContain('A committed entry does the same for everyone who starts pi in this project.')
-  })
-
-  it('tells the reader what a xezar tool in approveTools does now that xezar answers the dialog (#369)', async () => {
-    const card = await piCard()
-    const line = card.querySelector('[data-slot="mcp-client-pi-approve-tools"]')
-    expect(line).toBeTruthy()
-    const text = line!.textContent!.replace(/\s+/g, ' ').trim()
-    // What the setting does, then the three places the question is answered from.
-    expect(text).toMatch(/^A xezar tool you put in the extension’s approveTools setting/)
-    expect(text).toContain('In your own pi window you answer it yourself')
-    // A xezar pi task: the dialog is a card with pi's OWN choices (#369), never a hang or a silent approval.
-    expect(text).toContain('the question shows in the task as a card with pi’s own choices, Allow once, Allow for session and Deny')
-    expect(text).toContain('an autonomous task answers Deny at once and says so in its transcript')
-    // The limit that keeps this true: the runner's default tool allowlist offers no xezar tool, so an
-    // ordinary pi task never sees the question at all (#330 WP5's QA measured 2.8 s with the gate on).
-    expect(text).toContain('A pi that is never offered a xezar tool is unaffected')
-    // The case #369 does NOT fix, said plainly: pi's dialog has no timeout, and a headless pi driven by
-    // some other RPC client is answered by that client or not at all.
-    expect(text).toContain('pi waits for that answer with no time limit')
-    expect(text).toContain('a headless pi that another program drives is that program’s to answer')
-    expect(text).not.toContain('not in this release')
-    const issue = card.querySelector('[data-slot="mcp-client-pi-approve-tools-issue"]')!
-    // The link text says "issue 369", never a bare hash: the design guardian's no-raw-hex-colors
-    // rule reads a three-digit "#369" as a colour, and that rule is not to be weakened for copy.
-    expect(issue.textContent).toBe('issue 369')
-    expect(issue.getAttribute('href')).toBe('https://github.com/qodeca/xezar/issues/369')
-    expect(issue.getAttribute('target')).toBe('_blank')
-    expect(issue.getAttribute('rel')).toBe('noreferrer')
-  })
-
-  it('links the third-party extension to its source, in a new tab', async () => {
-    const card = await piCard()
-    const link = card.querySelector('[data-slot="mcp-client-pi-adapter-link"]')!
-    expect(link.getAttribute('href')).toBe('https://github.com/nicobailon/pi-mcp-adapter')
-    expect(link.getAttribute('target')).toBe('_blank')
-    expect(link.getAttribute('rel')).toBe('noreferrer')
-    expect(link.textContent).toBe('source on GitHub')
-  })
-
-  it('says a missing extension shows nothing, how to check it is there, and that pi does not discover the generated file', async () => {
-    const card = await piCard()
-    expect(card.querySelector('[data-slot="mcp-client-not-automatic"]')?.textContent).toBe(
-      'Not automatic: pi does not discover .local/xezar/mcp-connection.json. Without the extension, pi does not read the entry above at all: it shows no xezar tool, and no error says why. To check: pi list shows npm:pi-mcp-adapter, and pi says MCP: 1 servers connected when it starts here (a higher number if you have other MCP servers).',
-    )
-  })
-
-  it('leads the config-file caveat with which entry wins, then the .mcp.json shared with Claude Code, then the user-level files', async () => {
-    const card = await piCard()
-    const caveat = card.querySelector('[data-slot="mcp-client-caveat"]')!
-    expect([...caveat.querySelectorAll('code')].map((code) => code.textContent)).toEqual([
-      'xezar',
-      '.pi/mcp.json',
-      '.mcp.json',
-      '~/.config/mcp/mcp.json',
-      '~/.agents/mcp.json',
-      '~/.agents/mcp/mcp.json',
-      '~/.pi/agent/mcp.json',
-    ])
-    expect(caveat.textContent).toMatch(/^If another file also has a xezar entry, yours in \.pi\/mcp\.json wins: it is the last of the six files/)
-    expect(caveat.textContent).toContain('which Claude Code reads too, so an entry there reaches both clients')
-    expect(caveat.textContent).toContain('The other four apply in every folder pi starts in')
-  })
-
-  it('tells the Claude Code reader that pi reads the project .mcp.json too', async () => {
-    const { container } = renderSection()
-    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
-    expect(container.querySelector('[data-slot="mcp-client-claude-code"] [data-slot="mcp-client-caveat"]')?.textContent).toContain(
-      'writes a tracked .mcp.json, which pi reads too,',
-    )
   })
 })
 
@@ -453,11 +330,11 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     // NB-3: leader_events and app-server render as code, even where the server's copy is plain text.
     expect(codes(blocker)).toEqual(expect.arrayContaining(['leader_events', 'app-server', 'codex app-server --listen unix://']))
     const radios = [...control.querySelectorAll('[role="radiogroup"] [role="radio"]')].map((radio) => radio.textContent)
-    expect(radios).toEqual(['Codex', 'OpenCode', 'pi', 'Claude Code', 'Qwen Code'])
+    expect(radios).toEqual(['Codex', 'Claude Code', 'Qwen Code'])
     expect(attachButton(control)?.textContent).toBe('Attach leader')
   })
 
-  it('an unidentified owner reads with leader_events; picking Claude Code (#404) or pi keeps the button and says what each takes', async () => {
+  it('an unidentified owner reads with leader_events; picking Claude Code (#404) or Qwen Code keeps the button and says what each takes', async () => {
     const control = await renderLeader(leaderStatus({ owner: { client: null }, delivery: DELIVERY })).control()
     expect(control.getAttribute('data-state')).toBe('owner')
     expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Not identified')
@@ -471,9 +348,9 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('--dangerously-load-development-channels server:xezar')
     expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).not.toContain('There is nothing to attach')
     expect(attachButton(control)).toBeTruthy()
-    // pi: the button stays, and the note says what it takes.
-    fireEvent.click(control.querySelector('[role="radio"][data-value="pi"]')!)
-    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('Works when this pi runs xezar’s leader extension')
+    // Qwen Code: the button stays, and the note says what it takes.
+    fireEvent.click(control.querySelector('[role="radio"][data-value="qwen"]')!)
+    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('Works when this Qwen Code (0.25.2 or newer) has called a xezar tool once')
     expect(attachButton(control)).toBeTruthy()
   })
 
@@ -557,28 +434,14 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     expect(codex.container.querySelector('[data-slot="mcp-leader-refusal"]')).toBeNull()
     cleanup()
 
-    const piRefusal = 'xezar has no live link to a pi leader for this project. Events stay in the project journal and nothing is lost.'
-    const pi = renderLeader(leaderStatus(), () => ({ status: 409, body: { error: piRefusal } }))
-    const control = await pi.control()
-    fireEvent.click(control.querySelector('[role="radio"][data-value="pi"]')!)
+    const qwenRefusal = 'xezar has no live link to a Qwen Code leader for this project. Events stay in the project journal and nothing is lost.'
+    const qwen = renderLeader(leaderStatus(), () => ({ status: 409, body: { error: qwenRefusal } }))
+    const control = await qwen.control()
+    fireEvent.click(control.querySelector('[role="radio"][data-value="qwen"]')!)
     fireEvent.click(attachButton(control)!)
-    await waitFor(() => expect(pi.container.querySelector('[data-slot="mcp-leader-refusal"]')?.textContent).toBe(piRefusal))
-    expect(pi.container.querySelector('[data-slot="mcp-leader-refusal"]')?.getAttribute('role')).toBe('alert')
-    expect(pi.posted).toEqual([{ action: 'attach', client: 'pi' }])
-  })
-
-  it('OpenCode keeps its address fields: Attach waits for both, then posts them trimmed', async () => {
-    const view = renderLeader(leaderStatus())
-    const control = await view.control()
-    fireEvent.click(control.querySelector('[role="radio"][data-value="opencode"]')!)
-    expect(attachButton(control)?.disabled).toBe(true)
-    fireEvent.change(view.getByLabelText('Server address'), { target: { value: ' http://127.0.0.1:4096 ' } })
-    expect(attachButton(control)?.disabled).toBe(true)
-    fireEvent.change(view.getByLabelText('Session id'), { target: { value: 'ses_1 ' } })
-    expect(attachButton(control)?.disabled).toBe(false)
-    fireEvent.click(attachButton(control)!)
-    await waitFor(() => expect(view.posted).toHaveLength(1))
-    expect(view.posted[0]).toEqual({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:4096', sessionId: 'ses_1' })
+    await waitFor(() => expect(qwen.container.querySelector('[data-slot="mcp-leader-refusal"]')?.textContent).toBe(qwenRefusal))
+    expect(qwen.container.querySelector('[data-slot="mcp-leader-refusal"]')?.getAttribute('role')).toBe('alert')
+    expect(qwen.posted).toEqual([{ action: 'attach', client: 'qwen' }])
   })
 
   it('Refresh re-reads the status, so a session that just called a tool shows up without a reload', async () => {
@@ -785,7 +648,7 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
 
     // Another project's status and a malformed frame change nothing here.
     // (The server lists every running project in every frame, so this one is listed, unchanged.)
-    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'pi', state: 'attached' }, blocker: null }), xezar: leaderStatus({ owner: { client: 'codex' } }) } } }))
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'qwen', state: 'attached' }, blocker: null }), xezar: leaderStatus({ owner: { client: 'codex' } }) } } }))
     act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: { available: 'yes' } } } }))
     // Let the cache's batched notify and the re-render land before reading: a check made earlier
     // passes whatever the frame did.
@@ -941,15 +804,12 @@ describe('MCP connection section — the Claude Code wake copy (#374, O-1 / AC-9
     expect(text).toContain('leader_events')
   })
 
-  it('gives Claude Code and Codex a wake block, and no other client: nothing claims a push path it lacks (zero config default stays pull-only)', async () => {
-    // RED against: the wake block leaking onto a client with no push path, or Codex's (#403) lost in the merge with #404.
+  it('gives Claude Code, Qwen Code and Codex a wake block each', async () => {
+    // RED against: Codex's wake block (#403) lost in the merge with #404, or Qwen Code's (#1045) dropped.
     const { container } = renderSection()
     await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
-    for (const slot of ['mcp-client-claude-code', 'mcp-client-codex']) {
+    for (const slot of ['mcp-client-claude-code', 'mcp-client-qwen-code', 'mcp-client-codex']) {
       expect(container.querySelector(`[data-slot="${slot}"] [data-slot="mcp-client-wake"]`), `${slot} has a wake block`).toBeTruthy()
-    }
-    for (const slot of ['mcp-client-opencode', 'mcp-client-pi']) {
-      expect(container.querySelector(`[data-slot="${slot}"] [data-slot="mcp-client-wake"]`), `${slot} has no wake block`).toBeNull()
     }
   })
 })

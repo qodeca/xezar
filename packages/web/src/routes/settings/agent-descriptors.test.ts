@@ -27,10 +27,9 @@ function fileOf(over: Partial<AgentConfigFile> & Pick<AgentConfigFile, 'id'>): A
 }
 
 describe('AGENT_DESCRIPTORS', () => {
-  // `pi` joined on 2026-09-12 with its catalog files (#330 WP4) — the condition the old note
-  // here set. The table is now total over `Runner`.
+  // The table is total over `Runner`.
   it('has one entry per config-owning runner, each with settings/mcp/memory groups in stable order', () => {
-    expect(AGENT_DESCRIPTORS.map((d) => d.id)).toEqual(['claude', 'codex', 'opencode', 'pi'])
+    expect(AGENT_DESCRIPTORS.map((d) => d.id)).toEqual(['claude', 'codex', 'qwen'])
     for (const d of AGENT_DESCRIPTORS) {
       expect(d.groups.map((g) => g.id)).toEqual(['settings', 'mcp', 'memory'])
       expect(d.groups.find((g) => g.id === 'mcp')?.note).toBeTruthy() // every agent says where MCP servers live
@@ -38,9 +37,9 @@ describe('AGENT_DESCRIPTORS', () => {
   })
 
   it('membership uses runners[] inclusion — shared files belong to every reader', () => {
-    const shared = fileOf({ id: 'project.agents', runners: ['codex', 'opencode'], kind: 'memory', format: 'markdown' })
+    const shared = fileOf({ id: 'project.agents', runners: ['codex', 'qwen'], kind: 'memory', format: 'markdown' })
     expect(descriptorFor('codex').groups.find((g) => g.id === 'memory')!.files(shared)).toBe(true)
-    expect(descriptorFor('opencode').groups.find((g) => g.id === 'memory')!.files(shared)).toBe(true)
+    expect(descriptorFor('qwen').groups.find((g) => g.id === 'memory')!.files(shared)).toBe(true)
     expect(descriptorFor('claude').groups.find((g) => g.id === 'memory')!.files(shared)).toBe(false)
   })
 
@@ -60,21 +59,20 @@ describe('AGENT_DESCRIPTORS', () => {
   })
 
   /**
-   * pi's own two groups, and the one claim the pane makes that the catalog cannot: pi core reads
-   * no MCP config at all — the files are the `pi-mcp-adapter` extension's. Saying so in the group
-   * note is what stops the editor implying that filling the file in is enough.
+   * Qwen Code's own groups, and the one claim the pane makes that the catalog cannot: its MCP
+   * servers live inside its settings file, under one key. Saying so in the group note is what
+   * stops the pane implying a separate MCP file exists.
    */
-  it('routes pi’s own files into pi’s groups, and says who actually reads the MCP ones', () => {
-    const pi = descriptorFor('pi')
-    const settings = fileOf({ id: 'pi.user.settings', runners: ['pi'], kind: 'settings' })
-    const mcp = fileOf({ id: 'pi.project.mcp', runners: ['pi'], kind: 'mcp', holdsMcp: true })
-    const memory = fileOf({ id: 'pi.user.memory', runners: ['pi'], kind: 'memory', format: 'markdown' })
-    expect(pi.groups.find((g) => g.id === 'settings')!.files(settings)).toBe(true)
-    expect(pi.groups.find((g) => g.id === 'mcp')!.files(mcp)).toBe(true)
-    expect(pi.groups.find((g) => g.id === 'memory')!.files(memory)).toBe(true)
-    // …and pi's pane does not adopt another agent's file just because the kind matches.
-    expect(pi.groups.find((g) => g.id === 'settings')!.files(fileOf({ id: 'claude.user.settings' }))).toBe(false)
-    expect(pi.groups.find((g) => g.id === 'mcp')!.note).toContain('pi-mcp-adapter')
+  it('routes Qwen Code’s own files into its groups, and says where its MCP servers live', () => {
+    const qwen = descriptorFor('qwen')
+    const settings = fileOf({ id: 'qwen.user.settings', runners: ['qwen'], kind: 'settings', holdsMcp: true })
+    const memory = fileOf({ id: 'qwen.user.memory', runners: ['qwen'], kind: 'memory', format: 'markdown' })
+    expect(qwen.groups.find((g) => g.id === 'settings')!.files(settings)).toBe(true)
+    expect(qwen.groups.find((g) => g.id === 'mcp')!.files(settings)).toBe(true)
+    expect(qwen.groups.find((g) => g.id === 'memory')!.files(memory)).toBe(true)
+    // …and Qwen Code's pane does not adopt another agent's file just because the kind matches.
+    expect(qwen.groups.find((g) => g.id === 'settings')!.files(fileOf({ id: 'claude.user.settings' }))).toBe(false)
+    expect(qwen.groups.find((g) => g.id === 'mcp')!.note).toContain('mcpServers')
   })
 
   it('descriptorFor throws on an unknown agent id', () => {

@@ -34,8 +34,8 @@ const workflow = (name: string): WorkflowDef => ({ name, source: 'built-in', ste
 
 describe('availableRunners (legacy renderChrome rule)', () => {
   it('offers exactly the detected backends, in RUNNERS order', () => {
-    const checks = [check('opencode', true), check('git', true), check('claude', true), check('codex', false)]
-    expect(availableRunners(checks)).toEqual(['claude', 'opencode'])
+    const checks = [check('qwen', true), check('git', true), check('claude', true), check('codex', false)]
+    expect(availableRunners(checks)).toEqual(['claude', 'qwen'])
   })
 
   it('falls back to claude when nothing is detected — the form always has a runner', () => {
@@ -50,11 +50,11 @@ describe('resolveRunner (legacy preselection order)', () => {
   })
 
   it('falls back to the configured default when the pick is gone', () => {
-    expect(resolveRunner('opencode', ['claude', 'codex'], 'codex')).toBe('codex')
+    expect(resolveRunner('qwen', ['claude', 'codex'], 'codex')).toBe('codex')
   })
 
   it('falls back to the first available when even the default is missing', () => {
-    expect(resolveRunner(null, ['codex', 'opencode'], 'claude')).toBe('codex')
+    expect(resolveRunner(null, ['codex', 'qwen'], 'claude')).toBe('codex')
   })
 })
 
@@ -110,18 +110,18 @@ describe('model option resolution', () => {
     expect(modelsForRunner('codex', catalog, ['legacy-id']).at(-1)?.desc).toBe('Custom or legacy model')
   })
 
-  // GUARD (#152): the three runners that already discovered must be untouched by pi gaining a
-  // catalog. Each keeps its own fallback list, its own label and its own replace-on-live rule.
-  it('GUARD — claude, codex and opencode keep the exact presets they had', () => {
+  // GUARD (#152): every discovering runner keeps its own fallback list, its own label and its
+  // own replace-on-live rule.
+  it('GUARD — claude, codex and qwen keep the exact presets they had', () => {
     expect(MODELS_BY_RUNNER.claude.map((m) => m.id)).toEqual(['', 'opus', 'sonnet', 'haiku'])
     expect(MODELS_BY_RUNNER.codex.map((m) => m.id)).toEqual([''])
-    expect(MODELS_BY_RUNNER.opencode.map((m) => m.id)).toEqual([''])
+    expect(MODELS_BY_RUNNER.qwen.map((m) => m.id)).toEqual([''])
   })
 
   it.each([
     ['codex', 'Codex'],
     ['claude', 'Claude'],
-    ['opencode', 'OpenCode'],
+    ['qwen', 'Qwen Code'],
   ] as const)('GUARD — names %s in its stale/unavailable rows without exposing raw reasons', (runner, label) => {
     expect(modelCatalogStatus(runner, { runner, models: [], source: 'cache', stale: true, reason: 'raw' })).toBe(`Using cached ${label} model list`)
     expect(modelCatalogStatus(runner, { runner, models: [], source: 'unavailable', stale: false, reason: 'raw' })).toBe(`Latest ${label} models unavailable`)
@@ -131,31 +131,31 @@ describe('model option resolution', () => {
   it('rejects another vendor\'s bare id even after the presets stopped naming releases', () => {
     // The list-membership half of the guard cannot see these any more — the shape half can.
     expect(modelConflictsWithRunner('claude-opus-4-8', 'codex')).toBe(true)
-    expect(modelConflictsWithRunner('claude-opus-99', 'opencode')).toBe(true)
+    expect(modelConflictsWithRunner('claude-opus-99', 'qwen')).toBe(true)
     expect(modelConflictsWithRunner('gpt-6', 'claude')).toBe(true)
     // A runner's own vendor, an explicit gateway id, and an unfamiliar custom id all pass.
     expect(modelConflictsWithRunner('claude-opus-4-8', 'claude')).toBe(false)
     // A gateway id names its provider, so the shape half never fires on it.
     expect(modelConflictsWithRunner('openai/gpt-6', 'claude')).toBe(false)
-    expect(modelConflictsWithRunner('anthropic/claude-opus-9', 'opencode')).toBe(false)
+    expect(modelConflictsWithRunner('anthropic/claude-opus-9', 'qwen')).toBe(false)
     expect(modelConflictsWithRunner('my-org/custom-tune', 'codex')).toBe(false)
   })
 
   it('every runner xezar ships reads its models from the host', () => {
-    // #794 gave OpenCode a catalog, #784 gave Claude one and #152 gave pi one, so the picker no
-    // longer has a preset-only runner. The contract's list is the single source both the route
+    // #784 gave Claude a catalog and #1044 gave Qwen Code one, so the picker has no preset-only
+    // runner. The contract's list is the single source both the route
     // and the picker compile against — this asserts they still agree on who discovers.
-    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi'])
+    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'qwen'])
     expect(MODEL_DISCOVERY_RUNNERS.every((runner) => runnerDiscoversModels(runner))).toBe(true)
     // The invariant, not the list: a runner in the picker with no catalog falls back to
     // hard-coded vendor ids, which is exactly the #152 defect.
     expect(RUNNERS.every((runner) => runnerDiscoversModels(runner.id))).toBe(true)
   })
 
-  it('pi: the dropdown is built from the discovered config, never from a guess (#152)', () => {
-    // The reported host: pi configured with ONE local model and no Anthropic or OpenAI provider.
+  it('qwen: the dropdown is built from the discovered config, never from a guess (#152)', () => {
+    // The #152 host shape: ONE local model configured and no Anthropic or OpenAI provider.
     const catalog = {
-      runner: 'pi' as const,
+      runner: 'qwen' as const,
       models: [
         {
           id: 'dgx-spark/deepseek-v4-flash-vision',
@@ -166,40 +166,40 @@ describe('model option resolution', () => {
       source: 'live' as const,
       stale: false,
     }
-    const ids = modelsForRunner('pi', catalog).map((m) => m.id)
+    const ids = modelsForRunner('qwen', catalog).map((m) => m.id)
     expect(ids).toEqual(['', 'dgx-spark/deepseek-v4-flash-vision'])
     // The three ids the picker used to hard-code are gone, from the list AND from the source.
     for (const invented of ['anthropic/claude-opus-4-8', 'anthropic/claude-sonnet-5', 'openai/gpt-5.1']) {
       expect(ids).not.toContain(invented)
-      expect(MODELS_BY_RUNNER.pi.map((m) => m.id)).not.toContain(invented)
+      expect(MODELS_BY_RUNNER.qwen.map((m) => m.id)).not.toContain(invented)
     }
   })
 
-  it('pi: auto alone when the host has no pi config, and the row still renders (#152)', () => {
+  it('qwen: auto alone when the host has no Qwen Code config, and the row still renders (#152)', () => {
     // Degradation, three ways: no catalog fetched, an empty one, and a failed one. Each leaves a
     // usable `auto`-only picker and a status line rather than an empty or invented list.
-    expect(modelsForRunner('pi').map((m) => m.id)).toEqual([''])
-    expect(MODELS_BY_RUNNER.pi.map((m) => m.id)).toEqual([''])
-    const empty = { runner: 'pi' as const, models: [], source: 'live' as const, stale: false }
-    expect(modelsForRunner('pi', empty).map((m) => m.id)).toEqual([''])
-    const failed = { runner: 'pi' as const, models: [], source: 'unavailable' as const, stale: false, reason: 'raw' }
-    expect(modelsForRunner('pi', failed).map((m) => m.id)).toEqual([''])
-    expect(modelCatalogStatus('pi', failed)).toBe('Latest pi models unavailable')
-    expect(modelCatalogStatus('pi', undefined)).toBeUndefined()
+    expect(modelsForRunner('qwen').map((m) => m.id)).toEqual([''])
+    expect(MODELS_BY_RUNNER.qwen.map((m) => m.id)).toEqual([''])
+    const empty = { runner: 'qwen' as const, models: [], source: 'live' as const, stale: false }
+    expect(modelsForRunner('qwen', empty).map((m) => m.id)).toEqual([''])
+    const failed = { runner: 'qwen' as const, models: [], source: 'unavailable' as const, stale: false, reason: 'raw' }
+    expect(modelsForRunner('qwen', failed).map((m) => m.id)).toEqual([''])
+    expect(modelCatalogStatus('qwen', failed)).toBe('Latest Qwen Code models unavailable')
+    expect(modelCatalogStatus('qwen', undefined)).toBeUndefined()
   })
 
-  it('pi: a model pinned in native config stays selectable when discovery is down', () => {
-    const failed = { runner: 'pi' as const, models: [], source: 'unavailable' as const, stale: false }
+  it('qwen: a model pinned in native config stays selectable when discovery is down', () => {
+    const failed = { runner: 'qwen' as const, models: [], source: 'unavailable' as const, stale: false }
     expect(
-      modelsForRunner('pi', failed, ['dgx-spark/deepseek-v4-flash-vision']).map((m) => m.id),
+      modelsForRunner('qwen', failed, ['dgx-spark/deepseek-v4-flash-vision']).map((m) => m.id),
     ).toEqual(['', 'dgx-spark/deepseek-v4-flash-vision'])
   })
 
-  it('opencode: auto alone until the host catalog answers (#794)', () => {
-    expect(modelsForRunner('opencode').map((m) => m.id)).toEqual([''])
+  it('qwen: auto alone until the host catalog answers (#794)', () => {
+    expect(modelsForRunner('qwen').map((m) => m.id)).toEqual([''])
     expect(
-      modelsForRunner('opencode', {
-        runner: 'opencode',
+      modelsForRunner('qwen', {
+        runner: 'qwen',
         models: [
           { id: 'openai/gpt-5.4', label: 'openai/gpt-5.4', description: 'via openai' },
           { id: 'anthropic/claude-sonnet-5', label: 'anthropic/claude-sonnet-5', description: 'via anthropic' },
@@ -210,25 +210,24 @@ describe('model option resolution', () => {
     ).toEqual(['', 'openai/gpt-5.4', 'anthropic/claude-sonnet-5'])
   })
 
-  it('a pinned OpenCode id the host no longer offers stays selectable', () => {
+  it('a pinned Qwen Code id the host no longer offers stays selectable', () => {
     expect(
       modelsForRunner(
-        'opencode',
-        { runner: 'opencode', models: [], source: 'unavailable', stale: false },
+        'qwen',
+        { runner: 'qwen', models: [], source: 'unavailable', stale: false },
         ['openai/gpt-5.1'],
       ).map((m) => m.id),
     ).toEqual(['', 'openai/gpt-5.1'])
   })
 
   it('GUARD — never reads a provider-spanning runner’s preset as another runner’s exclusive model', () => {
-    // pi and OpenCode read their models off the SAME host providers, so `openai/gpt-5.1` can
-    // legitimately appear under either. Counting one list as evidence of "belongs to another
-    // runner" would silently strip those ids from OpenCode's picker — the #794 bug, through the
-    // back door. Since #152 neither runner HAS a preset beyond `auto`, so the exemption cannot
-    // fire; this pins the outcome, which must not change whichever half is doing the work.
+    // Qwen Code reads its models off the person's own providers, so `openai/gpt-5.1` can
+    // legitimately appear under it. Counting another list as evidence of "belongs to another
+    // runner" would silently strip those ids from its picker — the #794 bug, through the back
+    // door. Qwen Code HAS no preset beyond `auto`, so the exemption cannot fire; this pins the
+    // outcome, which must not change whichever half is doing the work.
     for (const model of ['openai/gpt-5.1', 'anthropic/claude-sonnet-5']) {
-      expect(modelConflictsWithRunner(model, 'opencode')).toBe(false)
-      expect(modelConflictsWithRunner(model, 'pi')).toBe(false)
+      expect(modelConflictsWithRunner(model, 'qwen')).toBe(false)
     }
     // The guard it must NOT lose: a bare id that is unmistakably one single-provider runner's.
     expect(modelConflictsWithRunner('opus', 'codex')).toBe(true)
@@ -236,15 +235,15 @@ describe('model option resolution', () => {
 
   it('names the runner whose catalog is stale or unavailable', () => {
     expect(
-      modelCatalogStatus('opencode', { runner: 'opencode', models: [], source: 'cache', stale: true, reason: 'raw' }),
-    ).toBe('Using cached OpenCode model list')
-    expect(modelCatalogStatus('opencode', undefined, true)).toBe('Latest OpenCode models unavailable')
+      modelCatalogStatus('qwen', { runner: 'qwen', models: [], source: 'cache', stale: true, reason: 'raw' }),
+    ).toBe('Using cached Qwen Code model list')
+    expect(modelCatalogStatus('qwen', undefined, true)).toBe('Latest Qwen Code models unavailable')
   })
 
   it('resolveModel keeps known picks and arbitrary native model pins', () => {
     expect(resolveModel('opus', 'claude')).toBe('opus')
     expect(resolveModel('custom-codex-id', 'codex')).toBe('custom-codex-id')
-    expect(resolveModel(null, 'opencode', { opencode: 'provider/custom-model' })).toBe('provider/custom-model')
+    expect(resolveModel(null, 'qwen', { qwen: 'provider/custom-model' })).toBe('provider/custom-model')
     expect(resolveModel(null, 'claude')).toBe('')
   })
 
@@ -258,7 +257,7 @@ describe('model option resolution', () => {
     // Configured custom ids remain representable even when discovery is unavailable.
     expect(resolveModel(null, 'codex', defaults)).toBe('not-a-preset')
     // No preset for the runner → auto, exactly as before.
-    expect(resolveModel(null, 'opencode', defaults)).toBe('')
+    expect(resolveModel(null, 'qwen', defaults)).toBe('')
   })
 })
 

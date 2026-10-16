@@ -227,9 +227,9 @@ describe('sudoStep secret channel (stdin, never argv)', () => {
 
 /**
  * The "at least one agent CLI" gate (#387 review). `BackendCheck['name']` mixes agent CLIs with
- * the non-agent tools (`gh`, `git`), so the gate must filter — and the literal `['claude',
- * 'codex', 'opencode']` it used to filter with was a runtime string array typecheck could not
- * guard, so a pi-only host reported "no agent CLI" while pi sat right there in the checks.
+ * the non-agent tools (`gh`, `git`), so the gate must filter — and the literal list of agent
+ * names it used to filter with was a runtime string array typecheck could not guard, so a host
+ * with only a newly added runner reported "no agent CLI" while that runner sat in the checks.
  * These cases pin the gate to RUNNER_IDS: every runner satisfies it alone, no non-runner does.
  */
 describe('depCheckStep — the agent-CLI gate', () => {
@@ -524,7 +524,7 @@ describe('depCheckStep — installing, authorizing and rolling back', () => {
     // offering it invites an operator to "fix" a box that is already fine.
     const multiselect = vi.fn(
       async (_opts: { options: Array<{ value: unknown; label: string }> }) =>
-        ['gh', 'claude', 'opencode'] as never,
+        ['gh', 'claude', 'qwen'] as never,
     );
     const { ui, notes } = recordingUi({ multiselect: multiselect as Ui['multiselect'] });
     const installTool = vi.fn(async () => {});
@@ -533,25 +533,25 @@ describe('depCheckStep — installing, authorizing and rolling back', () => {
         check('codex', true),
         check('claude', false, 'run `claude login`'),
         check('gh', false, 'run `gh auth login`'),
-        check('opencode', false),
+        check('qwen', false),
         check('git', false),
       ],
       installTool,
     });
     const created = await step.run(makeCtx({ ui }));
     const offered = (multiselect.mock.calls[0]?.[0].options ?? []).map((o) => String(o.value));
-    expect(offered).toEqual(['claude', 'gh', 'opencode']);
+    expect(offered).toEqual(['claude', 'gh', 'qwen']);
     expect(installTool.mock.calls.map((c) => (c as unknown as [InstallContext, string])[1])).toEqual([
       'gh',
       'claude',
-      'opencode',
+      'qwen',
     ]);
     // Every installed tool is recorded as `shared` with its own removal hint —
     // uninstall lists these instead of yanking a tool the operator now uses.
     expect(created?.artifacts).toEqual([
       { kind: 'shared', type: 'package', name: 'gh', removeHint: 'sudo apt-get remove -y gh' },
       { kind: 'shared', type: 'package', name: 'claude', removeHint: 'npm rm -g @anthropic-ai/claude-code' },
-      { kind: 'shared', type: 'package', name: 'opencode', removeHint: '# remove opencode manually' },
+      { kind: 'shared', type: 'package', name: 'qwen', removeHint: 'npm rm -g @qwen-code/qwen-code' },
     ]);
     // The authorization instruction is shown only for tools that carry one.
     expect(notes).toEqual([
@@ -587,11 +587,11 @@ describe('depCheckStep — installing, authorizing and rolling back', () => {
     await step.undo(makeCtx({ ui }), {
       artifacts: [
         shared('package', { name: 'gh', removeHint: 'sudo apt-get remove -y gh' }),
-        shared('package', { name: 'opencode' }),
+        shared('package', { name: 'some-future-cli' }),
       ],
     });
     expect(notes).toHaveLength(1);
-    expect(notes[0]?.[0]).toBe('sudo apt-get remove -y gh\nopencode');
+    expect(notes[0]?.[0]).toBe('sudo apt-get remove -y gh\nsome-future-cli');
     expect(notes[0]?.[1]).toMatch(/remove manually/);
   });
 
@@ -636,14 +636,6 @@ describe('aptInstallTool (Ubuntu) — apt for gh, sudo npm for the agent CLIs', 
     );
   });
 
-  it('points at the website for opencode rather than pretending to install it', async () => {
-    const { ui, notes } = recordingUi();
-    const interactive = vi.fn(async () => 0);
-    await aptInstallTool(yesCtx({ ui, interactive }), 'opencode');
-    expect(notes[0]?.[0]).toContain('opencode.ai');
-    expect(interactive).not.toHaveBeenCalled();
-  });
-
   it('warns instead of guessing when it has no installer for a tool', async () => {
     const { ui, warns } = recordingUi();
     const interactive = vi.fn(async () => 0);
@@ -685,7 +677,7 @@ describe('brewRemoveHint', () => {
     expect(brewRemoveHint('gh')).toBe('brew uninstall gh');
     expect(brewRemoveHint('claude')).toBe('npm rm -g @anthropic-ai/claude-code');
     expect(brewRemoveHint('codex')).toBe('npm rm -g @openai/codex');
-    expect(brewRemoveHint('opencode')).toBe('# remove opencode manually');
+    expect(brewRemoveHint('some-future-cli')).toBe('# remove some-future-cli manually');
   });
 });
 

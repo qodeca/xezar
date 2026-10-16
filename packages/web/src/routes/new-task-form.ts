@@ -54,8 +54,6 @@ export const RUNNERS: readonly RunnerOption[] = [
   { id: 'claude', label: 'claude', desc: 'Claude Code CLI' },
   { id: 'codex', label: 'codex', desc: 'OpenAI Codex (app-server)' },
   { id: 'qwen', label: 'qwen', desc: 'Qwen Code CLI (your modelProviders)' },
-  { id: 'opencode', label: 'opencode', desc: 'OpenCode (serve)' },
-  { id: 'pi', label: 'pi', desc: 'pi CLI (provider/model)' },
 ]
 
 export interface ModelPreset {
@@ -70,14 +68,14 @@ export interface ModelPreset {
  * EVERY runner in `MODEL_DISCOVERY_RUNNERS` discovers, so every list here is now only the
  * FALLBACK, used when the host catalog has nothing to offer; a live catalog replaces it.
  * Nothing dated may be listed — pinned ids (`claude-opus-4-8`, `gpt-5.1-codex`) are exactly the
- * drift discovery exists to end (#794 for OpenCode, #784 for Claude, #152 for pi). Claude
- * therefore keeps only its tier aliases, which stay true across every rollout because the CLI
- * resolves them itself; Codex, OpenCode and pi list `auto` alone.
+ * drift discovery exists to end (#794, #784 for Claude, #152). Claude therefore keeps only its
+ * tier aliases, which stay true across every rollout because the CLI resolves them itself; Codex
+ * and Qwen Code list `auto` alone.
  *
- * pi was the last holdout and the worked example of why: with no catalog its entries were the
- * real picker contents, so a host whose pi served one local model was still offered three
- * Anthropic and OpenAI ids it had no provider for (#152). A hard-coded id is a guess about
- * someone else's machine; `auto` is the only model xezar can name without one.
+ * The reason is #152: a runner with no catalog showed its hard-coded entries as the real picker
+ * contents, so a host serving one local model was still offered vendor ids it had no provider
+ * for. A hard-coded id is a guess about someone else's machine; `auto` is the only model xezar
+ * can name without one.
  */
 export const MODELS_BY_RUNNER: Record<Runner, readonly ModelPreset[]> = {
   claude: [
@@ -92,14 +90,6 @@ export const MODELS_BY_RUNNER: Record<Runner, readonly ModelPreset[]> = {
   // Qwen Code's models are the person's own `modelProviders` entries, discovered from its settings.
   qwen: [
     { id: '', label: 'auto', desc: 'Use your Qwen Code default model' },
-  ],
-  opencode: [
-    { id: '', label: 'auto', desc: 'Use your OpenCode default model' },
-  ],
-  // pi selects a model with the same `provider/model` convention as opencode, and — since #152 —
-  // discovers them the same way too, from `~/.pi/agent/models.json` rather than this file.
-  pi: [
-    { id: '', label: 'auto', desc: 'Use your pi default model' },
   ],
 }
 
@@ -118,27 +108,21 @@ const NATIVE_MODEL_ID_PREFIX: Partial<Record<Runner, RegExp>> = {
   codex: /^gpt[-.]/,
 }
 
-/** Runners that pick with the canonical `provider/model` convention and span every provider the
- *  host has configured, so an id they list is never EXCLUSIVE to them: pi and OpenCode both read
- *  their models off the SAME host providers, so the very same `openai/gpt-5.1` can legitimately
- *  appear under either. Their presets are therefore skipped when judging another runner's id.
+/** Runners that span every provider the host has configured, so an id they list is never
+ *  EXCLUSIVE to them: Qwen Code reads its models off the person's own `modelProviders`, so an id
+ *  another runner also knows can legitimately appear under it. Its presets are therefore skipped
+ *  when judging another runner's id.
  *
- *  Since #152 neither runner has presets to skip — both list `auto` alone and discover the rest —
- *  so the exemption cannot fire today. It stays because the reason it exists has not changed:
- *  these two span providers, and the moment either regains a preset (a fallback entry, a config
- *  default) counting it as "another runner's" would silently strip a pinned OpenCode model from
- *  the OpenCode picker. That is the #794 bug, through the back door.
- *
- *  This is the cockpit's half of the rule the server states structurally — a runner with no
- *  default provider cannot be contradicted, which is why `KNOWN_PRESETS_BY_RUNNER.pi` is empty
- *  in `packages/xezar/src/core/model-presets.ts`. That server-side list is a different table from
- *  `MODELS_BY_RUNNER` above and has always been empty for pi; the two agree.
+ *  Qwen Code lists `auto` alone and discovers the rest, so the exemption cannot fire today. It
+ *  stays because the reason it exists has not changed: the runner spans providers, and the moment
+ *  it gains a preset (a fallback entry, a config default) counting it as "another runner's" would
+ *  silently strip a pinned model from its own picker. That is the #794 bug, through the back door.
  *
  *  It exempts a runner's PRESET LIST, never the vendor shapes above: those name a vendor's own
- *  native id space (`claude-…`, `gpt-…`), which a `provider/model` runner cannot claim either
- *  way, so a bare vendor id stays a cross-runner mismatch on pi and OpenCode as much as it is
- *  on the other backends. */
-const PROVIDER_SPANNING_RUNNERS: readonly Runner[] = ['qwen', 'opencode', 'pi']
+ *  native id space (`claude-…`, `gpt-…`), which a provider-spanning runner cannot claim either
+ *  way, so a bare vendor id stays a cross-runner mismatch on it as much as on the other
+ *  backends. */
+const PROVIDER_SPANNING_RUNNERS: readonly Runner[] = ['qwen']
 
 /** Keep recognized presets from another backend out of a runner's custom-model escape hatch
  * (#480).
@@ -198,8 +182,6 @@ const DISCOVERY_RUNNER_LABEL: Record<ModelDiscoveryRunner, string> = {
   claude: 'Claude',
   codex: 'Codex',
   qwen: 'Qwen Code',
-  opencode: 'OpenCode',
-  pi: 'pi',
 }
 
 export function modelCatalogStatus(

@@ -302,7 +302,7 @@ function outcomeAfter(h: MatrixHarness, runId: string, outcome: typeof outcomes[
 // Named breaks: unconditional pendingIntents.set; retained explicit-refusal ownership;
 // consume without expected status; leaked settled async origin; erase newer intent on old refusal.
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 causal matrix / ${client}`, () => {
   const rejected = ['send_message', 'cancel', 'continue', 'answer_question', 'pin', 'set_title', 'edit_brief'] as const;
   for (const action of rejected) {
@@ -401,7 +401,7 @@ it.each(['new-id', 'same-id-new-content'] as const)('question replacement %s mus
 });
 
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 delayed intent arbitration / ${client}`, () => {
   it('own accepted cancelled acknowledgement stays suppressed but an unrelated failed outcome is delivered', async () => {
     const h = await deliveryHarness(client);

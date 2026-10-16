@@ -209,8 +209,7 @@ function isolatedEnv(scratch, xezarHome) {
     XEZ_SKILLS_AUTO_UPDATE: '0',
     CLAUDE_CONFIG_DIR: join(agentRoot, 'claude'),
     CODEX_HOME: join(agentRoot, 'codex'),
-    OPENCODE_CONFIG_DIR: join(agentRoot, 'opencode'),
-    PI_CODING_AGENT_DIR: join(agentRoot, 'pi'),
+    QWEN_HOME: join(agentRoot, 'qwen'),
   });
   return env;
 }
@@ -310,7 +309,7 @@ async function main(options = {}) {
   const home = join(scratch, 'home');
   const stateFile = join(scratch, 'state.json');
   const resultFile = join(scratch, 'result.json');
-  for (const dir of [logs, home, ...['home', 'claude', 'codex', 'opencode', 'pi'].map((name) => join(scratch, 'agent-home', name))]) mkdirSync(dir, { recursive: true });
+  for (const dir of [logs, home, ...['home', 'claude', 'codex', 'qwen'].map((name) => join(scratch, 'agent-home', name))]) mkdirSync(dir, { recursive: true });
   const registry = new ChildRegistry(stateFile);
   const result = {
     status: 'FAILED',

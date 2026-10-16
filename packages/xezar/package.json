@@ -1,7 +1,7 @@
 {
   "name": "@qodeca/xezar",
   "version": "0.20.2",
-  "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex, OpenCode or pi CLI you already use — zero config, zero database.",
+  "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex or Qwen Code CLI you already use — zero config, zero database.",
   "author": "Qodeca",
   "license": "MIT",
   "type": "module",

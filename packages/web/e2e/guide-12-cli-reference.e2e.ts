@@ -59,7 +59,7 @@ describe('guide 12 — CLI reference', () => {
     browser.goto(`${baseUrl}/p/${bootProject}/settings/mcp-connection`)
     await browser.waitForRole('heading', 'MCP connection')
     // Guide 12's own line: `xezar mcp` (or `npx -y @qodeca/xezar mcp`) — the exact one-time setup
-    // command guide 13's page prints for Claude Code, Codex, OpenCode and pi alike.
+    // command guide 13's page prints for Claude Code, Qwen Code and Codex alike.
     expect(browser.hasText('npx -y @qodeca/xezar mcp')).toBe(true)
   })
 })

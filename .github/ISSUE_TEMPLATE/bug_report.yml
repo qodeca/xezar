@@ -62,8 +62,7 @@ body:
       options:
         - claude (Claude Code)
         - codex (Codex)
-        - opencode (OpenCode)
-        - pi
+        - qwen (Qwen Code)
         - none – the problem is not in an agent run
     validations:
       required: true

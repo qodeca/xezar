@@ -508,7 +508,7 @@ function sweep(): Sweep {
   // (`designs/agent-accounts-onboarding/README.md` §5: "Four agent groups, stacked … replaces the
   // tabs"); `TabsTrigger` has no importer left anywhere in the cockpit, this route was its only
   // caller. What this used to measure — every tab trigger, because a tab is as wide as its label
-  // and measuring only the widest one in the strip is how `pi` shipped 30.88px wide at ultra
+  // and measuring only the widest one in the strip is how a two-character label shipped 30.88px wide at ultra
   // (B1-QA-1) past a green suite — no longer has anything to measure; the dedicated case below
   // pins that absence instead. What remains real here is the "Add account" button each stacked
   // group now carries.
@@ -655,7 +655,7 @@ describe('B1 geometry at 375px: every phone target is 44 x 44 for real', () => {
   })
 
   it('names the Tabs primitive with no rendered instance left, rather than passing over it (was B1-QA-1)', () => {
-    // B1-QA-1 pinned a real regression: a two-character tab label ("pi") rendered 30.88 x 44px at
+    // B1-QA-1 pinned a real regression: a two-character tab label rendered 30.88 x 44px at
     // ultra density, because `TabsTrigger` sizes to its own label on both axes (`min-h-tap
     // min-w-tap`) — right height, unreachable width — and it only showed up once EVERY trigger was
     // measured, because the other three labels were wide enough to hide it.

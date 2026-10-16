@@ -31,7 +31,7 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 5. **Heights use `dvh`, never `h-screen`, `min-h-screen`, `max-h-screen` or `100vh`.** The phone keyboard must not hide the composer.
 6. **No `window.confirm`, `alert` or `prompt`.** Destructive confirms are an AlertDialog with the danger button. The one exemption is `lib/bookmarklet.ts`, which emits a `javascript:` program.
 7. **Status comes from `lib/attention.ts`.** `deriveAttention(status)` gives the bucket, tone, pulse and label. Nowhere else maps a run status to a colour or a word.
-8. **Backend names come from `lib/runner-label.ts`.** `claude` is "Claude Code", `codex` is "Codex", `opencode` is "OpenCode", `pi` is "pi". A fifth backend is a compile error there, on purpose.
+8. **Backend names come from `lib/runner-label.ts`.** `claude` is "Claude Code", `codex` is "Codex", `qwen` is "Qwen Code". A fourth backend is a compile error there, on purpose.
 9. **The per-project task table is `lib/task-columns.ts`.** Header, colgroup and rows read `TASK_COLUMNS`; a column is added there, never as a loose `<td>`.
 10. **Words carry meaning; colour and icon reinforce.** Every state has its own sentence. Every control has a label. Every action works from the keyboard and shows the `:focus-visible` ring. Nothing scrolls sideways at 375 px.
 

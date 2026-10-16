@@ -99,7 +99,7 @@ describe('LineFramer', () => {
 describe('negotiateProtocolVersion (D-01 § 1.6)', () => {
   it('echoes both revisions the three required clients offer', () => {
     expect(negotiateProtocolVersion('2025-06-18')).toBe('2025-06-18'); // Codex (D-01 E3)
-    expect(negotiateProtocolVersion('2025-11-25')).toBe('2025-11-25'); // Claude Code, OpenCode (E1, E2)
+    expect(negotiateProtocolVersion('2025-11-25')).toBe('2025-11-25'); // Claude Code (E1)
   });
 
   it('answers the newest supported revision for anything else and lets the client decide', () => {

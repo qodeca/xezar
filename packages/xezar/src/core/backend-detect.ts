@@ -2,7 +2,7 @@ import { launchFileAsync } from '../platform/process-launch.ts';
 import { installParenthetical } from './provider-install.ts';
 
 export interface BackendCheck {
-  name: 'claude' | 'codex' | 'qwen' | 'opencode' | 'pi' | 'gh' | 'git';
+  name: 'claude' | 'codex' | 'qwen' | 'gh' | 'git';
   available: boolean;
   version?: string;
   hint?: string;
@@ -10,7 +10,7 @@ export interface BackendCheck {
 
 /**
  * Probe the host for everything xez leans on: the agent CLIs (`claude`, and
- * the optional `codex` / `opencode` / `pi` alternatives), `gh` (GitHub auth for
+ * the optional `codex` / `qwen` alternatives), `gh` (GitHub auth for
  * PR creation) and `git`. Nothing is required except at least one agent CLI —
  * the GUI degrades gracefully, only offers the runners that are present, and
  * shows the hints for the rest.
@@ -20,8 +20,6 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
     probeClaude(),
     probeCodex(),
     probeQwen(),
-    probeOpencode(),
-    probePi(),
     probeGh(),
     probeGit(),
   ]);
@@ -90,7 +88,7 @@ async function probeCodex(): Promise<BackendCheck> {
 }
 
 async function probeQwen(): Promise<BackendCheck> {
-  // Dry-run stands the runner up on the bundled mock, so report it present (as for codex and pi).
+  // Dry-run stands the runner up on the bundled mock, so report it present (as for codex).
   if (process.env.XEZ_DRY_RUN === '1') {
     return { name: 'qwen', available: true, version: 'mock (XEZ_DRY_RUN=1)' };
   }
@@ -112,50 +110,6 @@ async function probeQwen(): Promise<BackendCheck> {
       name: 'qwen',
       available: false,
       hint: `optional: install Qwen Code${installParenthetical('qwen')} and set up a model to use the Qwen Code runner`,
-    };
-  }
-}
-
-async function probeOpencode(): Promise<BackendCheck> {
-  const bin = process.env.XEZ_OPENCODE_BIN ?? 'opencode';
-  try {
-    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
-    return {
-      name: 'opencode',
-      available: true,
-      version: stdout.trim(),
-      hint: 'if no provider is configured, run `opencode` once to set one up',
-    };
-  } catch {
-    return {
-      name: 'opencode',
-      available: false,
-      hint: `optional: install OpenCode${installParenthetical('opencode')} and configure a provider to use the OpenCode runner`,
-    };
-  }
-}
-
-async function probePi(): Promise<BackendCheck> {
-  // Dry-run stands the runner up on the shared mock, so report it present.
-  if (process.env.XEZ_DRY_RUN === '1') {
-    return { name: 'pi', available: true, version: 'mock (XEZ_DRY_RUN=1)' };
-  }
-  const bin = process.env.XEZ_PI_BIN ?? 'pi';
-  try {
-    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
-    return {
-      name: 'pi',
-      available: true,
-      version: stdout.trim(),
-      hint: 'if not authenticated, run `pi` once and log in',
-    };
-  } catch {
-    // A missing `pi` CLI is never a boot failure — the runner just isn't
-    // offered, exactly like an absent codex/opencode.
-    return {
-      name: 'pi',
-      available: false,
-      hint: `optional: install the pi CLI${installParenthetical('pi')} and log in to use the pi runner`,
     };
   }
 }

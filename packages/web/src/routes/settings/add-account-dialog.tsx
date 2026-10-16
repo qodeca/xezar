@@ -24,17 +24,14 @@ import { useReturnFocus } from './remove-project'
  *
  * An exhaustive `Record<ProviderId, string>` rather than a ternary, and that is the fix rather
  * than the style: the ternary it replaced named codex and fell through to `~/.claude-second` for
- * everything else, so picking pi — which this provider dropdown started offering the moment pi
- * became profile-capable (#329) — hinted a Claude folder name. A fifth provider is now a compile
- * error instead of another borrowed suggestion. Each name is that agent's OWN default home with a
- * `-second` suffix; `~/.pi/agent` is a nested path, so pi's reads `~/.pi/agent-second`.
+ * everything else, so picking any other provider hinted a Claude folder name. A new provider is now
+ * a compile error instead of another borrowed suggestion. Each name is that agent's OWN default
+ * home with a `-second` suffix.
  */
 const FOLDER_PLACEHOLDER: Record<ProviderId, string> = {
   claude: '~/.claude-second',
   codex: '~/.codex-second',
   qwen: '~/.qwen-second',
-  opencode: '~/.config/opencode-second',
-  pi: '~/.pi/agent-second',
 }
 
 /**

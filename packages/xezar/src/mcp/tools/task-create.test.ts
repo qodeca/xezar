@@ -170,7 +170,7 @@ const PINNED = [
   'XEZ_AUTONOMOUS_DEFAULT',
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
-  'OPENCODE_CONFIG_DIR',
+  'QWEN_HOME',
   'ANTHROPIC_MODEL',
   'XEZ_HANDOFF_FILE',
   'XEZ_TODOS_FILE',
@@ -190,7 +190,7 @@ const git = (cwd: string, ...args: string[]): void => {
 function setup(options: SetupOptions = {}, stubStart = true): Fixture {
   const home = makeDir('xez-task-create-home-');
   process.env.XEZ_HOME = home;
-  for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'OPENCODE_CONFIG_DIR'] as const) {
+  for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QWEN_HOME'] as const) {
     process.env[key] = join(home, key.toLowerCase());
   }
   delete process.env.ANTHROPIC_MODEL;
@@ -506,7 +506,7 @@ const PARITY: ParityRow[] = [
   { name: 'runner set → sent, and the model re-resolves for THAT runner (the pin does not carry)', setup: TWO_MODELS, draft: { runner: 'codex' }, expected: { runner: 'codex', model: 'gpt-5.1-codex' } },
   { name: 'runner set to the default → still sent (an explicit pick always rides)', draft: { runner: 'claude' }, expected: { runner: 'claude' } },
   { name: 'runner omitted → implicit when the default is usable', draft: {}, absent: ['runner'], expected: {} },
-  { name: 'runner omitted, default disconnected → the first usable runner, explicitly', setup: { providers: connected('codex', 'pi') }, draft: {}, expected: { runner: 'codex' } },
+  { name: 'runner omitted, default disconnected → the first usable runner, explicitly', setup: { providers: connected('codex', 'qwen') }, draft: {}, expected: { runner: 'codex' } },
   // agentProfile
   { name: 'agentProfile set → sent', draft: { agentProfile: 'default' }, expected: { agentProfile: 'default' } },
   // variants / worktree
@@ -1147,9 +1147,9 @@ describe('task_create start fromFindings', () => {
     const f = setup();
     const runId = await seedReview(f, { model: 'some-model' });
     const ctx = await f.contexts.context(PROJECT);
-    ctx.store.updateStep(runId, 'review', { backend: 'pi' });
+    ctx.store.updateStep(runId, 'review', { backend: 'qwen' });
     await callTool(f, { operationId: 'op-findings-003', fromFindings: { runId, ids: ['f2'] } });
-    expect(sentTask(f)).toContain('Reviewer model: pi/some-model.');
+    expect(sentTask(f)).toContain('Reviewer model: qwen/some-model.');
   });
 
   it('appends the leader’s own text after the list, verbatim and whole (AC-18, RP-2.4)', async () => {
@@ -1382,7 +1382,7 @@ describe('task_create start fromFindings', () => {
     });
 
     // The brief names the step's engine…
-    await callTool(f, { operationId: 'op-findings-m1-a1', runner: 'pi', model: 'deepseek-api/deepseek-flash', fromFindings: { runId, ids: ['f2'] } });
+    await callTool(f, { operationId: 'op-findings-m1-a1', runner: 'qwen', model: 'deepseek-api/deepseek-flash', fromFindings: { runId, ids: ['f2'] } });
     expect(sentTask(f)).toContain('Reviewer model: codex/auto.');
     expect(sentTask(f)).not.toContain('Reviewer model: claude/auto.');
 
@@ -1408,7 +1408,7 @@ describe('task_create start fromFindings', () => {
       } as RunRecord['workflowDef'],
     });
 
-    await callTool(f, { operationId: 'op-findings-m1-a3', runner: 'pi', model: 'deepseek-api/deepseek-flash', fromFindings: { runId, ids: ['f2'] } });
+    await callTool(f, { operationId: 'op-findings-m1-a3', runner: 'qwen', model: 'deepseek-api/deepseek-flash', fromFindings: { runId, ids: ['f2'] } });
     expect(sentTask(f)).toContain('Reviewer model: codex/gpt-5.6-sol.');
 
     const same = await callTool(f, {
@@ -1472,25 +1472,25 @@ describe('task_create start fromFindings', () => {
 
   /**
    * m1, the fallback: a bare model id on a provider-spanning backend has no canonical identity
-   * (pi and OpenCode name a provider or nothing), and an unresolvable model must still compare
+   * (Qwen Code names a provider or nothing), and an unresolvable model must still compare
    * equal to ITSELF — refusing there would turn a naming question into a start failure.
    */
   it('falls back to the trimmed string when a model has no canonical identity (m1)', async () => {
     const f = setup();
-    const runId = await seedReview(f, { runner: 'pi', model: 'deepseek-flash' });
+    const runId = await seedReview(f, { runner: 'qwen', model: 'deepseek-flash' });
 
-    const same = await callTool(f, { operationId: 'op-findings-m1-e1', runner: 'pi', model: 'deepseek-flash', fromFindings: { runId, ids: ['f1'] } });
+    const same = await callTool(f, { operationId: 'op-findings-m1-e1', runner: 'qwen', model: 'deepseek-flash', fromFindings: { runId, ids: ['f1'] } });
     expect(same.isError).toBe(true);
-    expect(message(same)).toContain('was reviewed on pi/deepseek-flash');
+    expect(message(same)).toContain('was reviewed on qwen/deepseek-flash');
 
     // The fallback is keyed like every other branch, so capitalisation is not a second model.
-    const cased = await callTool(f, { operationId: 'op-findings-m1-e3', runner: 'pi', model: 'DeepSeek-Flash ', fromFindings: { runId, ids: ['f1'] } });
+    const cased = await callTool(f, { operationId: 'op-findings-m1-e3', runner: 'qwen', model: 'DeepSeek-Flash ', fromFindings: { runId, ids: ['f1'] } });
     expect(cased.isError).toBe(true);
     expect(message(cased)).toContain('a reviewer does not fix its own findings');
 
     const other = await callTool(f, {
       operationId: 'op-findings-m1-e2',
-      runner: 'pi',
+      runner: 'qwen',
       model: 'deepseek-api/deepseek-flash',
       fromFindings: { runId, ids: ['f1'] },
     });
@@ -1507,10 +1507,10 @@ describe('task_create start fromFindings', () => {
         { id: 'review', name: 'Review', kind: 'agent' },
         { id: 'report', name: 'Report', kind: 'agent' },
       ],
-      stepBackends: { report: 'pi' },
+      stepBackends: { report: 'qwen' },
     });
     await callTool(f, { operationId: 'op-findings-m1-f1', runner: 'codex', fromFindings: { runId, ids: ['f2'] } });
-    expect(sentTask(f)).toContain('Reviewer model: pi/some-model.');
+    expect(sentTask(f)).toContain('Reviewer model: qwen/some-model.');
   });
 
   /**

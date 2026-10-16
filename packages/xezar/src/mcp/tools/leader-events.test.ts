@@ -80,7 +80,7 @@ describe('leader_events arguments for attach, stop and status (#450, T-1)', () =
 
   it('never takes a client: the client is the session’s own', () => {
     // RED against: dropping `.strict()`, which would let a model name a client.
-    expect(issues({ action: 'attach', operationId: 'op-attach-0002', client: 'pi' })).toEqual([expect.stringMatching(/Unrecognized key.*client/)]);
+    expect(issues({ action: 'attach', operationId: 'op-attach-0002', client: 'codex' })).toEqual([expect.stringMatching(/Unrecognized key.*client/)]);
   });
 
   it('keeps ack exactly as it was; read accepts an operationId and drops it (#819 item 6)', () => {
@@ -124,11 +124,11 @@ describe('leader_events door headlines (#450, T-3)', () => {
     expect(firstLine(await withPort({ status: { ...attached, blocker: { code: 'x', message: 'Waiting.', fix: 'Wait.' } } }, { action: 'status' }))).toBe(
       'This session is attached as the project leader (Claude Code); events are pushed to it. Blocked: Waiting. Fix: Wait.',
     );
-    expect(firstLine(await withPort({ status: { ...attached, leader: { client: 'opencode', state: 'attached' }, self: { client: 'claude-code', isOwner: true, attached: false } } }, { action: 'status' }))).toBe(
-      'An OpenCode leader is attached to this project, not this session; events are pushed to it, not to you.',
+    expect(firstLine(await withPort({ status: { ...attached, leader: { client: 'qwen', state: 'attached' }, self: { client: 'claude-code', isOwner: true, attached: false } } }, { action: 'status' }))).toBe(
+      'A Qwen Code leader is attached to this project, not this session; events are pushed to it, not to you.',
     );
-    expect(firstLine(await withPort({ status: { ...attached, leader: { client: 'pi', state: 'attached' }, self: { client: 'claude-code', isOwner: true, attached: false } } }, { action: 'status' }))).toBe(
-      'A pi leader is attached to this project, not this session; events are pushed to it, not to you.',
+    expect(firstLine(await withPort({ status: { ...attached, leader: { client: 'codex', state: 'attached' }, self: { client: 'claude-code', isOwner: true, attached: false } } }, { action: 'status' }))).toBe(
+      'A Codex leader is attached to this project, not this session; events are pushed to it, not to you.',
     );
     expect(firstLine(await withPort({ status: detached }, { action: 'status' }))).toBe(
       'This session is not attached, so events are not pushed to it. Call leader_events with action attach; until then, read events with leader_events.',

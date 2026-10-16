@@ -107,8 +107,6 @@ export const workspaceConfigResponseSchema = z.object({
       claude: z.string().optional(),
       codex: z.string().optional(),
       qwen: z.string().optional(),
-      opencode: z.string().optional(),
-      pi: z.string().optional(),
     }).optional(),
   }),
   /**
@@ -226,8 +224,6 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
           claude: z.string().trim().min(1).max(200).nullable().optional(),
           codex: z.string().trim().min(1).max(200).nullable().optional(),
           qwen: z.string().trim().min(1).max(200).nullable().optional(),
-          opencode: z.string().trim().min(1).max(200).nullable().optional(),
-          pi: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
     })
@@ -379,8 +375,6 @@ export const workspaceUiStateSchema = z.looseObject({
       claude: z.string().optional(),
       codex: z.string().optional(),
       qwen: z.string().optional(),
-      opencode: z.string().optional(),
-      pi: z.string().optional(),
     })
     .optional(),
   /** Settings → Appearance, GLOBAL since step 3.5: accent + density describe the person at the
@@ -429,8 +423,6 @@ export const setWorkspaceUiStateInputSchema = z
         claude: z.string().min(1).max(128).optional(),
         codex: z.string().min(1).max(128).optional(),
         qwen: z.string().min(1).max(128).optional(),
-        opencode: z.string().min(1).max(128).optional(),
-        pi: z.string().min(1).max(128).optional(),
       })
       .optional(),
     importedSkills: z
@@ -468,8 +460,6 @@ export const runnerModelsSchema = z.object({
   claude: z.string().optional(),
   codex: z.string().optional(),
   qwen: z.string().optional(),
-  opencode: z.string().optional(),
-  pi: z.string().optional(),
 });
 export type RunnerModels = z.infer<typeof runnerModelsSchema>;
 
@@ -539,8 +529,6 @@ export const setConfigInputSchema = z.object({
       claude: z.string().trim().max(200).nullable().optional(),
       codex: z.string().trim().max(200).nullable().optional(),
       qwen: z.string().trim().max(200).nullable().optional(),
-      opencode: z.string().trim().max(200).nullable().optional(),
-      pi: z.string().trim().max(200).nullable().optional(),
     })
     .optional(),
   /** #677 C2: `true` stores the project's lock; `false` and `null` DELETE the key, so
@@ -753,17 +741,16 @@ export type ProviderConnectResponse = z.infer<typeof providerConnectResponseSche
 
 /**
  * The runners whose model list is discovered from the host rather than hard-coded: Codex through
- * its app-server protocol, OpenCode through its own `models` listing (#794), Claude through the
- * CLI's `list_models` control request (#784), pi by reading its own `models.json` (#152). A
- * runner absent here has no discovery path and 400s, so the client compiles against exactly what
- * the route accepts. One definition, used by the route's query validator and by the cockpit's
- * picker.
+ * its app-server protocol, Claude through the CLI's `list_models` control request (#784), Qwen
+ * Code by reading the `modelProviders` in its own settings (#1044). A runner absent here has no
+ * discovery path and 400s, so the client compiles against exactly what the route accepts. One
+ * definition, used by the route's query validator and by the cockpit's picker.
  *
- * Every runner xezar ships is now listed. That is the invariant worth keeping rather than a
- * coincidence: a picker entry with no discovery falls back to hard-coded vendor ids, which is
- * how pi came to offer three models its host could not run (#152).
+ * Every runner xezar ships is listed. That is the invariant worth keeping rather than a
+ * coincidence: a picker entry with no discovery falls back to hard-coded vendor ids, which offers
+ * models the host cannot run (#152).
  */
-export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'qwen', 'opencode', 'pi']);
+export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'qwen']);
 export type ModelDiscoveryRunner = z.infer<typeof modelDiscoveryRunnerSchema>;
 export const MODEL_DISCOVERY_RUNNERS: readonly ModelDiscoveryRunner[] =
   modelDiscoveryRunnerSchema.options;
@@ -775,14 +762,14 @@ export function runnerDiscoversModels(runner: Runner): runner is ModelDiscoveryR
 
 /**
  * One model a runner can be dispatched to. `id` is exactly what that runner's own `--model` flag
- * takes (Claude's `list_models` `value`, Codex's `model/list` `model`, OpenCode's and pi's
- * `provider/model`), so `<runner>/<id>` is always reconstructible.
+ * takes (Claude's `list_models` `value`, Codex's `model/list` `model`, the `id` of a Qwen Code
+ * `modelProviders` entry), so `<runner>/<id>` is always reconstructible.
  *
  * `local` and `vision` are additive (#819 item 4) and are PRESENT ONLY WHERE THE SOURCE PROVES
  * THEM: absent means "unknown", never "no", so a consumer must not read a missing key as `false`.
- * `vision` comes from the vendor's own list of input modalities (Codex `inputModalities`, pi's
- * `input`); `local` from pi's configured provider address (a loopback or private IP, or
- * `localhost`, is `true`; a public IP literal is `false`; any other host name is unknown).
+ * `vision` comes from the vendor's own list of input modalities (Codex `inputModalities`); `local`
+ * from a configured provider address (a loopback or private IP, or `localhost`, is `true`; a public
+ * IP literal is `false`; any other host name is unknown).
  */
 export const runnerModelOptionSchema = z.object({
   id: z.string(),
@@ -793,7 +780,7 @@ export const runnerModelOptionSchema = z.object({
 });
 export type RunnerModelOption = z.infer<typeof runnerModelOptionSchema>;
 
-/** `GET /api/v1/models?runner=claude|codex|opencode|pi` — the models discovered from that runner's
+/** `GET /api/v1/models?runner=claude|codex|qwen` — the models discovered from that runner's
  *  own host installation, plus how fresh the answer is. Never an error: an unavailable CLI
  *  degrades to `source: 'unavailable'` with a `reason`. */
 export const runnerModelCatalogResponseSchema = z.object({

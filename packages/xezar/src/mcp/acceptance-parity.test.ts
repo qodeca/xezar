@@ -1856,7 +1856,7 @@ describe('#116 parity and collaboration acceptance — A/B world', { timeout: 18
         const seen = await w.observe(async () => {
           const answers: Array<[string, McpToolResult]> = [];
           for (const action of refusals) answers.push([action, await w.call('a', 'project_config', { action })]);
-          for (const fileId of ['claude.user.settings', 'codex.user.config', 'opencode.user.memory']) {
+          for (const fileId of ['claude.user.settings', 'codex.user.config', 'qwen.user.settings']) {
             answers.push([`read ${fileId}`, await w.call('a', 'project_config', { action: 'read_agent_config', fileId })]);
             answers.push([`write ${fileId}`, await w.call('a', 'project_config', { action: 'write_agent_config', fileId, content: '{}', version: null })]);
           }

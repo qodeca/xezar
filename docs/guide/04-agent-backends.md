@@ -2,15 +2,15 @@
 
 Use this page to choose the coding agent that runs your tasks, select its account and model, and understand which tools and environment it receives. A backend is the connection between xezar and an installed agent CLI; each backend feeds the same task thread in the cockpit.
 
-## To choose one of the five backends
+## To choose one of the three backends
 
 | Backend | How xezar drives it |
 | --- | --- |
 | Claude Code (`claude`, the default) | A persistent CLI process exchanges streamed JSON through standard input and output. |
 | Codex (`codex`) | `codex app-server` exchanges JSON-RPC messages through standard input and output. |
 | Qwen Code (`qwen`) | One `qwen` process per turn streams JSON events; the next turn resumes the same session. Models come from the `modelProviders` in your Qwen Code settings, so local and hosted models both work. |
-| OpenCode (`opencode`, experimental) | A local `opencode serve` process receives HTTP requests and streams events over SSE. |
-| pi (`pi`) | `pi --mode rpc` exchanges JSON messages through standard input and output. |
+
+The pi and OpenCode backends were removed. If you used one of them, see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md) to move your model providers into Qwen Code and update the settings that still name them.
 
 Choose an agent in the new-task composer. A workflow can also choose a different `runner` for each agent step; see [Workflows](05-workflows.md).
 
@@ -18,13 +18,13 @@ Choose an agent in the new-task composer. A workflow can also choose a different
 
 xezar probes agent binaries with `--version` for its health check. The composer offers enabled backends whose account probes report that they are signed in; installing a CLI alone is not enough. Dry-run mode supplies a mock backend without a login. Open the chosen CLI once to log in or configure its provider before starting a task.
 
-If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_QWEN_BIN`, `XEZ_OPENCODE_BIN` or `XEZ_PI_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
+If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, or `XEZ_QWEN_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
 
 On Windows, the path may name an `.exe`, an npm command (`.cmd`, which xezar runs without the Windows command processor) or a `.js`/`.mjs` script (run with Node). Any other `.cmd` or `.bat` file starts only when every argument is plain text; otherwise xezar refuses it with a message naming the file and the argument's position. PATH entries that depend on the current folder, such as `.` or `node_modules\.bin`, are skipped, so list the full folder instead.
 
 ## To choose models and defaults
 
-Open project **Settings → Agents** to select the default agent and per-agent model presets. You can override the choice for a task, or set `runner` and `model` in a workflow step. A step's model takes precedence over the task's model. Leaving a model on **auto (default)** lets the backend choose; OpenCode model IDs use `provider/model`.
+Open project **Settings → Agents** to select the default agent and per-agent model presets. You can override the choice for a task, or set `runner` and `model` in a workflow step. A step's model takes precedence over the task's model. Leaving a model on **auto (default)** lets the backend choose.
 
 To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents → Lock models** turns the project key on and off (off deletes it); the locked model then shows read-only. The switch cannot lift a lock set by the environment variable or the global key, and says so. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
 
@@ -32,10 +32,10 @@ To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"mo
 
 ## To use another agent account
 
-Global **Settings → Agent accounts** shows all five agents at once, one group per agent rather than one tab at a time, so "is Codex installed, and which login does it use" is answerable without clicking. Each group opens with a one-line fact — installed or not, the version when there is one, and how many logins it holds — followed by that agent's logins.
+Global **Settings → Agent accounts** shows all three agents at once, one group per agent rather than one tab at a time, so "is Codex installed, and which login does it use" is answerable without clicking. Each group opens with a one-line fact — installed or not, the version when there is one, and how many logins it holds — followed by that agent's logins.
 
 1. Open global **Settings → Agent accounts** and find the agent's group.
-2. Use **Add account** for Claude Code, Codex, Qwen Code or pi. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be one that does not exist yet: **Connect** runs the agent's own login, and the agent creates it.
+2. Use **Add account** for Claude Code, Codex or Qwen Code. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be one that does not exist yet: **Connect** runs the agent's own login, and the agent creates it.
 3. Pick the account as a machine default under **Defaults for new projects**, in project **Settings → Agents**, or for a single task. A project choice takes precedence over the machine default.
 
 What each row tells you:
@@ -46,8 +46,6 @@ What each row tells you:
 - **Remove** only forgets the account: nothing in its directory is deleted — not the login, not the sessions — and projects that used it fall back to the built-in login. Existing sessions belong to the account that created them, so changing the default does not move those sessions.
 
 **A saved choice that names an account you no longer have is reported, not silent.** The top of the pane says how many such choices there are, with a link to each affected agent, and each one names what tasks do instead — they run on the built-in login — and how to fix it, including a one-click **Use the built-in login** that makes the saved choice say what already happens. Tasks keep running throughout.
-
-OpenCode cannot hold a second account here: its credentials live outside its configuration directory, so a second directory would change its settings without changing the login. Its group still appears, because "is OpenCode set up?" is a question this page should answer.
 
 Account registrations and selections live in a file of their own, never in xezar's settings file:
 
@@ -100,14 +98,13 @@ Workflow agent steps accept `allowedTools` and `bashAllowlist`. Without override
 | --- | --- |
 | Claude Code | Passes `allowedTools` to the CLI. A non-empty `bashAllowlist` replaces unrestricted Bash with allowed command prefixes. `ClaudeCliRunner.startSession` builds those rules with `out.push(...claudeBashRules(bashAllowlist));`. Claude's own matcher strips a few known-safe wrappers and assignments before matching; the shared matcher instead refuses an unnamed wrapper (`WRAPPER_COMMANDS` in `read-only-lock.ts`). Tools requiring approval are denied by default; `XEZ_APPROVAL_GATE=1` selects Claude's `acceptEdits` approval mode. |
 | Codex | Honours one signal from the tool list: a step that allows neither `Edit` nor `Write` runs confined – it may change files only in its own working copy and the run's own evidence, handoff and temporary folders, and the network stays on so it can still fetch and post. With `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command policy to Bash and refuses `apply_patch` through that policy's tool-name check. Its bounded reason is recorded as a `note` in the run event stream without reaching provider-auth detection. The working copy remains writable to other non-shell tools. Every other step uses full access with approvals disabled. `XEZ_CODEX_NETWORK=0` turns the network off for both. |
-| Qwen Code | Passes the allowed tools to Qwen Code in its own tool names and always sets the approval mode itself (`default`), so a call that is not allowed is denied, never left to Qwen Code's own default. A step that allows neither `Edit` nor `Write` has the file-writing tools removed. Every step with limits also gets a check that runs before each tool call: it refuses a file writer on a read-only step and sends each shell command through the same command policy as Codex and pi, so the same commands are refused for the same reasons. A refused call tells the model not to try again. |
-| OpenCode | Ignores the per-tool allowlist. Permission requests are answered automatically and fail closed. A request to reach a directory is allowed once when the directory is inside the run's own directories (its worktree, its run and temporary files). Every other request is denied – a directory outside them, a web fetch, a shell command, a repeated-call warning – and the denial is shown in the transcript. If the agent keeps asking for the same denied thing three times in a row, or collects 20 denials in one session, the run stops with a named error. |
-| pi | Maps supported tool names to its `--tools` list. Since #856 a non-empty `bashAllowlist` keeps a restricted Bash; it does not drop the shell. One simple command must start with an allowed prefix, using the same prefix rule as Claude Code, and compounds (`a; b`, `a && b`, ordinary pipes) are refused before matching. The sole compound exception is the exact two-part verdict-packet pipe. Redirecting with `>`, `>>` or `<` is refused. So is `find` with an option that runs another command, deletes or writes a file, such as `-exec` or `-delete`, and a `find` word the shell would still change before `find` sees it (a `$`, a backtick, `{`, `}`, `~`, or an unquoted `*`, `?` or `[`): write `find . -name '*.ts'`, not `find . -name *.ts`. A command that defines a shell function or groups commands with an unquoted `(`, `)`, `{` or `}` is refused, because it could make an allowed name run something else. A command that ends a line with a backslash is refused, because the shell would drop the backslash and run a different command. An empty `bashAllowlist` removes Bash. Never allow a program that can run a command or write a file from its arguments without a closed checker; `sed` and `awk` are always refused. |
+| Qwen Code | Passes the allowed tools to Qwen Code in its own tool names and always sets the approval mode itself (`default`), so a call that is not allowed is denied, never left to Qwen Code's own default. A step that allows neither `Edit` nor `Write` has the file-writing tools removed. Every step with limits also gets a check that runs before each tool call: it refuses a file writer on a read-only step and sends each shell command through the same command policy as Codex, so the same commands are refused for the same reasons. A refused call tells the model not to try again. |
+
+The shared command policy that Qwen Code, and Codex on a read-only step, apply to a non-empty `bashAllowlist` works like this. One simple command must start with an allowed prefix, using the same prefix rule as Claude Code, and compounds (`a; b`, `a && b`, ordinary pipes) are refused before matching. The sole compound exception is the exact two-part verdict-packet pipe. Redirecting with `>`, `>>` or `<` is refused. So is `find` with an option that runs another command, deletes or writes a file, such as `-exec` or `-delete`, and a `find` word the shell would still change before `find` sees it (a `$`, a backtick, `{`, `}`, `~`, or an unquoted `*`, `?` or `[`): write `find . -name '*.ts'`, not `find . -name *.ts`. A command that defines a shell function or groups commands with an unquoted `(`, `)`, `{` or `}` is refused, because it could make an allowed name run something else. A command that ends a line with a backslash is refused, because the shell would drop the backslash and run a different command. Never allow a program that can run a command or write a file from its arguments without a closed checker; `sed` and `awk` are always refused.
 
 For a concrete `git diff` allowlist entry, `git diff; rm -rf x` is refused by Claude Code because
-the unmatched `rm` part fails its own permission matcher. Qwen Code, pi and Codex refuse the whole
-string as `syntax.compound` in the shared policy. OpenCode does not apply the allowlist, so xezar does not
-stop that compound there.
+the unmatched `rm` part fails its own permission matcher. Qwen Code and Codex refuse the whole
+string as `syntax.compound` in the shared policy.
 
 ## To set up Qwen Code
 
@@ -132,7 +129,7 @@ A second Qwen Code account is a second folder in `QWEN_HOME`. Add it in **Settin
 
 Declare it in the project's trusted `.codex/config.toml`. Before starting or resuming a thread, xezar asks Codex for its effective configuration. It leaves MCP servers whose reported origins are entirely project configuration as configured, and disables other servers. A home configuration that adds a key to the same server makes that server ineligible.
 
-xezar also disables plugins, apps and its own leader bridge for task runs. Do not name an unrelated server `xezar`: that name is reserved and disabled too. These are per-thread overrides; xezar does not rewrite your Codex configuration. If the app-server cannot answer `config/read`, the run fails instead of starting with unexamined tools. This isolation applies to Codex, not the other backends.
+xezar also disables plugins, apps and its own leader bridge for task runs. Do not name an unrelated server `xezar`: that name is reserved and disabled too. These are per-thread overrides; xezar does not rewrite your Codex configuration. If the app-server cannot answer `config/read`, the run fails instead of starting with unexamined tools. This isolation applies to Codex; Qwen Code's own MCP isolation is described in [To set up Qwen Code](#to-set-up-qwen-code).
 
 ## To handle usage limits and auto-resume
 

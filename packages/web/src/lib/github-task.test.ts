@@ -278,11 +278,11 @@ describe('githubRunBody backend (#401)', () => {
 
   it('rides the skills-as-chain route without disturbing the steps', () => {
     const body = githubRunBody(item(), null, ['xez-fix', 'xez-review'], undefined, {
-      runner: 'opencode',
+      runner: 'qwen',
       model: 'anthropic/claude-sonnet-5',
     })
     expect(body.steps?.map((step) => step.skill)).toEqual(['xez-fix', 'xez-review'])
-    expect(body).toMatchObject({ runner: 'opencode', model: 'anthropic/claude-sonnet-5' })
+    expect(body).toMatchObject({ runner: 'qwen', model: 'anthropic/claude-sonnet-5' })
   })
 
   it('rides the quick-task route, and an all-undefined pair leaves the body clean', () => {

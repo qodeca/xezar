@@ -86,8 +86,8 @@ describe('writeConfigFile', () => {
 
   it('round-trips bytes exactly — no reformat', async () => {
     const raw = '{\n  "a": 1,\n  // keep this comment\n  "b": 2\n}\n';
-    // opencode.json is jsonc → comments are legal
-    const out = (await writeConfigFile('opencode.project.config', raw, null, repo, env)) as {
+    // .qwen/settings.json is jsonc → comments are legal
+    const out = (await writeConfigFile('qwen.project.settings', raw, null, repo, env)) as {
       ok: true;
       read: { content: string };
     };

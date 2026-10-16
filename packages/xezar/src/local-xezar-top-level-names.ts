@@ -95,14 +95,6 @@ export const STATE_NAME_ENTRIES: readonly StateNameEntry[] = [
   { name: 'automation-receipts.ndjson', kind: 'file', reason: 'Automation receipts (automations/store.ts RECEIPTS).', feature: 'automations' },
   { name: 'automation-log.ndjson', kind: 'file', reason: 'Automation log (automations/store.ts LOG).', feature: 'automations' },
   { name: 'automation-poll.lock', kind: 'file', reason: 'The automation poller’s cross-process lock (automations/store.ts, POLL_LOCK).', feature: 'automations' },
-  {
-    name: 'pi-leader.json',
-    kind: 'file',
-    reason:
-      'The pi leader socket descriptor (mcp/adapters/pi-link.ts PI_LEADER_FILE; written by ' +
-      'scripts/pi-leader-extension.ts DESCRIPTOR_FILE).',
-    feature: 'pi',
-  },
   { name: 'tasks', kind: 'directory', reason: 'Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).', feature: null },
   // ---- single-project mode only ----
   {
@@ -132,8 +124,7 @@ export const LITERAL_SUFFIXES: readonly string[] = ['.tmp', '.lock', '.takeover'
 
 /**
  * The one templated suffix shape shipped source constructs: an atomic-write staging name,
- * `<name>.<pid>.<8 lowercase hex chars>.tmp` (`renameSync`'s source, e.g. the pi leader
- * descriptor). `parts` is ordered structured segments rather than a regex, per the frozen schema.
+ * `<name>.<pid>.<8 lowercase hex chars>.tmp` (`renameSync`'s source). `parts` is ordered structured segments rather than a regex, per the frozen schema.
  */
 export const TEMPLATED_SUFFIXES: StateNamesPayload['templatedSuffixes'] = [
   {

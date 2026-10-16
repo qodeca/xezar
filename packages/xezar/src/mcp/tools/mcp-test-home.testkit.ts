@@ -22,7 +22,7 @@
  *
  * Only `homedir()` feeds skill discovery, so only `HOME`/`USERPROFILE` are pinned here. The
  * agent-home variables `scripts/test-env-up.sh` documents (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
- * `OPENCODE_CONFIG_DIR`) do not affect `skills.ts`, and each fixture that reads them pins them
+ * `QWEN_HOME`) do not affect `skills.ts`, and each fixture that reads them pins them
  * itself. `XDG_CONFIG_HOME` is not read by discovery either.
  *
  * Test-only (`.testkit.ts`): it never ships in `dist`, and `test:coverage:mcp` excludes it.

@@ -3,6 +3,10 @@
 Date: 2026-09-09, measurements refreshed 2026-09-10. Branch: `feature/coverage-gap-audit`, then
 `feature/coverage-16-files`. Commit originally audited: `e437c24`.
 
+The pi and OpenCode backends were removed later (#1046). The live inventory rows below were
+updated for that; dated measurement tables and closed gap entries that still name pi or OpenCode
+files record the code as it was measured, and those files no longer exist.
+
 This document ranks xezar's regression risk by **behaviour**, not by file. Measured coverage
 appears in section 4 as supporting evidence only – it never drives the ranking. A behaviour that
 no gate protects outranks a behaviour that a suite covers but CI never runs, and both outrank a
@@ -195,21 +199,17 @@ HTTP API.
 
 | Behaviour | Suite | Strongest evidence | Status |
 |---|---|---|---|
-| Every backend emits every parity capability | server unit | `core/ui-parity.test.ts`, `BACKENDS = ['claude','codex','opencode','pi']` | C |
-| Golden-fixture mapping per backend | server unit | `core/__fixtures__/{claude,codex,opencode,pi}/*.expected.json` replayed by the four `*-ui-mapper.test.ts` | C |
+| Every backend emits every parity capability | server unit | `core/ui-parity.test.ts`, `BACKENDS = ['claude','codex','qwen']` | C |
+| Golden-fixture mapping per backend | server unit | `core/__fixtures__/{claude,codex,qwen}/*.expected.json` replayed by the three `*-ui-mapper.test.ts` | C |
 | api-client protocol mirror stays type-exact | server unit | `server/api-types.test.ts` | C |
 | Claude runner teardown | server unit | `claude-cli-runner.test.ts:92` (stub script that ignores EOF) | C |
 | Codex runner against a mock app-server | server unit | `codex-app-server-runner.test.ts:31` + `mock-codex-app-server.mjs` | C |
-| OpenCode runner teardown | server unit | `opencode-server-runner.test.ts` — driven against the real `__fixtures__/opencode/mock-opencode-serve.mjs`, the same binary the mapper fixtures use, rather than a mocked `node:child_process` (#55) | C |
-| `createRunner` dispatch for claude / codex / opencode | server unit | `core/runner-factory.test.ts:52,60,85` — one case per `RUNNER_IDS` entry, none served by the default arm — plus the unknown id and legacy `claude-cli` at `:98,104,123,154` (#54) | C |
-| `detectEnvironment` probes for claude / codex / opencode / gh / git | server unit | `core/backend-detect.test.ts:115-131` (each CLI by name and version), `:141-155` (each with a timeout), `:176-207` (missing / non-zero, parameterised over all five) (#45) | C |
-| `probeCodex` honours `XEZ_DRY_RUN=1` and never spawns the real binary | server unit | `core/backend-detect.test.ts` "the XEZ_DRY_RUN short-circuit" — codex case (#549), same seam as the existing claude/pi cases | C |
-| pi wall-clock deadline escalates SIGTERM→SIGKILL | server unit | `pi-runner.test.ts` — four cases, including the `timeoutMs: 0` guard that must pass both ways | C |
-| A `128 + signal` exit the runner did NOT cause names its signal | server unit | `claude-cli-runner.test.ts` and `pi-runner.test.ts` (#156) — the other half of `terminatedByXezar`, contract in AGENT_PROTOCOL.md | C |
-| pi records an output-cap stop and an empty turn | server unit | `core/pi-empty-turn.test.ts`, plus the `pi/empty-turn-output-cap` golden fixture replayed by `pi-ui-mapper.test.ts` (#164) | C |
-| pi extension dialogs (`approveTools`) are answered, never left blocking | server unit + integration | `core/pi-dialog.test.ts` (pure frame → ask card / response), `pi-runner.test.ts` "#369" block (ask card raised, answer routed by dialog id, autonomous `Deny`, unsupported dialog cancelled, cancel at close; the `notify` guard passes both ways), and the A-01 `approveTools` leg of `test/integration/mcp-real-clients.test.ts`, which drives a REAL pi + pi-mcp-adapter through `PiRunner` in both modes — not in any gate (#369) | C |
-| **Shared read-only command refusals through real runner processes (#863)** | shared module + adapter fixtures only | `core/read-only-lock.test.ts` drives every refusal class and argument-table row; `core/pi-worktree-guard.test.ts` replays the same fixture table through pi's adapter; `claude-cli-runner.test.ts` pins `--setting-sources user` only on read-only argv. **Not covered:** a real pi model tool call for each refusal class, or a real `claude -p` run proving a project `permissions.allow: ["Bash"]` is excluded by `--setting-sources user`; independent live QA is required | P |
-| A task-spawned claude / pi / opencode client never receives the project's `xezar` MCP bridge entry, and a broken or absent MCP config never stops the run | server unit | `core/worktree-off-mcp-isolation.test.ts` (#342, MP-11) — three `the seam` cases, one per backend, assert the actual launch input each CLI is given (claude argv `--strict-mcp-config` + overlay, pi's `--mcp-config` overlay file, opencode's `OPENCODE_CONFIG_CONTENT`); the eleven control cases pin `run-mcp-isolation.ts` (other project servers survive, absent ≠ unreadable, the note never names a bridge nobody declared). Named break `worktree-off-inherits-xezar` (revert the three runner files) measured 5 red of 16. Eleven more cases (#548) pin that pi's `--mcp-config` is passed only when the optional `pi-mcp-adapter` extension is available TO THAT TASK: extension absent → no flag plus one explaining note, extension present → the flag and overlay unchanged (the guard, green either way), the probe asked with the task's own cwd and the child's env, the same bin and agent home asked again for a different folder (no cache), a failed probe not cached so the next session can answer differently, a probe that never exits cut at its bound with the session still starting, a probe that fails reported as "could not confirm" and never as "not installed", the `Unknown option: --mcp-config` fallback restarting exactly once without the flag and not for any other spawn failure, and the real probe answering "yes"/"no"/"unknown" against stub binaries. Named break `pi-mcp-config-unconditional` (revert `pi-runner.ts`) measured 10 red of 29. **Not covered: any live four-client reproduction** — the only executed reproduction of the ownership collision is pi, in #342 itself; the extension-absent spawn failure was reproduced against the real pi 0.85.1 binary by hand, not in a suite | P |
+| `createRunner` dispatch for claude / codex / qwen | server unit | `core/runner-factory.test.ts:52,60,85` — one case per `RUNNER_IDS` entry, none served by the default arm — plus the unknown id and legacy `claude-cli` at `:98,104,123,154` (#54) | C |
+| `detectEnvironment` probes for claude / codex / qwen / gh / git | server unit | `core/backend-detect.test.ts:115-131` (each CLI by name and version), `:141-155` (each with a timeout), `:176-207` (missing / non-zero, parameterised over every probed binary) (#45) | C |
+| `probeCodex` honours `XEZ_DRY_RUN=1` and never spawns the real binary | server unit | `core/backend-detect.test.ts` "the XEZ_DRY_RUN short-circuit" — codex case (#549), same seam as the existing claude case | C |
+| A `128 + signal` exit the runner did NOT cause names its signal | server unit | `claude-cli-runner.test.ts` (#156) — the other half of `terminatedByXezar`, contract in AGENT_PROTOCOL.md | C |
+| **Shared read-only command refusals through real runner processes (#863)** | shared module + adapter fixtures only | `core/read-only-lock.test.ts` drives every refusal class and argument-table row; `qwen-tool-policy.test.ts` and `codex-read-only-hook.test.ts` cover the Qwen Code and Codex adapters; `claude-cli-runner.test.ts` pins `--setting-sources user` only on read-only argv. **Not covered:** a real model tool call for each refusal class, or a real `claude -p` run proving a project `permissions.allow: ["Bash"]` is excluded by `--setting-sources user`; independent live QA is required | P |
+| A task-spawned claude client never receives the project's `xezar` MCP bridge entry, and a broken or absent MCP config never stops the run | server unit | `core/worktree-off-mcp-isolation.test.ts` (#342, MP-11) — the seam case asserts the actual launch input the CLI is given (claude argv `--strict-mcp-config` + overlay); the control cases pin `run-mcp-isolation.ts` (other project servers survive, absent ≠ unreadable, the note never names a bridge nobody declared). Qwen Code's own MCP isolation is pinned in `qwen-runner.test.ts`. **Not covered: any live multi-client reproduction** | P |
 
 ### 3.6 Directory sweep – nothing silently absent
 
@@ -221,7 +221,7 @@ appears above.
 | `packages/xezar/src/` (loose files) | 91.9 % | 80.8 % | 3.1, 3.4, and gaps R8, R19 |
 | `packages/xezar/src/agent-config/` | 97.2 % | 88.2 % | 3.2 (agent-config family) |
 | `packages/xezar/src/automations/` | 92.7 % | 74.6 % | 3.2 (automations family) |
-| `packages/xezar/src/mcp/` | See 10.11 | See 10.11 | MCP-only floor measured separately, including the pi extension |
+| `packages/xezar/src/mcp/` | See 10.11 | See 10.11 | MCP-only floor measured separately |
 | `packages/xezar/src/core/` | 95.2 % | 84.2 % | 3.5 |
 | `packages/xezar/src/release/` | 95.5 % | 90.9 % | 3.1 (npm package surface) + `test/e2e/release.test.ts` |
 | `packages/xezar/src/runs/` | 96.8 % | 89.3 % | 3.4 |
@@ -293,7 +293,7 @@ moved 0→1, 0→2, 6→10 and 8→1.
   tests pin is the part the incidental coverage never touched: the `data-slot` contract the browser
   specs select on, and the visual-viewport merge that is the only reason `PopoverContent` is not a
   bare re-export.
-- `packages/xezar/src/agent-config/model-settings/{claude,codex,opencode,pi}.ts` each measure
+- `packages/xezar/src/agent-config/model-settings/{claude,codex}.ts` each measure
   **100 % lines and 100 % branches** with **zero co-located test files**. Their coverage is a side
   effect of the agent-config API tests.
 - `packages/xezar/src/ui-state.ts` measures 100 % / 100 % with no co-located test.
@@ -559,7 +559,7 @@ quoting a number.
 `npm run test:coverage:mcp` – vitest's `server` project, restricted to the MCP test files
 (`packages/xezar/src/mcp/`, `packages/xezar/src/server/mcp-*`,
 `packages/xezar/src/server/stale-write-routes*`), v8 provider, coverage included over
-`packages/xezar/src/mcp/**` and `packages/xezar/scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
+`packages/xezar/src/mcp/**`, excluding `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
 branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each file under the floor.
 The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); 10.12 has the freshest local
 measurement (85.00 seconds, 2026-09-17). It excludes unrelated server tests, which is the point –
@@ -736,8 +736,8 @@ duplicate vitest test to move a percentage.
 | A-16 an UPGRADED packaged cockpit with MCP state corrupt, deleted, hard-restarted | packaged CLI | `test/e2e/mcp-upgrade.test.ts` (packaged upgrade case) | yes (`npm run test:package`) |
 | `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port, and a directory xezar never served answering `not-registered` (the branch at `mcp/index.ts` (`not-registered`)) | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,199,203` | yes |
 | A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
-| A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex, OpenCode and pi clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
-| A-19 / A-23 pi real-model reaction (#373) | node:test integration harness | `test/integration/mcp-real-model.test.ts` | **no** – opt-in local model; exact nonce + cursor MCP ack, scripted request-only control; missing target is NOT-RUN |
+| A-01, A-17, A-18, A-19, A-20, A-23 with REAL leader clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
+| A-19 / A-23 Qwen Code real-model reaction (#373, moved from pi in #1046) | node:test integration harness | `test/integration/mcp-real-model.test.ts` | **no** – opt-in OpenAI-compatible endpoint (`XEZ_REAL_MODEL_*`), run through Qwen Code with a temporary Qwen home whose settings list that model; exact nonce + cursor MCP ack, scripted request-only control; missing target is NOT-RUN |
 | A-19 / A-23 Claude Code and Codex real-model reaction (#67) | node:test integration harness | `test/integration/mcp-real-model.test.ts` (`[claude-code]`, `[codex]`) | **no** – opt-in with `XEZ_REAL_MODEL_CLIENTS`, paid, the client's own login; exact run-id nonce + cursor ack observed on the wire and in `leader-cursors.json`; no scripted control in these two legs (the judge's own controls are unit cases in the same file) |
 
 The last two rows are outside every gate by design: they need installed CLIs and the real-model
@@ -1269,7 +1269,7 @@ a duplicate is exactly the kind of copy that goes stale.
 | --- | --- | --- |
 | 1 (#533) | G1, G2, G3, G10 | `leader-event-delivery-matrix.test.ts`, `leader-delivery-regressions.test.ts`, `stale-write.test.ts` / `tools/stale-write-tools.test.ts`, `echo-guard.test.ts` / `operation-receipts.test.ts` |
 | 2 (#542) | G7, G8, G9 | `engine-leader-incidents.test.ts`, `event-catalog.test.ts` |
-| 3 (this slice) | G4, G5, G6, G11, G12 | `leader-delivery.test.ts` (G4, owner-switch fencing and Claude Code's live-transport follow), `tools/leader-events.test.ts` (G5 ack epoch boundary, G6 restart/epoch-reuse recovery), `test/integration/mcp-real-model.test.ts` (G11, the shared acceptance judge hardened against a decoy tool call — a live OpenCode leg remains future work, conditional in the issue on an authorized target), `gap-group-inventory.test.ts` (G12) |
+| 3 (this slice) | G4, G5, G6, G11, G12 | `leader-delivery.test.ts` (G4, owner-switch fencing and Claude Code's live-transport follow), `tools/leader-events.test.ts` (G5 ack epoch boundary, G6 restart/epoch-reuse recovery), `test/integration/mcp-real-model.test.ts` (G11, the shared acceptance judge hardened against a decoy tool call), `gap-group-inventory.test.ts` (G12) |
 
 Every group's status is therefore re-derivable by running `gap-group-inventory.test.ts` rather than
 trusting this table after the next slice lands.

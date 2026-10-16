@@ -531,8 +531,7 @@ function mapReviewMode(
     const status = toolStatus(raw, eventType);
     const events: UiEvent[] = [];
     // A second entered frame with no intervening exit displaces the open span. Settle the
-    // displaced item rather than leaking a permanently `running` row — the same rule the
-    // opencode mapper's subtask slot follows.
+    // displaced item rather than leaking a permanently `running` row.
     if (state.reviewItemId !== null && state.reviewItemId !== id) {
       events.push({
         type: 'item.completed',

@@ -238,8 +238,8 @@ export function PlanLimitsBlock({ nameOf, hosted }: { nameOf: QuotaNameOf; hoste
       <p className="text-xs leading-normal text-muted-foreground">
         How much of each login’s short and weekly limits is used, as Claude Code and Codex report it,
         with the age of every reading. xezar only shows these facts — it never switches logins, holds
-        a task back or changes auto-resume because of them. Times are in this browser’s zone. OpenCode
-        and pi do not report plan limits.
+        a task back or changes auto-resume because of them. Times are in this browser’s zone. Qwen
+        Code does not report plan limits.
       </p>
       <p id="agent-quota-refresh-all-held" className="text-xs leading-normal text-muted-foreground">
         {allHeld && firstAllowed !== null

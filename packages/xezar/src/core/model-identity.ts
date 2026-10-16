@@ -6,15 +6,14 @@
  *
  * Backends name models differently on the wire: `claude` takes bare tier
  * aliases / pinned ids on `--model` (`opus`, `claude-opus-4-8`); `codex` takes
- * `gpt-*-codex` ids verbatim; `opencode` takes a `provider/model` string it
- * re-splits into `{ providerID, modelID }`. This module maps each of those to
- * and from ONE canonical `{ provider, model }`, and is the single
- * parser/normaliser they all use — extracted from opencode's private
- * `parseModel` (#405 item 2) so no runner invents a second one.
+ * `gpt-*-codex` ids verbatim; `qwen` takes the person's own `modelProviders` id.
+ * This module maps each of those to and from ONE canonical `{ provider, model }`,
+ * and is the single parser/normaliser they all use (#405 item 2), so no runner
+ * invents a second one.
  *
- * Extensible by design: a new backend (#387's `pi` runner) adds one entry to
- * `BACKEND_MODEL_MAP` and, if it needs a non-default wire form, one branch in
- * `toBackendModel`. Nothing else changes.
+ * Extensible by design: a new backend adds one entry to `BACKEND_MODEL_MAP` and,
+ * if it needs a non-default wire form, one branch in `toBackendModel`. Nothing
+ * else changes.
  *
  * Deliberately imports no backend-specific wire type: the canonical identity
  * never leaks a runner's request shape past the `AgentRunner` seam.
@@ -74,7 +73,7 @@ interface BackendModelMap {
 }
 
 /**
- * Per-backend mapping table — the one place #387 extends for the `pi` runner.
+ * Per-backend mapping table — the one place a new backend extends.
  * `claude-cli` is the legacy id kept so old run records normalise identically
  * to `claude`. That is now true end to end: `storedRunnerSchema`
  * (`runs/store.ts`) parses the legacy spelling out of `runs.json` and folds it
@@ -95,13 +94,6 @@ export const BACKEND_MODEL_MAP: Readonly<Record<AgentBackend, BackendModelMap>> 
   // itself hold a slash (a router's `vendor/model`). The provider is xezar's label only: a bare id
   // is Qwen Code's own, an explicit prefix passes through whole, so the wire id is never altered.
   qwen: { defaultProvider: 'qwen-code', allowExplicitProvider: true, wireProviderQualified: true },
-  // opencode selects across providers, so a bare model is ambiguous: reject it
-  // loudly rather than let the server pick a default the user never asked for.
-  opencode: {},
-  // pi selects across providers with the same `provider/model` convention as
-  // opencode (#387) — no default provider, so a bare model is rejected loudly
-  // and `toBackendModel` hands pi the full `provider/model` on its `--model`.
-  pi: {},
 };
 
 const SLASH = '/';
@@ -114,8 +106,7 @@ export function formatModelIdentity(id: ModelIdentity): string {
 /**
  * Parse a `provider/model` string into a canonical identity. Returns `null`
  * for anything not in explicit provider/model form (empty, bare, a leading or
- * trailing slash). The single shared parser every runner splits with —
- * extracted from opencode's private `parseModel` (#405 item 2).
+ * trailing slash). The single shared parser every runner splits with (#405 item 2).
  */
 export function parseModelIdentity(raw: string | undefined | null): ModelIdentity | null {
   if (!raw) return null;
@@ -182,8 +173,7 @@ export function resolveModelIdentity(
  * The model string to hand `backend`'s CLI/API for a canonical identity — the
  * inverse of {@link resolveModelIdentity}. Single-provider backends
  * (claude/codex) want the bare provider-native id (`opus`, `gpt-5.1-codex`);
- * multi-provider backends (opencode) want the full `provider/model`, which
- * they re-split into their own request shape.
+ * a backend with no default provider gets the full `provider/model`.
  */
 export function toBackendModel(backend: AgentBackend, id: ModelIdentity): string {
   const map = BACKEND_MODEL_MAP[backend] ?? {};

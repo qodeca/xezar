@@ -387,7 +387,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
         {wakeMode === 'interval' && wakeInvalid ? (
           <p data-slot="resources-monitoring-wake-invalid" className="text-[11px] text-danger">Enter a whole number from 1 to 60 minutes.</p>
         ) : (
-          <p className="text-[11px] text-soft-foreground">Applied consistently to Claude, Codex and OpenCode.</p>
+          <p className="text-[11px] text-soft-foreground">Applied consistently to every agent.</p>
         )}
       </SettingsField>
 
@@ -407,7 +407,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           <option value="off">Off</option>
         </select>
         <p className="text-[11px] text-soft-foreground">
-          Applies to Claude, Codex and OpenCode — whenever the provider says when the limit lifts.
+          Applies to every agent — whenever the provider says when the limit lifts.
         </p>
       </SettingsField>
 

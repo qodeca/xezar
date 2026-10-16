@@ -264,7 +264,7 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
   // whole brief is sent, and the fall-back is announced rather than silent. AC4.
   it.each([
     { name: 'no recorded session', patch: { sessionId: undefined }, note: 'no session was recorded' },
-    { name: 'the session belongs to another backend', patch: { backend: 'pi' as const }, note: 'recorded session belongs to pi' },
+    { name: 'the session belongs to another backend', patch: { backend: 'codex' as const }, note: 'recorded session belongs to codex' },
     // Review round 1, Major 3: the condition the spec called "the one most likely to be skipped,
     // and the one whose failure is silent" — `sessionId` and `profileId` are a pair, and a resume
     // that reads another account's config dir finds no session and starts fresh WITHOUT saying so.
@@ -296,38 +296,6 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
       expect(runner.specs.map(s => s.resume === true)).toEqual([false, false, false]);
       expect(runner.specs[1]?.userPrompt).toContain(TASK);
       expect(notes.some(message => message.includes(note))).toBe(true);
-    } finally {
-      runner.restore();
-    }
-  }, 30_000);
-
-  /**
-   * Review round 1, Major 1. A recorded session id proves nothing about a backend whose runner
-   * ignores `spec.resume`: `opencode-server-runner.ts` `bootstrap()` always `POST /session`s and
-   * never adopts `spec.sessionId`, so a "resumed" repair turn there would be a brand-new
-   * conversation told that its brief "is earlier in this conversation". Eligibility is decided
-   * from what the runner can do, so the whole brief goes out and the note names the backend.
-   */
-  it('a backend whose runner cannot resume takes the fresh spawn, and says which backend', async () => {
-    const { store, manager, runner, workflow } = cheapFixture(2, 3, undefined, { runner: 'opencode' });
-    const notes: string[] = [];
-    try {
-      const run = manager.startRun(workflow, { task: TASK, worktree: false });
-      await settled(store, run.id);
-      for (const event of store.readEvents(run.id)) {
-        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
-      }
-      expect(store.getRun(run.id)?.status).toBe('done');
-      // The step DID record a session id — that is exactly what must not be mistaken for "resumable".
-      expect(store.getRun(run.id)?.steps.find(s => s.id === 'author')?.sessionId).toBeTruthy();
-      expect(runner.specs).toHaveLength(3);
-      expect(runner.specs.map(s => s.resume === true)).toEqual([false, false, false]);
-      // Return #1 carries the whole brief, exactly as it did before #676.
-      expect(runner.specs[1]?.userPrompt).toContain(TASK);
-      expect(runner.specs[1]?.userPrompt).toContain('GATE-RED-1 the failing gate output');
-      expect(notes.some(message => message.includes('the opencode runner cannot resume'))).toBe(true);
-      // And never the sentence that tells the model its brief is already in the conversation.
-      expect(notes.some(message => message.includes('repair turn — resuming'))).toBe(false);
     } finally {
       runner.restore();
     }

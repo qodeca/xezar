@@ -121,7 +121,6 @@ export const REQUIRED_ARCHIVE_ENTRIES = [
   'package/scripts/mock-claude.mjs',
   'package/scripts/codex-read-only-hook.mjs',
   'package/scripts/qwen-pre-tool-hook.mjs',
-  'package/scripts/pi-worktree-guard.ts',
 ];
 
 /** Problems that make the archive itself unfit to judge: empty, or missing what it must ship. */

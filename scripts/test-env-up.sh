@@ -92,33 +92,27 @@ export XEZ_HOME="$QA_DIR/xez-home"
 # XEZ_HOME isolates what xezar WRITES; these isolate the USER-SCOPE files it READS.
 # The cockpit deliberately seeds each runner's model from that agent's own settings
 # file (`readAgentModelDefaults` → `configAnswer`, server.ts), so a developer who has
-# opencode/claude/codex configured on this machine boots the test app with THEIR
+# claude/codex configured on this machine boots the test app with THEIR
 # models pre-filled — and a spec asserting an unset model then fails for them and
 # passes in CI, where nobody is logged in. Point each vendor's own documented
 # override at an empty sandbox so the suite sees the same blank host everywhere.
 #
-# Each variable is the NARROWEST one that moves the agent's config. In particular
-# OpenCode is pinned through `OPENCODE_CONFIG_DIR` and NOT `XDG_CONFIG_HOME`: the
-# latter is machine-wide, and pinning it deauthenticated `gh` inside the boot (the
-# health probe in core/backend-detect.ts is not dry-run gated, so the Tools menu
-# then reported the GitHub CLI missing on a machine where it works) and hid the
-# developer's global git config and ignore file.
+# Each variable is the NARROWEST one that moves the agent's config; `XDG_CONFIG_HOME` is
+# never pinned: it is machine-wide, and pinning it deauthenticated `gh` inside the boot (the
+# health probe in core/backend-detect.ts is not dry-run gated) and hid the developer's global
+# git config and ignore file.
 #
-# These are three of the FOUR vars `agentHomePaths()` honours (src/paths.ts), and
-# `paths.test.ts` pins that precedence. The fourth is pi's `PI_CODING_AGENT_DIR`, and
-# it is deliberately NOT pinned here: pi does read it (verified against pi 0.85.1 on
-# 2026-09-12, #329 — this comment previously said "these are the exact vars", which
-# stopped being true the moment pi's slot learned the variable), but pinning it is a
-# real behaviour change with its own test surface, because an empty pi home discovers
-# NO models rather than default ones. A spec must therefore not assume a blank pi
-# config. What closing that would take is written up in docs/testing/agent-browser.md
-# and tracked as #348. Adding a fifth agent home to paths.ts still means deciding here.
+# These are two of the THREE vars `agentHomePaths()` honours (src/paths.ts), and
+# `paths.test.ts` pins that precedence. The third is Qwen Code's `QWEN_HOME`, and it is
+# deliberately NOT pinned here: pinning it is a real behaviour change with its own test
+# surface, because an empty Qwen home discovers NO models rather than default ones. A spec
+# must therefore not assume a blank Qwen config (docs/testing/agent-browser.md, #348).
+# Adding another agent home to paths.ts still means deciding here.
 # Project- and local-scope files (`<repo>/.claude/settings.local.json`,
-# `<repo>/opencode.json`, `<repo>/.codex/config.toml`) resolve from the repo root,
+# `<repo>/.codex/config.toml`) resolve from the repo root,
 # not from a home, so no pin reaches them — see AGENTS.md § Validation.
 export CLAUDE_CONFIG_DIR="$QA_DIR/agent-home/claude"
 export CODEX_HOME="$QA_DIR/agent-home/codex"
-export OPENCODE_CONFIG_DIR="$QA_DIR/agent-home/opencode"
 # `ANTHROPIC_MODEL` outranks every settings file (agent-config/model-settings/claude.ts),
 # so a developer who exports it would defeat the claude pin outright. Unset, not sandboxed:
 # there is no directory that makes an env var read as absent.
@@ -130,17 +124,17 @@ unset ANTHROPIC_MODEL
 # and the specs keep reading the host — the failure this whole block exists to prevent, wearing a
 # "reused" label. A descriptor written before these pins existed has no such key, so `json_get`
 # answers empty, the comparison fails and the boot goes cold. That is the correct answer.
-# pi is deliberately absent from this fingerprint because it is absent from the pins above —
-# see the block there and docs/testing/agent-browser.md (#348). Pinning pi means adding
-# `PI_CODING_AGENT_DIR` here in the same change, or a pinned and an unpinned instance compare
+# Qwen Code is deliberately absent from this fingerprint because it is absent from the pins
+# above — see the block there and docs/testing/agent-browser.md (#348). Pinning it means adding
+# `QWEN_HOME` here in the same change, or a pinned and an unpinned instance compare
 # equal and the boot reuses the wrong one.
-AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME|$OPENCODE_CONFIG_DIR"
-# Windows: the same three pins in native form (`pwd -W`, Git Bash's builtin). MSYS converts only
+AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME"
+# Windows: the same two pins in native form (`pwd -W`, Git Bash's builtin). MSYS converts only
 # the first `/c/...` of the joined string on its way into the descriptor writer, so the POSIX
 # spelling would never compare equal to what was recorded and every boot would go cold.
 if [ "$ON_WINDOWS" = 1 ]; then
   QA_DIR_NATIVE="$(CDPATH= cd -- "$REPO_ROOT" && pwd -W)/.local/qa"
-  AGENT_HOME_FINGERPRINT="$QA_DIR_NATIVE/agent-home/claude|$QA_DIR_NATIVE/agent-home/codex|$QA_DIR_NATIVE/agent-home/opencode"
+  AGENT_HOME_FINGERPRINT="$QA_DIR_NATIVE/agent-home/claude|$QA_DIR_NATIVE/agent-home/codex"
 fi
 
 # Does this repository root carry the single-project marker (#600)? The folder decides the
@@ -564,7 +558,7 @@ start_app() {
 # `writeConfigFile` creates parents, so anything saved from Settings → Agent config during manual
 # QA lands in here and would otherwise seed the NEXT boot's model defaults — the original bug
 # again, now sourced from the directory everyone assumes is empty, which is far worse to diagnose.
-# Vendor CLIs write here too: `opencode --version` alone drops a schema stub.
+# Vendor CLIs may write here too.
 #
 # 0700 because these are the destinations for `codex/auth.json` and, on Linux,
 # `claude/.credentials.json` if anyone ever logs in with the sandbox active. `mkdir -p` yields
@@ -572,8 +566,8 @@ start_app() {
 # .local/qa — `xez-home` is 0700 (workspace/config.ts creates it that way). Matching that here.
 reset_agent_home() {
   rm -rf "$QA_DIR/agent-home"
-  mkdir -p "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$OPENCODE_CONFIG_DIR"
-  chmod 700 "$QA_DIR/agent-home" "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$OPENCODE_CONFIG_DIR"
+  mkdir -p "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"
+  chmod 700 "$QA_DIR/agent-home" "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"
 }
 
 # ---- 7. descriptor write ----------------------------------------------------
@@ -619,7 +613,7 @@ write_descriptor() {
       notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. The app is started with the explicit --global-layout input, so a repository root that carries `.xezar/workspace.json` still boots in the pinned GLOBAL layout; the launcher renames, moves and writes nothing in the repository root. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
-    "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open $APP_LAYOUT_INPUT" \
+    "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open $APP_LAYOUT_INPUT" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(platform_name)" \
     "$AGENT_HOME_FINGERPRINT" "$(single_project_root)" "$BOOT_STATE_LAYOUT" "${APP_STARTED_AT:-}"

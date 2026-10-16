@@ -67,19 +67,19 @@ const DEFAULT_DOWN: HealthResponse = { ...HEALTH, defaultRunner: 'codex' }
 /** Neither agent CLI is on the host — nothing can run at all. */
 const NO_RUNNER: HealthResponse = { ...HEALTH, checks: HEALTH.checks.map(unavailableIf('claude')) }
 
-/** The host's only agent CLI is `pi`, the fourth runner (#470) — `detectEnvironment()` probes it
- *  beside the other three, so a runner set that forgets it calls a working host broken. */
-const PI_ONLY: HealthResponse = {
+/** The host's only agent CLI is `qwen` — `detectEnvironment()` probes it beside the others, so a
+ *  runner set that forgets it calls a working host broken. */
+const QWEN_ONLY: HealthResponse = {
   ...HEALTH,
-  defaultRunner: 'pi',
-  checks: [...HEALTH.checks.map(unavailableIf('claude')), { name: 'pi', available: true, version: '0.4.0' }],
+  defaultRunner: 'qwen',
+  checks: [...HEALTH.checks.map(unavailableIf('claude')), { name: 'qwen', available: true, version: '0.25.2' }],
 }
 
-/** `claude` runs, but `pi` — the configured default — is the one that is not installed. */
-const PI_DEFAULT_DOWN: HealthResponse = {
+/** `claude` runs, but `qwen` — the configured default — is the one that is not installed. */
+const QWEN_DEFAULT_DOWN: HealthResponse = {
   ...HEALTH,
-  defaultRunner: 'pi',
-  checks: [...HEALTH.checks, { name: 'pi', available: false, hint: 'optional: install the pi CLI' }],
+  defaultRunner: 'qwen',
+  checks: [...HEALTH.checks, { name: 'qwen', available: false, hint: 'optional: install the Qwen Code CLI' }],
 }
 
 function renderMenu(health: HealthResponse | undefined) {
@@ -116,9 +116,9 @@ describe('toolsTooltip', () => {
   it('names the missing alternatives as optional while the default runner works', () => {
     const twoDown: HealthResponse = {
       ...HEALTH,
-      checks: [...HEALTH.checks, { name: 'opencode', available: false, hint: 'optional: install OpenCode' }],
+      checks: [...HEALTH.checks, { name: 'qwen', available: false, hint: 'optional: install Qwen Code' }],
     }
-    expect(toolsTooltip(twoDown)).toBe('xezar v0.1.3 · optional: codex, opencode not installed')
+    expect(toolsTooltip(twoDown)).toBe('xezar v0.1.3 · optional: codex, qwen not installed')
   })
 
   it('names the default runner when it is the missing one', () => {
@@ -137,16 +137,16 @@ describe('toolsBlocker', () => {
   })
 
   it('stays quiet when an older server never probed the default runner', () => {
-    expect(toolsBlocker({ ...HEALTH, defaultRunner: 'opencode' })).toBeNull()
+    expect(toolsBlocker({ ...HEALTH, defaultRunner: 'qwen' })).toBeNull()
   })
 
-  it('counts every runner the contract knows — a `pi`-only host can start tasks', () => {
-    expect(toolsBlocker(PI_ONLY)).toBeNull()
-    expect(toolsTooltip(PI_ONLY)).toBe('xezar v0.1.3 · optional: claude, codex not installed')
+  it('counts every runner the contract knows — a `qwen`-only host can start tasks', () => {
+    expect(toolsBlocker(QWEN_ONLY)).toBeNull()
+    expect(toolsTooltip(QWEN_ONLY)).toBe('xezar v0.1.3 · optional: claude, codex not installed')
   })
 
-  it('names `pi` when it is the configured default and the missing one', () => {
-    expect(toolsBlocker(PI_DEFAULT_DOWN)).toBe('default runner (pi) not found')
+  it('names `qwen` when it is the configured default and the missing one', () => {
+    expect(toolsBlocker(QWEN_DEFAULT_DOWN)).toBe('default runner (qwen) not found')
   })
 })
 

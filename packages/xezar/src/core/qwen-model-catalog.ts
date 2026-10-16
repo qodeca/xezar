@@ -7,7 +7,7 @@ import { readQwenSettings, type QwenSettings } from './qwen-settings.ts';
  * `<QWEN_HOME>/settings.json`. Only the id, name, auth type and endpoint locality are used; the
  * endpoint key is a variable NAME there and is never read either.
  *
- * Degradation follows `pi-model-catalog.ts`: no settings file is a real "no models" (`[]`), an
+ * Degradation: no settings file is a real "no models" (`[]`), an
  * unreadable one throws so the catalog says the list could not be read.
  */
 export async function discoverQwenModels(

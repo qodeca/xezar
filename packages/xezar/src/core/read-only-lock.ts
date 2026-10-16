@@ -1,14 +1,14 @@
 /**
  * Shared policy for a step that resolves to read-only (#863).
  *
- * pi calls this module before a bash tool call. Codex calls it from its PreToolUse hook adapter.
+ * Codex and Qwen Code call this module from their PreToolUse hook adapters.
  * Claude Code consumes the same read-only signal and normalized entries, but its own
  * `Bash(<entry>:*)` matcher makes the run-time decision today. Consequently the splitter and
  * `COMMAND_RUNNING_ARGUMENTS` do not protect Claude until that hook exists; read-only workflow
  * lists must omit entries whose safety depends on either check.
  *
  * The readings follow the SHELL that runs the command, not the OS (#963). A POSIX shell (Claude
- * Code and pi everywhere, Git Bash included; every backend on Linux/macOS) gets the one POSIX
+ * Code everywhere, Git Bash included; every backend on Linux/macOS) gets the one POSIX
  * reading. PowerShell (Codex on Windows) must pass that reading AND a PowerShell reading, so a
  * word boundary or operator only PowerShell sees cannot slip past. The caller names the shell.
  */

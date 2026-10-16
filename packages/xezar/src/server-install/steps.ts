@@ -288,7 +288,7 @@ export function depCheckStep(opts: DepStepOpts = {}): InstallStep {
       // Satisfied when at least one agent CLI is present and authed. Derived from RUNNER_IDS,
       // never a literal list: `BackendCheck['name']` also carries the non-agent tools (`gh`,
       // `git`), so the gate has to filter — and a hand-written array silently under-counts the
-      // moment a runner is added (a pi-only host reporting "no agent CLI", #387 review).
+      // moment a runner is added (#387 review).
       return checks.some((c) => isRunnerId(c.name) && c.available);
     },
     async run(ctx) {
@@ -329,6 +329,7 @@ export function depCheckStep(opts: DepStepOpts = {}): InstallStep {
 const NPM_GLOBAL: Record<string, string> = {
   claude: '@anthropic-ai/claude-code',
   codex: '@openai/codex',
+  qwen: '@qwen-code/qwen-code',
 };
 
 /** Ubuntu/Debian installer: apt for gh, sudo npm -g for the agent CLIs (system node). */
@@ -358,10 +359,6 @@ export const brewInstallTool: ToolInstaller = async (ctx, name) => {
 };
 
 async function installViaNpmOrNote(ctx: InstallContext, name: string, sudo: boolean): Promise<void> {
-  if (name === 'opencode') {
-    ctx.ui.note('Install OpenCode from https://opencode.ai, then re-run.', 'opencode');
-    return;
-  }
   const pkg = NPM_GLOBAL[name];
   if (!pkg) {
     ctx.ui.warn(`no known installer for ${name} — install it manually`);
@@ -386,6 +383,7 @@ function removeHintFor(name: string): string {
   const npm: Record<string, string> = {
     claude: 'npm rm -g @anthropic-ai/claude-code',
     codex: 'npm rm -g @openai/codex',
+    qwen: 'npm rm -g @qwen-code/qwen-code',
   };
   if (name === 'gh') return 'sudo apt-get remove -y gh';
   return npm[name] ?? `# remove ${name} manually`;
@@ -396,6 +394,7 @@ export function brewRemoveHint(name: string): string {
   const npm: Record<string, string> = {
     claude: 'npm rm -g @anthropic-ai/claude-code',
     codex: 'npm rm -g @openai/codex',
+    qwen: 'npm rm -g @qwen-code/qwen-code',
   };
   if (name === 'gh') return 'brew uninstall gh';
   return npm[name] ?? `# remove ${name} manually`;

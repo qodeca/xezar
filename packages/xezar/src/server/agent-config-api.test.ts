@@ -24,7 +24,7 @@ describe('the agent-config API', () => {
   let store: RunStore;
   let app: Hono;
   const prevRemote = process.env.XEZ_REMOTE;
-  const homePins = ['HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'OPENCODE_CONFIG_DIR', 'PI_CODING_AGENT_DIR'] as const;
+  const homePins = ['HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QWEN_HOME'] as const;
   const savedHomes = new Map<string, string | undefined>();
 
   beforeEach(() => {
@@ -209,80 +209,47 @@ describe('the agent-config API', () => {
   });
 
   /**
-   * #330 WP4. pi's entries are new WRITABLE files, so each is a new way to reach the hooks RCE
-   * path the 409 above closes. Enumerated from the catalog rather than listed by hand, so a pi
-   * entry added later cannot slip in without a gate.
+   * F-15: no secret in a tool response. Codex keeps `auth.json` (`OPENAI_API_KEY`, `access_token`,
+   * `refresh_token`) in the SAME directory as the config and memory files catalogued here, so this
+   * walks every id — not just Codex's — reads it, and greps for a canary planted there. The error
+   * branches are forced too: a read error surfaces `err.message`, and a message that embeds the
+   * file it failed on is the classic leak a happy-path read never shows.
    */
-  it('hosted mode: every pi entry 409s on write, and none is skipped', async () => {
-    process.env.XEZ_REMOTE = '1';
-    const piIds = listConfigFiles()
-      .filter((f) => f.runners.includes('pi'))
-      .map((f) => f.id);
-    // The populated-input control: an empty id list would make the loop below vacuously green.
-    expect(piIds.length).toBeGreaterThan(0);
-    for (const id of piIds) {
-      expect((await put(id, { content: '{}', version: null })).status, id).toBe(409);
-    }
-  });
-
-  it('locally: every pi entry is an id the route answers, not a 404', async () => {
-    // The control for the hosted test above — the 409s there are the GUARD refusing, not the ids
-    // being unknown. Also the "built and connected" check: these ids answer on the real route.
-    // An unknown id answers `{error}`, so the `id` key is what separates the two.
-    const piIds = listConfigFiles().filter((f) => f.runners.includes('pi')).map((f) => f.id);
-    expect(piIds.length).toBeGreaterThan(0); // populated-input control: an empty list proves nothing
-    for (const id of piIds) {
-      const res = await apiRequest(app, `/api/v1/agent-config/${id}`);
-      expect(res.status, id).toBe(200);
-      expect(await res.json(), id).toMatchObject({ id });
-    }
-  });
-
-  /**
-   * F-15: no secret in a tool response. pi keeps `auth.json` (credentials) and `models.json` (an
-   * `apiKey` per custom provider) in the SAME directory as the settings and MCP files catalogued
-   * here, so this walks every id — not just pi's — reads it, and greps for a canary planted in
-   * both. The error branches are forced too: a read error surfaces `err.message`, and a message
-   * that embeds the file it failed on is the classic leak a happy-path read never shows.
-   */
-  describe('no catalogued id can serve a pi credential (F-15)', () => {
+  describe('no catalogued id can serve a Codex credential (F-15)', () => {
     const CANARY = 'sk-CANARY-DO-NOT-LEAK';
-    const SENTINEL = '{"theme":"dark"}';
+    const SENTINEL = 'theme = "dark"';
     let fakeHome: string;
-    let piHome: string;
+    let codexHome: string;
     /**
      * Every home the catalog resolves through, pinned. Two reasons, and the second is the whole
      * point of the case: a sweep that reaches the developer's real `~` would grep unrelated bytes
      * for a canary that is not there and pass for the wrong reason — and it would pull that
-     * person's real API keys into the test process. (Unpinned, this suite does exactly that
-     * today: `codex.user.memory` and `opencode.user.config` serve the real files.)
+     * person's real API keys into the test process.
      */
-    const PINS = ['HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'OPENCODE_CONFIG_DIR', 'PI_CODING_AGENT_DIR'] as const;
+    const PINS = ['HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'QWEN_HOME'] as const;
     const saved = new Map<string, string | undefined>();
 
-    const writePiHome = () => {
-      writeFileSync(join(piHome, 'auth.json'), JSON.stringify({ anthropic: { apiKey: CANARY } }), 'utf8');
+    const writeCodexHome = () => {
       writeFileSync(
-        join(piHome, 'models.json'),
-        JSON.stringify({ providers: { local: { name: 'Local', apiKey: CANARY, models: [{ id: 'm' }] } } }),
+        join(codexHome, 'auth.json'),
+        JSON.stringify({ OPENAI_API_KEY: CANARY, tokens: { access_token: CANARY, refresh_token: CANARY } }),
         'utf8',
       );
       // …and the catalogued neighbours DO exist, so "no canary" is not "nothing was read".
-      writeFileSync(join(piHome, 'settings.json'), SENTINEL, 'utf8');
-      writeFileSync(join(piHome, 'mcp.json'), '{"mcpServers":{}}', 'utf8');
+      writeFileSync(join(codexHome, 'config.toml'), SENTINEL, 'utf8');
+      writeFileSync(join(codexHome, 'AGENTS.md'), '# Global instructions\n', 'utf8');
     };
 
     beforeEach(() => {
       fakeHome = mkdtempSync(join(tmpdir(), 'xez-agentcfg-home-'));
-      piHome = join(fakeHome, '.pi', 'agent');
-      mkdirSync(piHome, { recursive: true });
+      codexHome = join(fakeHome, '.codex');
+      mkdirSync(codexHome, { recursive: true });
       for (const key of PINS) saved.set(key, process.env[key]);
       process.env.HOME = fakeHome;
       process.env.CLAUDE_CONFIG_DIR = join(fakeHome, '.claude');
-      process.env.CODEX_HOME = join(fakeHome, '.codex');
-      process.env.OPENCODE_CONFIG_DIR = join(fakeHome, '.config', 'opencode');
-      process.env.PI_CODING_AGENT_DIR = piHome;
-      writePiHome();
+      process.env.CODEX_HOME = codexHome;
+      process.env.QWEN_HOME = join(fakeHome, '.qwen');
+      writeCodexHome();
     });
     afterEach(() => {
       rmSync(fakeHome, TEST_DIR_RM_OPTIONS);
@@ -306,39 +273,39 @@ describe('the agent-config API', () => {
 
     it('reads every catalogued id and none carries the canary', async () => {
       const all = await readEveryId();
-      // The control: the settings file next door to the canary IS being served (JSON-escaped in
-      // the response body), so a clean grep means "the secret is not catalogued", not "the pi
+      // The control: the config file next door to the canary IS being served (JSON-escaped in
+      // the response body), so a clean grep means "the secret is not catalogued", not "the Codex
       // home was never touched".
       expect(all).toContain(JSON.stringify(SENTINEL).slice(1, -1));
       expect(all).not.toContain(CANARY);
     });
 
     it('the error branches do not carry it either — absent, unreadable and malformed', async () => {
-      // Absent: delete the two catalogued files, leaving the credential files in place.
-      rmSync(join(piHome, 'settings.json'));
-      rmSync(join(piHome, 'mcp.json'));
+      // Absent: delete the two catalogued files, leaving the credential file in place.
+      rmSync(join(codexHome, 'config.toml'));
+      rmSync(join(codexHome, 'AGENTS.md'));
       expect(await readEveryId()).not.toContain(CANARY);
-      writePiHome();
+      writeCodexHome();
 
-      // Malformed: bytes that are not JSON. The route serves content verbatim and never parses,
+      // Malformed: bytes that are not TOML. The route serves content verbatim and never parses,
       // but a future parse would report the value it choked on.
-      writeFileSync(join(piHome, 'settings.json'), '{ broken', 'utf8');
-      const malformed = await (await apiRequest(app, '/api/v1/agent-config/pi.user.settings')).text();
+      writeFileSync(join(codexHome, 'config.toml'), '{ broken', 'utf8');
+      const malformed = await (await apiRequest(app, '/api/v1/agent-config/codex.user.config')).text();
       expect(malformed).toContain('broken');
       expect(malformed).not.toContain(CANARY);
       expect(await readEveryId()).not.toContain(CANARY);
-      writeFileSync(join(piHome, 'settings.json'), SENTINEL, 'utf8');
+      writeFileSync(join(codexHome, 'config.toml'), SENTINEL, 'utf8');
 
       // Unreadable: EACCES on the file itself. `readConfigFile` surfaces `err.message`, which is
       // the branch a leak would hide in and which a happy-path read never reaches.
-      chmodSync(join(piHome, 'mcp.json'), 0o000);
+      chmodSync(join(codexHome, 'AGENTS.md'), 0o000);
       try {
-        const text = await (await apiRequest(app, '/api/v1/agent-config/pi.user.mcp')).text();
+        const text = await (await apiRequest(app, '/api/v1/agent-config/codex.user.memory')).text();
         // Running as root defeats the chmod, so assert only the leak property — true either way.
         expect(text).not.toContain(CANARY);
         expect(await readEveryId()).not.toContain(CANARY);
       } finally {
-        chmodSync(join(piHome, 'mcp.json'), 0o600);
+        chmodSync(join(codexHome, 'AGENTS.md'), 0o600);
       }
     });
   });

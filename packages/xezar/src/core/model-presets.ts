@@ -20,10 +20,10 @@ const KNOWN_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'] as const
  * recognizably ANOTHER runner's preset — the corruption a client/server resolution mismatch
  * can produce (#401 review). Unknown ids never conflict (fail-open).
  *
- * OpenCode lists nothing here on purpose (#794): its models are discovered from the host
- * (`opencode-model-catalog.ts`), so any hard-coded list would be one release away from naming
- * models the user's provider does not have. Its half of the guard is the structural check in
- * {@link modelConflictsWithRunner} instead, which needs no vendor knowledge at all.
+ * Qwen Code lists nothing here on purpose: its models are the person's own `modelProviders`
+ * entries, so any hard-coded list would name models a given person does not have. Its half of
+ * the guard is the structural check in {@link modelConflictsWithRunner} instead, which needs no
+ * vendor knowledge at all.
  */
 export const KNOWN_PRESETS_BY_RUNNER: Record<RunnerId, readonly string[]> = {
   // Tier aliases only. The dated ids that used to sit here (`claude-opus-4-8` and friends) came
@@ -34,14 +34,6 @@ export const KNOWN_PRESETS_BY_RUNNER: Record<RunnerId, readonly string[]> = {
   // Qwen Code's models are the person's own `modelProviders` entries, discovered from its settings
   // (`qwen-model-catalog.ts`); any hard-coded id would be one a given person does not have.
   qwen: [],
-  opencode: [],
-  // pi lists nothing for the same reason OpenCode does (#794), plus one of its own: it picks a
-  // model with the canonical `provider/model` convention and has no default provider, so the
-  // structural check in {@link modelConflictsWithRunner} already guards it without vendor
-  // knowledge. Listing pi's composer presets here would actively break OpenCode — the ids
-  // overlap (`anthropic/claude-sonnet-5`), and a shared id present in pi's list but absent from
-  // OpenCode's empty one would read as "another runner's preset" and be refused.
-  pi: [],
 };
 
 /**
@@ -68,7 +60,7 @@ const NATIVE_MODEL_ID_PREFIX: Partial<Record<RunnerId, RegExp>> = {
  */
 function namesAnotherKnownProvider(model: string, runner: RunnerId): boolean {
   const map = BACKEND_MODEL_MAP[runner];
-  // Nothing to contradict: OpenCode spans providers (no default of its own), and Claude Code
+  // Nothing to contradict: a runner with no default provider spans providers, and Claude Code
   // accepts explicit gateway/custom provider ids by design.
   if (map?.defaultProvider === undefined || map.allowExplicitProvider) return false;
   const explicit = parseModelIdentity(model);
@@ -84,8 +76,8 @@ export function modelConflictsWithRunner(model: string, runner: RunnerId): boole
   if (KNOWN_PRESETS_BY_RUNNER[runner]?.includes(model)) return false;
   if (NATIVE_MODEL_ID_PREFIX[runner]?.test(model)) return false;
   // Both structural halves of the guard need no vendor model knowledge, so — unlike the preset
-  // lists — they keep holding for models that do not exist yet. That is what lets OpenCode's
-  // entry above be empty (#794) and Claude's shrink to tier aliases (#784) without either
+  // lists — they keep holding for models that do not exist yet. That is what lets Qwen Code's
+  // entry above be empty and Claude's shrink to tier aliases (#784) without either
   // losing the protection it used to provide.
   if (namesAnotherKnownProvider(model, runner)) return true;
   return (

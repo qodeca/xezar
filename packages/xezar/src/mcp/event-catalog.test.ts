@@ -828,14 +828,14 @@ describe('lifecycle of the catalog itself', () => {
   it('counts an executor seen for the first time without a baseline as a change', () => {
     catalog.detach();
     catalog = EventCatalog.attach({ journal, store, workspaceEvents: bus });
-    bus.emit('provider-status', { provider: 'pi', status: 'connected', enabled: true });
-    bus.emit('provider-status', { provider: 'pi', status: 'connected', enabled: true });
-    bus.emit('provider-status', { provider: 'pi', status: 'connected', enabled: false });
-    bus.emit('provider-status', { provider: 'pi', status: 'not-installed', enabled: false });
+    bus.emit('provider-status', { provider: 'qwen', status: 'connected', enabled: true });
+    bus.emit('provider-status', { provider: 'qwen', status: 'connected', enabled: true });
+    bus.emit('provider-status', { provider: 'qwen', status: 'connected', enabled: false });
+    bus.emit('provider-status', { provider: 'qwen', status: 'not-installed', enabled: false });
     bus.emit('provider-status', { not: 'a provider row' });
     expect(rows().map((row) => [row.kind, row.subject.id, row.summary])).toEqual([
-      ['executor.available', 'pi', 'executor pi is available'],
-      ['executor.unavailable', 'pi', 'executor pi is unavailable (disabled)'],
+      ['executor.available', 'qwen', 'executor qwen is available'],
+      ['executor.unavailable', 'qwen', 'executor qwen is unavailable (disabled)'],
     ]);
   });
 

@@ -191,7 +191,7 @@ const ALLOWED: readonly Allowance[] = [
     file: 'paths.ts',
     code: 'const home = env.HOME || env.USERPROFILE || homedir();',
     reason:
-      'agentHomePaths — CLAUDE_CONFIG_DIR, CODEX_HOME, OPENCODE_CONFIG_DIR and PI_CODING_AGENT_DIR resolve ' +
+      'agentHomePaths — CLAUDE_CONFIG_DIR, CODEX_HOME and QWEN_HOME resolve ' +
       'exactly as they do outside the mode (SP-2.3). An agent login is the machine\'s, not the project\'s; ' +
       'moving it would log the user out of a folder rather than isolate it.',
   },

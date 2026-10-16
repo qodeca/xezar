@@ -950,14 +950,14 @@ describe('the workspace settings API (step 2.7)', () => {
     const response = await putUiState({
       dismissedProviderAuthFailures: {
         claude: 'incident-1',
-        opencode: 'incident-9',
+        qwen: 'incident-9',
       },
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       dismissedProviderAuthFailures: {
         claude: 'incident-1',
-        opencode: 'incident-9',
+        qwen: 'incident-9',
       },
     });
   });

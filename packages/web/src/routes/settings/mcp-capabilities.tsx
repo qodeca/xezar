@@ -75,7 +75,7 @@ const STATUS_TEXT: Record<McpCapability['status'], string> = {
   'read-only': 'Read-only',
 }
 
-const RUNNER_CHECKS = new Set(['claude', 'codex', 'qwen', 'opencode', 'pi'])
+const RUNNER_CHECKS = new Set(['claude', 'codex', 'qwen'])
 
 /** Why the GitHub area is closed, or null when it is open — discovery's classification. */
 function githubGap(health: CapabilityFacts['health']): { reason: string; next: string } | null {
@@ -140,7 +140,7 @@ export function deriveProjectCapabilities({ health, modelsLocked, projectModelsL
       noAgent
         ? {
             reason: 'No coding agent CLI is installed on this machine.',
-            next: 'A person can install Claude Code, Codex, Qwen Code, OpenCode or pi. The Tools menu shows what xezar found.',
+            next: 'A person can install Claude Code, Codex or Qwen Code. The Tools menu shows what xezar found.',
           }
         : null,
     ),

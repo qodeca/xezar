@@ -26,7 +26,7 @@ const providers = (overrides: Partial<ProviderStatusResponse> = {}): ProviderSta
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'connected', enabled: true },
+    { provider: 'qwen', status: 'connected', enabled: true },
   ],
   ...overrides,
 })
@@ -42,7 +42,7 @@ describe('active task provider availability', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: false },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
 
@@ -82,7 +82,7 @@ describe('active task provider availability', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
 

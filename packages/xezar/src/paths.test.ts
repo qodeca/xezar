@@ -123,50 +123,6 @@ describe('agentHomePaths', () => {
     const paths = agentHomePaths({ HOME: '/home/u' } as NodeJS.ProcessEnv);
     expect(paths.claude).toBe(join('/home/u', '.claude'));
     expect(paths.codex).toBe(join('/home/u', '.codex'));
-    expect(paths.opencodeConfig).toBe(join('/home/u', '.config', 'opencode'));
-    expect(paths.pi).toBe(join('/home/u', '.pi', 'agent'));
-  });
-
-  // #329. This slot used to ignore every variable, on the strength of one check on 2026-09-10
-  // that concluded pi documents no home variable. pi 0.85.1 lists
-  // `PI_CODING_AGENT_DIR - Config directory (default: ~/.pi/agent)` under "Environment Variables"
-  // and was observed reading and writing there, so the slot honours it — which is also what lets
-  // model discovery (#152) and a pi agent account point at a home that is not the developer's.
-  it('honours PI_CODING_AGENT_DIR for pi', () => {
-    expect(
-      agentHomePaths({ HOME: '/home/u', PI_CODING_AGENT_DIR: '/opt/pi-work' } as NodeJS.ProcessEnv).pi,
-    ).toBe('/opt/pi-work');
-  });
-
-  it('falls back to $HOME/.pi/agent, and ignores a blank PI_CODING_AGENT_DIR', () => {
-    expect(agentHomePaths({ HOME: '/tmp/sandbox' } as NodeJS.ProcessEnv).pi).toBe(join('/tmp/sandbox', '.pi', 'agent'));
-    expect(
-      agentHomePaths({ HOME: '/home/u', PI_CODING_AGENT_DIR: '   ' } as NodeJS.ProcessEnv).pi,
-    ).toBe(join('/home/u', '.pi', 'agent'));
-  });
-
-  // Guard, unchanged by #329: only pi's OWN home variable reaches this slot. `PI_PACKAGE_DIR`
-  // names the npm package, `PI_CODING_AGENT_SESSION_DIR` moves session storage without moving
-  // credentials, and no other agent's variable may leak across.
-  it('lets no neighbouring variable reach pi’s slot', () => {
-    const unrelated = agentHomePaths({
-      HOME: '/home/u',
-      PI_PACKAGE_DIR: '/opt/pi-package',
-      PI_CODING_AGENT_SESSION_DIR: '/opt/pi-sessions',
-      XDG_CONFIG_HOME: '/xdg',
-      CLAUDE_CONFIG_DIR: '/opt/claude',
-    } as unknown as NodeJS.ProcessEnv);
-    expect(unrelated.pi).toBe(join('/home/u', '.pi', 'agent'));
-  });
-
-  it('leaves the other agents alone when only pi is repointed', () => {
-    const paths = agentHomePaths({
-      HOME: '/home/u',
-      PI_CODING_AGENT_DIR: '/opt/pi-work',
-    } as NodeJS.ProcessEnv);
-    expect(paths.claude).toBe(join('/home/u', '.claude'));
-    expect(paths.codex).toBe(join('/home/u', '.codex'));
-    expect(paths.opencodeConfig).toBe(join('/home/u', '.config', 'opencode'));
   });
 
   it('honors agent-specific home overrides', () => {
@@ -174,56 +130,14 @@ describe('agentHomePaths', () => {
       HOME: '/home/u',
       CLAUDE_CONFIG_DIR: '/opt/claude-klaudiusz',
       CODEX_HOME: '/opt/codex',
-      XDG_CONFIG_HOME: '/xdg',
     } as NodeJS.ProcessEnv);
     expect(paths.claude).toBe('/opt/claude-klaudiusz');
     expect(paths.codex).toBe('/opt/codex');
-    expect(paths.opencodeConfig).toBe(join('/xdg', 'opencode'));
   });
 
   it('ignores a blank CLAUDE_CONFIG_DIR rather than yielding a relative path', () => {
     const paths = agentHomePaths({ HOME: '/home/u', CLAUDE_CONFIG_DIR: '   ' } as NodeJS.ProcessEnv);
     expect(paths.claude).toBe(join('/home/u', '.claude'));
-  });
-
-  // OpenCode's own variable wins over the XDG one so that relocating ONE agent's config does not
-  // require moving every XDG-aware tool in the process — the e2e boot pins this to sandbox
-  // opencode without deauthenticating `gh` or hiding the developer's global git config.
-  it('prefers OPENCODE_CONFIG_DIR over XDG_CONFIG_HOME for opencode', () => {
-    const paths = agentHomePaths({
-      HOME: '/home/u',
-      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
-      XDG_CONFIG_HOME: '/xdg',
-    } as NodeJS.ProcessEnv);
-    expect(paths.opencodeConfig).toBe('/opt/opencode-cfg');
-  });
-
-  it('uses OPENCODE_CONFIG_DIR verbatim — it names the config dir, not a parent', () => {
-    const paths = agentHomePaths({
-      HOME: '/home/u',
-      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
-    } as NodeJS.ProcessEnv);
-    expect(paths.opencodeConfig).toBe('/opt/opencode-cfg');
-    expect(paths.opencodeConfig).not.toContain('opencode/opencode');
-  });
-
-  it('ignores a blank OPENCODE_CONFIG_DIR and falls back through XDG', () => {
-    const paths = agentHomePaths({
-      HOME: '/home/u',
-      OPENCODE_CONFIG_DIR: '  ',
-      XDG_CONFIG_HOME: '/xdg',
-    } as NodeJS.ProcessEnv);
-    expect(paths.opencodeConfig).toBe(join('/xdg', 'opencode'));
-  });
-
-  it('leaves the other agents alone when only opencode is repointed', () => {
-    const paths = agentHomePaths({
-      HOME: '/home/u',
-      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
-    } as NodeJS.ProcessEnv);
-    expect(paths.claude).toBe(join('/home/u', '.claude'));
-    expect(paths.codex).toBe(join('/home/u', '.codex'));
-    expect(paths.pi).toBe(join('/home/u', '.pi', 'agent'));
   });
 
   it('falls back to USERPROFILE when HOME is unset', () => {

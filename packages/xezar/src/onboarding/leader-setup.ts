@@ -11,7 +11,7 @@ import type { McpLeaderSelfStatus } from '@qodeca/xezar-contract';
 export const LEADER_SETUP_STATES = ['files-prepared', 'connected', 'attached', 'delivery-verified'] as const;
 export type LeaderSetupState = (typeof LEADER_SETUP_STATES)[number];
 
-export type LeaderSetupClient = 'claude-code' | 'codex' | 'qwen' | 'pi';
+export type LeaderSetupClient = 'claude-code' | 'codex' | 'qwen';
 
 export interface LeaderSetupGuide {
   client: LeaderSetupClient;
@@ -60,29 +60,6 @@ const GUIDES: Readonly<Record<LeaderSetupClient, LeaderSetupGuide>> = {
       'Pushed events use Qwen Code cross-session messaging, which is on by default. If agents.crossSessionMessaging is false, or agents.crossSessionInbound is hold or refuse, push is unavailable and the leader reads its events instead.',
     ],
   },
-  pi: {
-    client: 'pi',
-    label: 'pi',
-    destination: '.pi/mcp.json',
-    snippet: JSON.stringify(
-      {
-        settings: { directTools: true },
-        mcpServers: {
-          xezar: {
-            command: 'npx',
-            args: ['-y', '@qodeca/xezar', 'mcp'],
-            lifecycle: 'keep-alive',
-          },
-        },
-      },
-      null,
-      2,
-    ),
-    prerequisites: [
-      'Install and enable a compatible MCP adapter, then sign in yourself.',
-      'For pushed turns, load xezar’s pi leader extension. A keep-alive pi session can own the project connection, so another client may be refused until that session exits.',
-    ],
-  },
 };
 
 export function leaderSetupGuide(client: LeaderSetupClient): LeaderSetupGuide {
@@ -107,7 +84,7 @@ export function leaderSetupFallbackInstructions(): string {
     'A snippet is only “files prepared”. It does not prove connection, trust, sign-in, attachment or delivery.',
     ...guides,
     'After the candidate is integrated, the person completes trust and sign-in, starts the chosen client in this project and makes a real xezar MCP tool call. That proves “connected”.',
-    'Claude Code, Codex and pi then call leader_events with action attach and a new operationId; leader_events action status proves “attached”. OpenCode is attached by a person through its supported control.',
+    'Claude Code, Codex and Qwen Code then call leader_events with action attach and a new operationId; leader_events action status proves “attached”.',
     'Finally, while attached, call leader_events with action read and no cursor, or account for a real pushed event. The read answer or pushed event is the “delivery verified” evidence. A status counter from an earlier session is not enough.',
     'After xezar restarts, attachment is gone: make a tool call, check status, attach again with a new operationId, then read outstanding events. Page with nextCursor while hasMore is true; a gap requires current-state reconciliation before acknowledging resumeCursor.',
     'Report pending checks, delivery blockers, task.stalled as advisory only, pending reviewer verdicts and replay limits exactly as returned. Never call the leader ready while integration, trust, sign-in, attachment or delivery verification is pending.',
@@ -157,6 +134,6 @@ export function leaderSetupVerificationLine(
   return `Leader setup: attached — status proves this session owns the attachment; a current pushed event or leader_events read is still required to verify delivery.${limitation}`;
 }
 
-function clientLabel(client: LeaderSetupClient | 'opencode'): string {
-  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : client === 'qwen' ? 'Qwen Code' : client === 'opencode' ? 'OpenCode' : 'pi';
+function clientLabel(client: LeaderSetupClient): string {
+  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : 'Qwen Code';
 }

@@ -4,14 +4,12 @@ import { modelLabel, resumeCommand, RUNNER_LABEL, runnerLabel, stepBackendCount,
 
 describe('RUNNER_LABEL', () => {
   it('names every backend the contract knows, and nothing else', () => {
-    // Typed `Record<Runner, string>`, so a fifth backend is a COMPILE error here rather than a
+    // Typed `Record<Runner, string>`, so a new backend is a COMPILE error here rather than a
     // surface that quietly prints nothing. This asserts the runtime half of the same promise.
     expect(RUNNER_LABEL).toEqual({
       claude: 'Claude Code',
       codex: 'Codex',
       qwen: 'Qwen Code',
-      opencode: 'OpenCode',
-      pi: 'pi',
     })
   })
 })
@@ -24,7 +22,7 @@ describe('stepBackendCount', () => {
     // A step with no backend is "nothing happened here", never a second backend.
     expect(stepBackendCount([{ backend: 'claude' }, {}, { backend: 'codex' }])).toBe(2)
     expect(
-      stepBackendCount([{ backend: 'claude' }, { backend: 'codex' }, { backend: 'opencode' }]),
+      stepBackendCount([{ backend: 'claude' }, { backend: 'codex' }, { backend: 'qwen' }]),
     ).toBe(3)
   })
 })
@@ -33,7 +31,7 @@ describe('taskRunner', () => {
   it('keeps a recorded runner and marks it chosen', () => {
     // `execute` writes the RESOLVED backend onto the record at run start, so this is not "what
     // the caller asked for" — it is what ran, and it outranks everything below.
-    expect(taskRunner('codex', [{ backend: 'opencode' }], 'claude')).toEqual({
+    expect(taskRunner('codex', [{ backend: 'qwen' }], 'claude')).toEqual({
       runner: 'codex',
       inherited: false,
     })
@@ -43,16 +41,16 @@ describe('taskRunner', () => {
     // A record written before run-level backend affinity. Resolving it against today's project
     // default would name a backend the run never touched, so the step wins — and the answer is
     // history, not a projection, so it is NOT inherited.
-    expect(taskRunner(undefined, [{ backend: 'codex' }, { backend: 'pi' }, {}], 'claude')).toEqual({
-      runner: 'pi',
+    expect(taskRunner(undefined, [{ backend: 'codex' }, { backend: 'qwen' }, {}], 'claude')).toEqual({
+      runner: 'qwen',
       inherited: false,
     })
   })
 
   it('reaches the project default only with no evidence at all — a run that never started', () => {
-    expect(taskRunner(undefined, [], 'opencode')).toEqual({ runner: 'opencode', inherited: true })
-    expect(taskRunner(undefined, [{}, {}], 'opencode')).toEqual({
-      runner: 'opencode',
+    expect(taskRunner(undefined, [], 'qwen')).toEqual({ runner: 'qwen', inherited: true })
+    expect(taskRunner(undefined, [{}, {}], 'qwen')).toEqual({
+      runner: 'qwen',
       inherited: true,
     })
   })
@@ -69,7 +67,7 @@ describe('runnerLabel', () => {
     expect(runnerLabel('claude')).toBe('Claude Code')
     expect(runnerLabel('claude', 1)).toBe('Claude Code')
     expect(runnerLabel('claude', 2)).toBe('Claude Code +1')
-    expect(runnerLabel('opencode', 3)).toBe('OpenCode +2')
+    expect(runnerLabel('qwen', 3)).toBe('Qwen Code +2')
   })
 })
 
@@ -90,8 +88,7 @@ describe('resumeCommand', () => {
   it('returns the correct CLI command for every backend', () => {
     expect(resumeCommand('claude', 'abc123')).toBe('claude --resume abc123')
     expect(resumeCommand('codex', 'abc123')).toBe('codex resume abc123')
-    expect(resumeCommand('opencode', 'abc123')).toBe('opencode --session abc123')
-    expect(resumeCommand('pi', 'abc123')).toBe('pi --session abc123')
+    expect(resumeCommand('qwen', 'abc123')).toBe('qwen --resume abc123')
   })
 
   it('treats undefined runner as claude for backward compatibility', () => {
@@ -100,7 +97,7 @@ describe('resumeCommand', () => {
 
   it('returns undefined for invalid session ids', () => {
     expect(resumeCommand('claude', '')).toBeUndefined()
-    expect(resumeCommand('pi', 'foo bar')).toBeUndefined()
+    expect(resumeCommand('qwen', 'foo bar')).toBeUndefined()
     expect(resumeCommand('claude', 'abc\x00123')).toBeUndefined()
   })
 })

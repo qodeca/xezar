@@ -85,13 +85,13 @@ describe('guide 13 — MCP project leader', () => {
     expect(browser.hasText('This xezar is running locally, so the MCP connection is available for this project.')).toBe(true)
 
     expect(browser.hasRole('heading', 'One-time setup')).toBe(true)
-    for (const client of ['Claude Code', 'Codex', 'OpenCode', 'pi']) {
+    for (const client of ['Claude Code', 'Qwen Code', 'Codex']) {
       expect(browser.hasRole('heading', client)).toBe(true)
     }
     // The exact one-time commands guide 13 itself gives per client.
     expect(browser.hasText('claude mcp add --scope local xezar -- npx -y @qodeca/xezar mcp')).toBe(true)
     expect(browser.hasText('codex app-server --listen unix://')).toBe(true)
-    expect(browser.hasText('pi install npm:pi-mcp-adapter@2.32.1')).toBe(true)
+    expect(browser.hasText('qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp')).toBe(true)
   })
 
   it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', async () => {
@@ -118,7 +118,7 @@ describe('guide 13 — MCP project leader', () => {
     // copies, by visible text only, never a loading indicator that hangs and never a faked
     // "attached" state.
     const UNATTACHED_COPY =
-      'No leader client is connected to this project. Start your leader client here: it can read its events with leader_events, and a Claude Code, Codex, OpenCode or pi session can be attached below.'
+      'No leader client is connected to this project. Start your leader client here: it can read its events with leader_events, and a Claude Code, Qwen Code or Codex session can be attached below.'
     const SERVICE_NOT_RUNNING_COPY =
       'The MCP service is not running for this project, so there is no event delivery to report.'
 

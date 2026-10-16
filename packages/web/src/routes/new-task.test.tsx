@@ -83,7 +83,7 @@ const HEALTH_ALL: HealthResponse = {
   checks: [
     { name: 'claude', available: true },
     { name: 'codex', available: true },
-    { name: 'opencode', available: true },
+    { name: 'qwen', available: true },
     { name: 'git', available: true },
   ],
 }
@@ -98,7 +98,7 @@ const PROVIDERS_CONNECTED: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'disconnected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -106,7 +106,7 @@ const PROVIDERS_MULTI: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'disconnected', enabled: true },
+    { provider: 'qwen', status: 'disconnected', enabled: true },
   ],
 }
 
@@ -114,7 +114,7 @@ const PROVIDERS_NONE: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true },
     { provider: 'codex', status: 'not-installed', enabled: true },
-    { provider: 'opencode', status: 'disconnected', enabled: true },
+    { provider: 'qwen', status: 'disconnected', enabled: true },
   ],
 }
 
@@ -487,7 +487,7 @@ describe('picker data flows', () => {
       expect.stringContaining('claude'),
       expect.stringContaining('codex'),
     ])
-    expect(options.some((option) => option.textContent?.includes('opencode'))).toBe(false)
+    expect(options.some((option) => option.textContent?.includes('qwen'))).toBe(false)
   })
 
   it('excludes connected but disabled providers while retaining an enabled runner choice', async () => {
@@ -497,7 +497,7 @@ describe('picker data flows', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: false },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'connected', enabled: false },
+          { provider: 'qwen', status: 'connected', enabled: false },
         ],
       },
     })
@@ -874,7 +874,7 @@ describe('provider authentication gate', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -905,7 +905,7 @@ describe('provider authentication gate', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -923,7 +923,7 @@ describe('provider authentication gate', () => {
         providers: [
           { provider: 'claude', status: 'unknown', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -1543,7 +1543,7 @@ describe('bookmarklet auto-start', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })

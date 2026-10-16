@@ -15,7 +15,7 @@ source. Where usage is split, the rule is the majority form and the minority is 
 | The ellipsis is one character, `…`, never `...`. | 134 to 1. "Loading task…", "Search tasks…". |
 | Clauses are joined with a spaced em dash ` — `. | 334 lines. "Disconnected — reconnecting", "Copy failed — drag the button instead." (`bookmarklets-section.tsx`). Note: the repository's docs use en dashes; the UI uses em dashes. Follow the surface you are writing for. |
 | User-supplied names are wrapped in curly quotes `“ ”`; apostrophes are curly `’`. | `Remove “{label}”?` (`accounts-section.tsx`), `No tasks match “{needle}”.` (`tasks-overview.tsx`), "This xezar doesn’t serve a project by that id." |
-| No Oxford comma. | 25 to 2. "Theme, accent and density." (`settings/registry.tsx`), "Claude Code, Codex, OpenCode or pi" (`mcp-capabilities.tsx`). |
+| No Oxford comma. | 25 to 2. "Theme, accent and density." (`settings/registry.tsx`), "Claude Code, Codex or Qwen Code" (`mcp-capabilities.tsx`). |
 | Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). |
 
 ## 2. Voice
@@ -23,7 +23,7 @@ source. Where usage is split, the rule is the majority form and the minority is 
 - Second person to the operator: "Notify when an agent needs you", "Finished tasks you archive land here.",
   "System follows your OS preference." (`notifications-section.tsx`, `tasks-overview.tsx`, `appearance.tsx`).
 - Third person for capability text an MCP leader reads about itself: "A person can run the cockpit
-  locally on this machine.", "A person can install Claude Code, Codex, OpenCode or pi." (`mcp-capabilities.tsx`).
+  locally on this machine.", "A person can install Claude Code, Codex or Qwen Code." (`mcp-capabilities.tsx`).
 - Plain, concrete, present tense. Say what happens, then why or what next.
 
 ## 3. Headings and page titles
@@ -151,7 +151,7 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   (`xez --repo <folder>`), with "Command copied" or the command itself in the toast when the
   clipboard refused. The global Tasks page names the narrowing in one line: "This list is {project}
   only — your other projects run in their own cockpits." (`routes/global-tasks.tsx`).
-- Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "OpenCode", "pi" (lower case).
+- Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "Qwen Code".
   Multi-backend runs read "Claude Code +1".
 
 ## 10. Settings copy

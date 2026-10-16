@@ -159,7 +159,7 @@ describe('resumeCommand — per backend, mirroring the server', () => {
     ['claude', 'claude --resume s1'],
     [undefined, 'claude --resume s1'], // legacy records predate the runner choice
     ['codex', 'codex resume s1'],
-    ['opencode', 'opencode --session s1'],
+    ['qwen', 'qwen --resume s1'],
   ] as Array<[RunRecord['runner'], string]>)('%s → %s', (runner, expected) => {
     expect(resumeCommand(runner, 's1')).toBe(expected)
   })
@@ -170,7 +170,7 @@ describe('resumeCommand — per backend, mirroring the server', () => {
     expect(resumeCommand('claude', '$(touch /tmp/pwn); rm -rf ~ #')).toBeUndefined()
     expect(resumeCommand('claude', "a'b")).toBeUndefined()
     expect(resumeCommand('codex', 'a && calc.exe')).toBeUndefined()
-    expect(resumeCommand('opencode', 'a`id`')).toBeUndefined()
+    expect(resumeCommand('qwen', 'a`id`')).toBeUndefined()
     expect(resumeCommand('claude', 'a b')).toBeUndefined()
     expect(resumeCommand('claude', '')).toBeUndefined()
   })
@@ -220,7 +220,7 @@ describe('cliTargetResumes — Open in… menu labeling (#402)', () => {
   it.each([
     ['claude', 'cli:claude'],
     ['codex', 'cli:codex'],
-    ['opencode', 'cli:opencode'],
+    ['qwen', 'cli:qwen'],
   ] as Array<[RunRecord['runner'], string]>)('%s CLI resumes a %s run with a session', (runner, target) => {
     expect(cliTargetResumes(run('done', { runner }), target)).toBe(true)
   })
@@ -231,7 +231,7 @@ describe('cliTargetResumes — Open in… menu labeling (#402)', () => {
 
   it('cross-runner: a CLI that is not the run\'s own never claims to resume', () => {
     expect(cliTargetResumes(run('done', { runner: 'claude' }), 'cli:codex')).toBe(false)
-    expect(cliTargetResumes(run('done', { runner: 'opencode' }), 'cli:claude')).toBe(false)
+    expect(cliTargetResumes(run('done', { runner: 'qwen' }), 'cli:claude')).toBe(false)
   })
 
   it('no session yet: even the matching CLI does not claim to resume', () => {

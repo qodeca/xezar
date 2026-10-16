@@ -26,10 +26,6 @@ export function resumeCommand(runner: Runner | undefined, sessionId: string): st
       return `codex resume ${sessionId}`;
     case 'qwen':
       return `qwen --resume ${sessionId}`;
-    case 'opencode':
-      return `opencode --session ${sessionId}`;
-    case 'pi':
-      return `pi --session ${sessionId}`;
   }
 
   // Adding a runner to the contract without deciding its resume command must fail typecheck.

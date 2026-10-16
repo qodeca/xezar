@@ -256,10 +256,10 @@ describe('failures', () => {
     store.put(record({ id: 'c1', status: 'failed' }));
     expect(h.messages().at(-1)).toBe('failed — Claude Code exited with code 137');
 
-    store.put(record({ id: 'd1', status: 'running', runner: 'pi' }));
+    store.put(record({ id: 'd1', status: 'running', runner: 'qwen' }));
     store.event('d1', { type: 'error', message: 'stopped by SIGTERM' });
-    store.put(record({ id: 'd1', status: 'failed', runner: 'pi' }));
-    expect(h.messages().at(-1)).toBe('failed — pi stopped by signal SIGTERM, not sent by xezar');
+    store.put(record({ id: 'd1', status: 'failed', runner: 'qwen' }));
+    expect(h.messages().at(-1)).toBe('failed — Qwen Code stopped by signal SIGTERM, not sent by xezar');
   });
 
   it('an agent error alone changes nothing — only the record says a task failed', () => {

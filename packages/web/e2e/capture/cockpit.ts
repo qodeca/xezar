@@ -81,15 +81,13 @@ export async function bootCockpit(): Promise<Cockpit> {
     HOME: home,
     CLAUDE_CONFIG_DIR: join(home, '.claude'),
     CODEX_HOME: join(home, '.codex'),
-    OPENCODE_CONFIG_DIR: join(home, '.config', 'opencode'),
-    PI_CODING_AGENT_DIR: join(home, '.pi', 'agent'),
+    QWEN_HOME: join(home, '.qwen'),
     XEZ_FOLLOWUPS: '1',
     XEZ_AUTOMATIONS: '1',
     XEZ_REVIEW_GATE: '1',
     XEZ_NO_BANNER: '1',
     XEZ_CLAUDE_BIN: agentBin('claude'),
     XEZ_CODEX_BIN: agentBin('codex'),
-    XEZ_PI_BIN: agentBin('pi'),
   })
   delete env.ANTHROPIC_MODEL
   // `fixtureServeEnv` already strips TASK_CONTROL_ENV_VARS (the calling task's own handoff and

@@ -261,7 +261,7 @@ describe(`${SCREENSHOT_DIR}/README.md`, () => {
     const readme = `# xezar ${docsVersion} cockpit screenshots
 
 Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, no login, no network)
-with fixture data: a demo project with tasks in every status on Claude Code, Codex and pi, a second
+with fixture data: a demo project with tasks in every status on Claude Code and Codex, a second
 project for All tasks, three Inbox follow-ups, one automation and a second Claude login. The data,
 the viewport and the theme are fixed, so a re-run produces the same pictures (at most a few
 anti-aliased pixels apart).
@@ -284,8 +284,8 @@ agent-browser) and then its own fixture server. It is not part of \`npm run test
 
 ## What is scripted, and what is rewritten
 
-- **The agents are scripted.** The capture server runs the harness's own stand-ins for Claude Code,
-  Codex and pi (\`packages/web/e2e/capture/agents/\`), not the bundled test mocks. Each seeded task
+- **The agents are scripted.** The capture server runs the harness's own stand-ins for Claude Code and
+  Codex (\`packages/web/e2e/capture/agents/\`), not the bundled test mocks. Each seeded task
   plays its own turn through that backend's real protocol: its own tool calls and results, real
   edits in its worktree, its own token counts and references. The cockpit renders them as it would
   render a real agent; the screenshot in the running thread is a page the harness renders.

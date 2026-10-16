@@ -107,7 +107,7 @@ const RUNS: RunIndexEntry[] = [
     archived: false,
     workflow: 'quick-task',
     // A mixed chain, and a model id nothing may prettify.
-    runner: 'opencode',
+    runner: 'qwen',
     model: 'local/qwen3-coder-30b',
     stepBackends: 2,
   },
@@ -835,7 +835,7 @@ describe('global tasks page', () => {
 
       // i1's chain used two backends, and its model runs on the user's own hardware — verbatim.
       const mixed = await cellsFor('i1')
-      expect(mixed.tool?.textContent).toBe('OpenCode +1')
+      expect(mixed.tool?.textContent).toBe('Qwen Code +1')
       expect(mixed.tool?.getAttribute('data-mixed')).toBe('true')
       expect(mixed.model?.textContent).toBe('local/qwen3-coder-30b')
 

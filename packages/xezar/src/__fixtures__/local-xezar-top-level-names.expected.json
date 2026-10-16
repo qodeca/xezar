@@ -135,12 +135,6 @@
       "feature": "automations"
     },
     {
-      "name": "pi-leader.json",
-      "kind": "file",
-      "reason": "The pi leader socket descriptor (mcp/adapters/pi-link.ts PI_LEADER_FILE; written by scripts/pi-leader-extension.ts DESCRIPTOR_FILE).",
-      "feature": "pi"
-    },
-    {
       "name": "tasks",
       "kind": "directory",
       "reason": "Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).",

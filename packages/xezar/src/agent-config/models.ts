@@ -1,8 +1,6 @@
 import { RUNNER_IDS, type RunnerId } from '../core/agent-runner.ts';
 import { claudeModelSettingsStrategy } from './model-settings/claude.ts';
 import { codexModelSettingsStrategy } from './model-settings/codex.ts';
-import { opencodeModelSettingsStrategy } from './model-settings/opencode.ts';
-import { piModelSettingsStrategy } from './model-settings/pi.ts';
 import { qwenModelSettingsStrategy } from './model-settings/qwen.ts';
 import type { AgentModelSettings, AgentModelSettingsStrategy } from './model-settings/types.ts';
 
@@ -18,8 +16,6 @@ const MODEL_SETTINGS_STRATEGIES: Record<RunnerId, AgentModelSettingsStrategy> = 
   claude: claudeModelSettingsStrategy,
   codex: codexModelSettingsStrategy,
   qwen: qwenModelSettingsStrategy,
-  opencode: opencodeModelSettingsStrategy,
-  pi: piModelSettingsStrategy,
 };
 
 export function readAgentModelSettings(

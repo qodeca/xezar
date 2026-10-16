@@ -155,7 +155,7 @@ It merges accounts only: `workspace.json` and `workspace-ui.json` are left alone
 ## To sign an agent tool in: `providers connect`
 
 ```sh
-xezar providers connect <claude|codex|opencode|pi> [--account <id>]
+xezar providers connect <claude|codex|qwen> [--account <id>]
 ```
 
 Opens a terminal window that runs the tool's own login command, on the machine that runs xezar. Without `--account` it signs in the tool's built-in login; with it, the named account from **Settings → Agent accounts**. It is the same sequence as **Connect** in the cockpit's Providers settings, and it is the command a project leader is told to hand you when it asks for a provider it may not connect itself. It needs no running cockpit.
@@ -225,7 +225,7 @@ xezar state-names          # a listing to read
 xezar state-names --json   # the published form, for a program
 ```
 
-xezar keeps a project's working files in `.local/xezar/`. This command says which names it may write at the **top level** of that folder — each name, whether it is a file or a directory, and whether it appears only when something is switched on (the follow-up inbox, automations, the pi backend, single-project mode) or may appear with nothing switched on at all.
+xezar keeps a project's working files in `.local/xezar/`. This command says which names it may write at the **top level** of that folder — each name, whether it is a file or a directory, and whether it appears only when something is switched on (the follow-up inbox, automations, single-project mode) or may appear with nothing switched on at all.
 
 It exists for a check of your own. Projects that guard what appears in that folder used to keep a copy of the list by hand, and a copy goes stale the moment xezar adds a name. Reading it from the version you have installed keeps the two in step.
 

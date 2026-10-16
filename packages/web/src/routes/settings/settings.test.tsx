@@ -61,7 +61,7 @@ function serve(
           providers: [
             { provider: 'claude', status: 'connected', enabled: true },
             { provider: 'codex', status: 'connected', enabled: true },
-            { provider: 'opencode', status: 'connected', enabled: true },
+            { provider: 'qwen', status: 'connected', enabled: true },
           ],
         })
       if (url === '/api/v1/models?runner=codex') return json({ runner: 'codex', models: [], source: 'unavailable', stale: false })

@@ -9,7 +9,7 @@ const DEFINITIVE_MISSING: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true },
     { provider: 'codex', status: 'not-installed', enabled: true },
-    { provider: 'opencode', status: 'disconnected', enabled: true },
+    { provider: 'qwen', status: 'disconnected', enabled: true },
   ],
 }
 
@@ -52,7 +52,7 @@ describe('ProviderBanner', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
       error: true,
@@ -93,7 +93,7 @@ describe('ProviderBanner', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: false },
           { provider: 'codex', status: 'disconnected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -108,7 +108,7 @@ describe('ProviderBanner', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'disconnected', enabled: true, authFailureId: 'open-1' },
+          { provider: 'qwen', status: 'disconnected', enabled: true, authFailureId: 'qwen-1' },
         ],
       },
       onDismissAuthFailures: onDismiss,
@@ -116,14 +116,14 @@ describe('ProviderBanner', () => {
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain(
-      'Provider authentication failed during a task: Claude Code, OpenCode.',
+      'Provider authentication failed during a task: Claude Code, Qwen Code.',
     )
     fireEvent.click(screen.getByRole('button', {
       name: 'Dismiss provider authentication alert',
     }))
     expect(onDismiss).toHaveBeenCalledWith([
       { provider: 'claude', label: 'Claude Code', authFailureId: 'claude-1' },
-      { provider: 'opencode', label: 'OpenCode', authFailureId: 'open-1' },
+      { provider: 'qwen', label: 'Qwen Code', authFailureId: 'qwen-1' },
     ])
   })
 
@@ -132,7 +132,7 @@ describe('ProviderBanner', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
     const hidden = renderBanner({ status, dismissals: { claude: 'claude-1' } })
@@ -158,7 +158,7 @@ describe('ProviderBanner', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -173,7 +173,7 @@ describe('ProviderBanner', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
         { provider: 'codex', status: 'not-installed', enabled: true },
-        { provider: 'opencode', status: 'disconnected', enabled: true },
+        { provider: 'qwen', status: 'disconnected', enabled: true },
       ],
     }
     const view = renderBanner({ status })

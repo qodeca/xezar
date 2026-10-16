@@ -25,7 +25,6 @@ test('the project skill dirs the hint promises are the ones discovery actually s
       '.claude/skills',
       '.codex/skills',
       '.cursor/skills',
-      '.opencode/skills',
     ],
   );
 });

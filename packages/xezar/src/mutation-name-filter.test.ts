@@ -105,8 +105,8 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
     expect(cases.length, 'the mutation suite is ~930 tests').toBeGreaterThan(500);
     expect(files.map((f) => relative(PACKAGE_ROOT, f).split('\\').join('/'))).toEqual(
       expect.arrayContaining([
-        'src/mcp/adapters/opencode.test.ts',
-        'src/mcp/adapters/pi.test.ts',
+        'src/mcp/adapters/codex.test.ts',
+        'src/mcp/adapters/qwen-code.test.ts',
         'src/server/mcp-reference-route.test.ts',
         'src/server/stale-write-routes.test.ts',
       ]),
@@ -115,11 +115,10 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
 
   it('leaves out every guard that reads source as text and forbids `process.` — both of them, by class', () => {
     const guards = cases.filter((c) => c.readsSourceText && c.describe.startsWith('AGENTS.md — '));
-    // Pinned so the scan cannot quietly stop finding them; a third guard is covered by the loop.
-    expect(guards.map((c) => `${c.file} :: ${c.describe}`)).toEqual([
-      'src/mcp/adapters/opencode.test.ts :: AGENTS.md — no XDG_CONFIG_HOME, no environment, no file writes',
-      'src/mcp/adapters/pi.test.ts :: AGENTS.md — no environment, no file writes, no process',
-    ]);
+    // Pinned so the scan cannot quietly change what it finds. The two guards of this class lived in
+    // the OpenCode and pi adapter tests, removed with those backends (#1046); a new guard is covered
+    // by the loop.
+    expect(guards.map((c) => `${c.file} :: ${c.describe}`)).toEqual([]);
     for (const guard of guards) {
       expect(excluded(guard.full), `${guard.file} would run in the sandbox and fail the dry run: ${guard.full}`).toBe(true);
     }
@@ -129,15 +128,11 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
     // The exclusion must stay narrow. These three sit in the SAME describes and assert on runtime
     // behaviour, not on source text, so they can kill a mutant and must reach the mutation run.
     const siblings = cases.filter((c) => c.describe.startsWith('AGENTS.md — ') && !c.readsSourceText);
-    expect(siblings.map((c) => c.name)).toEqual([
-      'never names XDG_CONFIG_HOME (or any XDG variable) anywhere in the adapter, comments included',
-      'leaves process.env exactly as it found it across a full delivery, reaction and heartbeat',
-      "never names pi's home variable: relocating pi's config and credentials is not this module's business (#329)",
-      'leaves process.env exactly as it found it across a delivery, a reaction and a heartbeat',
-    ]);
+    // The siblings lived in the OpenCode and pi adapter tests, removed with those backends (#1046).
+    expect(siblings.map((c) => c.name)).toEqual([]);
     for (const sibling of siblings) {
       expect(excluded(sibling.full), `wrongly excluded from the mutation run: ${sibling.full}`).toBe(false);
     }
-    expect(cases.filter((c) => excluded(c.full)).length, 'the pattern must skip a class, never a suite').toBe(2);
+    expect(cases.filter((c) => excluded(c.full)).length, 'the pattern must skip a class, never a suite').toBe(0);
   });
 });

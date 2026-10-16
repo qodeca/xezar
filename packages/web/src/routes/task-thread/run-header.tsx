@@ -816,7 +816,7 @@ function AgentBadge({ run }: { run: ApiRun }) {
   // `runner` (`src/runs/store.ts`), while the run actually executes as
   // `input.runner ?? config.defaultRunner` (`src/workflows/run.ts`). Mirror that resolution —
   // hardcoding 'claude' would name the wrong agent on a repo whose `defaultRunner` is
-  // codex/opencode, and "which agent produced this?" is the one question #416 exists to answer.
+  // codex or qwen, and "which agent produced this?" is the one question #416 exists to answer.
   // 'claude' stays the last resort only while the active project's config is in flight.
   // `/api/health` describes the boot project and can name the wrong runner on scoped routes.
   const config = useConfig()

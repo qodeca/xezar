@@ -54,8 +54,6 @@ export const RUNNER_PRODUCT_NAME: Record<RunnerId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   qwen: 'Qwen Code',
-  opencode: 'OpenCode',
-  pi: 'pi',
 };
 
 function productName(runner: unknown): string | undefined {

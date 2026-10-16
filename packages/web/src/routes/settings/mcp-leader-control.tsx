@@ -1,10 +1,8 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 
 import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
 import { useHealth, useMcpLeader, useMcpLeaderAction, useMcpLeaderSubscription } from '@/api/queries'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useActiveProjectId } from '@/lib/project-router'
 import { RUNNER_LABEL } from '@/lib/runner-label'
 import { cn } from '@/lib/utils'
@@ -33,14 +31,12 @@ import { withCode } from './mcp-copy'
  */
 
 type AttachClient = Extract<McpLeaderActionInput, { action: 'attach' }>['client']
-/** Every client a person can ask about here: since #404 all four can be attached. */
+/** Every client a person can ask about here: all of them can be attached, and none takes an address. */
 type LeaderClient = AttachClient
 
 interface LeaderClientCopy {
   /** The product name, from `lib/runner-label.ts`. */
   readonly name: string
-  /** `direct` posts `{action, client}`; `opencode` adds its session's address. */
-  readonly attach: 'direct' | 'opencode'
   /** What attaching this client takes. `backticked` names render as code. */
   readonly note: string
   /** The attached-and-delivering sentence. Codex's is the decision record's § 5 copy, verbatim. */
@@ -50,25 +46,11 @@ interface LeaderClientCopy {
 const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
   codex: {
     name: RUNNER_LABEL.codex,
-    attach: 'direct',
     note: 'xezar finds the Codex session you already run on Codex’s shared local `app-server`, in the Codex home xezar uses, and never asks for a socket path or port. Let the session call a xezar tool once first, for example `leader_events`.',
     connected: 'Codex connected. Project events can start a turn in your current session.',
   },
-  opencode: {
-    name: RUNNER_LABEL.opencode,
-    attach: 'opencode',
-    note: 'The `opencode serve` session events should start in: the address it listens on and its session id.',
-    connected: 'OpenCode connected. Project events can start a turn in that session.',
-  },
-  pi: {
-    name: RUNNER_LABEL.pi,
-    attach: 'direct',
-    note: 'Works when this pi runs xezar’s leader extension. Without it, pi reads its events with `leader_events` and there is nothing to attach.',
-    connected: 'pi connected. Project events can start a turn in your current session.',
-  },
   'claude-code': {
     name: RUNNER_LABEL.claude,
-    attach: 'direct',
     // #404: the owner session itself is the target, woken over Claude Code Channels. The flag is the
     // person's per-launch opt-in; without it Claude Code keeps reading with `leader_events`.
     note: 'Works when this Claude Code was started with `--dangerously-load-development-channels server:xezar` and has called a xezar tool once. Without the flag, Claude Code reads its events with `leader_events`.',
@@ -76,7 +58,6 @@ const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
   },
   qwen: {
     name: RUNNER_LABEL.qwen,
-    attach: 'direct',
     // #1045: the owner session itself is the target; its xezar bridge sends into the session's own
     // inbox, which Qwen Code 0.25.2 and newer opens by default.
     note: 'Works when this Qwen Code (0.25.2 or newer) has called a xezar tool once. Qwen Code delivers each event into your session, after the current turn when it is busy. If Qwen Code’s cross-session messaging is switched off, it reads its events with `leader_events`.',
@@ -85,7 +66,7 @@ const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
 }
 
 /** The order the picker offers them in. */
-const CHOICES: readonly LeaderClient[] = ['codex', 'opencode', 'pi', 'claude-code', 'qwen']
+const CHOICES: readonly LeaderClient[] = ['codex', 'claude-code', 'qwen']
 
 /** Names the server's copy mentions without backticks, rendered as code all the same (NB-3). */
 const CODE_WORDS = ['leader_events', 'app-server'] as const
@@ -178,9 +159,6 @@ export function McpLeaderPanel({
   // `null` until the person picks: the selector's default then follows the status (the owner's
   // client when a stale attachment must be replaced), instead of a pick frozen at first render.
   const [picked, setPicked] = useState<LeaderClient | null>(null)
-  const [baseUrl, setBaseUrl] = useState('')
-  const [sessionId, setSessionId] = useState('')
-  const ids = useId()
 
   if (!status.available) {
     return (
@@ -212,14 +190,9 @@ export function McpLeaderPanel({
   // The server answers a refused attach with the refusal's own message and fix; when the status shows
   // that same blocker it is not said twice. Any other refusal is shown, whatever the status blocker is.
   const refusal = error !== null && !(blocker !== null && error === `${blocker.message} ${blocker.fix}`) ? error : null
-  const canSubmit = copy.attach === 'direct' || (copy.attach === 'opencode' && baseUrl.trim() !== '' && sessionId.trim() !== '')
 
   const attach = (): void => {
-    onAttach(
-      client === 'opencode'
-        ? { action: 'attach', client, baseUrl: baseUrl.trim(), sessionId: sessionId.trim() }
-        : { action: 'attach', client: client as Exclude<AttachClient, 'opencode'> },
-    )
+    onAttach({ action: 'attach', client })
   }
 
   return (
@@ -298,21 +271,8 @@ export function McpLeaderPanel({
             {withCode(copy.note, CODE_WORDS)}
           </p>
 
-          {copy.attach === 'opencode' ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${ids}-url`}>Server address</Label>
-                <Input id={`${ids}-url`} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://127.0.0.1:4096" autoComplete="off" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${ids}-session`}>Session id</Label>
-                <Input id={`${ids}-session`} value={sessionId} onChange={(event) => setSessionId(event.target.value)} placeholder="ses_…" autoComplete="off" />
-              </div>
-            </div>
-          ) : null}
-
           {/* The surface's primary action: a 44 px touch target on a phone that relaxes to the default 36 px at md (foundations.md § 12; NB-6 on #403). */}
-          <Button className="h-11 w-fit md:h-9" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
+          <Button className="h-11 w-fit md:h-9" data-slot="mcp-leader-attach-button" disabled={attaching} onClick={attach}>
             {attaching ? 'Attaching…' : 'Attach leader'}
           </Button>
         </div>
@@ -336,7 +296,7 @@ function summary(status: Extract<McpLeaderStatus, { available: true }>): string 
     return status.blocker ? `${words.name} is attached, but events are waiting.` : words.connected
   }
   if (status.owner === null) {
-    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Claude Code, Qwen Code, Codex, OpenCode or pi session can be attached below.'
+    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Claude Code, Qwen Code or Codex session can be attached below.'
   }
   if (status.owner.client === 'codex') {
     return 'Your Codex session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'

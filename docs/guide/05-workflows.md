@@ -43,7 +43,7 @@ Those skill names are examples: create or choose matching [skills](06-skills.md)
 
 ## To choose agent versus check steps
 
-An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex`, `opencode` or `pi`), `model`, `allowedTools` and `bashAllowlist`. Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
+An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex` or `qwen`), `model`, `allowedTools` and `bashAllowlist`. Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
 
 A **check step** has `command`. Exit code zero passes; a non-zero exit fails or enters its configured repair loop. Do not combine `command` with `prompt` or `skill` in the same step. Checks execute shell commands, so use commands suitable for the project and machine running xezar. They run in Bash: `bash -lc` on Linux and macOS, and Git for Windows' Git Bash (`bash -c`) on Windows.
 

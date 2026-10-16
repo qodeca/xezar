@@ -103,10 +103,10 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   });
 
   it('still carries a follow-up text alongside the override', async () => {
-    const res = await post({ text: 'keep going', runner: 'opencode' });
+    const res = await post({ text: 'keep going', runner: 'qwen' });
     expect(res.status).toBe(200);
     expect(captured?.opts.text).toBe('keep going');
-    expect(captured?.opts.runner).toBe('opencode');
+    expect(captured?.opts.runner).toBe('qwen');
   });
 
   it('rejects a model override while locked but still permits switching runners', async () => {

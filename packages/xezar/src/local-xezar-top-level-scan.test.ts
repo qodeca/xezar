@@ -1,21 +1,10 @@
-import * as fs from 'node:fs';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { __internals as piExtension } from '../scripts/pi-leader-extension.ts';
 import { SCAN_UNRESOLVED_ONLY_NAMES, STATE_NAME_ENTRIES } from './local-xezar-top-level-names.ts';
 import { stripComments } from './release/instruction-hygiene.testkit.ts';
-import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
-
-// Every export stays the real one; only `renameSync` becomes observable, so the C1 control below
-// can see the staging name the pi extension renames from.
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, renameSync: vi.fn(actual.renameSync) };
-});
 
 /**
  * #838 item C3 — nothing stops a new top-level file appearing under `.local/xezar/`.
@@ -32,8 +21,8 @@ vi.mock('node:fs', async (importOriginal) => {
  * shipped source constructs anything else, rather than asserting on directory contents at runtime.
  *
  * WHY A SOURCE SCAN. `.local/xezar/`'s top-level entries are built by many independent
- * modules (the run store, the MCP audit trail, automations, onboarding, …) and by the shipped pi
- * extension in `scripts/`. A runtime probe can only observe the writers a test happens to drive;
+ * modules (the run store, the MCP audit trail, automations, onboarding, …), and `scripts/` ships
+ * source too. A runtime probe can only observe the writers a test happens to drive;
  * the writer that matters is by definition the one nobody remembered to add a fixture for.
  * Reading the source instead means a new name fails this test the moment it is written. This
  * mirrors `state-path-scan.test.ts`'s DC-1 scan (same technique, a different surface).
@@ -44,7 +33,7 @@ vi.mock('node:fs', async (importOriginal) => {
  *      identifier ASSIGNED from one of those (`const data = projectDataDir(repoRoot)`).
  *   2. `join(<anything>, <data-dir marker>, NAME, …)`, where the marker is the literal
  *      `'.local/xezar'`, the pair `'.local', 'xezar'`, or a constant holding either
- *      (`PROJECT_DATA_DIR` in `state-layout.ts`, `XEZAR_DATA_DIR` in the pi extension). A join
+ *      (`PROJECT_DATA_DIR` in `state-layout.ts`). A join
  *      that ENDS at the marker is itself a data dir, so the identifier it is assigned to becomes
  *      a head for form 1 (`const candidate = join(dir, XEZAR_DATA_DIR)`).
  *   3. A string literal that starts with, or has a `/` before, `.local/xezar/NAME` — which covers
@@ -71,7 +60,7 @@ vi.mock('node:fs', async (importOriginal) => {
  */
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
-/** Shipped source roots. `scripts/` holds the pi extension, which writes `pi-leader.json` here. */
+/** Shipped source roots. `scripts/` ships with the package, so it is scanned like `src/`. */
 const SCAN_ROOTS = ['src', 'scripts'] as const;
 
 /** A parameter or member spelled `dataDir`, or `projectDataDir(…)`. */
@@ -408,11 +397,8 @@ describe('.local/xezar/ gets no new top-level entry unnoticed (#838 item C3)', (
 
   it('scans the shipped scripts as well as src (control)', () => {
     const files = scannedFiles();
-    expect(files).toContain('scripts/pi-leader-extension.ts');
+    expect(files).toContain('scripts/mock-qwen.mjs');
     expect(files).toContain('src/project-kit-paths.ts');
-    // The extension's own descriptor is found through XEZAR_DATA_DIR → findProjectDataDir → dataDir.
-    const names = scan().filter((f) => f.file === 'scripts/pi-leader-extension.ts').map((f) => f.resolvedName);
-    expect(names).toContain('pi-leader.json');
   });
 
   it('has no stale SHADOWED_CALLS, UNRESOLVED_CALLS or SUFFIX_EXCEPTIONS entry', () => {
@@ -462,8 +448,8 @@ describe('.local/xezar/ gets no new top-level entry unnoticed (#838 item C3)', (
       expect(probe('src/probe.ts', ["const p = join(repoRoot, '.local/xezar/kit');"])).toEqual([]);
     });
 
-    it('E3 — join(dataDir, NAME) in the shipped scripts/ extension', () => {
-      expect(probe('scripts/pi-leader-extension.ts', [
+    it('E3 — join(dataDir, NAME) in a shipped scripts/ file', () => {
+      expect(probe('scripts/probe.mjs', [
         "const XEZAR_DATA_DIR = join('.local', 'xezar');",
         'const candidate = join(dir, XEZAR_DATA_DIR);',
         "const a = join(candidate, 'new-thing.json');",
@@ -501,22 +487,5 @@ describe('.local/xezar/ gets no new top-level entry unnoticed (#838 item C3)', (
       "const real = join(dataDir, 'runs');",
     ].join('\n'));
     expect(findings.map((f) => f.resolvedName)).toEqual(['runs']);
-  });
-});
-
-describe('the pi extension stages pi-leader.json in the documented shape (#838 item C1)', () => {
-  let dir: string | undefined;
-  afterEach(() => { if (dir) rmSync(dir, TEST_DIR_RM_OPTIONS); dir = undefined; });
-
-  it('renames from `pi-leader.json.<pid>.<8 hex>.tmp`', () => {
-    dir = mkdtempSync(join(tmpdir(), 'xez-c1-'));
-    const rename = vi.mocked(fs.renameSync);
-    rename.mockClear();
-    piExtension.writeDescriptor(join(dir, 'pi-leader.json'), { socket: '/tmp/x.sock', sessionId: 's' });
-    expect(rename).toHaveBeenCalledTimes(1);
-    const [from, to] = rename.mock.calls[0]!;
-    expect(to).toBe(join(dir, 'pi-leader.json'));
-    expect(String(from).slice(dir.length + 1)).toMatch(/^pi-leader\.json\.\d+\.[0-9a-f]{8}\.tmp$/);
-    expect(readdirSync(dir)).toEqual(['pi-leader.json']);
   });
 });

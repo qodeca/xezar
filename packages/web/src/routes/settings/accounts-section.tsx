@@ -110,8 +110,6 @@ const PROVIDER_INSTALL: Record<ProviderId, string> = {
   claude: 'npm i -g @anthropic-ai/claude-code',
   codex: 'npm i -g @openai/codex',
   qwen: 'npm i -g @qwen-code/qwen-code',
-  opencode: 'https://opencode.ai',
-  pi: 'https://github.com/badlogic/pi-mono',
 }
 
 /** Same vocabulary the Providers card uses — one wording for "is this logged in?". */
@@ -147,9 +145,9 @@ export function AccountsSection() {
 }
 
 /** Every agent gets a group, including one that cannot carry a second login: the group is where
- *  its install state and config folder live, and hiding OpenCode would just move the question
- *  "is OpenCode set up?" somewhere else. */
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen', 'opencode', 'pi']
+ *  its install state and config folder live, and hiding an agent would just move the question
+ *  "is it set up?" somewhere else. */
+const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen']
 
 /** The id of an agent group's heading — the target of the problem summary's jump links. */
 const groupHeadingId = (provider: ProviderId) => `accounts-agent-${provider}`
@@ -161,7 +159,7 @@ export function accountDisplayName(account: Pick<AgentProfile, 'isDefault' | 'la
   return looksLikeAccountIdentity(account.label) ? 'Name hidden' : account.label
 }
 
-/** Plan limits apply to these agents only (#867 FR-1); OpenCode and pi rows stay as they were. */
+/** Plan limits apply to these agents only (#867 FR-1); other agents' rows stay as they were. */
 const QUOTA_PROVIDERS: readonly ProviderId[] = ['claude', 'codex']
 
 /** A quota row's name from the answer alone — the hosted pane has no account listing to ask. */

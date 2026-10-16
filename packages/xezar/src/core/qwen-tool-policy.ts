@@ -10,7 +10,7 @@
  * - Qwen Code auto-approves a shell command it classifies as read-only, so
  *   `run_shell_command(git status)` still let `ls` run (measured on 0.25.2). A `bashAllowlist`
  *   therefore cannot be expressed as a Qwen permission rule; the hook applies the shared
- *   `read-only-lock.ts` decision instead, the one Codex and pi already use.
+ *   `read-only-lock.ts` decision instead, the one Codex already uses.
  * - A read-only step must not edit a file whatever a project's own settings allow. The runner
  *   removes the writers with `--exclude-tools`, and the hook refuses them again, so a project
  *   permission rule cannot bring them back.

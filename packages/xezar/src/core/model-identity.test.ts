@@ -81,32 +81,12 @@ describe('resolveModelIdentity — bare ids per backend', () => {
     });
   });
 
-  it('opencode rejects a bare id — fail-loud, no silent default', () => {
-    expect(() => resolveModelIdentity('opencode', 'sonnet')).toThrow(ModelIdentityError);
-    try {
-      resolveModelIdentity('opencode', 'sonnet');
-    } catch (err) {
-      expect((err as Error).message).toContain('ambiguous');
-      expect((err as Error).message).toContain('provider/model');
-    }
-  });
-
-  it('pi rejects a bare id like opencode — same provider/model convention (#387)', () => {
-    expect(() => resolveModelIdentity('pi', 'sonnet')).toThrow(ModelIdentityError);
-    try {
-      resolveModelIdentity('pi', 'sonnet');
-    } catch (err) {
-      expect((err as Error).message).toContain('ambiguous');
-      expect((err as Error).message).toContain('pi');
-    }
-  });
-
-  it('an explicit provider/model resolves for a multi-provider backend (opencode), any provider', () => {
-    expect(resolveModelIdentity('opencode', 'anthropic/claude-opus-4-8')).toEqual({
+  it('an explicit provider/model resolves for a backend that takes any provider (qwen)', () => {
+    expect(resolveModelIdentity('qwen', 'anthropic/claude-opus-4-8')).toEqual({
       provider: 'anthropic',
       model: 'claude-opus-4-8',
     });
-    expect(resolveModelIdentity('opencode', 'openrouter/some-model')).toEqual({
+    expect(resolveModelIdentity('qwen', 'openrouter/some-model')).toEqual({
       provider: 'openrouter',
       model: 'some-model',
     });
@@ -171,11 +151,8 @@ describe('toBackendModel — wire form per backend', () => {
     );
   });
 
-  it('multi-provider backends (opencode, pi) get the full provider/model', () => {
-    expect(toBackendModel('opencode', { provider: 'anthropic', model: 'claude-opus-4-8' })).toBe(
-      'anthropic/claude-opus-4-8',
-    );
-    expect(toBackendModel('pi', { provider: 'anthropic', model: 'claude-opus-4-8' })).toBe(
+  it('a backend that takes any provider (qwen) gets the full provider/model for a foreign one', () => {
+    expect(toBackendModel('qwen', { provider: 'anthropic', model: 'claude-opus-4-8' })).toBe(
       'anthropic/claude-opus-4-8',
     );
   });
@@ -186,14 +163,6 @@ describe('round-trip: composer preset → resolve → render back to the wire st
   const cases: Array<{ backend: AgentBackend; presets: string[] }> = [
     { backend: 'claude', presets: ['opus', 'sonnet', 'haiku', 'claude-opus-4-8', 'claude-sonnet-5'] },
     { backend: 'codex', presets: ['gpt-5.1-codex', 'gpt-5.1-codex-mini', 'gpt-5-codex'] },
-    {
-      backend: 'opencode',
-      presets: ['anthropic/claude-opus-4-8', 'anthropic/claude-sonnet-5', 'openai/gpt-5.1'],
-    },
-    {
-      backend: 'pi',
-      presets: ['anthropic/claude-opus-4-8', 'anthropic/claude-sonnet-5', 'openai/gpt-5.1'],
-    },
   ];
 
   for (const { backend, presets } of cases) {
@@ -213,7 +182,7 @@ describe('normalizeModelForBackend', () => {
       backendModel: 'opus',
       identity: { provider: 'anthropic', model: 'opus' },
     });
-    expect(normalizeModelForBackend('opencode', 'anthropic/claude-sonnet-5')).toEqual({
+    expect(normalizeModelForBackend('qwen', 'anthropic/claude-sonnet-5')).toEqual({
       backendModel: 'anthropic/claude-sonnet-5',
       identity: { provider: 'anthropic', model: 'claude-sonnet-5' },
     });
@@ -233,7 +202,7 @@ describe('normalizeModelForBackend', () => {
   });
 
   it('propagates the fail-loud error for an unresolvable model', () => {
-    expect(() => normalizeModelForBackend('opencode', 'sonnet')).toThrow(ModelIdentityError);
+    expect(() => normalizeModelForBackend('codex', 'deepseek/deepseek-chat')).toThrow(ModelIdentityError);
   });
 
   it('the canonical identity a claude preset persists is provider-qualified', () => {

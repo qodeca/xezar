@@ -1,6 +1,6 @@
 # MCP project leader
 
-Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar without administrator rights; attaching to a running Codex session or a pi leader is not available there yet.
+Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar without administrator rights; attaching to a running Codex session is not available there yet.
 
 ## Before setup: check that the running build carries leader delivery
 
@@ -23,7 +23,7 @@ Use these four labels in setup results; none implies the next one:
 | --- | --- |
 | **Files prepared** | The chosen client's project snippet exists in a reviewable candidate. It may still need integration, trust, sign-in or an adapter. |
 | **Connected** | That client made a real xezar MCP tool call for this project. A generated snippet or process start is not evidence. |
-| **Attached** | `leader_events` action `attach` succeeded and `status` says this calling session owns it; for OpenCode, the person-attached target appears in status. |
+| **Attached** | `leader_events` action `attach` succeeded and `status` says this calling session owns it. |
 | **Delivery verified** | While attached, the session received a real pushed event or called `leader_events` action `read` and inspected its replay or gap answer. Old durable cursor numbers alone do not prove the current session. |
 
 Do not summarize these as “ready” while a later row is pending. Report the server's blocker and fix,
@@ -35,9 +35,9 @@ limits do not prevent independent tasks or preparation of a reviewable project-o
 
 Configure the chosen client from the project root and start its session there. The cockpit and the client session can start in either order: until the cockpit serves the project, a tool call answers that xezar is not running or that the folder is not a xezar project yet, and the first call after the cockpit is up reaches it with no `/mcp` reconnect – also when the cockpit is started with `--single-project` in a folder that had no xezar state when the session began. The client launches `npx -y @qodeca/xezar mcp` over stdio; the bridge forwards calls to the project's running cockpit. It is not another cockpit server. A cockpit started in another folder also serves a project added to it with **Add project**, once that project has been opened in the cockpit; after the cockpit restarts, open the project again (or start the cockpit in the project folder) before the client calls a tool.
 
-xezar writes `.local/xezar/mcp-connection.json` automatically, but **none of these clients discovers that file**. Each client still needs its own registration below. Use one owning client per project.
+xezar writes `.local/xezar/mcp-connection.json` automatically, but **none of these clients discovers that file**. Each client still needs its own registration below. Use one owning client per project. The pi and OpenCode leader clients were removed; if you used one, see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
 
-The first-contact order for every client is `health` → `discover_project` → attach → `leader_events` `status`. For Claude Code, Qwen Code, Codex and pi, attach is this MCP call with a new client-generated `operationId`; xezar derives the client from the calling session:
+The first-contact order for every client is `health` → `discover_project` → attach → `leader_events` `status`. For Claude Code, Qwen Code and Codex, attach is this MCP call with a new client-generated `operationId`; xezar derives the client from the calling session:
 
 ```json
 { "action": "attach", "operationId": "leader-attach-example-0001" }
@@ -170,120 +170,15 @@ That `--remote` form is conditional troubleshooting, not a universal launch requ
 
 **Tips and tricks.** Start the app-server before the TUI. Do not enter a socket path, port, home or thread ID into xezar; it discovers the calling session and refuses ambiguous or wrong-home targets. When push is blocked, journal reads remain available and do not require reconnecting the TUI to another server.
 
-### pi
-
-**Prerequisites.** pi is not an MCP client by itself. Install the tested adapter version once, and use a globally installed xezar package if you want the exact packaged extension path below:
-
-```sh
-pi install npm:pi-mcp-adapter@2.32.1
-```
-
-Verify `pi list` includes `npm:pi-mcp-adapter`. On startup in this project, pi should report `MCP: 1 servers connected` (or a higher number when other servers are configured).
-
-**Register `xezar mcp`.** Add this project-scoped configuration to `.pi/mcp.json`:
-
-```json
-{
-  "settings": { "directTools": true },
-  "mcpServers": {
-    "xezar": {
-      "command": "npx",
-      "args": ["-y", "@qodeca/xezar", "mcp"],
-      "lifecycle": "keep-alive"
-    }
-  }
-}
-```
-
-`directTools` exposes the tools to the model. `keep-alive` connects at startup and retains project ownership while idle; without it the adapter releases an idle bridge after ten minutes.
-
-The adapter reads six files in this order, with later entries winning: `~/.config/mcp/mcp.json`, `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json`, `~/.pi/agent/mcp.json`, project `.mcp.json`, then project `.pi/mcp.json`. Keep the xezar entry in the last file unless you intentionally want a broader scope.
-
-**Launch.** The MCP adapter exposes tools; pushed turns additionally require xezar's packaged leader extension. Load the file from a global xezar installation for one launch:
-
-```sh
-pi --extension "$(npm root -g)/@qodeca/xezar/scripts/pi-leader-extension.ts"
-```
-
-Or copy that same shipped file to `~/.pi/agent/extensions/` for every project, or to project `.pi/extensions/` for this project only:
-
-```sh
-cp "$(npm root -g)/@qodeca/xezar/scripts/pi-leader-extension.ts" ~/.pi/agent/extensions/
-# project-only alternative, run from the project root:
-cp "$(npm root -g)/@qodeca/xezar/scripts/pi-leader-extension.ts" .pi/extensions/
-```
-
-In a running pi, `/reload` rebuilds the extension runtime. Because reload also tears down its socket, attach again afterward with a new operation ID.
-
-**First contact.** Start pi in the project root. Call `health`, `discover_project`, `leader_events` `attach` with a fresh operation ID, then `status`. If pi reports no xezar tools, re-check `pi list`, the startup MCP notice and the six-file precedence before diagnosing attachment.
-
-**What a push looks like.** The extension starts a turn in the existing pi session containing the xezar event and the cursor to acknowledge. Without the extension, no MCP notification can start that turn; use `leader_events` `read` instead.
-
-**Restart and compaction recovery.** After xezar, pi, `/reload`, `/new`, `/resume`, `/fork` or `/clone` rebuilds the runtime, call a real tool, check `status`, attach with a new operation ID, and `read` with no cursor. Page, deduplicate, reconcile and acknowledge before relying on a new push.
-
-**Tips and tricks.** Any pi **you** start in this project with the `keep-alive` entry can hold the project's one leader connection, so exit an unintended owner before switching clients. A pi that xezar starts for a task is not one of them — see "To keep your leader while tasks run in the same folder". If `approveTools` covers a xezar tool, answer the approval in your pi window. The leader extension does not answer it, and a headless driver that does not answer can leave pi waiting indefinitely.
-
-### OpenCode
-
-**Prerequisites.** Run OpenCode and the cockpit on the same machine. Use one loopback `opencode serve` instance for the project; xezar attaches to an existing session and never launches one.
-
-**Register `xezar mcp`.** Add this local server entry to project `opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "xezar": {
-      "type": "local",
-      "command": ["npx", "-y", "@qodeca/xezar", "mcp"],
-      "enabled": true
-    }
-  }
-}
-```
-
-The file is project scope. The written form is deterministic; `opencode mcp add` is interactive.
-
-**Launch.** Choose an explicit loopback address so the value to enter in xezar is unambiguous, then start the server and pick the session **before** opening a TUI on it — `opencode attach <url>` with no `--session` starts a **new** session, so attaching blind can land the TUI on a session xezar was never told about:
-
-```sh
-opencode serve --hostname 127.0.0.1 --port 4096
-curl --fail --silent http://127.0.0.1:4096/session
-```
-
-OpenCode's [documented server API](https://opencode.ai/docs/server/) says `GET /session` lists that server's sessions. Choose the `id` of the session whose `directory` is the project root. If none exists yet, create one deterministically instead of attaching blind:
-
-```sh
-curl --fail --silent -X POST http://127.0.0.1:4096/session
-```
-
-Then attach the TUI to that exact session with the CLI's own `--session` flag ([CLI reference](https://opencode.ai/docs/cli/)):
-
-```sh
-opencode attach http://127.0.0.1:4096 --session <id>
-```
-
-The **Server address** is therefore `http://127.0.0.1:4096` and the **Session id** is the `id` you picked or created. In xezar, a person opens **Settings → MCP connection → Connection status**, chooses OpenCode when the client picker is shown, enters that address and session ID, then chooses **Attach leader**. xezar checks the session exists and refuses one whose directory is another project. If `OPENCODE_SERVER_PASSWORD` is set, the server requires HTTP basic auth on these requests, so a plain `curl` with no credentials fails.
-
-**First contact.** In the intended OpenCode session call `health`, then `discover_project`. OpenCode is the attachment exception: `leader_events` cannot supply its HTTP address, so the person performs the attach in Settings. Back in the OpenCode session, call `leader_events` action `status` to inspect attachment and delivery, then call `read` once to establish the replay path.
-
-**What a push looks like.** xezar submits the event through OpenCode's `prompt_async` route, which starts a turn in the named existing session. The turn identifies xezar, carries only the xezar tools, and names the acknowledgement cursor. A wrong-project, missing or stale session is refused rather than replaced.
-
-**Restart and compaction recovery.** After xezar or `opencode serve` restarts, confirm the address and session still exist, reattach them in Settings, then call `status` and `read` with no cursor in the OpenCode session. After compaction, read, page, deduplicate, reconcile and acknowledge in the same way. Verify one new started turn; the prior person-driven attach is not proof after restart.
-
-**Tips and tricks.** Keep the chosen `serve` port stable so the settings value remains meaningful. If the attach is refused because the session is not found, or status reports it later, open the intended project session and select its new ID; for `wrong-project`, which names the directory the session does belong to, select the session whose `directory` exactly matches the project. An address that does not answer is refused at attach as well, and nothing is attached: restart the server at the recorded loopback address and attach again. Once a leader is attached, a server that stops answering keeps it attached — xezar retains the events and retries. Xezar applies an xezar-tools-only permission map to the attached session, including later messages you type in that session; use another OpenCode session for unrelated work that needs other tools.
-
-![MCP connection settings for person-driven OpenCode attachment](../screenshots/0.18.0/settings-mcp-connection-dark-1280.png)
-
 ## To stop an attachment
 
-Claude Code, Qwen Code, Codex and pi can detach their own session through MCP:
+Claude Code, Qwen Code and Codex can detach their own session through MCP:
 
 ```json
 { "action": "stop", "operationId": "leader-stop-example-0001" }
 ```
 
-Use a new operation ID for each new attach, stop or acknowledgement. `status` takes no operation ID. A person can replace or stop a person-attached OpenCode target from **Settings → MCP connection**.
+Use a new operation ID for each new attach, stop or acknowledgement. `status` takes no operation ID.
 
 ## To choose among the eleven tools
 
@@ -339,7 +234,7 @@ The cockpit's address comes from the MCP only: `discover_project` carries `cockp
 
 ## To recover with `leader_events`
 
-Attached leaders receive pushed events: channel messages for Claude Code, messages from the xezar process for Qwen Code, started turns for Codex, OpenCode and pi. If no leader is attached, or delivery is blocked, pull the journal:
+Attached leaders receive pushed events: channel messages for Claude Code, messages from the xezar process for Qwen Code, started turns for Codex. If no leader is attached, or delivery is blocked, pull the journal:
 
 ```json
 { "action": "read" }
@@ -409,8 +304,8 @@ xezar-skills' own onboarding kit goes one step further: its guard also requires 
 as the leader loads the guide rather than every session that merely sits outside a task worktree – a
 pattern worth copying for a hook of your own.
 
-**When the client has no hook.** Codex and pi do not run a session-start command. Start the guide
-with a short first section addressed to those sessions: read this guide and the live note
+**When the client has no hook.** Codex does not run a session-start command. Start the guide
+with a short first section addressed to that session: read this guide and the live note
 immediately after every start and every compaction, before dispatching anything. Keep that section
 first and imperative — it is the whole fallback.
 
@@ -425,9 +320,9 @@ starting new work.
 
 A task xezar starts is not the leader, and since 0.16.0 no task can take the leader's place.
 
-Every task xezar starts — Claude Code, Codex, pi or OpenCode — is now started with your `xezar`
+Every task xezar starts – Claude Code, Codex or Qwen Code – is now started with your `xezar`
 MCP entry switched off for that one client. Nothing in your own files changes: xezar never edits
-`.mcp.json`, `.pi/mcp.json`, `opencode.json` or any config in your home folder. It passes the
+`.mcp.json`, `.qwen/settings.json` or any config in your home folder. It passes the
 client a one-run instruction to leave that single server alone, and takes it away again when the
 task ends.
 
@@ -445,9 +340,9 @@ task's own model still sees those tools. Two details differ per client:
 - **Claude Code.** A task now sees only the MCP servers your project's own `.mcp.json` declares.
   Servers you added for yourself in `~/.claude.json` no longer load inside a task — the same rule
   Codex tasks have followed since 0.15.0. Declare a server in the project file to use it in tasks.
-- **pi and OpenCode.** A server named `xezar` is always switched off in a task, even if the entry
-  lives in a file xezar does not read, so it may appear as "disabled" in that client's server list
-  during a task. Give an unrelated server a different name if you want it in tasks.
+- **Qwen Code.** A task gets the servers your project's `.mcp.json` and `.qwen/settings.json`
+  declare. Your personal servers, extensions and xezar's own bridge stay off; see
+  [Agent backends](04-agent-backends.md#to-set-up-qwen-code).
 
 If a config file cannot be read at all — a syntax error, a permission problem — the task still
 starts. It says so once in the task's transcript rather than failing, and for Claude Code it starts
@@ -459,8 +354,8 @@ with no project MCP servers until the file is fixed.
 - One client owns the project at a time. There is no **Force takeover** or **Disconnect other client** control. End the owning client normally before connecting another.
 - Attachment targets an existing client session. It does not start a leader agent process or establish GitHub authorization.
 - A blocked or unconfirmed push is not proof that the model acted. Read the status and journal, then verify resulting task state.
-- A xezar-launched task is never the leader, on any backend: Codex's per-thread isolation disables xezar's bridge, home MCP servers, plugins and apps, and Claude Code, pi and OpenCode tasks have their own seam that switches the `xezar` entry off for that one client. Configure the leader in your own client session. See "To keep your leader while tasks run in the same folder".
-- Setup commands here match the shipped settings guidance. Vendor-client behavior has not been newly live-tested for this guide; the pi adapter version is a recorded compatibility point, and Codex's explicit `--remote unix://` path remains conditional because the recorded evidence is mixed.
+- A xezar-launched task is never the leader, on any backend: Codex's per-thread isolation disables xezar's bridge, home MCP servers, plugins and apps, and Claude Code and Qwen Code tasks have their own seam that switches the `xezar` entry off for that one client. Configure the leader in your own client session. See "To keep your leader while tasks run in the same folder".
+- Setup commands here match the shipped settings guidance. Vendor-client behavior has not been newly live-tested for this guide; Codex's explicit `--remote unix://` path remains conditional because the recorded evidence is mixed.
 
 ## Related settings / env / config
 

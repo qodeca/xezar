@@ -110,7 +110,7 @@ const PROVIDERS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'disconnected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 

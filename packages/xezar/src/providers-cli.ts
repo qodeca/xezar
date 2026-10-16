@@ -46,7 +46,7 @@ export interface ProvidersCommandDeps {
   readonly openTerminal?: (cwd: string, command: string) => Promise<boolean>;
 }
 
-export const PROVIDERS_USAGE = 'usage: xezar providers connect <claude|codex|opencode|pi> [--account <id>]';
+export const PROVIDERS_USAGE = 'usage: xezar providers connect <claude|codex|qwen> [--account <id>]';
 
 const isProvider = (value: string | undefined): value is ProviderId =>
   value !== undefined && (PROVIDER_IDS as readonly string[]).includes(value);

@@ -32,8 +32,7 @@ const AGENT: BackendCheck[] = [
 const NO_AGENT: BackendCheck[] = [
   { name: 'claude', available: false },
   { name: 'codex', available: false },
-  { name: 'opencode', available: false },
-  { name: 'pi', available: false },
+  { name: 'qwen', available: false },
   // Both present and both irrelevant: neither can run an agent step.
   { name: 'gh', available: true },
   { name: 'git', available: true },

@@ -62,8 +62,7 @@ const PROVIDERS = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'connected', enabled: true },
-    { provider: 'pi', status: 'connected', enabled: true },
+    { provider: 'qwen', status: 'connected', enabled: true },
   ],
 }
 
@@ -254,7 +253,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     )
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     // The built-in fallback, rendered rather than thrown.
     expect(rowFor('claude', '')?.getAttribute('aria-checked')).toBe('true')
   })
@@ -263,9 +262,9 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve()
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     expect(rows().map((r) => r.getAttribute('data-value'))).toEqual([
-      'claude', 'claude', 'codex', 'qwen', 'opencode', 'pi',
+      'claude', 'claude', 'codex', 'qwen',
     ])
     expect(rows()[1]?.textContent).toContain('~/.claude-klaudiusz')
   })
@@ -274,7 +273,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve()
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     expect(rowFor('claude', '')?.getAttribute('aria-checked')).toBe('true')
   })
 
@@ -282,7 +281,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve()
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     fireEvent.click(rowFor('codex')!)
 
     await waitFor(() => expect(configPuts()).toHaveLength(1))
@@ -296,7 +295,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve()
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     fireEvent.click(rowFor('claude', 'klaudiusz')!)
 
     await waitFor(() => expect(selections()).toHaveLength(1))
@@ -323,7 +322,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve({ accounts: { ...ACCOUNTS, defaults: { claude: 'klaudiusz' } } })
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     fireEvent.click(rowFor('claude', '')!)
 
     await waitFor(() => expect(selections()).toHaveLength(1))
@@ -355,7 +354,7 @@ describe('Agent accounts → Defaults for new projects', () => {
     serve()
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(6))
+    await waitFor(() => expect(rows()).toHaveLength(4))
     const pane = defaults()
     expect(pane?.textContent).toContain('has not chosen for itself')
     expect(pane?.textContent).toContain('keeps its own')

@@ -377,11 +377,11 @@ describe('stripAskMarker', () => {
 
 // The marker is detected on the ASSEMBLED turn text, which is how it stays
 // uniform across all three backends: claude emits assistant text as whole
-// blocks, while codex and opencode stream it as deltas that can split the
+// blocks, while codex streams it as deltas that can split the
 // marker across many `text` events. run.ts accumulates `turnText += event.text`
 // and parses the concatenation — so a marker chopped into arbitrary chunks
-// (the codex/opencode case) still resolves. #473 cross-backend guarantee.
-describe('parseAskMarker — backend-agnostic assembly (codex/opencode delta streaming)', () => {
+// (the codex case) still resolves. #473 cross-backend guarantee.
+describe('parseAskMarker — backend-agnostic assembly (codex delta streaming)', () => {
   it('detects a marker even when the agent text arrived in many delta chunks', () => {
     const full = `Let me confirm the approach.\n\nXEZ:ASK ${askJson}`;
     // Emulate a delta backend: split into 7-char chunks and reassemble, as

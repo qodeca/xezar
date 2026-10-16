@@ -3,7 +3,7 @@ import { KNOWN_PRESETS_BY_RUNNER, modelConflictsWithRunner } from './model-prese
 
 describe('modelConflictsWithRunner', () => {
   it('never rejects auto or a runner\'s own preset', () => {
-    expect(modelConflictsWithRunner('', 'opencode')).toBe(false);
+    expect(modelConflictsWithRunner('', 'qwen')).toBe(false);
     expect(modelConflictsWithRunner('opus', 'claude')).toBe(false);
     expect(modelConflictsWithRunner('gpt-5.1-codex', 'codex')).toBe(false);
   });
@@ -29,16 +29,16 @@ describe('modelConflictsWithRunner', () => {
     expect(modelConflictsWithRunner('my-org/custom-tune', 'codex')).toBe(false);
   });
 
-  it('never rejects a provider prefix for OpenCode, which serves every provider', () => {
-    expect(modelConflictsWithRunner('anthropic/claude-sonnet-5', 'opencode')).toBe(false);
-    expect(modelConflictsWithRunner('openai/gpt-5.4', 'opencode')).toBe(false);
-    // …while another runner's bare preset is still recognizably not an OpenCode id.
-    expect(modelConflictsWithRunner('opus', 'opencode')).toBe(true);
+  it('never rejects a provider prefix for Qwen Code, which takes any provider', () => {
+    expect(modelConflictsWithRunner('anthropic/claude-sonnet-5', 'qwen')).toBe(false);
+    expect(modelConflictsWithRunner('openai/gpt-5.4', 'qwen')).toBe(false);
+    // …while another runner's bare preset is still recognizably not a Qwen Code id.
+    expect(modelConflictsWithRunner('opus', 'qwen')).toBe(true);
   });
 
-  it('accepts every provider-qualified OpenCode id, including ones no release knows (#794)', () => {
+  it('accepts every provider-qualified Qwen Code id, including ones no release knows (#794)', () => {
     for (const model of ['openai/gpt-5.5-fast', 'anthropic/claude-sonnet-5', 'zed/some-future-model']) {
-      expect(modelConflictsWithRunner(model, 'opencode')).toBe(false);
+      expect(modelConflictsWithRunner(model, 'qwen')).toBe(false);
     }
   });
 
@@ -47,7 +47,7 @@ describe('modelConflictsWithRunner', () => {
     // list membership can no longer tell whose id this is. The shape can — including for releases
     // that do not exist yet, which is the drift the dated list used to suffer.
     expect(modelConflictsWithRunner('claude-opus-9', 'codex')).toBe(true);
-    expect(modelConflictsWithRunner('claude-opus-9', 'opencode')).toBe(true);
+    expect(modelConflictsWithRunner('claude-opus-9', 'qwen')).toBe(true);
     expect(modelConflictsWithRunner('gpt-6', 'claude')).toBe(true);
     // …while a runner's OWN vendor shape, and a gateway id naming its provider, stay usable.
     expect(modelConflictsWithRunner('claude-opus-9', 'claude')).toBe(false);
@@ -59,7 +59,7 @@ describe('modelConflictsWithRunner', () => {
     expect(KNOWN_PRESETS_BY_RUNNER.claude).toEqual(['opus', 'sonnet', 'haiku']);
   });
 
-  it('keeps no hard-coded OpenCode catalog to drift', () => {
-    expect(KNOWN_PRESETS_BY_RUNNER.opencode).toEqual([]);
+  it('keeps no hard-coded Qwen Code catalog to drift', () => {
+    expect(KNOWN_PRESETS_BY_RUNNER.qwen).toEqual([]);
   });
 });

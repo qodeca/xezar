@@ -5,7 +5,7 @@ import { toolDisplay, type ToolDisplay } from './tool-display.ts';
 describe('toolDisplay', () => {
   describe('known tools across backends', () => {
     it.each<{ name: string; input?: unknown; expected: ToolDisplay }>([
-      // ---- execute: claude Bash / opencode bash / codex commandExecution ----
+      // ---- execute: claude Bash / lower-case bash / codex commandExecution ----
       {
         name: 'Bash',
         input: { command: 'npm test', description: 'Run the unit tests' },
@@ -27,7 +27,7 @@ describe('toolDisplay', () => {
         expected: { toolKind: 'execute', title: 'Ran', subtitle: undefined },
       },
 
-      // ---- edit family: claude Edit/Write/NotebookEdit, opencode edit/write, codex fileChange ----
+      // ---- edit family: claude Edit/Write/NotebookEdit, lower-case edit/write, codex fileChange ----
       {
         name: 'Edit',
         input: { file_path: 'src/core/usage.ts', old_string: 'a', new_string: 'b' },
@@ -69,7 +69,7 @@ describe('toolDisplay', () => {
         expected: { toolKind: 'edit', title: 'Edit' },
       },
 
-      // ---- read / search: claude Read/Glob/Grep, opencode read/glob/grep ----
+      // ---- read / search: claude Read/Glob/Grep, lower-case read/glob/grep ----
       {
         name: 'Read',
         input: { file_path: 'package.json' },
@@ -101,7 +101,7 @@ describe('toolDisplay', () => {
         expected: { toolKind: 'search', title: 'Search todo', subtitle: undefined },
       },
 
-      // ---- fetch: claude WebFetch/WebSearch, opencode webfetch, codex webSearch ----
+      // ---- fetch: claude WebFetch/WebSearch, lower-case webfetch, codex webSearch ----
       {
         name: 'WebFetch',
         input: { url: 'https://example.com/docs', prompt: 'summarize' },
@@ -123,7 +123,7 @@ describe('toolDisplay', () => {
         expected: { toolKind: 'fetch', title: 'Web search hono sse' },
       },
 
-      // ---- task (subagent spawn): claude Task, opencode task ----
+      // ---- task (subagent spawn): claude Task, lower-case task ----
       {
         name: 'Task',
         input: { description: 'Explore the repo', prompt: 'long prompt…', subagent_type: 'Explore' },
@@ -171,7 +171,7 @@ describe('toolDisplay', () => {
         expected: { toolKind: 'task', title: 'Skill', subtitle: undefined },
       },
 
-      // ---- plan: claude TodoWrite, opencode todowrite, codex todoList/plan ----
+      // ---- plan: claude TodoWrite, lower-case todowrite, codex todoList/plan ----
       {
         name: 'TodoWrite',
         input: { todos: [{ content: 'x', status: 'pending' }] },
@@ -185,7 +185,7 @@ describe('toolDisplay', () => {
       { name: 'TaskUpdate', input: { taskId: '1' }, expected: { toolKind: 'plan', title: 'Update plan' } },
       { name: 'TaskList', expected: { toolKind: 'plan', title: 'Update plan' } },
 
-      // ---- MCP: codex mcpToolCall item + claude/opencode mcp__server__tool names ----
+      // ---- MCP: codex mcpToolCall item + claude mcp__server__tool names ----
       {
         name: 'mcpToolCall',
         input: { server: 'linear', tool: 'create_issue' },

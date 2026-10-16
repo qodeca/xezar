@@ -5,7 +5,7 @@
  *
  * The agent emits this as a `XEZ:ASK <compact-json>` control marker (a sibling
  * of `XEZ:DONE` / `XEZ:MONITORING`), parsed on the assembled turn text in
- * `src/workflows/run.ts` — uniform across claude, codex and opencode with no
+ * `src/workflows/run.ts` — uniform across claude, codex and qwen with no
  * per-backend mapper work. The shape is modeled 1:1 on Claude Code's built-in
  * `AskUserQuestion` (1–4 questions, 2–4 options each, `header` ≤12 chars,
  * unique question texts and unique option labels) so a native bridge can map

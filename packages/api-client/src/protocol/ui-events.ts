@@ -20,7 +20,7 @@
  */
 
 /** The backend that produced a session. */
-export type UiBackend = 'claude' | 'codex' | 'qwen' | 'opencode' | 'pi'
+export type UiBackend = 'claude' | 'codex' | 'qwen'
 
 /** Tool lifecycle status (ACP-aligned; `running` ≡ ACP `in_progress`). */
 export type ToolStatus = 'pending' | 'running' | 'completed' | 'failed' | 'declined'
@@ -42,8 +42,8 @@ export type ToolKind =
 /** Why a turn (or the session) stopped. */
 export type StopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'cancelled' | 'timeout' | 'error'
 
-/** Status of one plan/todo entry. `cancelled` ("no longer needed") is
- *  opencode-only today — it renders struck through and drops out of the
+/** Status of one plan/todo entry. `cancelled` ("no longer needed")
+ *  renders struck through and drops out of the
  *  odometer's denominator rather than reading as unfinished work. */
 export type PlanStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
 

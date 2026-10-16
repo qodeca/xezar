@@ -66,7 +66,7 @@ const PROVIDERS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'disconnected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -468,7 +468,7 @@ describe('sidebar wiring', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'not-installed', enabled: true },
-          { provider: 'opencode', status: 'disconnected', enabled: true },
+          { provider: 'qwen', status: 'disconnected', enabled: true },
         ],
       },
     })
@@ -487,7 +487,7 @@ describe('sidebar wiring', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'disconnected', enabled: true, authFailureId: 'open-1' },
+          { provider: 'qwen', status: 'disconnected', enabled: true, authFailureId: 'qwen-1' },
         ],
       },
     })
@@ -495,7 +495,7 @@ describe('sidebar wiring', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain(
-      'Provider authentication failed during a task: OpenCode.',
+      'Provider authentication failed during a task: Qwen Code.',
     )
     expect(document.querySelector('[data-slot="banner-slot"]')?.contains(alert)).toBe(true)
   })

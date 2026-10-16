@@ -164,7 +164,7 @@ describe('xezar providers connect (#819 item 8)', () => {
     for (const args of [[], ['disconnect', 'claude'], ['connect'], ['connect', 'gemini'], ['connect', 'claude', 'extra']]) {
       const h = harness('disconnected');
       expect(await runProvidersCommand(args, undefined, h.deps), JSON.stringify(args)).toBe(1);
-      expect(h.err.at(-1), JSON.stringify(args)).toBe('usage: xezar providers connect <claude|codex|opencode|pi> [--account <id>]');
+      expect(h.err.at(-1), JSON.stringify(args)).toBe('usage: xezar providers connect <claude|codex|qwen> [--account <id>]');
       expect(h.reached).toEqual([]);
     }
   });

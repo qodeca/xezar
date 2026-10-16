@@ -138,7 +138,7 @@ export function normalizeJs(
     // The version backend detection reports for a mocked agent: \`mock (<the dry-run flag>=1)\`.
     if (/mock \\(XEZ_\\w+=1\\)/.test(text)) {
       const provider = node.parentElement?.closest('[data-provider]')?.getAttribute('data-provider') ?? ''
-      text = text.replace(/mock \\(XEZ_\\w+=1\\)/, provider === 'pi' ? '0.72.1' : '2.1.148 (Claude Code)')
+      text = text.replace(/mock \\(XEZ_\\w+=1\\)/, provider === 'qwen' ? '0.25.2' : '2.1.148 (Claude Code)')
     }
     if (text !== before) node.nodeValue = text
   }

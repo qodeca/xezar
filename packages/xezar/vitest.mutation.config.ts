@@ -27,10 +27,9 @@ export default defineConfig({
     // they still run in `npm test` against the real source.
     //
     // The pattern matches the class, not one spelling, because pinning one exact name is how this
-    // broke: the first guard (opencode.ts) was excluded by its full name, #358 added a second one
-    // (pi.ts) whose describe reads "no environment, no file writes, no process" instead of "no
-    // XDG_CONFIG_HOME, …", the exclusion missed it and the gate — then a release step, nightly since #377 — died at the dry run (#375).
-    // Both share the stable shape below, so a third such guard is covered on the day it is written.
+    // broke: the first guard was excluded by its full name, #358 added a second one whose
+    // describe used other words, the exclusion missed it and the gate — then a release step, nightly since #377 — died at the dry run (#375).
+    // Both shared the stable shape below, so a third such guard is covered on the day it is written.
     // `src/mutation-name-filter.test.ts` fails if a guard of this class escapes the pattern.
     testNamePattern:
       /^(?!.*AGENTS\.md — .*reads and writes no environment variable)/,

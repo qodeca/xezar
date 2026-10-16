@@ -20,20 +20,21 @@ describe('readAgentModelDefaults', () => {
     mkdirSync(join(repo, '.codex'), { recursive: true });
     mkdirSync(join(home, '.claude'), { recursive: true });
     mkdirSync(join(home, '.codex'), { recursive: true });
-    mkdirSync(join(home, '.config', 'opencode'), { recursive: true });
+    mkdirSync(join(repo, '.qwen'), { recursive: true });
+    mkdirSync(join(home, '.qwen'), { recursive: true });
 
     writeFileSync(join(home, '.claude', 'settings.json'), '{"model":"user-claude"}\n');
     writeFileSync(join(repo, '.claude', 'settings.json'), '{"model":"project-claude"}\n');
     writeFileSync(join(repo, '.claude', 'settings.local.json'), '{"model":"local-claude"}\n');
     writeFileSync(join(home, '.codex', 'config.toml'), 'model = "user-codex"\n');
     writeFileSync(join(repo, '.codex', 'config.toml'), 'model = "project-codex"\n');
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), '{"model":"openai/user"}\n');
-    writeFileSync(join(repo, 'opencode.json'), '{\n  // project wins\n  "model": "openai/project",\n}\n');
+    writeFileSync(join(home, '.qwen', 'settings.json'), '{"model":{"name":"user-qwen"}}\n');
+    writeFileSync(join(repo, '.qwen', 'settings.json'), '{\n  // project wins\n  "model": { "name": "project-qwen" },\n}\n');
 
     await expect(readAgentModelDefaults(repo, { HOME: home })).resolves.toEqual({
       claude: 'local-claude',
       codex: 'project-codex',
-      opencode: 'openai/project',
+      qwen: 'project-qwen',
     });
   });
 

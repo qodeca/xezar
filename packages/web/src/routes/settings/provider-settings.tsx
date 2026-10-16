@@ -21,16 +21,12 @@ const PROVIDERS = [
   { id: 'claude', label: RUNNER_LABEL.claude, login: 'claude auth login' },
   { id: 'codex', label: RUNNER_LABEL.codex, login: 'codex login' },
   { id: 'qwen', label: RUNNER_LABEL.qwen, login: 'qwen' },
-  { id: 'opencode', label: RUNNER_LABEL.opencode, login: 'opencode auth login' },
-  { id: 'pi', label: RUNNER_LABEL.pi, login: 'pi /login' },
 ] as const satisfies readonly { id: ProviderId; label: string; login: string }[]
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
   claude: value,
   codex: value,
   qwen: value,
-  opencode: value,
-  pi: value,
 })
 
 const STATUS_PRESENTATION = {
@@ -233,7 +229,7 @@ export function ProviderSettings() {
                     <h3 className="text-[13px] font-semibold text-foreground">{provider.label}</h3>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <StatusDot tone={presentation.tone} pulse={status.isPending} />
-                      <span>{provider.id === 'opencode' && state === 'connected' ? 'Configured' : presentation.label}</span>
+                      <span>{presentation.label}</span>
                       {current?.enabled === false ? <span>Disabled</span> : null}
                     </div>
                     {state === 'not-installed' ? (

@@ -49,24 +49,24 @@ describe('guide 04 — agent backends', () => {
     browser.goto(`${baseUrl}/p/${bootProject}/settings/agents`)
     await browser.waitForRole('heading', 'Providers')
 
-    for (const backend of ['Claude Code', 'Codex', 'OpenCode', 'pi']) {
+    for (const backend of ['Claude Code', 'Codex', 'Qwen Code']) {
       expect(browser.hasRole('heading', backend)).toBe(true)
       expect(browser.hasRole('switch', `Use ${backend}`)).toBe(true)
     }
 
     // "Default runner": one radio per backend id, the health-reported default checked.
-    for (const id of ['claude', 'codex', 'opencode', 'pi']) {
+    for (const id of ['claude', 'codex', 'qwen']) {
       expect(browser.hasRole('radio', id)).toBe(true)
     }
     expect(browser.textOfRole('heading', 'Default runner')).toBe('Default runner')
-    // The four per-backend "Default model for X" comboboxes exist for every runner id.
-    for (const id of ['claude', 'codex', 'opencode', 'pi']) {
+    // The per-backend "Default model for X" comboboxes exist for every runner id.
+    for (const id of ['claude', 'codex', 'qwen']) {
       expect(browser.hasRole('combobox', `Default model for ${id}`)).toBe(true)
     }
     expect(health.defaultRunner).toBe('claude')
   })
 
-  it('the new-task composer offers the same four backends, and switching one changes its own model list', async () => {
+  it('the new-task composer offers the same backends, and switching one changes its own model list', async () => {
     browser.goto(`${baseUrl}/p/${bootProject}/new`)
     await browser.waitForRole('button', 'Runner')
 
@@ -75,7 +75,7 @@ describe('guide 04 — agent backends', () => {
 
     browser.clickRole('button', 'Runner')
     await browser.waitForRole('menuitemradio', 'claude')
-    for (const label of ['claude', 'codex', 'opencode', 'pi']) {
+    for (const label of ['claude', 'codex', 'qwen']) {
       expect(browser.hasRole('menuitemradio', label)).toBe(true)
     }
     expect(browser.textOfRole('menuitemradio', 'claude')).toContain('Claude Code CLI')
@@ -115,7 +115,7 @@ describe('guide 04 — agent backends', () => {
 
   it('every backend the composer offers is also a row the health check actually probed', () => {
     const runnerIds = new Set(health.checks.map((c) => c.name))
-    for (const id of ['claude', 'codex', 'opencode', 'pi']) {
+    for (const id of ['claude', 'codex', 'qwen']) {
       expect(runnerIds.has(id)).toBe(true)
     }
   })

@@ -83,8 +83,6 @@ import type { ContentBlock, RunnerId } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
 import { discoverClaudeModels } from '../core/claude-model-catalog.ts';
 import { discoverCodexModels } from '../core/codex-model-catalog.ts';
-import { discoverOpencodeModels } from '../core/opencode-model-catalog.ts';
-import { discoverPiModels } from '../core/pi-model-catalog.ts';
 import { discoverQwenModels } from '../core/qwen-model-catalog.ts';
 import {
   PROVIDER_IDS,
@@ -666,7 +664,7 @@ export interface UpdateProjectResponse {
  *
  *  Re-exported from the contract, never re-declared. This used to be a hand-written
  *  interface here — the shape AGENTS.md § The HTTP API forbids — and it had already drifted
- *  (its `agentDefaults.models` never grew the `pi` key the schema has). One zod definition,
+ *  (its `agentDefaults.models` never grew a key the schema had). One zod definition,
  *  type inferred; `contract-parity.workspace.test.ts` proves the route agrees with it. */
 export type { WorkspaceConfigResponse };
 
@@ -1129,10 +1127,6 @@ export function createApp(deps: ServerDeps) {
     adapters: {
       claude: { discover: () => discoverClaudeModels({ cwd: bootRoot }) },
       codex: { discover: () => discoverCodexModels({ cwd: bootRoot }) },
-      opencode: { discover: () => discoverOpencodeModels({ cwd: bootRoot }) },
-      // No `cwd`: pi's catalog is its per-user config, not a project-local answer, so this one
-      // adapter is correct for every project the workspace holds (#152).
-      pi: { discover: () => discoverPiModels() },
       qwen: { discover: () => discoverQwenModels() },
     },
   });
@@ -1827,8 +1821,8 @@ export function createApp(deps: ServerDeps) {
     // what this validates. A runner absent from it has no discovery path and this 400s.
     //
     // The message is DERIVED from that list, never spelled out. It used to name the three runners
-    // literally, so adding a fourth here would have left it refusing `pi` by a name it no longer
-    // rejected — and a refusal that names the wrong set is worse than a generic one (#152).
+    // literally, so adding a runner here would have left it refusing that runner by a name it no
+    // longer rejected — and a refusal that names the wrong set is worse than a generic one (#152).
     .get('/models', queryZodValidator(z.object({ runner: z.union([z.string(), z.array(z.string()).transform((v) => v[0] as string)]).pipe(modelDiscoveryRunnerSchema) }), { message: `runner must be one of: ${MODEL_DISCOVERY_RUNNERS.join(', ')}` }), async (c) => {
       const query = { data: c.req.valid('query') };
       return c.json(await modelCatalog.get(query.data.runner));
@@ -1981,7 +1975,7 @@ export function createApp(deps: ServerDeps) {
       },
     )
 
-    .post('/providers/connect', jsonZodValidator(providerConnectSchema, { message: 'provider must be claude, codex, opencode, or pi' }), ui.route('provider.connect'), async (c) => {
+    .post('/providers/connect', jsonZodValidator(providerConnectSchema, { message: 'provider must be claude, codex, or qwen' }), ui.route('provider.connect'), async (c) => {
       const body = { data: c.req.valid('json') };
 
       const provider = body.data.provider as ProviderId;
@@ -2073,9 +2067,9 @@ export function createApp(deps: ServerDeps) {
    * ids opaque and stable so the open route below never takes a path from the client.
    *
    * WHICH slot comes from `accountHomePatch`, shared with `defaultAgentProfile`'s read of the same
-   * table. This was a run of conditional spreads that named three providers and silently did
-   * nothing for the fourth, so a pi account would have resolved its files in the default pi home
-   * (#329). It never surfaced only because `CONFIG_FILES` carries no pi entry yet.
+   * table. This was a run of conditional spreads that named some providers and silently did
+   * nothing for the others, so such an account would have resolved its files in the default home
+   * (#329).
    */
   const accountFiles = async (profile: ResolvedAgentProfile) => {
     const home: AgentHomePaths = { ...agentHomePaths(), ...accountHomePatch(profile.provider, profile.path) };
@@ -6194,11 +6188,11 @@ export function createApp(deps: ServerDeps) {
   // ---- chained family: the MCP leader's push-delivery path (project-scoped) ----
   // #309. Delivery itself is on by default and needs no route: every MCP session that owns the
   // project gets an event controller when it opens. The route reads that state, and lets the person
-  // point xezar at the leader they run — `attach` an OpenCode `serve` session — or detach it. xezar
+  // attach the leader they run, or detach it. xezar
   // starts no agent process (owner decision on #311); there is no `start` or `resume`. It runs no
   // tool, so the cockpit never becomes a second leader (spec `mcp-api-reference-spec.md` § 13).
-  // Attaching makes this process talk to a local server by URL: a local-machine capability, so
-  // hosted mode refuses it like every other local mutator.
+  // Attaching makes this process talk to a local leader: a local-machine capability, so hosted
+  // mode refuses it like every other local mutator.
   const mcpLeaderStatus = (projectId: string): McpLeaderStatus =>
     projectLeader(projectId)?.status() ?? {
       available: false,

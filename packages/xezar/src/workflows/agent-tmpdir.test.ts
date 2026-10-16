@@ -29,7 +29,7 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
   type Seam = {
     agentEnvForStep(
       runId: string,
-      backend: 'claude' | 'codex' | 'opencode',
+      backend: 'claude' | 'codex' | 'qwen',
       options?: { generateFollowups?: boolean; recordedProfileId?: string },
     ): Promise<{ env: Record<string, string>; profileId: string }>;
     dropActive(runId: string): void;

@@ -9,15 +9,14 @@ import type { AgentConfigFile, Runner } from '@qodeca/xezar-api-client'
  * #405: one table entry per agent, extension by design). A new agent is one entry
  * here plus its catalog files — no layout or route work.
  *
- * `pi` joined the table with its catalog files (#330 WP4) — the condition the
- * previous note here set. All four agents are present now, so the tab list offers
- * every `Runner` id and `descriptorFor` is total over the type.
+ * Every agent is present, so the tab list offers every `Runner` id and
+ * `descriptorFor` is total over the type.
  *
  * Group membership derives from the flat `/api/agent-config` listing: a file
- * belongs to an agent when `runners` INCLUDES it (not `runners[0]` — the shared
- * `AGENTS.md` entry is read by Codex AND OpenCode and must show under both), and
- * `holdsMcp` promotes a file into the MCP group as well as its own kind — for
- * Codex/OpenCode the main config genuinely is where MCP servers live.
+ * belongs to an agent when `runners` INCLUDES it (not `runners[0]` — a shared
+ * file read by several agents must show under each of them), and `holdsMcp`
+ * promotes a file into the MCP group as well as its own kind — for Codex and
+ * Qwen Code the main config genuinely is where MCP servers live.
  */
 
 export interface AgentGroup {
@@ -90,36 +89,18 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
     ],
   },
   {
-    id: 'opencode',
-    label: 'OpenCode',
+    id: 'qwen',
+    label: 'Qwen Code',
     note: EDITOR_PLUS_COMMIT,
     groups: [
-      group('opencode', 'settings', 'Settings'),
+      group('qwen', 'settings', 'Settings'),
       group(
-        'opencode',
+        'qwen',
         'mcp',
         'MCP',
-        'Under the "mcp" key in opencode.json — the same file as OpenCode’s settings.',
+        'Under the "mcpServers" key in settings.json — the same file as Qwen Code’s settings.',
       ),
-      group('opencode', 'memory', 'Memory & instructions'),
-    ],
-  },
-  {
-    id: 'pi',
-    label: 'pi',
-    note: EDITOR_PLUS_COMMIT,
-    groups: [
-      group('pi', 'settings', 'Settings'),
-      // pi core reads no MCP config at all; the files below are read by the third-party
-      // pi-mcp-adapter extension, which Settings → MCP connection (#343) walks you through
-      // installing. Saying so here keeps this pane from implying an editor is enough.
-      group(
-        'pi',
-        'mcp',
-        'MCP',
-        'A dedicated mcp.json, read by the pi-mcp-adapter extension — pi itself reads no MCP config.',
-      ),
-      group('pi', 'memory', 'Memory & instructions'),
+      group('qwen', 'memory', 'Memory & instructions'),
     ],
   },
 ]

@@ -26,10 +26,10 @@ import {
 /** The agent CLIs among `checks[]` — the tools a task actually needs one of. `gh` and `git` are
  *  the other rows; neither picks a runner. Spelled as an exhaustive `Record<Runner, true>` rather
  *  than a hand-kept list: the contract's runner enum is what `defaultRunner` is drawn from, so a
- *  fifth runner joining it (as `pi` did, #470) must fail the typecheck here instead of quietly
+ *  new runner joining it must fail the typecheck here instead of quietly
  *  dropping out of the dot's idea of what can start a task. A type-level set, so no zod schema —
  *  and no zod — is pulled into the cockpit bundle for it. */
-const RUNNER_NAMES: Record<Runner, true> = { claude: true, codex: true, qwen: true, opencode: true, pi: true }
+const RUNNER_NAMES: Record<Runner, true> = { claude: true, codex: true, qwen: true }
 
 const isRunner = (check: BackendCheck): boolean => Object.hasOwn(RUNNER_NAMES, check.name)
 

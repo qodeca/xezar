@@ -11,8 +11,6 @@ const LABEL: Record<ProviderId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   qwen: 'Qwen Code',
-  opencode: 'OpenCode',
-  pi: 'pi',
 };
 
 export function providersRequiredByWorkflow(

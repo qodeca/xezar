@@ -182,16 +182,6 @@ describe('agent accounts store', () => {
       expect((await loadAgentAccounts()).accounts.map((a) => a.id)).toEqual(['work']);
     });
 
-    it('refuses an agent that cannot carry a second account — it would resolve to a lie', async () => {
-      // `PROFILE_ENV_VAR.opencode` is null, so `profileEnv` returns `{}` for it: the step would
-      // record this account, the UI would name it, and the CLI would run on the DEFAULT login
-      // anyway — the exact "says Work, bills personal" failure this feature exists to prevent. The
-      // route already refuses it, but this file is designed to survive hand edits, foreign writers
-      // and the legacy import, so the schema has to refuse it too.
-      write({ accounts: [account('oc', { provider: 'opencode' }), account('work')] });
-      expect((await loadAgentAccounts()).accounts.map((a) => a.id)).toEqual(['work']);
-    });
-
     it('refuses a configDir carrying control characters (it reaches a shell command)', async () => {
       write({ accounts: [account('work', { configDir: `~/.claude${String.fromCharCode(10)}evil` })] });
       expect((await loadAgentAccounts()).accounts).toEqual([]);

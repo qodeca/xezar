@@ -104,7 +104,7 @@ async function manifest(): Promise<Producer[]> {
     { producer: 'MCP health tool', location: 'packages/xezar/src/mcp/bridge.ts#HEALTH_TOOL', text: JSON.stringify(HEALTH_TOOL) },
     { producer: 'leader role', location: 'packages/xezar/src/mcp/leader-delivery.ts#LEADER_ROLE_INSTRUCTION', text: LEADER_ROLE_INSTRUCTION },
     source('leader blockers', 'packages/xezar/src/mcp/leader-delivery.ts'),
-    source('pi leader blocker', 'packages/xezar/src/mcp/adapters/pi.ts'),
+    source('removed-backend boot refusal', 'packages/xezar/src/legacy-backends.ts'),
     source('Qwen Code leader blocker', 'packages/xezar/src/mcp/adapters/qwen-code.ts'),
     source('Qwen Code inbox refusals', 'packages/xezar/src/mcp/qwen-messaging.ts'),
     source('Qwen Code task runner messages', 'packages/xezar/src/core/qwen-runner.ts'),
@@ -120,8 +120,6 @@ async function manifest(): Promise<Producer[]> {
     ...COCKPIT_SOURCES.map((path) => source('cockpit copy', path)),
     { producer: 'npm README', location: 'packages/xezar/README.md', text: syncReadme.absolutizeReadmeLinks(read('README.md'), 'https://github.com/qodeca/xezar') },
     source('dry-run Claude mock', 'packages/xezar/scripts/mock-claude.mjs'),
-    source('dry-run pi mock', 'packages/xezar/scripts/mock-pi-rpc.mjs'),
-    source('pi leader extension', 'packages/xezar/scripts/pi-leader-extension.ts'),
   ];
 }
 

@@ -22,7 +22,7 @@ xezar has two layouts. The global layout is the default. The single-project layo
 | Team-skills cache | `~/.cache/xez/` | `<project>/.local/xezar/cache/` |
 | Host-install records (`server.json`, `server-instances/`) | `~/.xezar/` | `~/.xezar/` (they describe the machine) |
 
-In the single-project layout, xezar does not open `~/.xezar` for settings, and `XEZ_HOME` neither turns the layout on nor off. The four `.xezar/` files can be committed, so a clone runs with the same settings, accounts and limits. Agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`), `gh`, `git` and global skill libraries stay on the machine. Resource limits in `.xezar/workspace.json` apply exactly as written, within the ranges in the tables below, even above what this machine would choose for itself; an absent key still takes the machine-derived default. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error rather than falling back to your global setup.
+In the single-project layout, xezar does not open `~/.xezar` for settings, and `XEZ_HOME` neither turns the layout on nor off. The four `.xezar/` files can be committed, so a clone runs with the same settings, accounts and limits. Agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `QWEN_HOME`), `gh`, `git` and global skill libraries stay on the machine. Resource limits in `.xezar/workspace.json` apply exactly as written, within the ranges in the tables below, even above what this machine would choose for itself; an absent key still takes the machine-derived default. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error rather than falling back to your global setup.
 
 The folder decides the layout, so ask for the other one explicitly when you need it: `xezar --global-layout` (or `XEZ_GLOBAL_LAYOUT=1`) resolves the **global** layout for that launch even in a folder that carries `.xezar/workspace.json`. The explicit request outranks the marker, so that run keeps its state in `~/.xezar` (or `XEZ_HOME`) and reads none of the project's committed state, and nothing in the folder is moved, renamed or written. It is the counterpart of `--single-project`, which asks for the single-project layout; given both, the explicit global request wins. `XEZ_HOME` keeps its own meaning throughout: it relocates the global state root, and it neither turns the layout on nor off.
 
@@ -46,14 +46,14 @@ The [project schema and resolver](../../packages/xezar/src/config.ts) define the
 | `maxParallel` | Integer 1–16, schema default 2. Legacy project key, imported once by workspace migration when applicable: current enforcement uses workspace `resources.maxParallel` and registry `projects[].maxParallel`, not this key. |
 | `worktreeRetention` | Integer 0–1000. Overrides workspace retention; otherwise inherits it, ultimately 10. Zero disables automatic reclamation. Reclamation removes finished worktree directories and keeps their branches. |
 | `memoryLimitMb` | Integer 0–1,048,576 MiB. A positive value on a registered project overrides the workspace ceiling. Zero or absence contributes no project override and inherits the workspace ceiling. |
-| `defaultRunner` | `claude`, `codex`, `opencode` or `pi`. Inherits `agentDefaults.runner` when omitted, then defaults to `claude`. |
+| `defaultRunner` | `claude`, `codex` or `qwen`. Inherits `agentDefaults.runner` when omitted, then defaults to `claude`. A stored `pi` or `opencode` value makes xezar refuse to start until you change or remove it; see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md). |
 | `plannerModel` | Non-empty model string, default `sonnet`, for the chain planner's Claude model. |
 | `namerModel` | Non-empty model string, default `haiku`, for Claude task naming. |
 | `liveTitleUpdates` | Optional boolean. When set, overrides `XEZ_TITLE_UPDATES`; otherwise live updates default on. `XEZ_AUTONAME=0` still disables all LLM naming. |
 | `reviewGate` | Optional boolean. When set, overrides `XEZ_REVIEW_GATE`; otherwise off unless the env is exactly `1`. Autonomous runs skip review regardless. |
 | `baseBranch` | Non-empty trimmed branch name for task worktree bases and draft PR targets. When omitted, worktree creation uses the current branch. |
 | `systemPrompt` | Optional trimmed text, 1–20,000 characters, supplying extra instructions for agent steps. |
-| `defaultModels` | Optional object with `claude`, `codex`, `opencode`, `pi` model strings, each 1–200 trimmed characters. Project values override machine `agentDefaults.models` per backend; unset means no preset. |
+| `defaultModels` | Optional object with `claude`, `codex`, `qwen` model strings, each 1–200 trimmed characters. Project values override machine `agentDefaults.models` per backend; unset means no preset. |
 | `modelsLocked` | `true` makes native agent model settings authoritative. It combines with the global key and env switch as described below; `false` cannot cancel another enabled lock. Settings → Agents → **Lock models** and the MCP `project_config` action `set_config` write it; turning it off deletes the key rather than storing `false`. A change applies to the next write and the next task without a restart. |
 
 For example, to retain five finished worktrees and enable the non-autonomous review gate:
@@ -81,7 +81,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `resources` | Resource controls in the next table. |
 | `cli` | Optional terminal defaults for `xezar serve`: `output`, `color`, `logLevel` and `instance`. Each is absent until you choose it, and absence is a real third state — a stored value beats the matching environment variable (`XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL`, `XEZ_INSTANCE`), while an absent key follows it. A command-line flag beats both. Set them in global **Settings → Terminal**; a stored value xezar cannot make sense of degrades to absent with one warning naming the key. |
 | `composerDefaults` | Optional booleans `autonomous` and `worktree`, for New Task defaults. Each absent key inherits its exact `0`/`1` env seed; without one, Autonomous depends on the task source (skills default on, other sources off) and Worktree defaults on. Plan first, interactive skills and explicit task choices can alter those defaults. |
-| `disabledProviders` | Array of provider IDs (`claude`, `codex`, `opencode`, `pi`), default `[]`. Machine-wide provider preferences; installation and sign-in status are separate. |
+| `disabledProviders` | Array of provider IDs (`claude`, `codex`, `qwen`), default `[]`. Machine-wide provider preferences; installation and sign-in status are separate. |
 | `agentDefaults` | Optional `runner` and `models` object (the four backend keys, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
 | `projects` | Registry array, default `[]`. Each row has `id`, absolute `root`, display `name`, `addedAt`, `lastOpenedAt`, `source` (`local` or `checkout`), optional `maxParallel` (1–16), optional `tags`, and its own optional `cli.port` — the port you pinned for that project with `xezar projects port`, which outranks `XEZ_PORT` and is never written by a start or by `--port`. A start may also record where that project's cockpit last listened; that is a hint for the next start, not a claim that anything is running. Invalid rows are dropped independently. |
 
@@ -102,7 +102,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 
 Global **Settings → Agent accounts** manages `~/.xezar/agent-accounts.json` (in the single-project layout, `.xezar/agent-accounts.json`), a separate store from workspace configuration. It contains `version`, `accounts`, `defaults` and `selections`. Added account rows contain `id`, `provider`, `configDir`, `label` and `addedAt`; `defaults` chooses account IDs per provider, and `selections` maps project roots to per-provider choices. Project choices override machine defaults.
 
-Extra accounts are supported for Claude Code, Codex and pi. OpenCode's credentials do not move with its config directory, so it does not support this feature. The discovered default account is not an added row. This file registers directories and choices; sign in through the agent. Removing an account unregisters it without deleting its configuration directory or sessions.
+Extra accounts are supported for Claude Code, Codex and Qwen Code. The discovered default account is not an added row. This file registers directories and choices; sign in through the agent. Removing an account unregisters it without deleting its configuration directory or sessions.
 
 In the single-project layout, an account whose `configDir` does not exist on this machine is **Unavailable**: a task that asks for it is refused before the agent starts, instead of running with the default login. Sign in with **Connect** to create the folder, or choose another account. The start itself never fails because of it.
 
@@ -121,7 +121,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
 | `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (the default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed, and you can still add and remove them). A saved `cli.instance` overrides this variable; `--instance` overrides both. `XEZ_SINGLE_PROJECT=1`, and a folder that owns its xezar state, already serve one project and win over it. |
 | `XEZ_QUIET=1` | Warnings and errors only; only the exact value `1` enables it, and `--quiet` is the flag. It raises the threshold but never lowers one you set higher. What the terminal shows in each mode is in the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal). |
-| `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_QWEN_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
+| `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_QWEN_BIN` | Override backend executable discovery on `PATH`. |
 | `XEZ_QWEN_USAGE_STATISTICS` | `1` or `true` lets Qwen Code send its usage statistics; by default xezar switches them off on every Qwen Code run. |
 | `XEZ_CODEX_REASONING` | `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_APPROVAL_GATE=1` | Claude `acceptEdits` approval mode instead of the default denial of tools needing approval. |
@@ -146,7 +146,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_REDACT_SECRETS=0` | Disable best-effort secret redaction in persisted state; enabled by default. |
 | `XEZ_DRY_RUN=1` | Use mock agents without real model calls. LLM naming is off unless forced with `XEZ_AUTONAME=1`. |
 | `XEZ_AGENT_MODELS_LOCKED=1` | Enable native-model policy; also bypass xezar's provider-auth probes and disable preferences. Stored `modelsLocked` alone does not imply that auth bypass. |
-| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`, `PI_CODING_AGENT_DIR` | The agents' own default configuration homes. Use Agent accounts for extra logins. OpenCode configuration and credential locations are separate. |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `QWEN_HOME` | The agents' own default configuration homes. Use Agent accounts for extra logins. |
 | `ANTHROPIC_MODEL` | Claude's native model default. A saved cockpit preset is layered over that default and the chosen model is passed as `--model`. |
 | `GITHUB_TOKEN` | Token-based GitHub access where needed; `gh` can use its own login. |
 | `VITE_XEZ_API_BASE` | Build-time API origin for a separately deployed cockpit bundle; empty uses the page origin. An HTML `xez-api-base` meta value takes precedence. |

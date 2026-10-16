@@ -9,7 +9,7 @@ import bashAndScreenshot from '../../../../xezar/src/core/__fixtures__/claude/ba
 import failedAndDenied from '../../../../xezar/src/core/__fixtures__/claude/failed-and-denied.expected.json'
 import subagentTask from '../../../../xezar/src/core/__fixtures__/claude/subagent-task.expected.json'
 import thinkingEditWriteTodo from '../../../../xezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
-import opencodeToolLifecycle from '../../../../xezar/src/core/__fixtures__/opencode/tool-lifecycle.expected.json'
+import codexCommandLifecycle from '../../../../xezar/src/core/__fixtures__/codex/command-lifecycle.expected.json'
 import { groupThreadItems } from './thread-groups'
 import {
   ContextGroup,
@@ -30,7 +30,7 @@ describe('ProviderAuthRequiredCard', () => {
   it.each([
     ['claude', 'Claude Code'],
     ['codex', 'Codex'],
-    ['opencode', 'OpenCode'],
+    ['qwen', 'Qwen Code'],
   ] as const)('renders accessible fixed recovery guidance for %s', (provider, label) => {
     render(
       <MemoryRouter initialEntries={['/p/acme/tasks/r1']}>
@@ -151,8 +151,8 @@ describe('ToolCard — states', () => {
 })
 
 describe('ToolCard — exit-code pill (execute kind)', () => {
-  it('exit 0 (the golden opencode bash item) → success pill', () => {
-    const item = goldenItem(opencodeToolLifecycle, 'prt_01J8ZE21TOOL', 'completed')
+  it('exit 0 (the golden codex command item) → success pill', () => {
+    const item = goldenItem(codexCommandLifecycle, 'item_cmd_1', 'completed')
     expect(item.exitCode).toBe(0)
     render(<ToolCard item={item} />)
     const pill = document.querySelector('[data-slot="tool-exit"]')!
@@ -161,7 +161,7 @@ describe('ToolCard — exit-code pill (execute kind)', () => {
   })
 
   it('a non-zero exit → danger pill', () => {
-    const item = goldenItem(opencodeToolLifecycle, 'prt_01J8ZE21TOOL', 'completed')
+    const item = goldenItem(codexCommandLifecycle, 'item_cmd_1', 'completed')
     render(<ToolCard item={{ ...item, exitCode: 2 }} />)
     const pill = document.querySelector('[data-slot="tool-exit"]')!
     expect(pill.textContent).toBe('2')

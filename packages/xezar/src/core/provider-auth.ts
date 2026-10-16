@@ -10,12 +10,11 @@ import {
 } from '../platform/process-tree.ts';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
-import { parseOpencodeModels } from './opencode-model-catalog.ts';
 import { qwenHome, readQwenSettings } from './qwen-settings.ts';
 import { installThenLogin } from './provider-install.ts';
 import { withEnvPrefix } from './shell-env.ts';
 
-export const PROVIDER_IDS = ['claude', 'codex', 'qwen', 'opencode', 'pi'] as const;
+export const PROVIDER_IDS = ['claude', 'codex', 'qwen'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type ProviderConnectionState =
   | 'connected'
@@ -202,34 +201,10 @@ function parseCodexStatus(result: ProviderCommandResult): ProviderConnectionStat
   return null;
 }
 
-function parseOpenCodeStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout);
-  const storedSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+credentials?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-  if (storedSummaries.length !== 1) return null;
-  const storedCount = Number(storedSummaries[0]);
-  if (!Number.isSafeInteger(storedCount)) return null;
-
-  const environmentSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+environment\s+variables?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-  const hasEnvironmentBlock = lines.some((line) => /^[^a-z0-9]*environment$/.test(line));
-  if (environmentSummaries.length > 1) return null;
-  if (hasEnvironmentBlock !== (environmentSummaries.length === 1)) return null;
-  const environmentCount = environmentSummaries.length === 1
-    ? Number(environmentSummaries[0])
-    : 0;
-  if (!Number.isSafeInteger(environmentCount)) return null;
-
-  return storedCount > 0 || environmentCount > 0 ? 'connected' : 'disconnected';
-}
-
 /**
  * Qwen Code has no sign-in status command (`qwen auth` was removed); `qwen --version` proves it is
  * installed, and its settings say whether a model is set up: any `modelProviders` entry, or a
- * selected auth type. That is configuration evidence, as for OpenCode's model catalog; a key that
+ * selected auth type. That is configuration evidence; a key that
  * is wrong still surfaces as a runtime authentication failure, which overrides this answer.
  */
 function parseQwenVersion(result: ProviderCommandResult): ProviderConnectionState | null {
@@ -241,21 +216,6 @@ export function qwenConfigured(configDir?: string | null): ProviderConnectionSta
   const settings = readQwenSettings(configDir ?? qwenHome());
   if (settings.status === 'unreadable') return 'unknown';
   return settings.models.length > 0 || settings.selectedAuthType !== undefined ? 'connected' : 'disconnected';
-}
-
-function parsePiStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout);
-  if (lines.some((line) => /^provider\s+model\s+context\s+max-out\s+thinking\s+images$/.test(line))) {
-    return 'connected';
-  }
-  if (
-    lines.some((line) => line.includes('no models available'))
-    && lines.some((line) => line.includes('/login'))
-  ) {
-    return 'disconnected';
-  }
-  return null;
 }
 
 const DESCRIPTORS: readonly ProviderDescriptor[] = [
@@ -284,22 +244,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     installHint: installThenLogin('qwen', 'Qwen Code', 'qwen'),
     parse: parseQwenVersion,
     readsConfiguration: true,
-  },
-  {
-    id: 'opencode',
-    executable: () => process.env.XEZ_OPENCODE_BIN ?? 'opencode',
-    statusArgs: ['auth', 'list'],
-    loginArgs: ['auth', 'login'],
-    installHint: installThenLogin('opencode', 'OpenCode', 'opencode auth login'),
-    parse: parseOpenCodeStatus,
-  },
-  {
-    id: 'pi',
-    executable: () => process.env.XEZ_PI_BIN ?? 'pi',
-    statusArgs: ['--list-models'],
-    loginArgs: ['/login'],
-    installHint: installThenLogin('pi', 'pi', 'pi /login'),
-    parse: parsePiStatus,
   },
 ];
 
@@ -743,32 +687,12 @@ export class ProviderAuthService {
     if (result.errorCode) {
       return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
     }
-    let status = descriptor.parse(result);
+    const status = descriptor.parse(result);
     if (status === 'connected' && descriptor.readsConfiguration) {
       const configured = this.configured(descriptor.id, configDir);
       return configured === 'unknown'
         ? { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT }
         : { provider: descriptor.id, status: configured };
-    }
-    // A LAN/custom provider can be configured entirely in OpenCode's native config,
-    // with no auth.json entry or environment credential. Ask its model catalog before
-    // sending that user into login. This is configuration evidence, not an inference
-    // health check; authoritative runtime auth failures still override this probe.
-    if (descriptor.id === 'opencode' && status === 'disconnected') {
-      try {
-        const models = await (env === undefined
-          ? this.runCommand(descriptor.executable(), ['models'], COMMAND_TIMEOUT_MS)
-          : this.runCommand(descriptor.executable(), ['models'], COMMAND_TIMEOUT_MS, env));
-        if (models.timedOut) {
-          return { provider: descriptor.id, status: 'unknown', hint: TIMEOUT_HINT };
-        }
-        if (models.errorCode || models.exitCode !== 0) {
-          return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
-        }
-        status = parseOpencodeModels(models.stdout).length > 0 ? 'connected' : 'disconnected';
-      } catch {
-        return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
-      }
     }
     if (status !== null) return { provider: descriptor.id, status };
     return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };

@@ -1,42 +1,30 @@
 /**
- * What MCP servers a task run xezar starts may reach (#342), for the three backends the Codex
- * seam does not cover.
+ * What MCP servers a task run xezar starts may reach (#342), for the backends the Codex seam does
+ * not cover.
  *
  * `codex-run-isolation.ts` (#324, #323) already answers this for Codex: a run gets the project's
- * own MCP servers, never xezar's leader bridge, never the account's. The other three runners
- * passed nothing at all, so a task client loaded whatever the person's and the project's config
- * declared — including a `xezar` bridge entry.
+ * own MCP servers, never xezar's leader bridge, never the account's. Without this seam a task client
+ * would load whatever the person's and the project's config declared — including a `xezar` bridge
+ * entry.
  *
  * That is not only a tool-surface question. xezar's bridge takes the PROJECT OWNER slot when it
  * connects, and a `keep-alive` entry connects at start-up with no prompt and no tool call. A task
  * run started in the project root (`worktree: false`) therefore held the slot for its whole
- * lifetime and the person's own leader session was refused with `-32080 project occupied`
- * (observed with pi, #342). The `--tools` / `--allowedTools` allowlists do not help: they hide the
- * tools from the model, they do not stop the client connecting.
+ * lifetime and the person's own leader session was refused with `-32080 project occupied` (#342).
+ * A tool allowlist does not help: it hides the tools from the model, it does not stop the client
+ * connecting.
  *
  * Worktree ON is treated identically. A linked worktree is a checkout of the same commit, so it
- * carries the same committed `.mcp.json` / `.pi/mcp.json` / `opencode.json`; the reason the
- * observed pi worktree run bound no project is that the bridge binds by repository root and task
- * worktrees are never registered. That is a property of the registry, not of the runner, so this
- * seam does not lean on it.
+ * carries the same committed `.mcp.json`; the bridge binds by repository root and task worktrees
+ * are never registered, but that is a property of the registry, not of the runner, so this seam
+ * does not lean on it.
  *
  * ## One mechanism per client, because each CLI offers exactly one that works
  *
  * | Backend  | Lever                                        | Why not the obvious one |
  * | -------- | -------------------------------------------- | ----------------------- |
  * | claude   | `--strict-mcp-config` + `--mcp-config <json>` | Without `--strict-…` claude merges `.mcp.json` and `~/.claude.json` on top and the bridge returns. |
- * | pi       | `--mcp-config <file>` carrying `disabled: true` | The flag substitutes for ONE slot of the adapter's six-file chain (the pi agent dir), so an exclusive overlay is impossible — but the chain merges server entries FIELD BY FIELD, so a `disabled` flag set in a lower slot survives the project files layered over it. |
- * | opencode | `OPENCODE_CONFIG_CONTENT` carrying `enabled: false` | `OPENCODE_CONFIG` is loaded BELOW the project `opencode.json`, so the project's own entry wins over it. `OPENCODE_CONFIG_CONTENT` is loaded above. |
  * | qwen     | `--allowed-mcp-server-names <names>`         | Qwen Code merges the person's and the project's `mcpServers`; the name allowlist is the lever that leaves the person's own servers, extensions and the bridge out. An empty list means "no filter", so the empty case names one server that does not exist. |
- *
- * ## The reserved name is a floor, not a guess
- *
- * pi and opencode are told to switch off every bridge xezar can SEE in the project's files, plus
- * the reserved name `xezar` whether or not it was seen. Discovery reads project files only, so a
- * bridge declared in the person's own global config would otherwise still connect — and that one
- * would contend in every project. The cost is one inert, disabled entry in a client's server list
- * when nobody declared a bridge; both clients treat an unknown name marked off as nothing to
- * connect to. Claude needs no floor: its overlay is exclusive.
  *
  * ## Fail-open, and the difference between "absent" and "unreadable"
  *
@@ -54,13 +42,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { agentHomePaths } from '../paths.ts';
 import { isXezarBridge } from './codex-run-isolation.ts';
-import { piDirectTools } from './pi-mcp-tools.ts';
 import { parseJsonc } from './qwen-settings.ts';
-
-/** The server name the cockpit's setup card registers xezar's bridge under (see `isXezarBridge`). */
-const RESERVED_BRIDGE_NAME = 'xezar';
 
 /** What one scan of a client's project-scope MCP files found. */
 export interface McpScan {
@@ -86,27 +69,6 @@ interface McpConfigFile {
  */
 const CLAUDE_FILES: readonly McpConfigFile[] = [{ segments: ['.mcp.json'], key: 'mcpServers' }];
 
-/**
- * The two PROJECT-scoped files of the six the `pi-mcp-adapter` extension reads, in its own
- * precedence order (later wins). The four home-scoped ones are the person's own; the reserved-name
- * floor covers a bridge hiding in one of them.
- */
-const PI_PROJECT_FILES: readonly McpConfigFile[] = [
-  { segments: ['.mcp.json'], key: 'mcpServers' },
-  { segments: ['.pi', 'mcp.json'], key: 'mcpServers' },
-];
-
-/**
- * OpenCode's project config, in the order its loader searches (`opencode.jsonc` then
- * `opencode.json`, plus the `.opencode` directory the website does not name).
- */
-const OPENCODE_FILES: readonly McpConfigFile[] = [
-  { segments: ['opencode.jsonc'], key: 'mcp' },
-  { segments: ['opencode.json'], key: 'mcp' },
-  { segments: ['.opencode', 'opencode.jsonc'], key: 'mcp' },
-  { segments: ['.opencode', 'opencode.json'], key: 'mcp' },
-];
-
 // ---- Claude Code ----------------------------------------------------------
 
 /** The exclusive `mcpServers` overlay a claude run gets: the project's servers, minus the bridge. */
@@ -122,91 +84,6 @@ export function claudeMcpIsolation(cwd: string, readFile: ReadConfigFile = readC
   // `obj[name] = …` would call the prototype setter instead of creating a key — the same trap
   // `codexRunIsolation` documents.
   return { ...scan, overlay: { mcpServers: Object.fromEntries(kept) } };
-}
-
-// ---- pi -------------------------------------------------------------------
-
-/** The overlay file a pi run is pointed at, and the names it switches off. */
-export interface PiMcpIsolation extends McpScan {
-  /** The JSON written to the run's private overlay file. */
-  readonly overlay: Record<string, unknown>;
-  /** Names the client is told to switch off: every bridge seen, plus the reserved-name floor. */
-  readonly disabled: readonly string[];
-}
-
-/**
- * pi's overlay takes the place of the pi agent directory's own `mcp.json` in the adapter's chain,
- * so it CARRIES that file forward rather than replacing it: dropping the person's global servers
- * is not what #342 asks for. On top of it go `disabled: true` markers, which survive the project
- * files merged above because the adapter merges a server entry field by field.
- *
- * A server whose tools the step names (`mcp__<server>__<tool>` in `allowedTools`) also gets
- * `toolPrefix: "mcp"` and `directTools: [<those tools>]`, the same field-by-field way, so the
- * adapter registers exactly those tools under the names `--tools` lists (#1015, `pi-mcp-tools.ts`).
- * A switched-off server gets nothing: `disabled: true` wins.
- */
-export function piMcpIsolation(
-  cwd: string,
-  env: NodeJS.ProcessEnv = process.env,
-  readFile: ReadConfigFile = readConfigFile,
-  allowedTools: readonly string[] = [],
-): PiMcpIsolation {
-  const scan = scanMcpFiles(cwd, PI_PROJECT_FILES, readFile);
-  const agentDir = agentHomePaths(env).pi;
-  const inherited = readFile(join(agentDir, 'mcp.json'));
-  const base = inherited.status === 'ok' ? inherited.value : {};
-  const inheritedServers = asRecord(base.mcpServers ?? base['mcp-servers']) ?? {};
-
-  const off = offNames(scan, inheritedServers);
-  const servers = Object.fromEntries([
-    ...Object.entries(inheritedServers).filter(([name]) => !off.includes(name)),
-    // A partial entry is the documented way to switch one server off without redefining it; only
-    // the literal `true` disables, so the value is spelled out rather than computed.
-    ...off.map((name) => [name, { ...asRecord(inheritedServers[name]), disabled: true }] as const),
-  ]);
-  for (const [name, tools] of piDirectTools(allowedTools)) {
-    if (off.includes(name)) continue;
-    servers[name] = { ...asRecord(servers[name]), toolPrefix: 'mcp', directTools: tools };
-  }
-
-  return {
-    ...scan,
-    // `bridges` stays what xezar actually SAW, so the run note never claims it switched off a
-    // bridge nobody declared; `disabled` is what the client is told, floor included.
-    bridges: sorted(new Set([...scan.bridges, ...extraBridges(inheritedServers)])),
-    disabled: off,
-    unreadable: sorted([
-      ...scan.unreadable,
-      ...(inherited.status === 'unreadable' ? [join(agentDir, 'mcp.json')] : []),
-    ]),
-    // `mcp-servers` is the adapter's accepted alias for the same map. Carrying the inherited file's
-    // alias key forward alongside the rewritten `mcpServers` would leave a second, un-disabled copy
-    // of the servers in the overlay, so it is dropped rather than merged.
-    overlay: { ...base, 'mcp-servers': undefined, mcpServers: servers },
-  };
-}
-
-// ---- OpenCode -------------------------------------------------------------
-
-/** The inline config an opencode run is started with, and the names it switches off. */
-export interface OpencodeMcpIsolation extends McpScan {
-  /** The JSON `OPENCODE_CONFIG_CONTENT` carries — the highest layer OpenCode merges. */
-  readonly overlay: { mcp: Record<string, { enabled: false }> };
-  /** Names the client is told to switch off: every bridge seen, plus the reserved-name floor. */
-  readonly disabled: readonly string[];
-}
-
-export function opencodeMcpIsolation(
-  cwd: string,
-  readFile: ReadConfigFile = readConfigFile,
-): OpencodeMcpIsolation {
-  const scan = scanMcpFiles(cwd, OPENCODE_FILES, readFile);
-  const off = offNames(scan, {});
-  return {
-    ...scan,
-    disabled: off,
-    overlay: { mcp: Object.fromEntries(off.map((name) => [name, { enabled: false } as const])) },
-  };
 }
 
 // ---- Qwen Code ------------------------------------------------------------
@@ -268,21 +145,6 @@ export function readJsoncConfigFile(path: string): ConfigFileRead {
 }
 
 // ---- shared ---------------------------------------------------------------
-
-/**
- * What the client is told to switch off: every bridge seen — in the scan and in any extra server
- * map — plus the reserved name whether or not anything declared it. See the header's floor note.
- */
-function offNames(scan: McpScan, alsoConsider: Record<string, unknown>): string[] {
-  return sorted(new Set([...scan.bridges, ...extraBridges(alsoConsider), RESERVED_BRIDGE_NAME]));
-}
-
-/** The bridges in a server map outside the scan (pi's agent-directory file). */
-function extraBridges(servers: Record<string, unknown>): string[] {
-  return Object.entries(servers)
-    .filter(([name, server]) => isXezarBridge(name, asRecord(server) ?? {}))
-    .map(([name]) => name);
-}
 
 /** Merge the named files in the client's own order (later wins) and mark the bridges. */
 function scanMcpFiles(root: string, files: readonly McpConfigFile[], readFile: ReadConfigFile): McpScan {
@@ -373,8 +235,8 @@ export interface McpOverlayFile {
 /**
  * Write one run's MCP overlay where only this user can read it.
  *
- * Claude Code takes its overlay as an argv JSON string and OpenCode as an env var, so only pi
- * needs a file. It goes into a private `mkdtemp` directory under the OS temp dir, mode 0600, and
+ * Claude Code takes its overlay as an argv JSON string; Qwen Code's `--mcp-config` takes a file. It
+ * goes into a private `mkdtemp` directory under the OS temp dir, mode 0600, and
  * is removed when the session settles. Never into the project: a run must not leave a config file
  * behind in the user's checkout, and two concurrent runs in one root must not share one.
  *

@@ -27,7 +27,7 @@ describe('serverCapabilitiesFor (#374, #450)', () => {
 
   it('leaves every other client’s capabilities byte-identical to today, whatever the channel argument (AC-7)', () => {
     // RED against: leaking `experimental` into a non-claude handshake.
-    for (const name of [undefined, 'codex', 'opencode', 'pi', 'some-future-client']) {
+    for (const name of [undefined, 'codex', 'qwen-cli-mcp-client-xezar', 'some-future-client']) {
       for (const channel of [true, false]) {
         expect(serverCapabilitiesFor(name, channel)).toEqual(SERVER_CAPABILITIES);
         expect('experimental' in serverCapabilitiesFor(name, channel)).toBe(false);

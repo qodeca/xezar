@@ -108,7 +108,7 @@ const CONNECTED_PROVIDERS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: false },
-    { provider: 'opencode', status: 'connected', enabled: true },
+    { provider: 'qwen', status: 'connected', enabled: true },
   ],
 }
 
@@ -556,7 +556,7 @@ describe('useGlobalEvents — provider status', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     const latched = {
@@ -569,7 +569,7 @@ describe('useGlobalEvents — provider status', () => {
           hint: 'Reconnect, then try again.',
         },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     vi.mocked(fetch).mockReturnValueOnce(initial.promise).mockReturnValueOnce(replacement.promise)
@@ -615,21 +615,21 @@ describe('useGlobalEvents — provider status', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     const onlyClaudeIncident = {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'incident-a' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     const bothIncidents = {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'incident-a' },
         { provider: 'codex', status: 'disconnected', enabled: true, authFailureId: 'incident-b' },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     vi.mocked(fetch)
@@ -679,7 +679,7 @@ describe('useGlobalEvents — provider status', () => {
     const { source } = mount()
 
     source.emit('provider-status', JSON.stringify({
-      provider: 'opencode',
+      provider: 'qwen',
       status: 'disconnected',
       enabled: true,
     }))
@@ -687,7 +687,7 @@ describe('useGlobalEvents — provider status', () => {
     expect(client.getQueryData<ProviderStatusResponse>(
       workspaceQueryKeys.providerStatus,
     )?.providers[2]).toEqual({
-      provider: 'opencode',
+      provider: 'qwen',
       status: 'disconnected',
       enabled: true,
     })

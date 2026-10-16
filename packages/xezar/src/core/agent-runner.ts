@@ -4,15 +4,12 @@
  * no token-budget circuit breaker, no zod response schemas — one run is one
  * agent-CLI session streaming normalized events.
  *
- * Five interchangeable backends implement this seam, so multi-turn follow-ups, `waiting`,
+ * Three interchangeable backends implement this seam, so multi-turn follow-ups, `waiting`,
  * interrupt and resume all work:
  *  - `claude`   — Claude Code CLI, stream-json over stdin/stdout;
  *  - `codex`    — `codex app-server`, JSON-RPC 2.0 (JSONL) over stdin/stdout;
  *  - `qwen`     — Qwen Code CLI, one headless stream-json process per turn, joined by
  *                 `--resume <sessionId>` (the one backend that is not one persistent process);
- *  - `opencode` — `opencode serve`, HTTP + SSE;
- *  - `pi`       — pi coding CLI, RPC over JSONL stdin/stdout, selecting its
- *                 model with `provider/model`.
  */
 
 import { isTreeStopExit } from '../platform/process-tree.ts';
@@ -22,9 +19,9 @@ import type { UiEvent } from './ui-events.ts';
  * The user-selectable runners (what config/GUI expose), in display order — the SINGLE source of
  * truth for the set. Every runtime enumeration derives from this tuple (zod schemas, the
  * server-install "at least one agent CLI" gate, the CLI-handoff registry) rather than repeating
- * the literals, so adding runner #5 is a one-line change here and typecheck finds the rest.
+ * the literals, so adding a runner is a one-line change here and typecheck finds the rest.
  */
-export const RUNNER_IDS = ['claude', 'codex', 'qwen', 'opencode', 'pi'] as const;
+export const RUNNER_IDS = ['claude', 'codex', 'qwen'] as const;
 
 /** The user-selectable runners (what config/GUI expose). */
 export type RunnerId = (typeof RUNNER_IDS)[number];
@@ -46,13 +43,6 @@ export interface AgentRunSpec {
   images?: ContentBlock[];
   /** The directory the agent runs in — also the only writable root. */
   cwd: string;
-  /** Present only for an isolated linked-worktree run. Pi uses it to load its
-   *  worktree tool guard; in-place and non-Git runs deliberately leave it absent. */
-  worktreeRoot?: string;
-  /** The primary checkout that guard protects, set together with `worktreeRoot`
-   *  (`worktreeGuardRoots`). Xezar passes it rather than letting pi derive it from
-   *  the worktree's `.git` file, which bare-repository and submodule layouts break. */
-  primaryRoot?: string;
   /** Tool allowlist; the CLI is default-deny for anything not listed — but
    *  the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes `Bash`
    *  unrestricted unless `bashAllowlist` is set, so treat the default as
@@ -81,10 +71,10 @@ export interface AgentRunSpec {
 }
 
 /**
- * Backends without a dedicated system-prompt channel (codex app-server,
- * opencode serve) deliver `spec.systemPrompt` as a leading block of the
- * opening user message — the documented per-backend mapping (spec §protocol
- * v2: claude = `--append-system-prompt`, codex/opencode = prepended here).
+ * Backends without a dedicated system-prompt channel (codex app-server)
+ * deliver `spec.systemPrompt` as a leading block of the opening user message —
+ * the documented per-backend mapping (spec §protocol v2: claude and qwen =
+ * `--append-system-prompt`, codex = prepended here).
  */
 export function prependSystemPrompt(systemPrompt: string | undefined, userPrompt: string): string {
   return systemPrompt ? `${systemPrompt}\n\n---\n\n${userPrompt}` : userPrompt;
@@ -191,8 +181,7 @@ export type AgentEvent =
   /** Internal failed-turn quota fact: the backend's STRUCTURED error said the login is out of
    *  plan quota until `resetAt` (ISO). RunManager consumes it without persisting it (#867 AC-17). */
   | { type: 'account-limit'; runner: 'claude' | 'codex'; resetAt: string; reason: string }
-  /** The backend's real session id, once known — codex threads and opencode
-   *  sessions mint their own id, so the run manager persists this to enable
+  /** The backend's real session id, once known — codex threads mint their own id, so the run manager persists this to enable
    *  resume ("Continue") and "open in CLI". Claude's equals `spec.sessionId`. */
   | { type: 'session'; sessionId: string }
   | { type: 'turn-end' }
@@ -228,7 +217,7 @@ export interface SessionOptions {
    *  RunManager consumption lands in R2 step 2.1. */
   onUiEvent?: (event: UiEvent) => void;
   /** The run is autonomous (#autonomous): nobody is watching, so a backend's NATIVE
-   *  question (a pi extension dialog, #369) must be refused at once and recorded, never
+   *  question must be refused at once and recorded, never
    *  raised as an ask card that waits for an answer nobody will give. Off = the question
    *  reaches the cockpit as `ask.requested` and the next `sendMessage` answers it. */
   autonomous?: boolean;
@@ -238,7 +227,7 @@ export interface SessionOptions {
  * A live agent session over one spawned backend process. The process stays
  * alive between turns and reads further user messages — that's what makes
  * mid-task follow-ups possible. Implemented identically by every backend
- * (claude stdin, codex app-server, opencode serve).
+ * (claude stdin, codex app-server, qwen's `--resume` turns).
  */
 export interface AgentSession {
   /** Resolves when the backend process exits — the session is fully over. */
@@ -249,9 +238,9 @@ export interface AgentSession {
   readonly pid?: number;
   /**
    * Optional companion to `pid`, for a runner whose child does not exist yet when
-   * `startSession` returns — pi has to ask the binary a capability question first (#548).
-   * The listener is called with the pid as soon as there IS one, and again if the runner
-   * restarts the child itself, so process telemetry never tracks a pid that is already gone.
+   * `startSession` returns, or whose child changes — qwen starts one process per turn.
+   * The listener is called with the pid as soon as there IS one, and again whenever the runner
+   * starts a new child, so process telemetry never tracks a pid that is already gone.
    * Absent means `pid` is the whole story: it was known before `startSession` returned.
    */
   onProcessStart?(listener: (pid: number) => void): void;
