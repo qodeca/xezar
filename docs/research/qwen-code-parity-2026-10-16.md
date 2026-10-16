@@ -179,7 +179,7 @@ the first proof never ran (`deepseek-v4-pro`, `deepseek-flash`).
 | The cockpit offered no Qwen Code in the runner menus (new task, default agent, accounts, agent settings). | #1062 · `794f509c` – a `qwen` row in `RUNNERS` | `new-task-form.test.ts` ("offers every backend xezar runs …") |
 | Qwen Code's managed auto-memory ran one more model call after each answer and wrote a memory folder per task worktree into the person's Qwen home. On a slow model it held a finished turn open until the step limit. | `cd40a9e1` – off in each run's private settings (owner decision) | `qwen-runner.test.ts` (the run's settings file); live: 0 memory-pass calls, 3 before |
 
-The first four fault rows are filed as #1060, #1061, #1062 and #1063, each with its fix. The auto-memory row was an owner decision (off for task runs), not a filed fault. A test that fails only on a busy machine, older than this work, is filed as #1064.
+The first four fault rows are filed as #1060, #1061, #1062 and #1063, each with its fix. The auto-memory row was an owner decision (off for task runs), not a xezar fault; the Qwen Code side is reported on [QwenLM/qwen-code#13851](https://github.com/QwenLM/qwen-code/issues/13851#issuecomment-6224371536). The repeat of a delivered message after each failed model call (spike note, scenario d) is filed as [QwenLM/qwen-code#14409](https://github.com/QwenLM/qwen-code/issues/14409). A test that fails only on a busy machine, older than this work, is filed as #1064.
 
 The count restart rule of #1042: the early-exit fault was in xezar's Qwen code and was found in
 the earlier dogfood batch, so the count restarted, and the counted batch ran on the fixed code.

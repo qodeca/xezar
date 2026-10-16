@@ -132,7 +132,7 @@ its own authority notice.
 6. Known risk: when the leader's own model calls fail (scenario d: an expired key, `401`), Qwen
    Code submits the delivered message again after each error – 1444 times in about 90 s. That is
    Qwen Code's retry, not xezar's delivery, and xezar cannot see it. It is filed as a Qwen Code
-   fault (see the parity report), and the leader guide says that a leader whose model calls fail
+   fault ([QwenLM/qwen-code#14409](https://github.com/QwenLM/qwen-code/issues/14409)), and the leader guide says that a leader whose model calls fail
    sends the same request again and again.
 
 ## Checks
