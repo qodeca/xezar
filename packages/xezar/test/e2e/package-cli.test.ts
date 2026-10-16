@@ -222,7 +222,9 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     assert.match(firstRun.stdout, /run (done|review)/);
     assert.deepEqual(
       (await readdir(join(spRepo, '.xezar'))).filter((name) => name.endsWith('.json')).sort(),
-      ['agent-accounts.json', 'config.json', 'workspace-ui.json', 'workspace.json'],
+      // No `config.json`: it is the project's own settings file, and a first start leaves it to the
+      // project, so a later pull that brings it is not blocked (#1074).
+      ['agent-accounts.json', 'workspace-ui.json', 'workspace.json'],
     );
     const spWorkspace = JSON.parse(await readFile(join(spRepo, '.xezar', 'workspace.json'), 'utf8')) as {
       resources?: { maxParallel?: number };
