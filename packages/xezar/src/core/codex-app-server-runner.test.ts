@@ -649,9 +649,57 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     expect(notes).toContain(
       'codex: the MCP server browser did not start: MCP client for `browser` timed out after 30 seconds. This run has none of its tools (#1026).',
     );
-    expect(notes.join('\n')).not.toContain('docs');
+    // `docs` started: since #1057 it has a ready note of its own, never a failure note.
+    expect(notes.join('\n')).not.toContain('docs did not start');
     expect(notes.join('\n')).not.toContain('MCP server other');
   }, 15_000);
+
+  describe('names an MCP server that reports ready, with its tool count (#1057)', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'xez-1057-'));
+    });
+    afterEach(() => {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    });
+
+    const run = async (env: Record<string, string>) => {
+      const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+      const events: AgentEvent[] = [];
+      const log = join(dir, 'rpc.ndjson');
+      const session = runner.startSession(
+        { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_MCP_STARTUP_FAILED: '1', MOCK_CODEX_RPC_LOG: log, ...env } },
+        (event) => events.push(event),
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const notes = events.flatMap((event) => (event.type === 'note' ? [event.message] : []));
+      const listRequests = readFileSync(log, 'utf8').trim().split('\n')
+        .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> })
+        .filter((entry) => entry.method === 'mcpServerStatus/list');
+      return { notes, listRequests };
+    };
+
+    it('notes each ready server once, for its own thread only, with the count Codex lists', async () => {
+      const { notes, listRequests } = await run({});
+      expect(notes.filter((note) => note.includes('MCP server docs'))).toEqual(['codex: the MCP server docs is ready with 3 tools.']);
+      // A sub-agent thread's ready server adds nothing, and is never looked up.
+      expect(notes.join('\n')).not.toContain('helper');
+      expect(listRequests.map((entry) => entry.params)).toEqual([
+        { threadId: 'th_mock_1', detail: 'toolsAndAuthOnly' },
+        { threadId: 'th_mock_1', detail: 'toolsAndAuthOnly', cursor: 'page-2' },
+      ]);
+      // The #1026 failed-start note is unchanged.
+      expect(notes).toContain(
+        'codex: the MCP server browser did not start: MCP client for `browser` timed out after 30 seconds. This run has none of its tools (#1026).',
+      );
+    }, 15_000);
+
+    it('still names the server, without a count, when the status listing fails', async () => {
+      const { notes } = await run({ MOCK_CODEX_MCP_STATUS_LIST: 'error' });
+      expect(notes.filter((note) => note.includes('MCP server docs'))).toEqual(['codex: the MCP server docs is ready.']);
+    }, 15_000);
+  });
 
   it('fails closed when the app-server cannot say which servers it would load', async () => {
     const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });

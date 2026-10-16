@@ -32,6 +32,9 @@
 //
 // #1026: `MOCK_CODEX_MCP_STARTUP_FAILED=1` follows thread/start with MCP startup
 // statuses: `browser` fails, `docs` gets ready, and a child thread's `other` fails.
+// #1057: `docs` reports ready twice, a child thread's `helper` gets ready, and
+// `mcpServerStatus/list` answers for `th_mock_1` in two pages (`docs` with three
+// tools on the second). `MOCK_CODEX_MCP_STATUS_LIST=error` answers it with an error.
 //
 // #895: a turn whose text contains `mock:exit-mid-turn` starts, streams one line of prose, and
 // then the server exits 0 without `turn/completed`, the shape of a Codex CLI that dies under a
@@ -200,6 +203,20 @@ rl.on('line', (line) => {
       hookTrusted = true;
       emit({ id: msg.id, result: { status: 'ok', filePath: '/mock/config.toml' } });
     }
+  } else if (msg.method === 'mcpServerStatus/list') {
+    const tool = (name) => ({ name, inputSchema: { type: 'object' } });
+    if (process.env.MOCK_CODEX_MCP_STATUS_LIST === 'error' || msg.params?.threadId !== 'th_mock_1') {
+      emit({ id: msg.id, error: { code: -32603, message: 'mock MCP status listing is unavailable' } });
+    } else if (msg.params?.cursor !== 'page-2') {
+      emit({ id: msg.id, result: { nextCursor: 'page-2', data: [
+        { name: 'browser', authStatus: 'unsupported', tools: {}, resources: [], resourceTemplates: [], toolsError: 'not started' },
+        { name: 'helper', authStatus: 'unsupported', tools: { only: tool('only') }, resources: [], resourceTemplates: [] },
+      ] } });
+    } else {
+      emit({ id: msg.id, result: { nextCursor: null, data: [
+        { name: 'docs', authStatus: 'unsupported', tools: { search: tool('search'), read: tool('read'), list: tool('list') }, resources: [], resourceTemplates: [], toolsError: null },
+      ] } });
+    }
   } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
     const problem = isolationProblem(msg.params?.config);
     if (problem) {
@@ -235,6 +252,8 @@ rl.on('line', (line) => {
         status('th_mock_1', 'browser', 'failed', 'MCP client for `browser` timed out after 30 seconds.');
         status('th_mock_1', 'docs', 'ready');
         status('th_child_2', 'other', 'failed', 'a sub-agent thread of its own');
+        status('th_child_2', 'helper', 'ready');
+        status('th_mock_1', 'docs', 'ready');
       }
     } else if (process.env.MOCK_CODEX_REJECT_RESUME === '1') {
       emit({ id: msg.id, error: { code: -32603, message: `no rollout found for thread id ${msg.params?.threadId ?? ''}` } });
