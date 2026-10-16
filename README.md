@@ -227,6 +227,7 @@ agent accounts in later, without overwriting one this project already has. See
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
 | `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access for a writing step and a confined sandbox with network for a read-only step. |
+| `XEZ_CODEX_SANDBOX_FALLBACK=0` | Keep Codex's sandbox when Git Bash cannot start inside it on Windows, and fail the step. By default a read-only step with a `bashAllowlist` runs the rest of the step without the sandbox, still under its allowlist, and the run gets a note. |
 | `XEZ_HOME=/path/to/state` | Move global state and the project registry from `~/.xezar`; empty uses the default. |
 
 Defaults and internal test variables: [`.env.example`](.env.example).
