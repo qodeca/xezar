@@ -123,9 +123,10 @@ What xezar changes for each run, without touching your files:
 - **A project `.env` stays out.** Qwen Code reads the first `.env` it finds above its working folder. xezar tells it to ignore every variable that file names, so its values never reach the run. A `.qwen/.env` file in the project cannot be ignored that way, so a task there is refused with the file's path; move its variables into your shell or into `~/.qwen/.env`.
 - **Only the project's MCP servers start.** A run gets the servers the project's `.mcp.json` and `.qwen/settings.json` declare, on the project's own definitions. Your personal servers, extensions and xezar's own bridge stay off.
 - **Questions use the cockpit.** When the agent needs your decision, the turn ends on a question card, as on the other backends.
+- **Auto-memory is off.** Qwen Code's managed auto-memory keys its notes by folder, and every task runs in a new worktree, so xezar switches it off for task runs. This saves one model call at the end of each turn and keeps per-task memory folders out of your Qwen home. Your own Qwen Code sessions keep it.
 - **Cost.** A model on a local address costs 0. For a hosted model, xezar computes the cost from the `modelPricing` rates in your Qwen Code settings, and shows tokens only when no rate is set.
 
-A second Qwen Code account is a second folder in `QWEN_HOME`. Add it in **Settings → Agent accounts**.
+A second Qwen Code account is a second folder in `QWEN_HOME`. Add it in **Settings → Agent accounts**. Qwen Code keeps its self-updates inside each home, so a new account folder starts on the version npm installed. If xezar refuses it as too old, run `qwen` once with that account (**Connect**) or update the npm install.
 
 ## To make a project MCP server available to Codex
 

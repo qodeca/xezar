@@ -115,6 +115,12 @@ export function qwenSystemSettings(
   const tools = asRecord(settings.tools) ?? {};
   settings.tools = { ...tools, todoWrite: { ...asRecord(tools.todoWrite), enabled: true } };
 
+  // Managed auto-memory and auto-dream off (#1042, owner decision): Qwen Code keys that memory by
+  // folder, and every task runs in a new worktree, so it only left one more model call at the end
+  // of each turn and a memory folder per task in the person's Qwen home. Their own sessions keep it.
+  const memory = asRecord(settings.memory) ?? {};
+  settings.memory = { ...memory, enableManagedAutoMemory: false, enableManagedAutoDream: false };
+
   const advanced = asRecord(settings.advanced) ?? {};
   const excluded = new Set<string>([
     ...QWEN_DEFAULT_EXCLUDED_ENV_VARS,

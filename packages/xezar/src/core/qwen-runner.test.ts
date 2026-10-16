@@ -224,6 +224,8 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
     expect(record!.env.LOCAL_LLM_KEY).toBe('k-local');
     expect(record!.env.QWEN_CODE_SYSTEM_SETTINGS_PATH).not.toBe(join(root, 'no-system-settings.json'));
     expect(record!.settings).toMatchObject({ tools: { todoWrite: { enabled: true } } });
+    // Qwen Code's managed auto-memory is off for task runs: no extra model call, no memory folder per worktree.
+    expect(record!.settings).toMatchObject({ memory: { enableManagedAutoMemory: false, enableManagedAutoDream: false } });
   });
 
   it('keeps a worktree\'s repository .env away from Qwen Code: its names are excluded, its values never read', async () => {
