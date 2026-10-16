@@ -3842,10 +3842,10 @@ export class RunManager {
       }
     }
 
-    // Resolve the agent backend for this run: the task choice (GUI) wins over
-    // the config default. Per-step `runner` can still override it below.
+    // Resolve the agent backend for this run: the task choice (GUI) wins, then the one agent every
+    // agent step names, then the config default. Per-step `runner` can still override it below.
     const config = await loadConfig(this.repoRoot);
-    const taskBackend: RunnerId = input.runner ?? config.defaultRunner;
+    const taskBackend: RunnerId = input.runner ?? sharedStepRunner(workflow) ?? config.defaultRunner;
     // The account may have gone into a usage-limit hold since this run was dequeued — the queue
     // gate cannot be the only one, because dequeue is not the moment of no return. Nothing has
     // happened yet here, so the run goes back to the queue untouched (spec
@@ -5463,6 +5463,19 @@ export class RunManager {
  * reads `runner: codex`; steps on more than one read `runners: codex, claude`, in step order. A
  * workflow with no agent step names the task's runner, as it always did.
  */
+/**
+ * The agent every agent step names, when they all name the same one (#1041). A task that picked no
+ * agent and whose steps all run on, say, Qwen Code IS a Qwen Code task: its record, its account
+ * hold and its model check follow that agent, not the project default no step uses. `undefined`
+ * when a step names none (it runs on the task's agent) or the steps name different agents.
+ */
+export function sharedStepRunner(workflow: WorkflowDef): RunnerId | undefined {
+  const agentSteps = workflow.steps.filter((step) => stepKind(step) === 'agent');
+  const first = agentSteps[0]?.runner;
+  if (first === undefined) return undefined;
+  return agentSteps.every((step) => step.runner === first) ? first : undefined;
+}
+
 export function stepRunnersLabel(workflow: WorkflowDef, taskBackend: RunnerId): string {
   const runners = [...new Set(workflow.steps
     .filter((step) => stepKind(step) === 'agent')
@@ -5483,7 +5496,11 @@ function continuationModel(
   sessionId: string | undefined,
   backend: RunnerId,
 ): string | undefined {
-  if (!record || backend === (record.runner ?? 'claude')) return record?.model;
+  if (!record) return undefined;
+  // On the run's own agent the run's model wins, as it always did. With no run model, the step that
+  // owns the session still pinned one: a task whose steps all name its agent takes that agent as its
+  // own (`sharedStepRunner`), and its steps' models must survive a Continue.
+  if (backend === (record.runner ?? 'claude') && record.model !== undefined) return record.model;
   const defSteps = record.workflowDef?.steps ?? [];
   const owner = sessionId === undefined
     ? undefined

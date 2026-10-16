@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunSpec } from '../core/agent-runner.ts';
 import type { RunnerId } from '../core/agent-runner.ts';
 import { RunStore, type StepState } from '../runs/store.ts';
-import { RunManager, stepRunnersLabel } from './run.ts';
+import { RunManager, sharedStepRunner, stepRunnersLabel } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
 const run = promisify(execFile);
@@ -117,12 +117,13 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
     model?: string;
     error?: string;
     autoResumeAt?: string;
+    runner?: RunnerId;
   }): string {
     const record = store.createRun({
       title: 't',
       workflow: input.def.name,
       task: 'do the thing',
-      runner: 'claude',
+      runner: input.runner ?? 'claude',
       model: input.model,
       steps: input.steps.map((s) => ({ id: s.id, name: s.id, kind: 'agent' as const })),
     });
@@ -332,6 +333,85 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
         ['code-review', 'APPROVE', 'continue-1'],
       ]);
     });
+  });
+
+  describe('#1041 — a task whose agent steps all name one agent is that agent’s task', () => {
+    it('records the steps’ agent, not the project default, when the task picked none', async () => {
+      const record = manager!.startRun(STEP_RUNNER_DEF, { task: 'do the thing', worktree: false });
+
+      const { backend } = await sessionAt(0);
+      expect(backend).toBe('qwen');
+      expect(store.getRun(record.id)?.runner).toBe('qwen');
+      await settled(record.id);
+    });
+
+    // Guards that pass both ways: a mixed chain and an explicit pick keep today's rule.
+    it('keeps the project default when the agent steps name different agents', async () => {
+      const def: WorkflowDef = {
+        name: 'mixed',
+        source: 'file',
+        steps: [
+          { id: 'work', name: 'Work', prompt: '{{task}}', runner: 'qwen' },
+          { id: 'review', name: 'Review', prompt: '{{task}}' },
+        ],
+      };
+      const record = manager!.startRun(def, { task: 'do the thing', worktree: false });
+
+      await sessionAt(0);
+      expect(store.getRun(record.id)?.runner).toBe('claude');
+      await settled(record.id);
+    });
+
+    it('keeps the task’s own pick when it names one', async () => {
+      const record = manager!.startRun(STEP_RUNNER_DEF, { task: 'do the thing', worktree: false, runner: 'codex' });
+
+      await sessionAt(0);
+      expect(store.getRun(record.id)?.runner).toBe('codex');
+      await settled(record.id);
+    });
+
+    it('a Continue keeps the step’s own model when the run has none', async () => {
+      const def: WorkflowDef = {
+        name: 'own-agent-model',
+        source: 'file',
+        steps: [{ id: 'work', name: 'Work', prompt: '{{task}}', runner: 'qwen', model: 'deepseek-flash' }],
+      };
+      const id = recordedRun({
+        def,
+        runner: 'qwen',
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
+      });
+
+      expect(manager!.continueRun(id, { text: 'keep going' })).toEqual({ ok: true });
+      const { backend, spec } = await sessionAt(0);
+      expect(backend).toBe('qwen');
+      expect(spec.model).toBe('deepseek-flash');
+      await settled(id);
+    });
+  });
+});
+
+describe('#1041 — sharedStepRunner', () => {
+  const def = (steps: WorkflowDef['steps']): WorkflowDef => ({ name: 'w', source: 'file', steps });
+
+  it('names the agent every agent step names, ignoring check steps', () => {
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'gates', command: 'true' },
+      { id: 'review', prompt: '{{task}}', runner: 'qwen' },
+    ]))).toBe('qwen');
+  });
+
+  it('is undefined when one agent step names none, the steps differ, or there is no agent step', () => {
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'review', prompt: '{{task}}' },
+    ]))).toBeUndefined();
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'review', prompt: '{{task}}', runner: 'codex' },
+    ]))).toBeUndefined();
+    expect(sharedStepRunner(def([{ id: 'gates', command: 'true' }]))).toBeUndefined();
   });
 });
 
