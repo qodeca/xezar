@@ -8,6 +8,7 @@ import {
   CodexAppServerRpc,
   endCodexAppServer,
   resolveCodexExecutable,
+  waitForCodexAppServerExit,
 } from './codex-app-server-transport.ts';
 
 const originalBin = process.env.XEZ_CODEX_BIN;
@@ -203,5 +204,17 @@ describe('endCodexAppServer watchdog', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// #1070: the same race as the Claude runner's wait – a child a signal ended before the wait
+// listened has exitCode null, signalCode set, and no event left to fire.
+describe('waitForCodexAppServerExit — a child that a signal already ended (#1070)', () => {
+  it('resolves at once instead of waiting for an exit event that already fired', async () => {
+    const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: 'SIGTERM' });
+    const late = new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1_000));
+    await expect(
+      Promise.race([waitForCodexAppServerExit(child as unknown as ChildProcessWithoutNullStreams), late]),
+    ).resolves.toBeNull();
   });
 });
