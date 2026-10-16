@@ -146,13 +146,13 @@ all on the local model, so the cost is 0.
 
 | Fault | Fix | Test that fails without it |
 | --- | --- | --- |
-| A tool call refused by the read-only hook showed twice in the thread; the second row had no reason. Qwen Code reports it as the tool result and again in `permission_denials`. | `de69c484` – the mapper skips ids already declined | `qwen-ui-mapper.test.ts` ("keeps the refusal reason …") and the `hook-refusal` / `permission-denied` golden fixtures |
-| Stopping a Qwen step (interrupt, step time limit, refused turn) stopped only the `qwen` launcher. Qwen Code runs as the launcher's child, so it and its commands kept running. | `63009630` – `stopChildWithDescendants` (platform layer) also signals the descendants on Linux and macOS | `qwen-runner.test.ts` ("an interrupt stops the program behind the `qwen` launcher …"), `process-tree.test.ts` |
-| A headless `xezar run` whose session waited after a turn exited with code 0 and left the run `running`. Qwen Code runs one process per turn, so nothing held the event loop. | `0deca486` – the session holds the loop while it is open and waiting | `qwen-runner.test.ts` ("an open session waiting for its next message keeps a headless process alive …") |
-| The cockpit offered no Qwen Code in the runner menus (new task, default agent, accounts, agent settings). | `794f509c` – a `qwen` row in `RUNNERS` | `new-task-form.test.ts` ("offers every backend xezar runs …") |
+| A tool call refused by the read-only hook showed twice in the thread; the second row had no reason. Qwen Code reports it as the tool result and again in `permission_denials`. | #1060 · `de69c484` – the mapper skips ids already declined | `qwen-ui-mapper.test.ts` ("keeps the refusal reason …") and the `hook-refusal` / `permission-denied` golden fixtures |
+| Stopping a Qwen step (interrupt, step time limit, refused turn) stopped only the `qwen` launcher. Qwen Code runs as the launcher's child, so it and its commands kept running. | #1061 · `63009630` – `stopChildWithDescendants` (platform layer) also signals the descendants on Linux and macOS | `qwen-runner.test.ts` ("an interrupt stops the program behind the `qwen` launcher …"), `process-tree.test.ts` |
+| A headless `xezar run` whose session waited after a turn exited with code 0 and left the run `running`. Qwen Code runs one process per turn, so nothing held the event loop. | #1063 · `0deca486` – the session holds the loop while it is open and waiting | `qwen-runner.test.ts` ("an open session waiting for its next message keeps a headless process alive …") |
+| The cockpit offered no Qwen Code in the runner menus (new task, default agent, accounts, agent settings). | #1062 · `794f509c` – a `qwen` row in `RUNNERS` | `new-task-form.test.ts` ("offers every backend xezar runs …") |
 | Qwen Code's managed auto-memory ran one more model call after each answer and wrote a memory folder per task worktree into the person's Qwen home. On a slow model it held a finished turn open until the step limit. | `cd40a9e1` – off in each run's private settings (owner decision) | `qwen-runner.test.ts` (the run's settings file); live: 0 memory-pass calls, 3 before |
 
-The fault rows above are filed as issues only after the owner approves the issue text.
+The first four fault rows are filed as #1060, #1061, #1062 and #1063, each with its fix. The auto-memory row was an owner decision (off for task runs), not a filed fault. A test that fails only on a busy machine, older than this work, is filed as #1064.
 
 The count restart rule of #1042: the early-exit fault was in xezar's Qwen code and was found in
 the earlier dogfood batch, so the count restarted, and the counted batch ran on the fixed code.
