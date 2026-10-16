@@ -41,7 +41,7 @@ platforms slot in without touching the engine.
 
 ## How it works (the shape, per provider)
 
-1. **Dependencies** — detect the agent CLIs (`claude`/`codex`/`opencode`/`pi`),
+1. **Dependencies** — detect the agent CLIs (`claude`/`codex`/`qwen`),
    `gh`, `git`; offer to install what's missing. (Tools in `~/.local/bin` / nvm
    are found via your login-shell PATH.)
 2. **Public front** — stand up the reverse proxy / tunnel that terminates

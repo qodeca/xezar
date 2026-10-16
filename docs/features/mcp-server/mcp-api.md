@@ -8,7 +8,7 @@ Contract it implements: [MCP requirements](mcp-project-leader-requirements.md).
 
 This page lets a person review the MCP server's design and API without reading the tool source.
 It covers what a client can call, what each call accepts and returns, and which inventory outcome
-each call serves. For how to launch and configure Claude Code, Codex, pi or OpenCode as a project
+each call serves. For how to launch and configure Claude Code, Codex or Qwen Code as a project
 leader, see the end-user runbook [`docs/guide/13-mcp-leader.md`](../../guide/13-mcp-leader.md);
 this page does not repeat those per-client steps.
 
@@ -755,7 +755,8 @@ A field that looks like a secret is dropped, not masked, even when `XEZ_REDACT_S
 
 This rule comes from [D-05 § 6](mcp-d05-async-event-contract-decision.md#6-decisions). Events are
 rows of the bound project's own journal. An **attached** leader receives them as pushes – a
-`<channel source="xezar">` message in Claude Code, a started turn in Codex, OpenCode or pi – and that
+`<channel source="xezar">` message in Claude Code, a message from the xezar process in Qwen Code, a
+started turn in Codex – and that
 is the normal path (#439). `leader_events` reads the same rows and is the fallback for a leader that
 is not attached, and the catch-up after a gap. The unfiltered workspace stream is never forwarded.
 
@@ -766,8 +767,7 @@ carried by the MCP; a leader reads them with `gh`.
 - **Attaching.** `attach` makes the calling session the project's leader; call it once per session,
   with a new `operationId`. The client is the session's own – xezar derives it from what the session
   showed (its bridge's client name, or the Codex thread its calls carry) and never takes it from an
-  argument. Claude Code, Codex and pi attach themselves; an OpenCode leader is attached by a person in
-  **Settings → MCP connection**, because xezar takes no `opencode serve` address from an MCP session.
+  argument. Claude Code, Codex and Qwen Code attach themselves.
   Hosted mode refuses `attach` and `stop`, and a leader never replaces or detaches a leader of another
   client. `status` says whether this session is attached and can receive pushes, and why not.
 - **Pushed cursor.** Each pushed message names the cursor of its last event (`next_cursor` on a

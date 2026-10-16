@@ -23,8 +23,8 @@ command is verified before the installer moves on.
 
 - Ubuntu/Debian VPS with `apt`, reachable over SSH.
 - A **normal, sudo-capable user** (the wizard refuses to run as root).
-- At least one logged-in agent CLI on that user — `claude`, `codex`, `pi`, or
-  OpenCode (experimental). (The installer can install `gh` and the npm-based CLIs for you.)
+- At least one logged-in agent CLI on that user — `claude`, `codex` or
+  `qwen`. (The installer can install `gh` and the npm-based CLIs for you.)
 - For HTTPS: a domain with a DNS `A`/`AAAA` record pointing at the box.
 - **Ports 80/443 free.** If another reverse proxy already owns them (Dokploy,
   Coolify, Caddy…), don't run the default install — see
@@ -56,7 +56,7 @@ node packages/xezar/dist/index.js server-install --platform ubuntu-vps
 
 | Step | What happens |
 |------|--------------|
-| **Dependencies** | Detects `claude` / `codex` / `opencode` / `pi` / `gh` / `git`; offers to install the missing ones. At least one agent CLI is required. |
+| **Dependencies** | Detects `claude` / `codex` / `qwen` / `gh` / `git`; offers to install the missing ones. At least one agent CLI is required. |
 | **Reverse proxy** | Installs **nginx**, writes an `auth_basic` + SSE-safe proxy vhost, creates the **htpasswd** identity file, and — if `ufw` is active — allows `Nginx Full` (ports 80/443). |
 | **Domain + SSL** *(optional)* | Points the vhost's `server_name` at your domain, then runs `certbot --nginx` for a Let's Encrypt certificate with auto-redirect. Skippable — you can add it later. |
 | **Service** | Installs a **systemd** unit (rootless `--user` + linger where possible, else a system unit), **starts xezar now**, enables it on boot, and waits for it to answer on the loopback port. |
