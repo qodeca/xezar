@@ -1,11 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
+import { FILE_SYMLINKS, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import {
   bootLegacyBackendFiles,
   findLegacyBackendValues,
@@ -177,6 +177,16 @@ describe('the boot refusal, through the real program', () => {
     expect(readFileSync(join(project, '.xezar', 'config.json'), 'utf8')).toBe(config);
   }, 90_000);
 
+  it('`projects add` refuses too, so a settings save cannot silently drop the stored pi value', () => {
+    const config = write(join(home, 'config.json'), { schemaVersion: 1, agentDefaults: { runner: 'pi' } });
+    const other = join(base, 'other');
+    mkdirSync(other, { recursive: true });
+    const result = cli(['projects', 'add', other]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`${join(home, 'config.json')}: agentDefaults.runner = "pi"`);
+    expect(readFileSync(join(home, 'config.json'), 'utf8')).toBe(config);
+  }, 90_000);
+
   it('a clean project is not refused: the launch goes on to the command itself', () => {
     write(join(project, '.xezar', 'config.json'), { defaultRunner: 'claude' });
     write(runsFile(), { runs: [{ id: 'r1', runner: 'qwen', steps: [{ id: 's', backend: 'qwen' }] }] });
@@ -186,4 +196,23 @@ describe('the boot refusal, through the real program', () => {
     expect(result.stderr).not.toContain('xezar did not start');
     expect(result.stderr).toContain('unknown workflow: no-such-workflow');
   }, 90_000);
+});
+
+describe('the check beyond serve and run (#1067 review)', () => {
+  it('reads the registry backup the workspace restores from', () => {
+    write(`${join(home, 'config.json')}.bak`, { schemaVersion: 1, defaultRunner: 'pi' });
+    const layout = globalStateLayout({ XEZ_HOME: home });
+    expect(scanLegacyBackends(bootLegacyBackendFiles(layout, project))).toEqual([
+      { file: `${join(home, 'config.json')}.bak`, field: 'defaultRunner', value: 'pi', kind: 'value' },
+    ]);
+  });
+
+  it('reads a state file that is a link to a file, as the real loaders follow it', () => {
+    const real = join(base, 'elsewhere', 'automations.json');
+    write(real, { automations: [{ task: { runner: 'opencode' } }] });
+    mkdirSync(join(project, '.local', 'xezar'), { recursive: true });
+    if (!FILE_SYMLINKS) return;
+    symlinkSync(real, join(project, '.local', 'xezar', 'automations.json'));
+    expect(scanLegacyBackends(projectLegacyBackendFiles(project)).map((f) => f.field)).toEqual(['automations[0].task.runner']);
+  });
 });

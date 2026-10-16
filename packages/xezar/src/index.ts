@@ -520,10 +520,14 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  // #1046: refuse to serve or run while a saved setting or task record still names a removed
-  // agent (pi, OpenCode). Read-only, before this launch writes anything; the message names each
-  // file and field. The one stated exception to "never fail the boot" (AGENTS.md § Zero config).
-  if (command === 'serve' || command === 'run') {
+  // #1046: refuse to start while a saved setting or task record still names a removed agent (pi,
+  // OpenCode). Read-only, before this launch writes anything; the message names each file and
+  // field. The one stated exception to "never fail the boot" (AGENTS.md § Zero config). Every
+  // command that can save settings or records is held, not only `serve` and `run`: `projects`,
+  // `accounts`, `providers` and `init` rewrite files through loaders that silently drop the
+  // removed id (#1067 review). `mcp` and `lease` save neither, and `mcp` talks to a cockpit that
+  // has already refused.
+  if (command !== 'mcp' && command !== 'lease') {
     const legacy = scanLegacyBackends(bootLegacyBackendFiles(stateLayout, repoRoot));
     if (legacy.length > 0) {
       console.error(legacyBackendMessage(legacy));

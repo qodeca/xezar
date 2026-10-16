@@ -1534,7 +1534,7 @@ export function createApp(deps: ServerDeps) {
         // registered, this process is simply not the one that serves it — and it carries its own
         // message, because the sentence names the other project's folder and this layer would
         // have to re-read the registry to rebuild it.
-        if (err.reason === 'other-instance') return c.json({ error: err.message }, 409);
+        if (err.reason === 'other-instance' || err.reason === 'legacy-backend') return c.json({ error: err.message }, 409);
         return err.reason === 'missing-root'
           ? c.json({ error: `project folder not found: ${err.projectId}` }, 409)
           : c.json({ error: err.message }, 404);

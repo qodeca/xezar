@@ -55,16 +55,21 @@ when it lists models.
 
 ## 4. Change xezar's stored values
 
-xezar does not start while a saved setting or task record still names `pi` or `opencode`. Its
-message lists every file and field. Change each value to `qwen` (or `claude` or `codex`), or
+xezar does not start while a saved setting or task record still names `pi` or `opencode`. This
+holds for every command that saves settings (`serve`, `run`, `init`, `projects`, `accounts`,
+`providers`), and the cockpit does not open a project added later that still has such a value.
+The message lists every file and field. Change each value to `qwen` (or `claude` or `codex`), or
 remove it:
 
 - `.xezar/config.json` – `defaultRunner`, and the `pi` / `opencode` keys under `defaultModels`.
 - Workflow files in `.xezar/workflows/` – a step's `runner:`.
 - Your xezar settings folder (`~/.xezar/`) – the default agent and saved accounts for pi or
   OpenCode.
-- Task history (`runs.json`) – old tasks that ran on pi or OpenCode. Archive or delete those tasks
-  with the version of xezar you used before, or change their `runner` and `backend` values.
+- Task history (`runs.json`) – old tasks that ran on pi or OpenCode. Delete those tasks with the
+  version of xezar you used before, or change their `runner` and `backend` values. Archiving is not
+  enough: an archived task stays in `runs.json` with its values.
+- The backup of your settings (`~/.xezar/config.json.bak`) – xezar restores from it when
+  `config.json` is missing, so fix it the same way.
 
 ## 5. Check it works
 

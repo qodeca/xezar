@@ -535,7 +535,8 @@ class QwenSession {
         else if (!this.versionChecked && (mapped.type === 'assistant' || mapped.type === 'user' || mapped.type === 'result')) {
           // The model is working and no init frame named a version: the gate must not be skipped.
           this.versionChecked = true;
-          this.failTurn(child, qwenVersionVerdict(undefined).message);
+          const verdict = qwenVersionVerdict(undefined);
+          this.failTurn(child, verdict.kind === 'supported' ? 'qwen: Qwen Code reported no version' : verdict.message);
         }
         this.emitUi((state) => mapQwenMessage(mapped, state));
         try {

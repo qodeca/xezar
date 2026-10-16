@@ -20,12 +20,13 @@
  * (`runner`, `backend`, `defaultRunner`, `provider`, `client`), and a `pi` or `opencode` key inside
  * a per-agent map (`models`, `defaultModels`, `selections`).
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
 import { projectDataDir } from './project-data-paths.ts';
+import { projectKitDir } from './project-kit-paths.ts';
 import { projectStateLayout, type StateLayout } from './state-layout.ts';
 import { projectWorkflowsDir } from './workflows/load.ts';
 
@@ -99,13 +100,25 @@ function readDocument(file: string): unknown {
 function filesIn(dir: string, pattern: RegExp): string[] {
   try {
     return readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && pattern.test(entry.name))
+      // A link to a file counts: the real loaders follow it.
+      .filter((entry) => pattern.test(entry.name) && (entry.isFile() || (entry.isSymbolicLink() && isFileTarget(join(dir, entry.name)))))
       .map((entry) => join(dir, entry.name))
       .sort();
   } catch {
     return [];
   }
 }
+
+function isFileTarget(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The snapshot the workspace registry restores from when its file is missing or corrupt. */
+const backupOf = (file: string): string => `${file}.bak`;
 
 /**
  * The files one project keeps settings and task records in, resolved through the project's own
@@ -114,7 +127,10 @@ function filesIn(dir: string, pattern: RegExp): string[] {
  */
 export function projectLegacyBackendFiles(projectRoot: string, dataDir: string = projectDataDir(projectRoot)): string[] {
   const layout = projectStateLayout(projectRoot);
-  const files = [layout.configPath ?? '', layout.workspacePath, layout.uiStatePath, layout.accountsPath].filter((file) => file !== '');
+  const files = [layout.configPath ?? '', layout.workspacePath, backupOf(layout.workspacePath), layout.uiStatePath, layout.accountsPath].filter((file) => file !== '');
+  // The project config a home-folder launch keeps in its own local state (`projectKitDir`): one
+  // bad `defaultRunner` there resets every setting, as in the usual place.
+  files.push(join(projectKitDir(projectRoot), 'config.json'));
   // Every JSON state file the project's data folder keeps at its top level and under `mcp/`
   // (`runs.json`, `automations.json`, `ui-state.json`, `todos.json`, the leader records, …), so a
   // state file added later is covered without a second list. Per-run event logs are not read.
@@ -141,7 +157,7 @@ export function scanLegacyBackends(files: readonly string[]): LegacyBackendFindi
  * scanned.
  */
 export function bootLegacyBackendFiles(layout: StateLayout, repoRoot: string): string[] {
-  const files = [layout.workspacePath, layout.accountsPath, layout.uiStatePath];
+  const files = [layout.workspacePath, backupOf(layout.workspacePath), layout.accountsPath, layout.uiStatePath];
   if (layout.configPath !== null) files.push(layout.configPath);
   files.push(...projectLegacyBackendFiles(repoRoot, layout.dataDir ?? undefined));
   const registry = readDocument(layout.workspacePath);
