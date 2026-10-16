@@ -97,7 +97,7 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
   afterEach(async () => {
     await manager?.dispose();
     manager = undefined;
-    store.flush();
+    await store.close();
     for (let attempt = 0; ; attempt++) {
       try {
         rmSync(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
