@@ -75,6 +75,7 @@ import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
 import type { UiEvent } from '../core/ui-events.ts';
+import { authorEvidenceBrief, snapshotAuthorEvidence } from '../runs/author-evidence.ts';
 import {
   chainStepNote,
   DEFAULT_ALLOWED_TOOLS,
@@ -589,6 +590,10 @@ export interface StartRunInput {
    *  user — turn-ends auto-continue until the agent signals done or the safety
    *  cap is hit. No "needs you" is ever raised. */
   autonomous?: boolean;
+  /** The task whose evidence this task checks (#933, `POST /runs` `evidenceFromRunId`). Persisted
+   *  on the record at creation; the agent-step and continuation spawns read it from the RECORD, so
+   *  no rebuilt input (recovery, Continue, variants) can drop it. */
+  evidenceFromRunId?: string;
   /** Follow-up inbox generation (spec 007, #444). Omitted means enabled for
    *  compatibility; the handoff journal runs either way. */
   generateFollowups?: boolean;
@@ -1443,6 +1448,7 @@ export class RunManager {
       // auto-nudge reads `input.autonomous` (`execute`), but the record is the
       // only source those after-the-fact consumers have.
       autonomous: input.autonomous === true,
+      evidenceFromRunId: input.evidenceFromRunId,
       // Persist the explicit opt-out so queued-run restart recovery and the
       // session Git routes can distinguish it from a removed isolated worktree.
       worktree: !group && input.worktree === false ? false : undefined,
@@ -3502,7 +3508,14 @@ export class RunManager {
     // through `deliverMessage`, so it needs the SAME delivery-only `/skill` rewrite the
     // live path applies (#811). Delivery-only: the `user-message` event above already
     // persisted the user's original text, and the transcript must keep showing that.
-    const openingPrompt = expandRegistrySlashSkillText(prompt, state.skills ?? []);
+    let openingPrompt = expandRegistrySlashSkillText(prompt, state.skills ?? []);
+    // A continuation that opens a FRESH session (a backend switch, or no recorded session) has not
+    // seen the evidence the run's steps were given (#933) — give it the same set. A resumed session
+    // already holds it in its history.
+    if (sessionId === undefined) {
+      const evidenceBlock = this.authorEvidenceBlock(runId, stepId);
+      if (evidenceBlock) openingPrompt += `\n\n${evidenceBlock}`;
+    }
     const session = runner.startSession(
       {
         // The Continue step is a fresh agent session on the same run — the
@@ -3693,6 +3706,27 @@ export class RunManager {
       message: `autonomous — continuing without pausing (${state.autoContinues}/${cap})`,
     });
     return true;
+  }
+
+  /**
+   * The opening-message block for a task started with `evidenceFromRunId` (#933), or null for
+   * every other task. Snapshots the named task's evidence into this run's own folder (replacing
+   * the previous copy) and records a note naming what was copied. Never widens what the step may
+   * reach: the source folders are read here, by the engine, and are never handed to the session.
+   */
+  private authorEvidenceBlock(runId: string, stepId: string): string | null {
+    const authorRunId = this.store.getRun(runId)?.evidenceFromRunId;
+    if (!authorRunId) return null;
+    const snapshot = snapshotAuthorEvidence({ projectRoot: this.repoRoot, dataDir: this.dataDir, runId, authorRunId });
+    this.store.appendEvent(runId, {
+      type: 'note',
+      stepId,
+      message: snapshot.error
+        ? `evidence from task ${authorRunId} could not be copied — ${snapshot.error}`
+        : `evidence from task ${authorRunId}: ${snapshot.files.length} file(s) copied read-only to ${snapshot.dir}` +
+          (snapshot.skipped.length ? `, ${snapshot.skipped.length} skipped over the size limits` : ''),
+    });
+    return authorEvidenceBrief(snapshot);
   }
 
   // ---- execution -----------------------------------------------------------
@@ -4231,6 +4265,10 @@ export class RunManager {
     // existing is what would leave an agent holding a task about a `.pdf` it was never told the
     // location of.
     if (attachments.length) userPrompt += `\n\n${pastedAttachmentsText(attachments)}`;
+    // Another task's evidence, when this task names one (#933): a fresh read-only snapshot in this
+    // run's own folder, quoted size-limited here so every backend judges the same set.
+    const evidenceBlock = this.authorEvidenceBlock(runId, step.id);
+    if (evidenceBlock) userPrompt += `\n\n${evidenceBlock}`;
 
     // The cheap return's whole prompt (#676): the same capped failing output the fresh return
     // appends, and nothing else — no `{{task}}`, no chain note, no attachments. The session
