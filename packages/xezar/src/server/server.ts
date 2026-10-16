@@ -4526,6 +4526,10 @@ export function createApp(deps: ServerDeps) {
         runner: parsed.data.runner,
         model: parsed.data.model,
         agentProfile: parsed.data.agentProfile,
+        // A follow-up with no agent picked keeps the run's recorded agent — the one the pill
+        // shows and `providerForExistingRun` gated above. Automatic resumes follow the session
+        // step's own agent instead (#984).
+        keepRunAgent: true,
       });
       if (!result.ok) return c.json({ error: result.error }, 409);
       return c.json({ continued: true });
