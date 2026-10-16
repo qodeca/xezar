@@ -1,0 +1,21 @@
+{
+  "commit": "023eb972bede4987689fbb1b695f79e7f59a3671",
+  "qwenCode": "0.25.2",
+  "batch": [
+    { "run": "0757c892", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "done" },
+    { "run": "8b0f190d", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "c886debe", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer, no XEZ:DONE in the last message; no refused call" },
+    { "run": "fba2b6e0", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "fe8de2ee", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "87ef0773", "model": "deepseek-flash", "workflow": "qwen-change", "result": "done" },
+    { "run": "8aa045e0", "model": "deepseek-flash", "workflow": "qwen-change", "result": "done" },
+    { "run": "fe367765", "model": "deepseek-flash", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer; XEZ:DONE only inside two refused commands that tried to write the handoff, not in the last message" },
+    { "run": "c2042c75", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-change", "result": "done" },
+    { "run": "d8d07704", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer, no XEZ:DONE in the last message; no shell call at all" }
+  ],
+  "leaderSession": {
+    "n": 11, "leaderModel": "deepseek-v4-pro", "task": "1862eb50", "taskResult": "done",
+    "attachedAt": "18.7 s", "taskFinishedAt": "135.8 s", "pushSeenAt": "135.8 s (same 0.5 s poll)",
+    "status": { "deliveredSeq": 1, "ackedSeq": 1, "reactedSeq": 0, "blocker": null }
+  }
+}

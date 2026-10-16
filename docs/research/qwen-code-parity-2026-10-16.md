@@ -130,6 +130,33 @@ on the `qwen` backend. Run ids and results: `qwen-code-parity-2026-10-16/dogfood
 Median run time 3.0 minutes; the longest, 10.0, are the two time limits. 7.25 M tokens in total,
 all on the local model, so the cost is 0.
 
+## Rerun on the PR head after the review fixes
+
+Commit `023eb972` (PR #1067, after the 7-lens review fixes: the second shell lock, the hook
+checks, the held-receipt stop and the rest), Qwen Code 0.25.2. Evidence:
+`qwen-code-parity-2026-10-16/rerun-023eb972.json`. This rerun also exercises the two routing lanes
+the first proof never ran (`deepseek-v4-pro`, `deepseek-flash`).
+
+| Run | Model | Runs | Done | Failed | Class |
+| --- | --- | --- | --- | --- | --- |
+| Batch | `deepseek-v4-pro` | 5 (3 change, 2 review) | 4 | 1 (`c886debe`) | model error |
+| Batch | `deepseek-flash` | 3 (2 change, 1 review) | 2 | 1 (`fe367765`) | model error |
+| Batch | local `qwen38-flash-next-mlx-mixed-4-8bit` | 2 (1 change, 1 review) | 1 | 1 (`d8d07704`) | model error |
+| Leader session 11 | `deepseek-v4-pro` | task `1862eb50` | done | – | – |
+
+- **The three failures** are the same model error as before: each review gave a complete answer
+  and its last message had no `XEZ:DONE` line, so the interactive last step waited until its
+  10-minute limit. Two of them ran no refused command at all (one ran no shell command), so the new
+  shell lock is not involved. xezar's step instructions (`handoff.ts`) are unchanged since the
+  first proof. The rate (3 of 4 reviews) is higher than the counted batch (2 of 20, local model
+  only); the sample is small. Zero Qwen Code or xezar faults.
+- **Leader session 11:** attached at 18.7 s; the task finished at 135.8 s and its event was in the
+  session in the same 0.5 s poll; delivered 1, acknowledged 1, no blocker.
+- **The second shell lock in real runs:** every review step's allowlist (`git log`, `git status`,
+  `git diff`, `npm test`) now reaches Qwen Code as `run_shell_command(<entry>)` rules; allowed
+  commands ran (`git log …`, `git status --porcelain`, `npm test`), and off-list commands were
+  refused by the hook first, as before.
+
 ## Failures and their classification
 
 | Where | What happened | Class | Evidence |
