@@ -9,6 +9,7 @@ import { AgentQuotaStore, normalizeClaudeUsage, normalizeLiveQuota } from './age
 import codexByLimitIdText from '../__fixtures__/agent-quota/codex-rateLimits-by-limit-id.schema-shaped.json?raw';
 import {
   AGENT_QUOTA_CHECK_GAP_MS,
+  AGENT_QUOTA_CHECK_TIMEOUT_MS,
   AGENT_QUOTA_WAIT_MS,
   AgentQuotaChecker,
   MINIMUM_CLAUDE_QUOTA_VERSION,
@@ -39,6 +40,9 @@ function processGroupAlive(pgid: number): boolean {
   }
 }
 
+/** How much of the checker's real timeout the hang tests leave (#1064). */
+const HUNG_CHECK_BUDGET_MS = 3_000;
+
 async function runHungClaudeCheck(ignoreTerm: boolean): Promise<{
   pgids: number[];
   sigkillPgids: number[];
@@ -63,8 +67,12 @@ async function runHungClaudeCheck(ignoreTerm: boolean): Promise<{
   const previousExecutable = process.env.XEZ_CLAUDE_BIN;
   process.env.XEZ_CLAUDE_BIN = executable;
   const actualNow = Date.now.bind(Date);
+  // The first `Date.now()` in `check()` sets the deadline, so this leaves HUNG_CHECK_BUDGET_MS of
+  // the real timeout. Inside it the fake starts twice (`--version`, then `auth status`, which writes
+  // `pgids.txt` and hangs). 0.5 s was too little on a busy machine: the deadline stopped the second
+  // start before it wrote the file (#1064). The hang is still ended by the checker's own deadline.
   const nowSpy = vi.spyOn(Date, 'now')
-    .mockImplementationOnce(() => actualNow() - 19_500)
+    .mockImplementationOnce(() => actualNow() - (AGENT_QUOTA_CHECK_TIMEOUT_MS - HUNG_CHECK_BUDGET_MS))
     .mockImplementation(actualNow);
   const originalKill = process.kill.bind(process);
   const killCalls: Array<[number, string | number | undefined]> = [];
