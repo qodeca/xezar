@@ -103,6 +103,17 @@ export function gitRoot({ env = process.env, exists = existsSync } = {}) {
   return candidates.find(isGitBashRoot) ?? null;
 }
 
+/**
+ * The worker script's first command: MSYS exactly as the caller had it, or unset (#1078). noglob is
+ * for the worker's own bash.exe – it keeps the MSYS runtime from globbing the worker's command
+ * line – and must not reach the gate command: with noglob inherited, Git's sh stops reading quotes
+ * and splits a quoted path with a space (#1023), which failed the #1023 test in every gate run.
+ */
+export function restoreMsys(env) {
+  const msys = envGet(env, 'MSYS');
+  return msys === undefined ? 'unset MSYS; ' : `export MSYS='${msys.replaceAll("'", "'\\''")}'; `;
+}
+
 /** A copy of env with "noglob" in MSYS (value kept, one key): otherwise the MSYS runtime globs an unquoted `*`. */
 export function withNoglob(env) {
   const msys = envGet(env, 'MSYS') ?? '';
