@@ -167,6 +167,21 @@ around them:
   (#943), and never otherwise. The run manager reads it to stop what the agent left running
   after the timeout; a runner that omits it leaves those programs behind.
 
+A **backend that dies on its own mid-turn** is a fourth ending, and the session MUST still settle
+(#895). Three rules, implemented in `codex-app-server-runner.ts`:
+
+- **Do not wait on stdout of a process that has exited.** A program the CLI started can inherit
+  the pipe and hold it open long after the CLI is gone, so the read loop never ends. Stop reading
+  (destroy stdout, swallow the premature close) `KILL_GRACE_MS` after the exit, and at once when
+  `interrupt()` finds the child already exited – there is nothing left to signal, and a cancel
+  must not wait on a stranger's pipe.
+- **When the output ends, reject every request still waiting for an answer**, or a CLI that died
+  during the handshake leaves `result` pending for good. A request cut short by a stop xezar asked
+  for is that stop, not a failure.
+- **A clean exit (`0`, or no code) with a turn still open, when xezar asked for no stop, is an
+  error**, never a finished turn: otherwise the run settles a dead backend as `done`. After a
+  cancel (`interrupt()`) the same exit settles on the normal path, so the run ends `cancelled`.
+
 A **model-silence bound** may stop a turn on the same path, with a named error instead of the
 timeout text. pi has one (#1000, `PI_SILENCE_LIMIT_MS`, 10 minutes): it arms only while a
 turn waits on the model – in flight, no tool running, no extension dialog pending – restarts

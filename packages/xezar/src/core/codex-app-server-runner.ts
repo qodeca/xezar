@@ -159,6 +159,8 @@ export interface CodexReadOnlyHook {
 const CODEX_READ_ONLY_HOOK_MATCHER = 'Bash|apply_patch' as const;
 const LEGACY_CODEX_READ_ONLY_HOOK_MATCHER = 'Bash';
 const BLOCKED_HOOK_NOTE_PREFIX = 'codex: PreToolUse blocked: ';
+/** What a request still waiting when the app-server's output ends is rejected with (#895). */
+const OUTPUT_CLOSED = 'codex app-server exited before it answered';
 const BLOCKED_HOOK_REASON_LIMIT = 2_000;
 const BLOCKED_HOOK_TRUNCATION_MARKER = '… [truncated]';
 
@@ -266,6 +268,15 @@ class CodexSession implements AgentSession {
    *  does not answer: it flips on signal delivery, so the SIGTERM this runner
    *  sends would otherwise veto its own SIGKILL escalation (#844). */
   private readonly hasExited: () => boolean;
+  /** Set when xezar asks the session to stop – `end()` (stdin EOF) or `interrupt()` (cancel). An
+   *  app-server that then exits with a turn unfinished did what it was asked; one that exits
+   *  mid-turn on its own died under the turn (#895). */
+  private stopRequested = false;
+  /** Set when xezar stops reading stdout of an app-server that already exited (#895): a process
+   *  the app-server started can inherit the pipe and hold it open long after the server is gone,
+   *  and the session must not wait on it. */
+  private outputReleased = false;
+  private outputReleaseTimer: NodeJS.Timeout | undefined;
   /** Protocol v2 emission — additive alongside v1 (`onEvent` keeps flowing
    *  byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
    *  lands in R2 step 2.1). */
@@ -301,6 +312,15 @@ class CodexSession implements AgentSession {
     this.child.on('error', (err: NodeJS.ErrnoException) => {
       this.spawnFailed = codexSpawnError(err, bin);
     });
+    // #895: once the app-server has exited, its own last lines are already in the pipe and arrive
+    // within moments; anything still holding stdout open after that is a process it started, never
+    // the server. Stop reading after the same grace a stopping child gets (`KILL_GRACE_MS`), so a
+    // dead server settles the session instead of leaving the turn running for as long as that
+    // process lives. A cancel does not wait for the grace (`interrupt()`).
+    this.child.once('exit', () => {
+      this.outputReleaseTimer = setTimeout(() => this.releaseOutput(), KILL_GRACE_MS);
+      this.outputReleaseTimer.unref?.();
+    });
     const stderrChunks: string[] = [];
     this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
@@ -333,22 +353,31 @@ class CodexSession implements AgentSession {
       let sessionError: unknown;
       try {
         const readLoop = async () => {
-          for await (const line of readNdjson(this.child.stdout)) {
-            if (this.timedOut) break;
-            let msg: CodexAppServerMessage;
-            try {
-              msg = JSON.parse(line) as CodexAppServerMessage;
-            } catch {
-              continue; // not JSON-RPC — skip
+          try {
+            for await (const line of readNdjson(this.child.stdout)) {
+              if (this.timedOut || this.outputReleased) break;
+              let msg: CodexAppServerMessage;
+              try {
+                msg = JSON.parse(line) as CodexAppServerMessage;
+              } catch {
+                continue; // not JSON-RPC — skip
+              }
+              // A sub-agent child thread's turn lifecycle must reach neither channel (#600):
+              // v1 would emit a bogus `turn-end`, and the v2 mapper — which carries no thread
+              // identity — would record the child turn as the parent's, clearing its turn-scoped
+              // plan/reasoning state and resetting the current turn id. Child ITEM events still
+              // flow, so nested sub-agent activity keeps rendering.
+              if (this.isForeignTurnLifecycle(msg)) continue;
+              this.emitUi((state) => mapCodexNotification(msg, state));
+              this.dispatch(msg);
             }
-            // A sub-agent child thread's turn lifecycle must reach neither channel (#600):
-            // v1 would emit a bogus `turn-end`, and the v2 mapper — which carries no thread
-            // identity — would record the child turn as the parent's, clearing its turn-scoped
-            // plan/reasoning state and resetting the current turn id. Child ITEM events still
-            // flow, so nested sub-agent activity keeps rendering.
-            if (this.isForeignTurnLifecycle(msg)) continue;
-            this.emitUi((state) => mapCodexNotification(msg, state));
-            this.dispatch(msg);
+          } catch (err) {
+            // Destroying a stream under `for await` ends it with a premature-close error.
+            if (!this.outputReleased) throw err;
+          } finally {
+            // #895: with the output gone nothing can answer a request still waiting – an
+            // app-server that died during the handshake left `ready` pending for good.
+            this.rpc.rejectPending(OUTPUT_CLOSED);
           }
         };
         // Start consuming stdout before awaiting bootstrap: JSON-RPC responses
@@ -356,7 +385,9 @@ class CodexSession implements AgentSession {
         // promises makes every bootstrap rejection part of session.result.
         await Promise.all([this.ready, readLoop()]);
       } catch (err) {
-        if (!this.timedOut) {
+        // A handshake request cut short by a stop xezar asked for is that stop, not a failure.
+        const stoppedByXezar = this.stopRequested && err instanceof Error && err.message === OUTPUT_CLOSED;
+        if (!this.timedOut && !stoppedByXezar) {
           sessionError = err;
           // Bootstrap failed before a usable turn exists. Closing stdin lets
           // app-server exit normally; end() also owns the TERM/KILL watchdog
@@ -376,9 +407,20 @@ class CodexSession implements AgentSession {
       if (killTimer) clearTimeout(killTimer);
       if (this.eofTermTimer) clearTimeout(this.eofTermTimer);
       if (this.eofKillTimer) clearTimeout(this.eofKillTimer);
+      if (this.outputReleaseTimer) clearTimeout(this.outputReleaseTimer);
       this.rpc.rejectPending();
+      const stderrDetail = () => {
+        const stderr = stderrChunks.join('').trim();
+        return stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
+      };
 
       if (this.spawnFailed) throw this.spawnFailed;
+      if (sessionError instanceof Error && sessionError.message === OUTPUT_CLOSED) {
+        // #895: name the exit and what the app-server said, not just the cut-off request.
+        const message = `${OUTPUT_CLOSED} (code ${exitCode})${stderrDetail()}`;
+        this.emit({ type: 'error', message });
+        throw new Error(message);
+      }
       if (sessionError) throw sessionError;
 
       // Timeout/interrupt can end the read loop mid-item — recover buffered prose.
@@ -411,13 +453,20 @@ class CodexSession implements AgentSession {
       }
 
       if (exitCode !== 0 && exitCode !== null) {
-        const stderr = stderrChunks.join('').trim();
-        const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
+        const detail = stderrDetail();
         // Same split as the claude runner (#156): a 128+signal code that got
         // past the flag above was signalled by something other than xezar.
         const message = isSignalTerminationExit(exitCode)
           ? `${foreignSignalExitMessage('codex app-server', exitCode)}${detail}`
           : `codex app-server exited with code ${exitCode}${detail}`;
+        this.emit({ type: 'error', message });
+        throw new Error(message);
+      }
+
+      // #895: a clean exit with a turn still open, and nobody at xezar asked it to stop, is an
+      // app-server that died under the turn – never a finished turn the run may settle as done.
+      if (this.activeTurnId !== undefined && !this.stopRequested) {
+        const message = `codex app-server exited before the turn finished (code ${exitCode})${stderrDetail()}`;
         this.emit({ type: 'error', message });
         throw new Error(message);
       }
@@ -460,6 +509,7 @@ class CodexSession implements AgentSession {
   }
 
   end(): void {
+    this.stopRequested = true;
     if (!this.stdinOpen) return;
     this.rejectPendingUserInput('session ended');
     this.stdinOpen = false;
@@ -480,6 +530,7 @@ class CodexSession implements AgentSession {
   }
 
   interrupt(): void {
+    this.stopRequested = true;
     this.stdinOpen = false;
     this.rejectPendingUserInput('turn interrupted');
     // Best-effort graceful cancel of the in-flight turn, then hard stop.
@@ -491,7 +542,20 @@ class CodexSession implements AgentSession {
     if (!this.hasExited()) {
       this.terminatedByXezar = true;
       void stopChildTree(this.child, 'SIGTERM');
+    } else {
+      // #895: the app-server is already gone, so there is nothing to signal – but a process it
+      // started may still hold stdout open, and the cancel must not wait on that.
+      this.releaseOutput();
     }
+  }
+
+  /** Stop reading the output of an app-server that has exited (#895). Its own last lines are
+   *  dropped only if they have not arrived by now, which is the trade every caller has chosen:
+   *  a cancel, or a server dead for `KILL_GRACE_MS`. */
+  private releaseOutput(): void {
+    if (this.outputReleased) return;
+    this.outputReleased = true;
+    this.child.stdout.destroy();
   }
 
   // ---- protocol -----------------------------------------------------------
