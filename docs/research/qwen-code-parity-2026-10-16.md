@@ -184,6 +184,13 @@ This check found the missing runner menu entry (fixed, above) and the runner lab
   folder at once ("Project data is already in use"). The dogfood batch therefore gives each
   worker its own clone. This is existing, intended behavior.
 
+## Routing (criterion 1)
+
+This project's routing (`.xezar/routing.json`) now names Qwen Code lanes where it named pi lanes, in the same
+place in every row, so Qwen is preferred wherever pi was. The pi lanes are not kept as a fallback: pi is removed
+in the same change set (#1046), and the owner accepted that on 2026-10-16. `qwen/deepseek-flash` is text only
+through Qwen Code (see Images above), so the rows that must see a screen do not list it.
+
 ## What this does not cover
 
 - Dogfood on this repository's own daily work through `.xezar/routing.json` lanes: that file
