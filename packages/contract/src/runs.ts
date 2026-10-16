@@ -181,6 +181,9 @@ export const runRecordSchema = z.object({
   /** Autonomous mode (#autonomous): the run never parks at `waiting` or the terminal `review`
    *  gate. Absent = falsy = not autonomous. */
   autonomous: z.boolean().optional(),
+  /** The task whose evidence this task was given (#933, `POST /runs` `evidenceFromRunId`).
+   *  Absent on every task started without one. */
+  evidenceFromRunId: z.string().optional(),
   /**
    * Provenance for a task a project GitHub automation launched (#694). Absent on every ordinary
    * run, which is what makes it additive — the cockpit shows the "from automation" link only when
@@ -800,6 +803,12 @@ export const createRunInputBaseSchema = z
     /** The inbox entry this task came from (#374). Best-effort bookkeeping: an unknown or
      *  already-started id never fails the run. For ×2/×3 the FIRST variant is recorded. */
     todoId: z.string().min(1).max(200, 'must be at most 200 characters').optional(),
+    /** The task whose evidence this task checks (#933) — typically the author of the pull request
+     *  a review task reviews. When set, every agent step gets a read-only snapshot of that task's
+     *  evidence files and handoff, copied into this task's own run folder, and the same files
+     *  (size-limited) in its opening message, so every backend sees the same set. Must name a task
+     *  in the same project. Omit for no evidence (the default). */
+    evidenceFromRunId: z.uuid().optional(),
   });
 
 /**

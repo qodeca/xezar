@@ -14,14 +14,17 @@ flags, help text, output shapes and exit codes. A script that calls the CLI toda
 
 Everything under `/api/v1` (project-scoped under `/api/v1/p/:projectId/`), as the zod schemas in
 `packages/contract` describe it. A route, a field or a status code clients read is not removed or
-retyped; a new field is additive.
+retyped; a new field is additive. `POST /runs` gained the optional `evidenceFromRunId` (#933)
+and the run record the matching optional `evidenceFromRunId`: absent, a body and a record mean
+exactly what they meant before. Removing either, or making the request field required, is a break.
 
 ## 3. The MCP tool surface
 
 The tools `xezar mcp` serves to a project leader, their names, arguments and result shapes, as
 `docs/features/mcp-server/mcp-api.md` documents them. A leader built against today's tools keeps
 working against the next release, and the bridge refuses a mismatched protocol version rather than
-guessing.
+guessing. `task_create` `start` gained the optional `evidenceFromRunId` argument (#933) and echoes it
+under `effective` only when it was given; a call without it sends the same body as before.
 
 ## 4. Workflow and skill files
 
@@ -34,7 +37,13 @@ A step's `verdictRole` names one of `TASK_VERDICT_ROLES` in `packages/contract/s
 and each role keeps every verdict word it has ever accepted. Adding a role or a word is additive:
 0.20.0 adds `security-review` and `acceptance-verification`, and adds the 3.0.3 kit's CONFORMS,
 CONFORMS WITH FOLLOW-UPS and CONTRADICTS to `architecture-review` beside APPROVE and REQUEST CHANGES.
-Renaming or removing a role or a word is a break. The most steps a chain may hold when it is saved
+Renaming or removing a role or a word is a break. A packet is recorded only under the role the
+step that settles it declares; a Continue reports as the step it completes — the step whose session
+it resumes, or, in a fresh session, the workflow step it finishes — never as a later reviewer step
+(#864). An agent step's optional `claudeSettings`
+(#1001: `files` and `scripts`, repository-relative) is additive; absent, a step starts
+exactly as before. Its accepted settings keys (`hooks` only) may widen only by an owner decision,
+and narrowing them would refuse files that load today. The most steps a chain may hold when it is saved
 or run inline (`WORKFLOW_MAX_STEPS`, the same number for the HTTP API, MCP and the cockpit) rose
 from 8 to 12 in 0.20.0; raising it is additive, lowering it would refuse files that save today.
 
@@ -43,7 +52,12 @@ from 8 to 12 in 0.20.0; raising it is additive, lowering it would refuse files t
 `.xezar/config.json`, the per-user `~/.xezar/` files, and the runtime state under
 `.local/xezar/` (plain JSON, NDJSON and Markdown). The old shape keeps being read for as long as
 anyone can still have it on disk; a migration is tolerant and never requires the user to repair a
-file by hand.
+file by hand. A run started with `evidenceFromRunId` (#933) also owns `runs/<runId>-evidence/`, a
+read-only copy of the named task's evidence that the engine replaces at each agent step and deletes
+with the run, the way it deletes the run's screenshots.
+A new top-level name under `.local/xezar/` is listed in `STATE_NAME_ENTRIES`
+(`packages/xezar/src/local-xezar-top-level-names.ts`) in the same change; #1001 adds the
+`claude-settings/` directory (pinned step hooks), and a new directory is additive.
 
 ## 6. Environment variables
 

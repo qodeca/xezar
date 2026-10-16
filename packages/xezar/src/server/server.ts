@@ -61,6 +61,7 @@ export type { ProjectsResponse };
 import {
   WORKFLOW_MAX_STEPS,
   attachmentInputSchema,
+  createRunInputBaseSchema,
   createAgentProfileInputSchema,
   MODEL_DISCOVERY_RUNNERS,
   modelDiscoveryRunnerSchema,
@@ -769,6 +770,9 @@ const startRunSchema = z
     // audit trail survives the composer detour. Bounded like every other
     // string here; a todo id is a short generated key.
     todoId: z.string().min(1).max(200, 'must be at most 200 characters').optional(),
+    // The task whose evidence this task checks (#933) — the contract's own field definition, so
+    // the bound and the message cannot drift from `createRunInputSchema`.
+    evidenceFromRunId: createRunInputBaseSchema.shape.evidenceFromRunId,
   })
   .refine((b) => Boolean(b.workflow) !== Boolean(b.steps), {
     message: 'provide either "workflow" or "steps", not both',
@@ -4182,6 +4186,11 @@ export function createApp(deps: ServerDeps) {
         const account = await resolveWorkspaceProfile(fallback, parsed.data.agentProfile);
         if ('error' in account) return c.json({ error: account.error }, 400);
       }
+      // A named evidence source must be a task of THIS project (#933): its folders are read from
+      // this project's state, and an id that names nothing would only become a silent gap later.
+      if (parsed.data.evidenceFromRunId !== undefined && !store.getRun(parsed.data.evidenceFromRunId)) {
+        return c.json({ error: `evidenceFromRunId: no task ${parsed.data.evidenceFromRunId} in this project` }, 400);
+      }
       const images = parsed.data.images?.map(toPastedContent);
       const input = {
         task: parsed.data.task,
@@ -4192,6 +4201,7 @@ export function createApp(deps: ServerDeps) {
         systemPrompt: parsed.data.systemPrompt,
         worktree: parsed.data.worktree,
         autonomous: parsed.data.autonomous,
+        evidenceFromRunId: parsed.data.evidenceFromRunId,
         // Opt-in inbox (#471): the capability is the ceiling, so a client asking
         // for follow-ups on a server that has them off gets a plain `false`
         // rather than an error — the run is still perfectly valid without them.
@@ -4512,6 +4522,10 @@ export function createApp(deps: ServerDeps) {
         runner: parsed.data.runner,
         model: parsed.data.model,
         agentProfile: parsed.data.agentProfile,
+        // A follow-up with no agent picked keeps the run's recorded agent — the one the pill
+        // shows and `providerForExistingRun` gated above. Automatic resumes follow the session
+        // step's own agent instead (#984).
+        keepRunAgent: true,
       });
       if (!result.ok) return c.json({ error: result.error }, 409);
       return c.json({ continued: true });

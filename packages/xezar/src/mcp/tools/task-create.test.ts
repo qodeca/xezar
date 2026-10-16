@@ -561,6 +561,15 @@ describe('task_create start: every field set or omitted lands where the composer
       generateFollowups: false,
     });
   });
+
+  it('#933: evidenceFromRunId rides the body unchanged and is echoed; absent, the body is the form\'s', async () => {
+    const id = '0f1e2d3c-4b5a-4968-8776-655443322110';
+    const f = setup();
+    const result = json(await callTool(f, { ...argsFor(DRAFT), evidenceFromRunId: id }));
+    expect(result).toMatchObject({ accepted: true, effective: { evidenceFromRunId: id } });
+    const [sent] = startBodies(f);
+    expect(sent).toEqual({ ...(await cockpitBody(f.app, DRAFT)), evidenceFromRunId: id });
+  });
 });
 
 // ---- invalid: the same rejection the cockpit gets ----------------------------------------------------
@@ -595,6 +604,8 @@ const INVALID: InvalidRow[] = [
   { name: 'autonomous: not a boolean', args: { autonomous: 'yes' }, wire: { ...BASE_WIRE, autonomous: 'yes' } },
   { name: 'generateFollowups: not a boolean', args: { generateFollowups: 1 }, wire: { ...BASE_WIRE, generateFollowups: 1 } },
   { name: 'todoId: empty', args: { todoId: '' }, wire: { ...BASE_WIRE, todoId: '' } },
+  { name: 'evidenceFromRunId: not a task id', args: { evidenceFromRunId: '../other' }, wire: { ...BASE_WIRE, evidenceFromRunId: '../other' } },
+  { name: 'evidenceFromRunId: no such task in this project', args: { evidenceFromRunId: '0f1e2d3c-4b5a-4968-8776-655443322110' }, wire: { ...BASE_WIRE, evidenceFromRunId: '0f1e2d3c-4b5a-4968-8776-655443322110' } },
   { name: 'todoId: over 200 characters', args: { todoId: 't'.repeat(201) }, wire: { ...BASE_WIRE, todoId: 't'.repeat(201) } },
   { name: 'steps: thirteen', args: { steps: Array.from({ length: 13 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) }, wire: { task: DRAFT.text, steps: Array.from({ length: 13 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) } },
   { name: 'steps: a retry that points forward', args: { steps: [{ id: 'a', command: 'true', onFail: { retry: 'b' } }, { id: 'b', prompt: 'p' }] }, wire: { task: DRAFT.text, steps: [{ id: 'a', command: 'true', onFail: { retry: 'b' } }, { id: 'b', prompt: 'p' }] } },

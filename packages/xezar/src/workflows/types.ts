@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { taskVerdictRoleSchema, workflowResultScopeSchema } from '@qodeca/xezar-contract';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import { leaderSetupFallbackInstructions } from '../onboarding/leader-setup.ts';
+import { claudeSettingsFieldSchema } from './claude-step-settings.ts';
 
 /**
  * Node's `setTimeout` ceiling (2^31-1 ms ≈ 24.8 days). A longer delay does not
@@ -86,6 +87,11 @@ export const workflowStepSchema = z
      *  which is what stops an unrelated task writing a `code-review` packet into the real
      *  reviewer's slot. */
     verdictRole: taskVerdictRoleSchema.optional(),
+    /** Repository-owned Claude Code hooks for this step (#1001): `files` are settings files that
+     *  may hold only `hooks`, `scripts` every repository script those hooks run. Both are read
+     *  from the run's base commit and pinned, so a change under review cannot alter its own
+     *  guard (`claude-step-settings.ts`). Claude Code only; another runner records a note. */
+    claudeSettings: claudeSettingsFieldSchema.optional(),
     // check step
     command: z.string().optional(),
     /** Successful routine checks stay in the journal but do not wake an attached leader. */
@@ -112,6 +118,9 @@ export const workflowStepSchema = z
   // one would be a declaration nothing honours.
   .refine((s) => !(s.command && s.verdictRole !== undefined), {
     message: 'verdictRole applies to an agent step; a check step (command) reports no verdict',
+  })
+  .refine((s) => !(s.command && s.claudeSettings !== undefined), {
+    message: 'claudeSettings applies to an agent step; a check step (command) starts no agent session',
   });
 
 /**
@@ -189,6 +198,7 @@ export function skillStackOf(steps: WorkflowStepDef[]): string[] | null {
     if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null;
     if (s.timeout !== undefined) return null; // the compact form cannot carry it
     if (s.verdictRole !== undefined) return null; // nor this — dropping it would refuse every verdict
+    if (s.claudeSettings !== undefined) return null; // nor the step's pinned hooks (#1001)
     skills.push(s.skill);
   }
   return skills.length ? skills : null;

@@ -1,3 +1,42 @@
+# 0.20.3 (2026-10-16)
+
+## Highlights
+
+A fix release. A pi step can now use the browser tools its workflow lists, so pi QA and design
+steps can drive a browser. A Codex run names an MCP server that failed to start. On Windows, a gate
+run waiting for the gate slot no longer runs beside the next holder.
+
+## 🐛 Fixes
+
+- 🐛 **The MCP ready line names `xezar mcp`.** It said `xez mcp`, a second command name npm does not
+  always create, while the docs say `xezar mcp`. (#1010)
+- 🐛 **`providers connect` from a script or headless session says what to do.** When no terminal
+  window can be opened, it now says that signing in needs a terminal you can type in, and to run the
+  printed command there. (#1010)
+- 🐛 **A pi step gets the browser tools its workflow lists.** A step that allowed
+  `mcp__chrome-devtools__…` tools got none on pi: pi-mcp-adapter shows MCP tools behind one `mcp`
+  proxy tool, and pi's tool list named tools the adapter never registers. xezar now asks the adapter
+  for exactly the listed tools as direct tools and names them the way the adapter does, so a pi QA or
+  design step can drive the browser; a tool or server the step does not list stays out of reach. If
+  your own pi MCP config sets `approveTools`, pi still asks before each call. (#1015)
+- 🐛 **A Codex run now says when an MCP server failed to start.** Before, a project server that
+  timed out or crashed at start left the run without its tools and the run log silent, while the
+  setup note read as if the server was running. The run log now names the server and Codex's
+  reason, and the setup note says the server is "set up", not that it runs. (#1026)
+- 🐛 **On Windows, a gate run waiting for the gate slot no longer runs unleased when the slot is
+  freed.** Windows can keep a just-deleted slot file for a moment, and the waiter read that as an
+  unusable folder and ran its checks at once, beside the next holder. The lease now gives up only
+  when every slot keeps failing for about a second, so a waiter takes the freed slot as intended. A
+  folder that really cannot be written is still reported within about a second. (#1038)
+
+## 🔧 Changed
+
+- 🔧 **`XEZ_UPDATE_CHECK=0` skips the startup check for a newer xezar on npm.** It is on by default
+  and nothing else changes. xezar's own tests now set it, so a release no longer makes the terminal
+  width tests fail until its version bump merges.
+
+---
+
 # 0.20.2 (2026-10-15)
 
 ## Highlights

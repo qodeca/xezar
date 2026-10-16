@@ -166,6 +166,37 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
     expect(writing).not.toContain('--setting-sources');
   });
 
+  it('#1001: loads a pinned claudeSettings file beside --setting-sources user on a read-only step', () => {
+    const pinned = '/data/claude-settings/abc/settings.json';
+    const args = buildClaudeArgs(
+      { ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], claudeSettingsFile: pinned },
+      {},
+    );
+    expect(beforeMcp(args)).toEqual([
+      ...head,
+      '--permission-mode',
+      'dontAsk',
+      '--allowedTools',
+      'Read,Grep,Glob,Bash',
+      '--disallowedTools',
+      'Edit,Write,NotebookEdit',
+      '--setting-sources',
+      'user',
+      '--settings',
+      pinned,
+    ]);
+  });
+
+  it('#1001: a read-only step without claudeSettings still starts with user settings only and no --settings', () => {
+    const args = buildClaudeArgs({ ...base, allowedTools: ['Read', 'Bash'], bashAllowlist: ['git status'] }, {});
+    expect(args.slice(args.indexOf('--setting-sources'), args.indexOf('--setting-sources') + 2)).toEqual([
+      '--setting-sources',
+      'user',
+    ]);
+    expect(args).not.toContain('--settings');
+    expect(args).toContain('--disallowedTools');
+  });
+
   it('turns a bashAllowlist into Bash(<prefix>:*) entries only, with no plain Bash', () => {
     const args = buildClaudeArgs(
       { ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], bashAllowlist: ['git', ' gh ', ''] },

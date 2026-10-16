@@ -95,6 +95,15 @@ export const STATE_NAME_ENTRIES: readonly StateNameEntry[] = [
   { name: 'automation-receipts.ndjson', kind: 'file', reason: 'Automation receipts (automations/store.ts RECEIPTS).', feature: 'automations' },
   { name: 'automation-log.ndjson', kind: 'file', reason: 'Automation log (automations/store.ts LOG).', feature: 'automations' },
   { name: 'automation-poll.lock', kind: 'file', reason: 'The automation poller’s cross-process lock (automations/store.ts, POLL_LOCK).', feature: 'automations' },
+  {
+    name: 'claude-settings',
+    kind: 'directory',
+    reason:
+      'Pinned, content-addressed copies of a workflow step’s `claudeSettings` hooks and scripts, ' +
+      'read from the run’s base commit (workflows/claude-step-settings.ts, #1001). Its own directory, ' +
+      'not under `runs` or `tmp`: those are granted to agents as writable roots, and a pinned guard must not be.',
+    feature: 'claude-settings',
+  },
   { name: 'tasks', kind: 'directory', reason: 'Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).', feature: null },
   // ---- single-project mode only ----
   {

@@ -88,6 +88,9 @@ export const taskCreateInputSchema = z.strictObject({
   autonomous: run.autonomous.describe('true never pauses for the user (start). Omit for the workspace default.'),
   generateFollowups: run.generateFollowups.describe('false stops follow-up inbox entries (start). Omit for on.'),
   todoId: run.todoId.describe('The Inbox entry: the one to start (start_from_inbox), or the one this task came from (start).'),
+  evidenceFromRunId: run.evidenceFromRunId.describe(
+    "The task whose evidence this task checks (start), such as the author of the pull request a review reviews. Every agent step gets a read-only copy of that task's evidence files and handoff in its own run folder, and the same files, size-limited, in its opening message, on every backend. Must be a task in this project. Omit for none.",
+  ),
   // An ARGUMENT of `start` rather than an action of its own: the creation path, its defaults, its
   // provider gate and its refusal table stay exactly one, and the audit inventory keeps recording
   // one `task_create:start`. What it changes is only where the task TEXT comes from.
@@ -111,7 +114,7 @@ type ArgKey = Exclude<keyof TaskCreateArgs, 'action' | 'operationId'>;
 /** Which options each action takes. The Inbox start is NARROWER than the composer (I-026): runner,
  *  model and instructions, and no agent account. */
 const ACTION_FIELDS: Record<Action, readonly ArgKey[]> = {
-  start: ['prompt', 'images', 'source', 'steps', 'model', 'runner', 'agentProfile', 'variants', 'worktree', 'autonomous', 'generateFollowups', 'todoId', 'fromFindings'],
+  start: ['prompt', 'images', 'source', 'steps', 'model', 'runner', 'agentProfile', 'variants', 'worktree', 'autonomous', 'generateFollowups', 'todoId', 'fromFindings', 'evidenceFromRunId'],
   plan: ['prompt'],
   start_from_inbox: ['todoId', 'prompt', 'runner', 'model'],
   save_plan: ['name', 'description', 'steps', 'overwrite'],
@@ -502,11 +505,14 @@ async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdap
     generateFollowups,
     todoId: args.todoId,
   };
-  const body = compact(
-    args.steps !== undefined
+  const body = compact({
+    ...(args.steps !== undefined
       ? plannedRunBody({ ...common, steps: args.steps })
-      : composerRunBody({ ...common, source, agentProfile: args.agentProfile, worktree: mode.worktree, autonomous: mode.autonomous }),
-  );
+      : composerRunBody({ ...common, source, agentProfile: args.agentProfile, worktree: mode.worktree, autonomous: mode.autonomous })),
+    // Not a composer field, so it stays outside the two mirrored body builders (#933): the form
+    // never sends it, and an absent argument leaves the body exactly what the form would send.
+    evidenceFromRunId: args.evidenceFromRunId,
+  });
 
   const started = await adapter.startRun(body as Parameters<McpServiceAdapter['startRun']>[0]);
   if (!started.ok) return refusal(operationId, started.status, started.error);
@@ -536,6 +542,7 @@ async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdap
       worktree: args.steps !== undefined ? hasGit : mode.worktree,
       autonomous: args.steps !== undefined ? false : mode.autonomous,
       generateFollowups,
+      ...(args.evidenceFromRunId ? { evidenceFromRunId: args.evidenceFromRunId } : {}),
     },
     ...(notes.length > 0 ? { notes } : {}),
   });
