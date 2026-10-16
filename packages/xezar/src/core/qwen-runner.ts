@@ -21,7 +21,7 @@ import {
   trackChildExit,
 } from './agent-runner.ts';
 import { launch } from '../platform/process-launch.ts';
-import { stopChildTree } from '../platform/process-tree.ts';
+import { stopChildWithDescendants } from '../platform/process-tree.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { readNdjson } from './ndjson.ts';
 import { costWeightedTokens } from './usage.ts';
@@ -359,7 +359,9 @@ class QwenSession {
   private signalChild(signal: 'SIGTERM' | 'SIGKILL'): void {
     if (!this.child) return;
     this.terminatedByXezar = true;
-    void stopChildTree(this.child, signal);
+    // `qwen` is a launcher that runs the real Qwen Code as its own child and waits: a signal to
+    // the launcher alone left that turn running to its end, with the commands it started (#1042).
+    void stopChildWithDescendants(this.child, signal);
   }
 
   /** The next turn's content, or null once the session is closed with nothing queued. */
@@ -538,7 +540,7 @@ class QwenSession {
   private failTurn(child: ChildProcessWithoutNullStreams, message: string): void {
     this.pendingFailure ??= message;
     this.terminatedByXezar = true;
-    void stopChildTree(child, 'SIGTERM');
+    void stopChildWithDescendants(child, 'SIGTERM');
   }
 
   private handleFrame(msg: QwenStreamMessage, outcome: TurnOutcome): void {

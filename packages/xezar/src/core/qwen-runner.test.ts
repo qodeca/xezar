@@ -5,11 +5,13 @@
  * missing-binary path. The wire mapping is pinned by `qwen-ui-mapper.test.ts`.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { pidExists } from '../platform/process-proof.ts';
+import { signalPid } from '../platform/process-table.ts';
 import type { AgentEvent, AgentRunSpec } from './agent-runner.ts';
 import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION } from './qwen-runner.ts';
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
@@ -19,6 +21,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUB = join(HERE, '__fixtures__', 'qwen', 'stub-qwen.mjs');
+const LAUNCHER = join(HERE, '__fixtures__', 'qwen', 'stub-qwen-launcher.mjs');
 const READ_ONLY = ['Read', 'Grep', 'Glob', 'Bash'];
 
 interface Record_ {
@@ -43,7 +46,7 @@ let root: string;
 let project: string;
 let recordFile: string;
 const saved: Record<string, string | undefined> = {};
-const ENV_KEYS = ['QWEN_STUB_RECORD', 'QWEN_STUB_VERSION', 'QWEN_STUB_EXIT', 'QWEN_STUB_INIT_MODEL', 'QWEN_USAGE_STATISTICS_ENABLED', 'XEZ_QWEN_USAGE_STATISTICS', 'XEZ_DRY_RUN', 'LOCAL_LLM_KEY', 'QWEN_CODE_SYSTEM_SETTINGS_PATH', 'HOME'];
+const ENV_KEYS = ['QWEN_STUB_RECORD', 'QWEN_STUB_VERSION', 'QWEN_STUB_EXIT', 'QWEN_STUB_INIT_MODEL', 'QWEN_STUB_HANG', 'QWEN_USAGE_STATISTICS_ENABLED', 'XEZ_QWEN_USAGE_STATISTICS', 'XEZ_DRY_RUN', 'LOCAL_LLM_KEY', 'QWEN_CODE_SYSTEM_SETTINGS_PATH', 'HOME'];
 
 beforeEach(() => {
   for (const key of ENV_KEYS) saved[key] = process.env[key];
@@ -60,6 +63,7 @@ beforeEach(() => {
   delete process.env.QWEN_STUB_VERSION;
   delete process.env.QWEN_STUB_EXIT;
   delete process.env.QWEN_STUB_INIT_MODEL;
+  delete process.env.QWEN_STUB_HANG;
   delete process.env.QWEN_USAGE_STATISTICS_ENABLED;
   delete process.env.XEZ_QWEN_USAGE_STATISTICS;
   delete process.env.XEZ_DRY_RUN;
@@ -125,6 +129,33 @@ describe('QwenRunner turns', () => {
     process.env.QWEN_STUB_EXIT = '53';
     const { result } = await runOnce();
     expect(result).toMatchObject({ error: expect.stringMatching(/exited with code 53 \(it reached its session turn limit\) — Reached max session turns/) });
+  });
+});
+
+describe('QwenRunner stop (#1042)', () => {
+  const alive = (pid: number): boolean => pidExists(pid);
+  async function hungTurn() {
+    const pidFile = join(root, 'hung.pids');
+    process.env.QWEN_STUB_HANG = pidFile;
+    const runner = new QwenRunner({ bin: LAUNCHER, readSettings: () => SETTINGS });
+    const session = runner.startSession({ userPrompt: 'do it', cwd: project, sessionId: '11111111-1111-4111-8111-111111111111', timeoutMs: 60_000 }, () => undefined, { autoEndAfterFirstTurn: true });
+    const settled = session.result.then(() => 'resolved', (error: unknown) => (error instanceof Error ? error.message : String(error)));
+    await vi.waitFor(() => expect(existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim().split('\n').length === 2).toBe(true), { timeout: 10_000, interval: 50 });
+    const pids = readFileSync(pidFile, 'utf8').trim().split('\n').map(Number);
+    return { session, settled, pids };
+  }
+
+  it('an interrupt stops the program behind the `qwen` launcher and the command it runs, not only the launcher', async () => {
+    const { session, settled, pids } = await hungTurn();
+    try {
+      session.interrupt();
+      // Bounded, so a regression fails here and the finally still stops what the turn started.
+      const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000))]);
+      expect(outcome).not.toBe('still running');
+      await vi.waitFor(() => expect(pids.filter(alive)).toEqual([]), { timeout: 5_000, interval: 50 });
+    } finally {
+      for (const pid of pids) signalPid(pid, 'SIGKILL');
+    }
   });
 });
 
