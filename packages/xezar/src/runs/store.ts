@@ -5,13 +5,18 @@ import { EventEmitter } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   rmSync,
   statSync,
 } from 'node:fs';
+import { constants as bufferConstants } from 'node:buffer';
 import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
@@ -693,6 +698,60 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
   // sweep the moment the handle lands, and the index reader picks the healed values up from
   // `runs.json` on its next read.
   return run;
+}
+
+/** How much of an event log one `readSync` takes in `forEachLineSync`. */
+const EVENT_READ_CHUNK_BYTES = 1024 * 1024;
+
+/**
+ * Call `onLine` for every non-empty line of a UTF-8 file, reading it in fixed chunks so no string
+ * longer than one line is ever built (#942). A line longer than the runtime's string ceiling is
+ * skipped whole. Open and read errors propagate to the caller.
+ */
+export function forEachLineSync(
+  path: string,
+  onLine: (line: string) => void,
+  maxLineChars: number = bufferConstants.MAX_STRING_LENGTH,
+): void {
+  const fd = openSync(path, 'r');
+  try {
+    const buffer = Buffer.allocUnsafe(EVENT_READ_CHUNK_BYTES);
+    const decoder = new StringDecoder('utf8');
+    let pending: string[] = [];
+    let pendingChars = 0;
+    let oversized = false;
+    const take = (text: string): void => {
+      let start = 0;
+      let idx: number;
+      while ((idx = text.indexOf('\n', start)) >= 0) {
+        const segmentChars = idx - start;
+        if (!oversized && pendingChars + segmentChars <= maxLineChars) {
+          const segment = text.slice(start, idx);
+          const line = pendingChars === 0 ? segment : pending.join('') + segment;
+          if (line) onLine(line);
+        }
+        pending = [];
+        pendingChars = 0;
+        oversized = false;
+        start = idx + 1;
+      }
+      if (start < text.length && !oversized) {
+        pendingChars += text.length - start;
+        if (pendingChars > maxLineChars) {
+          oversized = true;
+          pending = [];
+        } else {
+          pending.push(start === 0 ? text : text.slice(start));
+        }
+      }
+    };
+    let read: number;
+    while ((read = readSync(fd, buffer, 0, buffer.length, null)) > 0) take(decoder.write(buffer.subarray(0, read)));
+    take(decoder.end());
+    if (!oversized && pendingChars > 0) onLine(pending.join(''));
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**
@@ -1389,20 +1448,25 @@ export class RunStore extends EventEmitter {
     finally { view.release(); }
   }
 
+  /**
+   * Every parseable event in the file, read line by line (#942). The whole-file string this used
+   * to build cannot exist for a log past the runtime's string ceiling (about 512 MB), and the
+   * error it threw landed in the `catch` below as "no events": the transcript went blank and
+   * `rehydrateSeq` restarted a long run's numbering at 1. A line too long to hold is skipped like
+   * an unparseable one. The `catch` stays load-bearing: a run with no file yet (`ENOENT`) has no
+   * events, and its first append starts at seq 1.
+   */
   private readEventsAtPath(path: string): RunEvent[] {
     try {
-      const raw = readFileSync(path, 'utf8');
-      return raw
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => {
-          try {
-            return JSON.parse(line) as RunEvent;
-          } catch {
-            return null;
-          }
-        })
-        .filter((e): e is RunEvent => e !== null);
+      const events: RunEvent[] = [];
+      forEachLineSync(path, (line) => {
+        try {
+          events.push(JSON.parse(line) as RunEvent);
+        } catch {
+          // not an event line — skipped, as always
+        }
+      });
+      return events;
     } catch {
       return [];
     }
