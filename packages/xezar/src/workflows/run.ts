@@ -23,8 +23,7 @@ import {
   normalizeModelForBackend,
 } from '../core/model-identity.ts';
 import {
-  HANDOFF_ONLY_INSTRUCTIONS,
-  HANDOFF_INSTRUCTIONS,
+  agentContract,
   appendHandoffHeartbeat,
   handoffPath,
   seedHandoffFile,
@@ -207,10 +206,12 @@ const MONITORING_MARKER_RE = /XEZ:MONITORING\s*$/;
  *
  * The decision now belongs to the agent contract every step is given (`HANDOFF_INSTRUCTIONS`):
  * `XEZ:DONE` means "my goal is achieved", and a turn that ends without it is "waiting on the
- * user". A turn that ends on anything else — a question, the monitoring marker, or plain prose —
- * stops the workflow here instead of carrying on without an answer. Deliberately fail-closed on
- * plain prose: that is the case no agent-side marker can report, and the one the BLOCKED file
- * could not catch either. `turnText` is null when the session ended without finishing a turn.
+ * user". Such a step is never taught `XEZ:MONITORING` (#940: `agentContract` with
+ * `canMonitor: false` tells it to finish its background work inside the turn); the marker check
+ * below stays as the safety net. A turn that ends on anything else — a question, the monitoring
+ * marker, or plain prose — stops the workflow here instead of carrying on without an answer.
+ * Deliberately fail-closed on plain prose: that is the case no agent-side marker can report, and
+ * the one the BLOCKED file could not catch either. `turnText` is null when the session ended without finishing a turn.
  */
 export function unfinishedStepReason(turnText: string | null): string | null {
   const text = turnText?.trimEnd() ?? '';
@@ -3497,7 +3498,8 @@ export class RunManager {
         systemPrompt: composeSystemPrompt(
           record?.systemPrompt,
           quickTaskWorktreeInstructions(record?.workflow, state.cwd, this.repoRoot),
-          generateFollowups ? HANDOFF_INSTRUCTIONS : HANDOFF_ONLY_INSTRUCTIONS,
+          // A Continue is interactive: it parks at turn end, so it keeps the monitoring paragraph.
+          agentContract({ followups: generateFollowups, canMonitor: true }),
         ),
         userPrompt: attachments.length
           ? `${openingPrompt}\n\n${pastedAttachmentsText(attachments)}`
@@ -4504,9 +4506,12 @@ export class RunManager {
               systemPrompt,
               extraSystemPrompt,
               quickTaskWorktreeInstructions(this.store.getRun(runId)?.workflow, state.cwd, this.repoRoot),
-              this.semaphore.followupsEnabled() && input.generateFollowups !== false
-                ? HANDOFF_INSTRUCTIONS
-                : HANDOFF_ONLY_INSTRUCTIONS,
+              // A non-interactive step runs one turn and fails on `XEZ:MONITORING`
+              // (`unfinishedStepReason`), so it is told to finish inside the turn instead (#940).
+              agentContract({
+                followups: this.semaphore.followupsEnabled() && input.generateFollowups !== false,
+                canMonitor: interactive,
+              }),
             ),
             userPrompt: resumedSessionId !== undefined && repairPrompt !== null ? repairPrompt : userPrompt,
             // A resumed session already saw them; re-sending would re-bill the same blocks.
