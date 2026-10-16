@@ -59,7 +59,9 @@ export function scanQwenProjectEnv(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string) => string | undefined = readIfPresent,
 ): QwenEnvScan {
-  const home = resolve(env.HOME || env.USERPROFILE || homedir());
+  // Compared as a real path, like `dir`: a home reached through a link (`/home` -> `/var/home`)
+  // would otherwise never match, and the person's own `~/.qwen/.env` would read as a project file.
+  const home = realDir(resolve(env.HOME || env.USERPROFILE || homedir()));
   let dir = realDir(cwd);
   for (;;) {
     if (dir === home) return { excludedNames: [], unblockable: [] };

@@ -17,7 +17,7 @@ import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
 import { scanQwenProjectEnv } from './qwen-run-config.ts';
 import { settingsFromObject, type QwenSettings } from './qwen-settings.ts';
-import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUB = join(HERE, '__fixtures__', 'qwen', 'stub-qwen.mjs');
@@ -244,6 +244,15 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
     writeFileSync(join(project, '.qwen', '.env'), 'OPENAI_API_KEY=sentinel\n');
     const runner = new QwenRunner({ bin: STUB, readSettings: () => SETTINGS });
     expect(() => runner.startSession({ userPrompt: 'x', cwd: project })).toThrow(/\.qwen[/\\]\.env.*~\/\.qwen\/\.env/);
+  });
+
+  it('recognises the home folder when HOME reaches it through a link, so ~/.qwen/.env is not a project file', () => {
+    mkdirSync(join(root, '.qwen'));
+    writeFileSync(join(root, '.qwen', '.env'), 'OPENAI_API_KEY=sentinel\n');
+    const linked = join(mkdtempSync(join(tmpdir(), 'xez-qwen-home-link-')), 'home');
+    linkDir(root, linked);
+    expect(scanQwenProjectEnv(project, { HOME: linked })).toEqual({ excludedNames: [], unblockable: [] });
+    rmSync(dirname(linked), TEST_DIR_RM_OPTIONS);
   });
 
   it('stops the .env walk at the first file and at the home folder, as Qwen Code does', () => {
