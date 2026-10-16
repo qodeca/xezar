@@ -1203,3 +1203,116 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(codexWindowsSandboxConfig('workspace-write', 'darwin')).toEqual({});
   });
 });
+
+/**
+ * #895: a Codex app-server that dies under a live turn. The session used to wait for stdout to
+ * end, so a tool process Codex had started, still holding the pipe, kept the turn "running" for as
+ * long as it lived – and a cancel delivered nothing, because `interrupt()` only signals a child
+ * that has not exited. An app-server that exited 0 mid-turn read as a finished turn.
+ */
+describe('an app-server that dies under a live turn (#895)', () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+  let dir: string;
+  let pidFile: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'xez-895-runner-'));
+    pidFile = join(dir, 'orphan.pid');
+  });
+
+  afterEach(() => {
+    // Stop only the grandchild the mock started for this test, by its own pid.
+    try {
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      if (pid > 0) process.kill(pid, 'SIGKILL');
+    } catch {
+      // never started, or already gone
+    }
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
+  });
+
+  const startDying = (prompt: string, events: AgentEvent[]) =>
+    new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: prompt, cwd: dir, env: { MOCK_CODEX_ORPHAN_PID_FILE: pidFile } },
+      (event) => events.push(event),
+    );
+
+  const exited = (pid: number | undefined) => {
+    try {
+      process.kill(pid!, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  it('fails the turn instead of finishing it when the app-server exits 0 mid-turn', async () => {
+    const events: AgentEvent[] = [];
+    const session = startDying('mock:exit-mid-turn', events);
+
+    await expect(session.result).rejects.toThrow(/codex app-server exited before the turn finished/);
+    expect(events.some((e) => e.type === 'error' && e.message.includes('before the turn finished'))).toBe(true);
+    expect(events.some((e) => e.type === 'done')).toBe(false);
+  }, 15_000);
+
+  it('settles at once when cancelled after the app-server died with its pipe still held open', async () => {
+    const events: AgentEvent[] = [];
+    const session = startDying('mock:exit-mid-turn-orphan', events);
+    const settled = session.result.then(() => 'resolved', (err: Error) => err.message);
+    await expect.poll(() => exited(session.pid), { timeout: 10_000 }).toBe(true);
+    // The orphan really holds the pipe: the read loop is still open.
+    const early = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('open'), 300))]);
+    expect(early).toBe('open');
+
+    const cancelledAt = Date.now();
+    session.interrupt();
+
+    // A cancel is xezar's own stop: the session settles, and promptly – well inside the grace a
+    // dead app-server's pipe gets on its own.
+    expect(await settled).toBe('resolved');
+    expect(Date.now() - cancelledAt).toBeLessThan(KILL_GRACE_MS);
+  }, 20_000);
+});
+
+describe('a dead app-server whose stdout never ends (#895)', () => {
+  it('stops reading KILL_GRACE_MS after the exit and fails the unfinished session', async () => {
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4895,
+      kill: () => true,
+    }) as unknown as ChildProcessWithoutNullStreams;
+    spawnHook.override = () => child;
+    vi.useFakeTimers();
+    try {
+      const session = new CodexAppServerRunner({ bin: 'codex', timeoutMs: 0 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      let state: string | undefined;
+      const settled = session.result.then(() => 'resolved', (err: Error) => err.message);
+      void settled.then((s) => {
+        state = s;
+      });
+      // Exits before answering `initialize`; stdout stays open, as a grandchild would keep it.
+      Object.assign(child, { exitCode: 0 });
+      emitter.emit('exit', 0, null);
+
+      await vi.advanceTimersByTimeAsync(KILL_GRACE_MS - 1);
+      expect(state).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await settled).toMatch(/codex app-server exited before it answered/);
+    } finally {
+      vi.useRealTimers();
+      spawnHook.override = null;
+    }
+  });
+});
