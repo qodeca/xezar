@@ -1,3 +1,83 @@
+# 0.20.4 (2026-10-16)
+
+## Highlights
+
+A fix release. On Linux, Chrome starts inside a task again, so browser checks work there. A Codex
+task whose Codex program died can be cancelled, and Continue after a long Codex step works. A
+resumed step stays on its own agent. A review task can be given the evidence of the task it
+checks, and a step can load repository hooks on Claude Code.
+
+## ✨ Features
+
+- ✨ **A workflow step can load repository hooks on Claude Code, read-only steps included.** An
+  agent step names settings files and the scripts their hooks run with `claudeSettings`; xezar
+  reads them from the task's base commit, so a change under review cannot alter the hook that
+  guards it, and passes them to Claude with `--settings` while project settings stay out of
+  read-only steps. A settings file may hold only `hooks`: a permission, sandbox, env or MCP key
+  fails the step and names the key, and so does a hook command that runs an unlisted repository
+  script. Other backends record that the field is unsupported. This lets a review step carry a
+  narrow hook that approves posting its own multi-line verdict. The pinned copies live in a new
+  `.local/xezar/claude-settings/` directory. (#1001, #936, #901)
+- ✨ **A review task can be given the evidence of the task it checks.** Start a task with the new
+  optional `evidenceFromRunId` (on `POST /runs` and the MCP `task_create` tool) and every agent
+  step gets a read-only copy of that task's evidence files and handoff in its own run folder, plus
+  the same files, size-limited, in its opening message. Claude Code, Codex and pi therefore judge
+  the same evidence, and no step gains new read or write access. A truncated or missing file is
+  named, so the reviewer can state it as a gap. Without the field, nothing changes. (#933)
+
+## 🐛 Fixes
+
+- 🐛 **Chrome starts inside a task on Linux again.** Each task's own temp folder sits deep in the
+  project, and on Linux that path left no room for the Unix socket Chrome makes below it, so
+  Chrome stopped with "Socket path too long" and every browser check in a task (chrome-devtools,
+  design review, QA) failed. On Linux, when the folder is that deep, the agent now gets a short
+  link to it in the system temp folder; files still land in the task's own folder, and the link is
+  removed with it. Windows and macOS are unchanged. (#1065)
+- 🐛 **Cancelling a Codex task whose Codex program has died now stops it.** When the Codex
+  program died during a continued step while a program it had started still held its output
+  open, the task stayed "running", a cancel was accepted but changed nothing, and the task could
+  later end as "done". A cancel now ends such a task as "cancelled" at once; without a cancel, the
+  step fails with the reason within about ten seconds of the program's exit, and a Codex program
+  that exits in the middle of a turn is reported as a failure, never as a finished turn. (#895)
+- 🐛 **An autonomous read-only task no longer ends in "waiting for input".** When a read-only task
+  (one whose tools cannot edit or write files) stopped without its completion marker and the
+  automatic re-prompt changed nothing, or the re-prompts ran out, it parked and waited for a person
+  who was not there. It now finishes, and a note says its last message is the result and that
+  anything it could not read or check is a gap in that result. Writing tasks and tasks that are
+  not autonomous behave as before. (#933)
+- 🐛 **A workflow step before the last one is no longer told to end its turn with the still-working
+  marker.** Such a step runs one turn and failed when it followed that instruction; its standing
+  instructions now say to finish its own sub-agents and long-running commands inside the turn,
+  while quick tasks and the final step keep the marker. (#940)
+- 🐛 **Continue after a long Codex step no longer fails with `Invalid string length`.** Reopening
+  a Codex thread made Codex send its whole history back as one message, and a long session's
+  message was larger than the runtime can hold as a string. xezar now asks Codex to leave the
+  history out of that reply. A Codex that still sends it gets a plain failure naming the thread,
+  the message size and the thread's stored history file and size, with the advice to start a fresh
+  task in the same worktree. A run event log above that size is now read line by line, so its
+  transcript and event numbering survive a restart. (#942)
+- 🐛 **An automatic resume stays on the step's own agent.** A step that names its own agent
+  (`runner:` on the step) lost it when xezar resumed the task after a restart or a usage limit: the
+  continuation ran on the task's agent, in a fresh session without the step's history. It now
+  continues on the agent that ran the step, reopens that session, and uses that step's model. A
+  Continue you send from the cockpit or the MCP keeps the agent its composer shows. (#984, #998)
+- 🐛 **The run header names the runner the steps really use.** `run started — workflow "…"` printed
+  the task's default runner even when every step set its own; it now reads `runner: codex` for a
+  one-step `runner: codex` workflow, and `runners: codex, claude` when the steps use more than one.
+  (#910, #998)
+- 🐛 **A continued author step is no longer recorded as a review.** A Continue that opened a fresh
+  session (after an agent or account switch) recorded a reviewer packet under the role of the
+  workflow's last agent step, whatever step it was finishing. It now reports as the step it
+  completes, so a packet from a continued `implement` step is refused instead of counted as the
+  `review` step's verdict. (#864, #998)
+- 🐛 **A Codex run now says when an MCP server started, and how many tools it offers.** Before, only
+  a failed start left a note, so a run log could not tell a server that never started from a model
+  that never looked its tools up. The run log now names each project MCP server that reports ready,
+  once, with the number of tools Codex lists for it; when Codex cannot say, the note names the server
+  without a count. (#1057)
+
+---
+
 # 0.20.3 (2026-10-16)
 
 ## Highlights
