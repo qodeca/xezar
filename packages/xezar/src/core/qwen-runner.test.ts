@@ -125,6 +125,12 @@ describe('QwenRunner turns', () => {
     expect(local.events.some((e) => e.type === 'cost')).toBe(false);
   });
 
+  it('prices the model Qwen Code started when the run named none (the default model)', async () => {
+    process.env.QWEN_STUB_INIT_MODEL = 'cloud-model';
+    const { events } = await runOnce();
+    expect(events).toContainEqual({ type: 'cost', usd: (100 / 1e6) * 1 + (10 / 1e6) * 2 });
+  });
+
   it('maps a documented exit code to its meaning (53: turn limit)', async () => {
     process.env.QWEN_STUB_EXIT = '53';
     const { result } = await runOnce();

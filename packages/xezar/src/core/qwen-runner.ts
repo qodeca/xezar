@@ -297,13 +297,15 @@ class QwenSession {
   private tokensUsed = 0;
   private sawUsage = false;
   private imageDir: string | null = null;
+  /** The model the init frame named: the one priced when the run asked for none (`auto`). */
+  private reportedModel: string | undefined;
 
   constructor(init: QwenSessionInit) {
     this.init = init;
     this.sessionId = init.spec.sessionId;
     this.uiState = createQwenUiState({
       fallbackSessionId: init.spec.sessionId,
-      priceTurn: (usage) => qwenCostUsd(init.settings, init.model?.id, { input: usage.input + (usage.cacheRead ?? 0), output: usage.output }),
+      priceTurn: (usage) => qwenCostUsd(init.settings, this.pricedModel(), { input: usage.input + (usage.cacheRead ?? 0), output: usage.output }),
     });
     this.queue.push([...(init.spec.images ?? []), { type: 'text', text: init.spec.userPrompt }]);
 
@@ -567,6 +569,7 @@ class QwenSession {
       if (verdict.kind === 'too-old') this.failTurn(child, verdict.message);
       else if (verdict.kind === 'untested') onEvent?.({ type: 'note', message: verdict.message });
     }
+    if (typeof msg.model === 'string' && msg.model !== '') this.reportedModel = msg.model;
     const requested = this.init.model?.id;
     if (requested !== undefined && typeof msg.model === 'string' && msg.model !== requested) {
       this.failTurn(child, `qwen: Qwen Code started model "${msg.model}" instead of the requested "${requested}"; check the id in your Qwen Code settings (modelProviders)`);
@@ -635,10 +638,15 @@ class QwenSession {
           this.tokensUsed += delta;
           onEvent?.({ type: 'token-usage', tokensUsed: this.tokensUsed });
         }
-        const usd = qwenCostUsd(this.init.settings, this.init.model?.id, { input: usage.input + (usage.cacheRead ?? 0), output: usage.output });
+        const usd = qwenCostUsd(this.init.settings, this.pricedModel(), { input: usage.input + (usage.cacheRead ?? 0), output: usage.output });
         if (usd !== undefined && usd > 0) onEvent?.({ type: 'cost', usd });
       }
     }
+  }
+
+  /** The model a turn's cost is looked up for: the requested one, else the one Qwen Code started. */
+  private pricedModel(): string | undefined {
+    return this.init.model?.id ?? this.reportedModel;
   }
 
   /** The step's failure for this turn, or undefined when it ended well. */
