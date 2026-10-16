@@ -18,6 +18,7 @@ import {
   agentTmpDir,
   agentTmpDirEnabled,
   agentTmpEnv,
+  agentTmpRoots,
   removeAgentTmpDir,
   sweepAgentTmpDirs,
 } from './agent-tmpdir.ts';
@@ -204,5 +205,64 @@ describe('reaping the per-run temp directories (#785)', () => {
 
   it('is a no-op before any run has minted a directory', () => {
     expect(sweepAgentTmpDirs(dataDir, [])).toEqual([]);
+  });
+});
+
+/**
+ * #1065: on Linux `<project>/.local/xezar/tmp/<runId>` is too deep for a Unix socket below it,
+ * and Chrome aborted with "Socket path too long" in every task. The run now gets a short link
+ * in the host temp folder; the bytes still land in its own folder.
+ */
+describe('a short TMPDIR where the per-run folder is too deep for a socket (#1065)', () => {
+  const CHROME_SOCKET_SUFFIX = '/com.google.Chrome.XXXXXX/SingletonSocket';
+  const RUN = '2342db59-f969-4758-a94a-e0d8f8a1c0de';
+  let dataDir: string;
+
+  beforeEach(() => {
+    const base = mkdtempSync(join(realpathSync(tmpdir()), 'xez-agent-tmpdir-deep-'));
+    dataDir = join(base, 'Projects', 'a-fairly-long-project-name', '.local', 'xezar');
+    mkdirSync(dataDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    removeAgentTmpDir(dataDir, RUN);
+    rmSync(join(dataDir, '..', '..', '..', '..'), TEST_DIR_RM_OPTIONS);
+  });
+
+  it('on Linux hands the agent a path with room for Chrome’s socket, leading to the run’s folder', () => {
+    const env = agentTmpEnv(dataDir, RUN, {}, 'linux');
+    const visible = env.TMPDIR as string;
+    expect(visible).not.toBe(agentTmpDir(dataDir, RUN));
+    expect(Buffer.byteLength(visible + CHROME_SOCKET_SUFFIX)).toBeLessThan(108);
+    expect(env.TEMP).toBe(visible);
+    expect(env.TMP).toBe(visible);
+    writeFileSync(join(visible, 'scratch.txt'), 'x', 'utf8');
+    expect(existsSync(join(agentTmpDir(dataDir, RUN), 'scratch.txt'))).toBe(true);
+  });
+
+  it('lets the sandbox write both the short path and the real folder', () => {
+    const visible = agentTmpEnv(dataDir, RUN, {}, 'linux').TMPDIR as string;
+    expect(agentTmpRoots(dataDir, RUN, visible)).toEqual([visible, agentTmpDir(dataDir, RUN)]);
+  });
+
+  it('removes the link with the run, and in the start-up sweep', () => {
+    const first = agentTmpEnv(dataDir, RUN, {}, 'linux').TMPDIR as string;
+    removeAgentTmpDir(dataDir, RUN);
+    expect(existsSync(first)).toBe(false);
+    const again = agentTmpEnv(dataDir, RUN, {}, 'linux').TMPDIR as string;
+    expect(sweepAgentTmpDirs(dataDir, [])).toEqual([RUN]);
+    expect(existsSync(again)).toBe(false);
+  });
+
+  it('keeps the real folder on Windows and macOS', () => {
+    for (const platform of ['win32', 'darwin'] as const) {
+      expect(agentTmpEnv(dataDir, RUN, {}, platform).TMPDIR).toBe(agentTmpDir(dataDir, RUN));
+    }
+    expect(agentTmpRoots(dataDir, RUN, agentTmpDir(dataDir, RUN))).toEqual([agentTmpDir(dataDir, RUN)]);
+  });
+
+  it('still makes no link and no folder under XEZ_AGENT_TMPDIR=0', () => {
+    expect(agentTmpEnv(dataDir, RUN, { XEZ_AGENT_TMPDIR: '0' }, 'linux')).toEqual({});
+    expect(existsSync(agentTmpDir(dataDir, RUN))).toBe(false);
   });
 });

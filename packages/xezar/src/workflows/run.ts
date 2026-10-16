@@ -62,6 +62,7 @@ import { reclaimWorktrees, rematerializeReclaimedWorktree } from '../runs/retent
 import {
   AgentTempDirError,
   agentTmpEnv,
+  agentTmpRoots,
   removeAgentTmpDir,
   sweepAgentTmpDirs,
 } from '../runs/agent-tmpdir.ts';
@@ -692,7 +693,7 @@ export function agentDirectories(
   return [
     join(dataDir, 'runs'),
     ...runEvidenceRoots(repoRoot, env.XEZ_TASK_ID),
-    ...(env.TMPDIR ? [env.TMPDIR] : []),
+    ...(env.TMPDIR ? agentTmpRoots(dataDir, env.XEZ_TASK_ID, env.TMPDIR) : []),
   ];
 }
 
