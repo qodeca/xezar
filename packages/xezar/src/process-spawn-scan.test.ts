@@ -68,6 +68,16 @@ const ALLOWED: readonly Allowance[] = [
       'The systemd server install is Linux only and feeds secrets to its programs on stdin with ' +
       'inherited stdio; it never runs on Windows.',
   },
+  {
+    file: 'core/qwen-run-config.ts',
+    rule: 'shell-option',
+    count: 2,
+    reason:
+      'Not a process option: the `shell` key of a hook entry in the Qwen Code settings file xezar ' +
+      'writes (`qwenHookCommand` returns it, `qwenSystemSettings` copies it into the entry), ' +
+      'which tells Qwen Code to run the read-only lock hook in PowerShell on Windows (#1076). ' +
+      'xezar starts no program with it.',
+  },
 ];
 
 const CHILD_PROCESS_LITERAL = /(['"`])(?:node:)?child_process\1/g;
