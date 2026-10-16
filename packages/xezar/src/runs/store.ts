@@ -199,6 +199,10 @@ export const runRecordSchema = z.object({
    *  group-pick winner-park read it). Additive-safe: absent = falsy = not
    *  autonomous. Set at creation from `WorkflowInput.autonomous`. */
   autonomous: z.boolean().optional(),
+  /** The task whose evidence this task was given (#933, `POST /runs` `evidenceFromRunId`): its
+   *  evidence folder and handoff are snapshotted into this run's `<id>-evidence/` folder and
+   *  quoted, size-limited, into each agent step's opening message. Absent = none (the default). */
+  evidenceFromRunId: z.string().optional(),
   /** Optional provenance for tasks launched by a project GitHub automation. */
   automation: z
     .object({
@@ -906,6 +910,7 @@ export class RunStore extends EventEmitter {
     agentProfile?: string;
     generateFollowups?: boolean;
     autonomous?: boolean;
+    evidenceFromRunId?: string;
     worktree?: false;
     groupId?: string;
     variant?: string;
@@ -927,6 +932,7 @@ export class RunStore extends EventEmitter {
       agentProfile: input.agentProfile,
       generateFollowups: input.generateFollowups,
       autonomous: input.autonomous,
+      ...(input.evidenceFromRunId !== undefined ? { evidenceFromRunId: input.evidenceFromRunId } : {}),
       worktree: input.worktree,
       groupId: input.groupId,
       variant: input.variant,
@@ -1473,6 +1479,7 @@ export class RunStore extends EventEmitter {
         rmSync(this.eventsPath(id), { force: true });
         rmSync(this.handoffPath(id), { force: true }); // spec 007: the journal goes with the task
         rmSync(this.imagesDir(id), { recursive: true, force: true }); // agent screenshots
+        rmSync(this.evidenceSnapshotDir(id), { recursive: true, force: true }); // #933 snapshot
       } catch {
         // best effort — the index is authoritative
       }
@@ -1606,6 +1613,12 @@ export class RunStore extends EventEmitter {
     return join(this.dataDir, 'runs', `${runId}-images`);
   }
 
+  /** The read-only author-evidence snapshot (#933) — `authorEvidenceSnapshotDir` in
+   *  `runs/author-evidence.ts`, inlined like `handoffPath` to keep the store free of imports. */
+  private evidenceSnapshotDir(runId: string): string {
+    return join(this.dataDir, 'runs', `${runId}-evidence`);
+  }
+
   private trackDecision(run: RunRecord): boolean {
     const projection = JSON.stringify(runDecisionProjection(run));
     const previous = this.decisionProjections.get(run.id);
@@ -1637,6 +1650,7 @@ export class RunStore extends EventEmitter {
         rmSync(this.eventsPath(stale.id), { force: true });
         rmSync(this.handoffPath(stale.id), { force: true });
         rmSync(this.imagesDir(stale.id), { recursive: true, force: true });
+        rmSync(this.evidenceSnapshotDir(stale.id), { recursive: true, force: true });
       } catch {
         // best effort
       }
