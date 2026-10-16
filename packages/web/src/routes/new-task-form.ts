@@ -53,6 +53,7 @@ export interface RunnerOption {
 export const RUNNERS: readonly RunnerOption[] = [
   { id: 'claude', label: 'claude', desc: 'Claude Code CLI' },
   { id: 'codex', label: 'codex', desc: 'OpenAI Codex (app-server)' },
+  { id: 'qwen', label: 'qwen', desc: 'Qwen Code CLI (your modelProviders)' },
   { id: 'opencode', label: 'opencode', desc: 'OpenCode (serve)' },
   { id: 'pi', label: 'pi', desc: 'pi CLI (provider/model)' },
 ]

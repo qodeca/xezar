@@ -489,3 +489,9 @@ describe('buildAutomationTask', () => {
     })
   })
 })
+
+describe('RUNNERS', () => {
+  it('offers every backend xezar runs – MODELS_BY_RUNNER is typed over all of them, so a missing row fails here', () => {
+    expect(RUNNERS.map((r) => r.id).sort()).toEqual(Object.keys(MODELS_BY_RUNNER).sort())
+  })
+})
