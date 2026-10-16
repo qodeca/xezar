@@ -110,7 +110,9 @@ describe('xezar providers connect (#819 item 8)', () => {
 
     const closed = harness('disconnected', { opens: false });
     expect(await runProvidersCommand(['connect', 'claude'], undefined, closed.deps)).toBe(1);
-    expect(closed.err.join('\n')).toContain(`Run this command yourself: ${LOGIN}`);
+    // A headless session cannot open a window: the message says why and where to run it (#1010).
+    expect(closed.err.join('\n')).toContain('Signing in needs a terminal you can type in');
+    expect(closed.err.join('\n')).toContain(`Open a terminal and run this command yourself: ${LOGIN}`);
   });
 
   // Break: an unknown account silently falling back to the built-in login (the wrong account signs in).

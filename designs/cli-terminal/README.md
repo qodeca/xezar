@@ -224,7 +224,7 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Port note, `--port` busy | `5000 was busy — using 5001` |
 | Port note, `cli.port` busy | `4400 is set for beta but was busy — using 4401 this time` |
 | No agent | `none found — install Claude Code, Codex, OpenCode or pi` |
-| MCP ready | `ready — run xez mcp in this project folder` |
+| MCP ready | `ready — run xezar mcp in this project folder` |
 | MCP unavailable | `unavailable — <reason>. The cockpit works without it.` |
 | Task queued | `queued — “<title>”` |
 | Task started | `started — <step> · <agent>` |
