@@ -34,6 +34,8 @@ export interface QwenCodeInboxAdapterOptions {
   readonly heartbeatMs: number;
   /** Test seam. Production uses `Date.now`. */
   readonly now?: () => number;
+  /** Test seam for the wait after a rate refusal. Production uses an abortable timer. */
+  readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 export interface QwenCodeInboxBlocker {
@@ -60,6 +62,34 @@ export const QWEN_PUSH_HELD_FIX =
  */
 const LASTING_REFUSAL = /Qwen Code did not take the message \((held|refused)\b/;
 
+/**
+ * xezar's own pacing (`QwenMessenger`): the bridge refuses at once and says when the next send is
+ * free. The adapter waits that long INSIDE this attempt, under its abort signal, and tries again,
+ * so a burst of events is not pushed back to the 30 s heartbeat (#1067 review). Bounded: at most
+ * `RATE_RETRIES` waits of at most `RATE_WAIT_CAP_MS` each, well inside one attempt.
+ */
+const RATE_REFUSAL = /the next send is free in (\d+) ms/;
+const RATE_RETRIES = 3;
+const RATE_WAIT_CAP_MS = 5_000;
+
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 export class QwenCodeInboxAdapter implements ReactionAdapter {
   readonly projectId: string;
   readonly #opts: QwenCodeInboxAdapterOptions;
@@ -84,12 +114,19 @@ export class QwenCodeInboxAdapter implements ReactionAdapter {
     if (this.#refusedWith !== undefined) {
       throw new Error(`the Qwen Code session ${this.#refusedWith} xezar's last message, so xezar sends nothing more until the leader attaches again`);
     }
-    try {
-      await this.#opts.push(renderChannelContent(dispatch, rows, this.#opts.roleInstruction), signal);
-    } catch (err) {
-      const lasting = LASTING_REFUSAL.exec(err instanceof Error ? err.message : String(err));
-      if (lasting) this.#refusedWith = lasting[1] as 'held' | 'refused';
-      throw err;
+    const content = renderChannelContent(dispatch, rows, this.#opts.roleInstruction);
+    for (let retry = 0; ; retry++) {
+      try {
+        await this.#opts.push(content, signal);
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const lasting = LASTING_REFUSAL.exec(message);
+        if (lasting) this.#refusedWith = lasting[1] as 'held' | 'refused';
+        const rate = RATE_REFUSAL.exec(message);
+        if (!rate || retry >= RATE_RETRIES || signal.aborted) throw err;
+        await (this.#opts.sleep ?? abortableSleep)(Math.min(Number(rate[1]) + 50, RATE_WAIT_CAP_MS), signal);
+      }
     }
     const lastSeq = rows.at(-1)?.journalSeq ?? null;
     if (lastSeq !== null) {

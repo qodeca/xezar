@@ -72,6 +72,32 @@ describe('QwenCodeInboxAdapter', () => {
     expect(a.status().blocker).toBeUndefined();
   });
 
+  it('waits out xezar\'s own send pacing inside the attempt and tries again, instead of failing it (#1067 review)', async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const a = new QwenCodeInboxAdapter({
+      projectId: 'p1',
+      roleInstruction: 'lead the project',
+      push: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('xezar is sending to this Qwen Code session faster than it accepts messages, so this one waits for the next attempt; the next send is free in 1500 ms');
+      },
+      alive: () => true,
+      acknowledged: () => 0,
+      heartbeatMs: 1_000,
+      sleep: async (ms) => { waits.push(ms); },
+    });
+    expect(await a.deliver(dispatch([row(1)]), signal)).toEqual({ handedThrough: 1 });
+    expect(calls).toBe(2);
+    expect(waits).toEqual([1_550]);
+    // An aborted attempt does not wait or send again.
+    const aborted = new AbortController();
+    aborted.abort();
+    calls = 0;
+    await expect(a.deliver(dispatch([row(2)]), aborted.signal)).rejects.toThrow(/next send is free/);
+    expect(calls).toBe(1);
+  });
+
   it('refuses a dispatch for another project, and sends nothing for an empty one', async () => {
     const { a, pushed } = adapter();
     await expect(a.deliver(dispatch([row(1)], 'other'), signal)).rejects.toThrow(/another project/);

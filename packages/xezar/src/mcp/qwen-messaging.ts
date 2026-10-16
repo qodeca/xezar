@@ -172,7 +172,10 @@ export class QwenMessenger {
       this.#refilledAt = this.#tokens === burst ? now : this.#refilledAt + refill * gapMs;
     }
     if (this.#tokens <= 0) {
-      throw new Error('xezar is sending to this Qwen Code session faster than it accepts messages, so this one waits for the next attempt');
+      // The wait is the caller's to make (the adapter, inside its own attempt and abort signal):
+      // a wait here, in the serialised send queue, would outlive an attempt and send late.
+      const freeInMs = Math.max(0, this.#refilledAt + gapMs - now);
+      throw new Error(`xezar is sending to this Qwen Code session faster than it accepts messages, so this one waits for the next attempt; the next send is free in ${freeInMs} ms`);
     }
     this.#tokens -= 1;
   }

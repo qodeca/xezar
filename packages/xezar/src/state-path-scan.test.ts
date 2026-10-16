@@ -238,7 +238,7 @@ const ALLOWED: readonly Allowance[] = [
   },
   {
     file: 'core/qwen-run-config.ts',
-    code: 'const home = resolve(env.HOME || env.USERPROFILE || homedir());',
+    code: 'const home = realDir(resolve(env.HOME || env.USERPROFILE || homedir()));',
     reason:
       "scanQwenProjectEnv — mirrors Qwen Code's own `.env` walk, which STOPS at the person's home folder. " +
       'It must name the real home to find where Qwen stops reading; it derives no xezar state from it.',
