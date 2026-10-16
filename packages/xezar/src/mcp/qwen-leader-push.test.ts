@@ -323,7 +323,7 @@ describe('#1045 — a Qwen Code leader receives pushed events through its sessio
     const waiting = await c.status();
     expect(waiting.available && (waiting.delivery?.deliveredSeq ?? 0) < change.journalSeq).toBe(true);
 
-    // Qwen Code takes messages again: the same row arrives, once.
+    // Qwen Code takes messages again: the same row arrives again and is counted delivered.
     inbox.control.receipt = 'delivered';
     await until('the retried push', () => inbox.messages.find((m) => m.content.includes(change.eventId)), 30_000);
     await until('delivery to count it', async () => {
