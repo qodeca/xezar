@@ -12,11 +12,13 @@ import {
   gateLeaseLine,
   GATE_LEASE_HEARTBEAT_MS,
   GATE_LEASE_STALE_MS,
+  GATE_LEASE_UNUSABLE_AFTER_MS,
   GATE_LEASE_WAIT_MS,
   runUnderGateLease,
   slotLockPath,
   type GateLeaseEvent,
 } from './gate-lease.ts';
+import { acquireFileLock } from './file-lock.ts';
 
 /**
  * The gate lease's acceptance criteria (#672 wave 5, (a)–(d) and the four named breaks).
@@ -118,12 +120,72 @@ describe('acquireGateLease', () => {
     const second = await queued;
     try {
       // The outcome and reason name the cause if this ever fails again (#963).
-      expect({ held: second.held, outcome: second.outcome, reason: second.reason }).toMatchObject({ held: true });
+      // `toMatchObject` omits matching keys from its diff, which hid the outcome and reason when
+      // this failed on Windows (#1038); an exact comparison prints all three.
+      expect({ held: second.held, outcome: second.outcome, reason: second.reason }).toEqual({
+        held: true,
+        outcome: 'acquired',
+        reason: undefined,
+      });
       expect(second.slot).toBe(1);
       expect(events.some((e) => e.type === 'acquired')).toBe(true);
     } finally {
       await second.release();
     }
+  });
+
+  // Break (#1038): on Windows a slot file the holder has just deleted can stay "delete pending",
+  // and `open(…, 'wx')` on it answers EPERM. With one slot that one error was "every slot", so the
+  // waiter gave up in 15 ms and ran its gates unleased. The EPERM is injected because only Windows
+  // produces it, and only at that moment.
+  it('a waiter that meets one transient error on every slot keeps waiting and takes the slot', async () => {
+    let calls = 0;
+    const events: GateLeaseEvent[] = [];
+    const lease = await acquireGateLease({
+      slots: 1,
+      lockDir: dir,
+      sweepMs: 1,
+      tryLock: async (path, options) => {
+        calls += 1;
+        if (calls === 1) {
+          return { acquired: false, reason: 'error', error: Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }) };
+        }
+        return acquireFileLock(path, options);
+      },
+      onEvent: (e) => events.push(e),
+    });
+    try {
+      expect({ held: lease.held, outcome: lease.outcome, reason: lease.reason }).toEqual({
+        held: true,
+        outcome: 'acquired',
+        reason: undefined,
+      });
+      expect(events.map((e) => e.type)).toEqual(['acquired']);
+    } finally {
+      await lease.release();
+    }
+  });
+
+  it('an error on every slot that lasts the bound is reported as unusable, not waited out', async () => {
+    const clock = fakeClock();
+    const events: GateLeaseEvent[] = [];
+    const lease = await acquireGateLease({
+      slots: 2,
+      lockDir: dir,
+      sweepMs: 0,
+      now: () => {
+        const at = clock.now();
+        clock.advance(100);
+        return at;
+      },
+      tryLock: async () => ({ acquired: false, reason: 'error', error: new Error('EROFS: read-only file system') }),
+      onEvent: (e) => events.push(e),
+    });
+    expect(lease).toMatchObject({ held: false, outcome: 'unavailable', reason: 'EROFS: read-only file system' });
+    // Reported once the bound has passed – not at the first sweep, and not at the 20-minute wait.
+    expect(lease.waitedMs).toBeGreaterThanOrEqual(GATE_LEASE_UNUSABLE_AFTER_MS);
+    expect(lease.waitedMs).toBeLessThan(GATE_LEASE_UNUSABLE_AFTER_MS + 1_000);
+    expect(events.map((e) => e.type)).toEqual(['unavailable']);
   });
 
   it('(b) gateSlots: 3 admits three holders and refuses the fourth', async () => {
