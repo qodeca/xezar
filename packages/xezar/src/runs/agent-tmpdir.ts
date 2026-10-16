@@ -22,6 +22,11 @@
  *      A run that cannot get a working temp directory fails immediately with a
  *      named, actionable error instead of spawning an agent that will run blind.
  *
+ * On Linux that folder can be too deep for a Unix socket below it (#1065: Chrome's
+ * singleton socket), so there the agent is handed a short link in the host temp
+ * folder instead (`platform/short-dir-link.ts`). Only the path changes: the bytes
+ * still land in `<dataDir>/tmp/<runId>`, and the link goes with the folder.
+ *
  * `XEZ_AGENT_TMPDIR=0` opts out of BOTH — xezar keeps its hands off the temp
  * directory entirely and the pre-#785 behaviour is back, byte for byte. That is
  * deliberate: an escape hatch that still imposed the preflight would be a hatch
@@ -30,6 +35,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ensureShortDirLink, needsShortDirLink, removeShortDirLink } from '../platform/short-dir-link.ts';
 
 /** Run ids are uuids; anything else must never reach a recursive `rmSync`.
  *
@@ -44,6 +50,17 @@ function safeRunId(id: string): boolean {
 /** Where a run's agent-scoped temp directory lives. */
 export function agentTmpDir(dataDir: string, runId: string): string {
   return join(dataDir, 'tmp', runId);
+}
+
+/**
+ * The directories an agent's sandbox must let it write for its temp folder: the path in its
+ * `TMPDIR`, and – when that is the short link (#1065) – the run's real folder too, because a
+ * sandbox that checks resolved paths would otherwise refuse every file the link leads to.
+ */
+export function agentTmpRoots(dataDir: string, runId: string | undefined, visible: string): string[] {
+  if (!runId || !safeRunId(runId)) return [visible];
+  const real = agentTmpDir(dataDir, runId);
+  return real === visible ? [visible] : [visible, real];
 }
 
 /** The root every per-run directory hangs off — the ONLY tree this module
@@ -126,11 +143,16 @@ function probeWritable(dir: string): void {
  * Returns `{}` under the opt-out, without probing anything: the hatch turns the
  * whole feature off, preflight included, so it stays an escape someone can
  * actually take.
+ *
+ * Where the folder is too deep for a Unix socket (#1065), the three values name
+ * the short link instead, and the probe writes through it, so a broken link
+ * fails as loudly as a broken folder.
  */
 export function agentTmpEnv(
   dataDir: string,
   runId: string,
   env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): Record<string, string> {
   if (!agentTmpDirEnabled(env)) return {};
   const dir = agentTmpDir(dataDir, runId);
@@ -139,8 +161,9 @@ export function agentTmpEnv(
   } catch (err) {
     throw new AgentTempDirError(dir, err);
   }
-  probeWritable(dir);
-  return { TMPDIR: dir, TEMP: dir, TMP: dir };
+  const visible = needsShortDirLink(dir, platform) ? ensureShortDirLink(dir) : dir;
+  probeWritable(visible);
+  return { TMPDIR: visible, TEMP: visible, TMP: visible };
 }
 
 /**
@@ -150,6 +173,8 @@ export function agentTmpEnv(
  */
 export function removeAgentTmpDir(dataDir: string, runId: string): void {
   if (!safeRunId(runId)) return;
+  // The link first, so it never outlives what it points at; a no-op when there is none.
+  removeShortDirLink(agentTmpDir(dataDir, runId));
   try {
     rmSync(agentTmpDir(dataDir, runId), { recursive: true, force: true });
   } catch {
@@ -178,6 +203,7 @@ export function sweepAgentTmpDirs(dataDir: string, keepRunIds: Iterable<string>)
   }
   for (const name of entries) {
     if (keep.has(name) || !safeRunId(name)) continue;
+    removeShortDirLink(join(root, name));
     try {
       rmSync(join(root, name), { recursive: true, force: true });
       reaped.push(name);

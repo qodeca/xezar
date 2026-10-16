@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { RunStore } from '../runs/store.ts';
-import { AgentTempDirError, agentTmpDir } from '../runs/agent-tmpdir.ts';
+import { AgentTempDirError, agentTmpDir, sweepAgentTmpDirs } from '../runs/agent-tmpdir.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { RunManager, agentDirectories } from './run.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
@@ -48,6 +48,7 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
 
   afterEach(() => {
     store.flush();
+    sweepAgentTmpDirs(dataDir, []); // also the short links a Linux host makes (#1065)
     for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
@@ -64,7 +65,9 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
   it('hands the spawn a TMPDIR under <dataDir>/tmp/<runId>, already created', async () => {
     const run = newRun();
     const { env } = await seam().agentEnvForStep(run.id, 'claude');
-    expect(env.TMPDIR).toBe(agentTmpDir(dataDir, run.id));
+    // On Linux a folder this deep is reached through a short link (#1065); either way it is
+    // this run's own folder.
+    expect(realpathSync(env.TMPDIR as string)).toBe(realpathSync(agentTmpDir(dataDir, run.id)));
     expect(env.TEMP).toBe(env.TMPDIR);
     expect(env.TMP).toBe(env.TMPDIR);
     // Created BEFORE the backend spawns — the backend roots its own scratch tree
