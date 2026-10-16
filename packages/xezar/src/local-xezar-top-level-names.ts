@@ -103,6 +103,15 @@ export const STATE_NAME_ENTRIES: readonly StateNameEntry[] = [
       'scripts/pi-leader-extension.ts DESCRIPTOR_FILE).',
     feature: 'pi',
   },
+  {
+    name: 'claude-settings',
+    kind: 'directory',
+    reason:
+      'Pinned, content-addressed copies of a workflow step’s `claudeSettings` hooks and scripts, ' +
+      'read from the run’s base commit (workflows/claude-step-settings.ts, #1001). Its own directory, ' +
+      'not under `runs` or `tmp`: those are granted to agents as writable roots, and a pinned guard must not be.',
+    feature: 'claude-settings',
+  },
   { name: 'tasks', kind: 'directory', reason: 'Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).', feature: null },
   // ---- single-project mode only ----
   {

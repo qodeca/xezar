@@ -54,6 +54,13 @@ export const workflowStepDefSchema = z
     /** The reviewer role this agent step reports a verdict as (#851). Absent: it reports none, and
      *  a reviewer packet it leaves is refused. */
     verdictRole: taskVerdictRoleSchema.optional(),
+    /** Repository-owned Claude Code hooks for this agent step (#1001): settings `files` (only the
+     *  `hooks` key) and the `scripts` they run, read from the run's base commit. The path rules
+     *  live in `src/workflows/claude-step-settings.ts`, the single source for what may be authored. */
+    claudeSettings: z
+      .object({ files: z.array(z.string()), scripts: z.array(z.string()).optional() })
+      .strict()
+      .optional(),
     // check step
     command: z.string().optional(),
     /** Absent preserves the historical behaviour: a successful check is a significant stage result. */
@@ -73,6 +80,9 @@ export const workflowStepDefSchema = z
   })
   .refine((s) => !(s.command && s.verdictRole !== undefined), {
     message: 'verdictRole applies to an agent step; a check step (command) reports no verdict',
+  })
+  .refine((s) => !(s.command && s.claudeSettings !== undefined), {
+    message: 'claudeSettings applies to an agent step; a check step (command) starts no agent session',
   });
 export type WorkflowStepDef = z.infer<typeof workflowStepDefSchema>;
 

@@ -515,6 +515,27 @@
                   "acceptance-verification"
                 ]
               },
+              "claudeSettings": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "scripts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "files"
+                ],
+                "additionalProperties": false
+              },
               "command": {
                 "type": "string"
               },
@@ -1699,6 +1720,27 @@
                       "security-review",
                       "acceptance-verification"
                     ]
+                  },
+                  "claudeSettings": {
+                    "type": "object",
+                    "properties": {
+                      "files": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "scripts": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "files"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
