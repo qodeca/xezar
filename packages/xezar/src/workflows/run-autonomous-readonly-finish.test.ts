@@ -57,14 +57,14 @@ describe('autonomous read-only runs finish instead of waiting (#933)', () => {
     currentId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (currentId) manager.cancel(currentId);
     manager.dispose();
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    store.flush();
+    await store.close();
     rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
