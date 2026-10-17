@@ -314,7 +314,8 @@
       "sha256": "1c4c3ef8130a462002b561608c1a458470b31802a2d22a9bb090abd0bf507957",
       "origin": "copied",
       "kitSource": "checks/lib/gate-parallel.mjs",
-      "kitBlob": "6f0b8f843195f7ece19ec0788fc15927be17fe6c"
+      "kitBlob": "6f0b8f843195f7ece19ec0788fc15927be17fe6c",
+      "patch": "LP-2"
     },
     ".xezar/checks/lib/gate-record.sh": {
       "sha256": "93017dfab241c2ca204c22a6b279be2a20de49c5d6c25d8fc859de27d2f3e6a1",
@@ -356,7 +357,8 @@
       "sha256": "3a59e39d7b092f5517d5b890d080edd6c13803d8ee66d59d982fbe0e552f2463",
       "origin": "copied",
       "kitSource": "checks/lib/windows-process.mjs",
-      "kitBlob": "0e9a20561e5b66f52c0df4ae4b4a9070c52d410f"
+      "kitBlob": "0e9a20561e5b66f52c0df4ae4b4a9070c52d410f",
+      "patch": "LP-2"
     },
     ".xezar/checks/lib/windows-programs.mjs": {
       "sha256": "57895f7712c6df1d12005c8225068dc8c532fd7829254ce9add5ef0c54bc2ac1",
@@ -434,7 +436,7 @@
       "origin": "copied",
       "kitSource": "checks/route.mjs",
       "kitBlob": "21eabf4d4f73c2a1cedfe941258e8113fdfffc23",
-      "patch": "LP-2"
+      "patch": "LP-3"
     },
     ".xezar/checks/security-scan.sh": {
       "sha256": "8d5d99dda8ea2cef9a8f17e4f4733838f5828d100a8392047de23aebde3a7d41",
@@ -529,7 +531,7 @@
     ".xezar/docs/leader-guide.md": {
       "sha256": "18f676115aa349a548b1d30fbfdc51137e1f188403296363c0b26f85d34f028e",
       "origin": "generated",
-      "patch": "LP-2"
+      "patch": "LP-3"
     },
     ".xezar/docs/local-patches.md": {
       "sha256": "6b40ebeb721fb9a6bb05e8ec5a73549b05c946a6bfda74f38af2806543296ddf",
@@ -560,7 +562,7 @@
       "origin": "copied",
       "kitSource": "docs/routing.md",
       "kitBlob": "b050fcbc5412f585cfc44bd292ddd2016c1d23b9",
-      "patch": "LP-2"
+      "patch": "LP-3"
     },
     ".xezar/docs/ui-operations.md": {
       "sha256": "b6c2a2646c1ded120ab2ddb6d84a3a2cf0095826db0f850fc7e031d429f89ef0",
@@ -607,7 +609,7 @@
       "origin": "copied",
       "kitSource": "routing.schema.json",
       "kitBlob": "e5dda092e0313a6032bda363682c59bdf2a42cc7",
-      "patch": "LP-2"
+      "patch": "LP-3"
     },
     ".xezar/skills/xezar-acceptance.md": {
       "sha256": "67480385a2b3acd5d6f8823cfc79315324349e34d3d54ca1ab56eff832060504",

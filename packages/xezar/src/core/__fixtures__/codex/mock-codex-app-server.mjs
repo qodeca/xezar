@@ -47,6 +47,13 @@
 // Codex does for a long session: the whole history in the one response line,
 // padded to n characters — unless the request sets `excludeTurns: true`.
 // `MOCK_CODEX_IGNORE_EXCLUDE_TURNS=1` is a Codex too old to know that field.
+//
+// #1030: a turn whose text contains `mock:bash-crash` runs one command whose Git Bash dies the way
+// it does in Codex's Windows sandbox, then waits; `turn/interrupt` ends it as `interrupted`. A turn
+// started with `sandboxPolicy: { type: 'dangerFullAccess' }` runs normally, unless
+// `MOCK_CODEX_BASH_CRASH=always`, which crashes every turn. `MOCK_CODEX_HOOK_PROBES=<json array of
+// { tool_name, tool_input }>` (with MOCK_CODEX_HOOK_LOG) sends each probe to the registered
+// read-only hook on every turn/start and logs the answer with that turn's `sandboxPolicy`.
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -265,31 +272,54 @@ rl.on('line', (line) => {
       const turns = [{ id: 'turn_old_1', status: 'completed', items: [{ type: 'agentMessage', id: 'msg_old_1', text: 'x'.repeat(historyChars) }] }];
       emit({ id: msg.id, result: { thread: { id: msg.params?.threadId, ...(withTurns ? { turns } : {}) } } });
     }
+  } else if (msg.method === 'turn/interrupt') {
+    emit({ id: msg.id, result: {} });
+    emit({ method: 'turn/completed', params: { threadId: 'th_mock_1', turn: { id: msg.params?.turnId ?? 'turn_mock_1', status: 'interrupted' } } });
   } else if (msg.method === 'turn/start') {
     emit({ id: msg.id, result: { turn: { id: 'turn_mock_1' } } });
     emit({ method: 'turn/started', params: { turn: { id: 'turn_mock_1', status: 'inProgress', items: [] } } });
     const turnText = msg.params?.input?.map?.((part) => part.text ?? '').join('\n') ?? '';
     if (process.env.MOCK_CODEX_HOOK_LOG && registeredHook?.command) {
       const match = registeredHook.command.match(/^(?:& )?'[^']+' '([^']+)' --xezar-read-only-hook$/);
-      const invoked = match
-        ? spawnSync(process.execPath, [match[1], '--xezar-read-only-hook'], {
-            input: JSON.stringify({
-              session_id: 'th_mock_1',
-              cwd: msg.params?.cwd ?? process.cwd(),
-              hook_event_name: 'PreToolUse',
-              model: 'mock',
-              permission_mode: 'dontAsk',
-              tool_name: 'Bash',
-              tool_input: { command: 'git status' },
-              tool_use_id: 'tool_mock_1',
-              transcript_path: null,
-              turn_id: 'turn_mock_1',
-            }),
-            encoding: 'utf8',
-            env: process.env,
-          })
-        : { status: -1, stdout: '', stderr: 'could not parse hook command' };
-      appendFileSync(process.env.MOCK_CODEX_HOOK_LOG, `${JSON.stringify(invoked)}\n`);
+      const probes = process.env.MOCK_CODEX_HOOK_PROBES
+        ? JSON.parse(process.env.MOCK_CODEX_HOOK_PROBES)
+        : [{ tool_name: 'Bash', tool_input: { command: 'git status' } }];
+      for (const probe of probes) {
+        const invoked = match
+          ? spawnSync(process.execPath, [match[1], '--xezar-read-only-hook'], {
+              input: JSON.stringify({
+                session_id: 'th_mock_1',
+                cwd: msg.params?.cwd ?? process.cwd(),
+                hook_event_name: 'PreToolUse',
+                model: 'mock',
+                permission_mode: 'dontAsk',
+                tool_name: probe.tool_name,
+                tool_input: probe.tool_input,
+                tool_use_id: 'tool_mock_1',
+                transcript_path: null,
+                turn_id: 'turn_mock_1',
+              }),
+              encoding: 'utf8',
+              env: process.env,
+            })
+          : { status: -1, stdout: '', stderr: 'could not parse hook command' };
+        appendFileSync(
+          process.env.MOCK_CODEX_HOOK_LOG,
+          `${JSON.stringify(process.env.MOCK_CODEX_HOOK_PROBES
+            ? { probe: probe.tool_name, sandboxPolicy: msg.params?.sandboxPolicy ?? null, status: invoked.status, stdout: invoked.stdout, stderr: invoked.stderr }
+            : invoked)}\n`,
+        );
+      }
+    }
+    const lifted = msg.params?.sandboxPolicy?.type === 'dangerFullAccess';
+    if (process.env.MOCK_CODEX_BASH_CRASH === 'always' || (turnText.includes('mock:bash-crash') && !lifted)) {
+      const command = ['pwsh', '-Command', 'bash .local/xezar/cache/kit/checks/git-read.sh --help'];
+      emit({ method: 'item/started', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: { type: 'commandExecution', id: 'item_crash', command, cwd: '/repo', status: 'inProgress' } } });
+      emit({ method: 'item/completed', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: {
+        type: 'commandExecution', id: 'item_crash', command, cwd: '/repo', status: 'failed', exitCode: 1,
+        aggregatedOutput: '      0 [main] bash (23784) C:\\Program Files\\Git\\usr\\bin\\bash.exe: *** fatal error - CreateFileMapping S-1-5-21-1504711166-3655588297-3458958062-1001.1, Win32 error 5.  Terminating.\n',
+      } } });
+      return;
     }
     if (turnText.includes('mock:quota')) {
       emit({ method: 'account/rateLimits/updated', params: {

@@ -45,8 +45,11 @@ const groups = new Set();
 let stopped = false;
 let infrastructureFailed = false;
 const worker = '. "$1"; GATE_INDEX=$(($2-1)); GATE_WORKER_RESULT="$GATE_ATTEMPT_DIR/workers/$2.json"; gate_run "$3" bash -c "$4"';
-// Windows: the worker first records its MSYS pid, the key to its processes after it has exited.
-const windowsWorker = `printf '%s\\n' "$$" > "$GATE_ATTEMPT_DIR/workers/$2.msys-pid"; ${worker}`;
+// Windows: the worker first records its MSYS pid, the key to its processes after it has exited,
+// then puts the caller's MSYS back, so noglob stays the worker shell's own (#1078).
+const windowsWorker = windows
+  ? `printf '%s\\n' "$$" > "$GATE_ATTEMPT_DIR/workers/$2.msys-pid"; ${windows.restoreMsys(process.env)}${worker}`
+  : '';
 const STOP_SIGNALS = posix ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP'];
 const workers = new Map(); // Windows only: pid -> { child, index, spawnedAt, exitedAt, round }
 const pending = [];

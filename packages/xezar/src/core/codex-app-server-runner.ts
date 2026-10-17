@@ -169,6 +169,67 @@ export function codexWindowsSandboxConfig(
   return platform === 'win32' && sandbox === 'workspace-write' ? { windows: { sandbox: 'unelevated' } } : {};
 }
 
+/**
+ * Git Bash's own last words when Codex's unelevated Windows sandbox denies it the per-user shared
+ * memory every MSYS program opens first (#1030, openai/codex#15016): every `bash.exe` of that step
+ * dies at once, so a kit script never starts. Only this exact line counts – any other failure of a
+ * command is the model's business, never a reason to touch the sandbox.
+ */
+const CODEX_BASH_SANDBOX_CRASH_RE = /\*\*\* fatal error - CreateFileMapping S-1-5-[0-9-]+\.\d+, Win32 error 5\b/;
+
+/** True for a finished Codex `commandExecution` item whose output is the #1030 Git Bash crash. */
+export function isCodexBashSandboxCrash(item: Record<string, unknown>): boolean {
+  return item.type === 'commandExecution'
+    && typeof item.aggregatedOutput === 'string'
+    && CODEX_BASH_SANDBOX_CRASH_RE.test(item.aggregatedOutput);
+}
+
+export type CodexSandboxCrashAction = { action: 'lift' } | { action: 'fail'; reason: string } | { action: 'ignore' };
+
+/**
+ * What a step does when its Git Bash crashed in the sandbox (#1030, owner decision 2026-10-16): the
+ * sandbox comes off ONCE, for the rest of the session, and only where something else still keeps
+ * the step read-only – the `bashAllowlist` PreToolUse hook, which checks every shell command and
+ * refuses `apply_patch` whether or not a sandbox runs. Every other case fails the step with the
+ * reason: a crash after the lift, the `XEZ_CODEX_SANDBOX_FALLBACK=0` opt-out, a person's own
+ * `XEZ_CODEX_NETWORK=0` restriction, and a read-only step with no allowlist, which nothing would
+ * keep read-only. A step that already runs with full access has no sandbox to blame.
+ */
+export function codexSandboxCrashAction(opts: {
+  readonly sandbox: 'workspace-write' | 'danger-full-access';
+  readonly readOnlyHook: boolean;
+  readonly lifted: boolean;
+  readonly env?: NodeJS.ProcessEnv;
+}): CodexSandboxCrashAction {
+  const env = opts.env ?? process.env;
+  const crash = "Git Bash could not start inside Codex's Windows sandbox (CreateFileMapping, Win32 error 5; #1030)";
+  if (opts.lifted) {
+    return { action: 'fail', reason: `${crash}, and it still crashed after xezar turned the sandbox off for this step.` };
+  }
+  if (opts.sandbox !== 'workspace-write') return { action: 'ignore' };
+  if (env.XEZ_CODEX_SANDBOX_FALLBACK === '0') {
+    return { action: 'fail', reason: `${crash}. XEZ_CODEX_SANDBOX_FALLBACK=0 keeps the sandbox, so the step stops here.` };
+  }
+  if (env.XEZ_CODEX_NETWORK === '0') {
+    return { action: 'fail', reason: `${crash}. XEZ_CODEX_NETWORK=0 asks for the sandbox on every step, so xezar does not turn it off.` };
+  }
+  if (!opts.readOnlyHook) {
+    return {
+      action: 'fail',
+      reason: `${crash}. This read-only step has no bashAllowlist, so nothing would keep it read-only without the sandbox; ` +
+        'give the step a bashAllowlist, or run it with another agent.',
+    };
+  }
+  return { action: 'lift' };
+}
+
+/** What the model is told when the sandbox comes off mid-step. */
+const SANDBOX_LIFTED_PROMPT =
+  'xezar: Git Bash could not start inside the Windows sandbox, so xezar turned the sandbox off for the rest ' +
+  'of this step. The step is still read-only: every shell command is still checked against its allowlist, and ' +
+  'file edits are still refused. Run again each command that failed with "CreateFileMapping … Win32 error 5", ' +
+  'then continue the task.';
+
 export interface CodexReadOnlyHook {
   readonly script: string;
   readonly command: string;
@@ -329,6 +390,13 @@ class CodexSession implements AgentSession {
    *  byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
    *  lands in R2 step 2.1). */
   private uiState: CodexUiMapperState = createCodexUiState();
+  /** The thread's sandbox as `codexPermissions` chose it; set by `bootstrap`. */
+  private sandbox: 'workspace-write' | 'danger-full-access' = 'danger-full-access';
+  /** #1030: `pending` from a Git Bash sandbox crash until the interrupted turn ends; `lifted` once
+   *  every later turn runs with full access. At most once per session. */
+  private sandboxLift: 'none' | 'pending' | 'lifted' = 'none';
+  /** #1030: the reason a step whose Git Bash crashed in the sandbox fails instead of going on. */
+  private sandboxFailure: Error | undefined;
 
   constructor(
     private readonly bin: string,
@@ -471,6 +539,8 @@ class CodexSession implements AgentSession {
         throw new Error(message);
       }
       if (sessionError) throw sessionError;
+      // #1030: a step whose shell cannot start never ends as done, however its last turn read.
+      if (this.sandboxFailure) throw this.sandboxFailure;
 
       // Timeout/interrupt can end the read loop mid-item — recover buffered prose.
       this.textCoalescer.flush();
@@ -626,6 +696,7 @@ class CodexSession implements AgentSession {
 
     // `codexPermissions` owns the choice; start and resume both carry it (#849).
     const permissions = codexPermissions(this.spec.allowedTools, this.spec.additionalDirectories);
+    this.sandbox = permissions.sandbox;
     const hook = this.hook;
     if (hook) {
       const codexHome = stringField(initialized, 'codexHome');
@@ -827,8 +898,46 @@ class CodexSession implements AgentSession {
       threadId: this.threadId,
       input,
       summary: reasoningSummary(),
+      // #1030: Codex keeps a turn's sandbox override for the turns after it; repeating it on every
+      // later turn keeps the lift from depending on that.
+      ...(this.sandboxLift === 'lifted' ? { sandboxPolicy: { type: 'dangerFullAccess' } } : {}),
     });
     this.activeTurnId = turnIdOf(res) ?? this.activeTurnId;
+  }
+
+  /**
+   * #1030: a finished command whose Git Bash crashed in the sandbox. Lifting stops the live turn and
+   * starts the next one with full access (`turn/completed` below); failing records the reason and
+   * closes the session, so the step fails rather than reasoning on without its shell.
+   */
+  private onCommandCompleted(item: Record<string, unknown>): void {
+    if (!isCodexBashSandboxCrash(item) || this.sandboxLift === 'pending' || this.sandboxFailure) return;
+    const decision = codexSandboxCrashAction({
+      sandbox: this.sandbox,
+      readOnlyHook: this.hook !== undefined,
+      lifted: this.sandboxLift === 'lifted',
+    });
+    if (decision.action === 'ignore') return;
+    if (decision.action === 'fail') {
+      this.sandboxFailure = new Error(decision.reason);
+      this.emit({ type: 'error', message: decision.reason });
+      this.end();
+      return;
+    }
+    this.sandboxLift = 'pending';
+    this.emit({
+      type: 'note',
+      message:
+        "codex: Git Bash could not start inside Codex's Windows sandbox (CreateFileMapping, Win32 error 5; #1030, " +
+        'openai/codex#15016). xezar turned the sandbox off for the rest of this step and asked the model to run the ' +
+        'failed commands again; the bashAllowlist still checks every shell command and file edits are still refused. ' +
+        'XEZ_CODEX_SANDBOX_FALLBACK=0 fails such a step instead.',
+    });
+    if (this.threadId && this.activeTurnId) {
+      void this.rpc.request('turn/interrupt', { threadId: this.threadId, turnId: this.activeTurnId }).catch(
+        () => undefined,
+      );
+    }
   }
 
   private dispatch(msg: CodexAppServerMessage): void {
@@ -939,6 +1048,7 @@ class CodexSession implements AgentSession {
             result: safeStringify(item),
             isError: /error|failed/i.test(stringField(item, 'status') ?? ''),
           });
+          if (type === 'commandExecution' && !this.isForeignThreadTurn(params)) this.onCommandCompleted(item);
         }
         break;
       }
@@ -982,6 +1092,16 @@ class CodexSession implements AgentSession {
         // An interrupted/failed item never sees item/completed — surface its
         // partial prose before the turn boundary (run.ts reads markers there).
         this.textCoalescer.flush();
+        if (this.sandboxLift === 'pending') {
+          // #1030: the turn xezar stopped to lift the sandbox. The step goes on in the next turn, so
+          // neither its end nor its interruption reaches the run as a turn boundary or an error.
+          this.sandboxLift = 'lifted';
+          void this.startOrSteerTurn(SANDBOX_LIFTED_PROMPT).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            this.emit({ type: 'note', message: `codex: turn failed: ${message}` });
+          });
+          break;
+        }
         if (method === 'turn/failed' && !this.terminatedByXezar) {
           const error = params.error as Record<string, unknown> | undefined;
           const message = stringField(error ?? {}, 'message') ?? 'codex turn failed';
