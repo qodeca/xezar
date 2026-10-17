@@ -57,7 +57,8 @@ const GUIDES: Readonly<Record<LeaderSetupClient, LeaderSetupGuide>> = {
     ),
     prerequisites: [
       'Use Qwen Code 0.25.2 or newer, review the project MCP entry, and set up a model provider yourself.',
-      'Pushed events use Qwen Code cross-session messaging, which is on by default. If agents.crossSessionMessaging is false, or agents.crossSessionInbound is hold or refuse, push is unavailable and the leader reads its events instead.',
+      'On Linux and macOS, pushed events use Qwen Code cross-session messaging, on unless agents.crossSessionMessaging is false; if it is false, or agents.crossSessionInbound is hold or refuse, the leader reads its events instead.',
+      'On Windows, Qwen Code has no push: it opens no inbox there (up to 0.25.2), and no setting changes this. The leader reads its events with leader_events action read and acknowledges them with action ack.',
     ],
   },
 };

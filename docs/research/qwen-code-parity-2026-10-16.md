@@ -159,6 +159,10 @@ the first proof never ran (`deepseek-v4-pro`, `deepseek-flash`).
 
 ## Rerun on the release head
 
+**Windows (#1086).** Qwen Code 0.25.2 opens no inbox on Windows, so a Qwen Code leader there gets
+no pushed events and reads them with `leader_events` instead (owner decision; details in
+`qwen-code-leader-push-2026-10-16.md` § Checks). The push rows of this report hold on macOS and Linux.
+
 Commit `9f3147a0` (PR #1067 at version 0.30.0: `main` merged up to `dde302d2`, plus the fixes for
 #1074, #1075, #1076, #1080 and the task's recorded runner), Qwen Code 0.25.2, on macOS. Evidence:
 `qwen-code-parity-2026-10-16/rerun-9f3147a0.json`.

@@ -166,7 +166,7 @@ const CLIENTS: readonly ClientSetup[] = [
         </span>
         <span className="mt-2 block">
           {withCode(
-            'Push needs Qwen Code’s cross-session messaging, which is on by default. If `agents.crossSessionMessaging` is false, or `agents.crossSessionInbound` is hold or refuse, Connection status says push is unavailable and the leader reads its events with `leader_events`.',
+            'On Linux and macOS, push needs Qwen Code’s cross-session messaging, on unless `agents.crossSessionMessaging` is false. If it is false, or `agents.crossSessionInbound` is hold or refuse, Connection status says push is unavailable and the leader reads its events with `leader_events`. On Windows, Qwen Code has no push (up to 0.25.2), and no setting changes this: the leader reads its events with `leader_events` read and acknowledges them with ack.',
           )}
         </span>
       </>

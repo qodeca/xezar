@@ -3,10 +3,11 @@
 ## Highlights
 
 A breaking release. Qwen Code replaces pi and OpenCode, as a task runner and as a project leader
-with pushed events, and xezar runs Claude Code, Codex and Qwen Code on Windows, Linux and macOS.
-Read-only Codex and Qwen Code steps stay read-only on Windows, and Codex reviews run on Windows and
-Linux again. A saved setting or task record that still names pi or OpenCode stops xezar with a list
-of what to change; the new guide page "Moving from pi or OpenCode to Qwen Code" shows how.
+with pushed events on Linux and macOS (on Windows it reads them), and xezar runs Claude Code,
+Codex and Qwen Code on Windows, Linux and macOS. Read-only Codex and Qwen Code steps stay read-only
+on Windows, and Codex reviews run on Windows and Linux again. A saved setting or task record that
+still names pi or OpenCode stops xezar with a list of what to change; the new guide page "Moving
+from pi or OpenCode to Qwen Code" shows how.
 
 ## 💥 Breaking
 
@@ -39,8 +40,11 @@ of what to change; the new guide page "Moving from pi or OpenCode to Qwen Code" 
   the whole Qwen Code process tree on interrupt. Managed auto-memory is switched off for task runs.
   (#1044, #1042)
 
-- ✨ **Qwen Code can be the project leader, with pushed events.** A Qwen Code session (0.25.2 or
-  newer) attaches with `leader_events` and gets each event as a message in its own inbox. (#1045)
+- ✨ **Qwen Code can be the project leader, with pushed events on Linux and macOS.** A Qwen Code
+  session (0.25.2 or newer) attaches with `leader_events` and gets each event as a message in its
+  own inbox. On Windows, Qwen Code opens no inbox, so a Qwen Code leader there reads its events with
+  `leader_events` and acknowledges them; xezar now says so instead of pointing to Qwen Code settings
+  that cannot help. (#1045, #1086)
 
 ## 🐛 Fixes
 

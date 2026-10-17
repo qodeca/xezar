@@ -244,12 +244,29 @@ const QWEN_BRIDGE_TOO_OLD: McpLeaderBlocker = {
  * xezar cannot tell apart from the bridge: a Qwen Code older than 0.25.2 (messaging off by default),
  * messaging switched off in the person's Qwen settings, or the bridge started before the session
  * opened its inbox (the start-order race in the #1043 note). The fix names all three.
+ *
+ * #1086: on Windows none of them is the cause. Qwen Code 0.25.2 makes only Unix socket paths for its
+ * automatic inbox and binds only a named pipe there, so every session starts with messaging off and
+ * no setting turns it on. A Windows leader reads its events (owner decision on #1086), and the text
+ * says that instead of sending the person to settings that cannot help. The bridge and the service run
+ * on the same machine as the Qwen Code session, so this process's platform is the session's.
  */
-const QWEN_INBOX_UNAVAILABLE: McpLeaderBlocker = {
-  code: 'qwen-inbox-unavailable',
-  message: 'This Qwen Code session gave its xezar MCP server no inbox to push events to, so a pushed event could not reach it. Events are kept in the journal.',
-  fix: 'Use Qwen Code 0.25.2 or newer, and keep cross-session messaging on in its settings (agents.crossSessionMessaging, and agents.crossSessionInbound not set to hold or refuse). Then restart the xezar MCP server in Qwen Code (/mcp) or start a new session, and attach it again. Until then, read events with leader_events.',
-};
+export function qwenInboxUnavailable(platform: NodeJS.Platform = process.platform): McpLeaderBlocker {
+  if (platform === 'win32') {
+    return {
+      code: 'qwen-inbox-unavailable',
+      message: 'Qwen Code has no push on Windows: it opens no inbox for its xezar MCP server there (up to 0.25.2), so a pushed event cannot reach this session. Events are kept in the journal.',
+      fix: 'No setting changes this. Read events with leader_events action read, and acknowledge each one you have accounted for with action ack and its cursor.',
+    };
+  }
+  return {
+    code: 'qwen-inbox-unavailable',
+    message: 'This Qwen Code session gave its xezar MCP server no inbox to push events to, so a pushed event could not reach it. Events are kept in the journal.',
+    fix: 'Use Qwen Code 0.25.2 or newer, and keep cross-session messaging on in its settings (agents.crossSessionMessaging, and agents.crossSessionInbound not set to hold or refuse). Then restart the xezar MCP server in Qwen Code (/mcp) or start a new session, and attach it again. Until then, read events with leader_events.',
+  };
+}
+
+const QWEN_INBOX_UNAVAILABLE: McpLeaderBlocker = qwenInboxUnavailable();
 
 /**
  * #450 — which leader client an MCP session is, from what the SESSION showed, never from an argument.

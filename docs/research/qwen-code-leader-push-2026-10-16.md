@@ -141,7 +141,7 @@ its own authority notice.
 | --- | --- |
 | `shasum ~/.qwen/settings.json` before and after the spike | `1b504323d30db96e61a82ec0c1c7397603da90d3` both times – unchanged. The scenario d run kept it unchanged too, and left no file in the user's Qwen home (`ls ~/.qwen` the same before and after, `qwen sessions controllers list`: no trusted controllers). Messaging was turned on for some 0.25.1-era runs with `QWEN_CODE_SYSTEM_SETTINGS_PATH=<scratch file>` (a launch-time variable that points Qwen Code at a temporary system settings file); after the update it turned out to be unnecessary. |
 | Files changed in the repository | this note only |
-| Not run | Windows and Linux: an open risk until the engine 0.30.0 checks on Windows and WSL Ubuntu run the leader push there (Windows uses a named pipe for the receipt address). |
+| Windows and Linux (engine 0.30.0 checks, #1086) | Linux (WSL Ubuntu): Qwen Code opens its inbox as on macOS (`/run/user/<uid>/qwen-socks/<pid>.sock`) and hands it to the xezar server. Windows: Qwen Code 0.25.2 opens **no** inbox. Its automatic inbox paths are Unix socket files, and on Windows it binds only a named pipe, so it fails with `unsupported_platform` ("automatic peer inbox paths are not supported on Windows") and starts with cross-session messaging off. The interactive UI passes no inbox path, so no setting changes this. An MCP server it starts gets no `QWEN_CODE_MESSAGING_SOCKET`. A Windows Qwen Code leader is therefore pull-only (owner decision on #1086): it reads with `leader_events` `read` and acknowledges with `ack`, and xezar says so in the `qwen-inbox-unavailable` blocker. |
 
 ## Ideas, not done
 
