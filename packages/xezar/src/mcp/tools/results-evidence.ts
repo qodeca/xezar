@@ -371,10 +371,17 @@ async function isDirty(git: GitRunner, path?: string): Promise<boolean> {
   return !res.ok || res.stdout.length > 0;
 }
 
+/** git's strict ISO-8601 date in one spelling on every git version (#1069): older git (2.43, for
+ *  one) writes UTC as `+00:00` where newer git writes `Z`, so UTC always reads `Z`. Any other
+ *  offset is the commit's own and stays as git wrote it. */
+export function gitIsoDate(text: string): string {
+  return text.replace(/\+00:00$/, 'Z');
+}
+
 /** The instant a commit was made, ISO-8601 — the comparable sibling of git's relative `when`. */
 async function committedAt(git: GitRunner, sha: string): Promise<string | undefined> {
   const res = await git(['show', '-s', '--format=%cI', sha]);
-  return res.ok && res.stdout.trim() ? res.stdout.trim() : undefined;
+  return res.ok && res.stdout.trim() ? gitIsoDate(res.stdout.trim()) : undefined;
 }
 
 /** A remote URL without any `user:token@` it may carry (F-15). */

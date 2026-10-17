@@ -604,8 +604,12 @@ function handleClaudeMessage(
 
 // ---- subprocess plumbing --------------------------------------------------
 
-function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
-  if (child.exitCode != null) return Promise.resolve(child.exitCode);
+/** Resolves with the child's exit code once it has exited. A child a signal ended has
+ *  `exitCode` null and `signalCode` set, and its 'exit'/'close' may have fired before this
+ *  listens – so both are checked first, like `trackChildExit` does. Without that, a session
+ *  whose step timed out waited out the whole ~27 s safety timer (#1070). */
+export function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
+  if (child.exitCode != null || child.signalCode != null) return Promise.resolve(child.exitCode);
   return new Promise((resolve) => {
     let done = false;
     const fin = (code: number | null) => {

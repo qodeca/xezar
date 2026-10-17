@@ -49,6 +49,11 @@ import {
   resolveOnPath,
 } from './open-in-app.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { toWindowsPath } from './wsl.ts';
+
+/** The pure translation with a fixed distro. Inside real WSL the default answers with that host's
+ *  own `wslpath` and distro name, so these cases pass it explicitly (#1068). */
+const pureWslPath = (posixPath: string): string => toWindowsPath(posixPath, 'Ubuntu');
 
 describe('detectOpenTargets', () => {
   it('always offers a file manager and a terminal, first, both with an icon', () => {
@@ -273,15 +278,15 @@ describe('fileManagerLaunch (#361 WSL support)', () => {
   });
 
   it('goes through interop to explorer.exe under WSL, translating the POSIX path', () => {
-    const result = fileManagerLaunch('/home/pat/project', 'linux', true);
+    const result = fileManagerLaunch('/home/pat/project', 'linux', true, pureWslPath);
     expect(result.bin).toBe('explorer.exe');
-    // No real `wslpath` on the machine running this suite, so translateToWindowsPath falls back
-    // to the pure conversion — still deterministic and worth pinning here.
+    // The pure conversion, passed in, so the result does not depend on whether this host has a
+    // real `wslpath` (#1068) — deterministic and worth pinning here.
     expect(result.args).toEqual(['\\\\wsl$\\Ubuntu\\home\\pat\\project']);
   });
 
   it('translates a WSL /mnt/<drive> path to its native Windows drive letter', () => {
-    const result = fileManagerLaunch('/mnt/c/Users/pat/project', 'linux', true);
+    const result = fileManagerLaunch('/mnt/c/Users/pat/project', 'linux', true, pureWslPath);
     expect(result.args).toEqual(['C:\\Users\\pat\\project']);
   });
 });
@@ -293,8 +298,8 @@ describe('launchPathFor (#361 WSL support)', () => {
   });
 
   it('translates the path for a Windows-suffixed binary resolved through WSL interop', () => {
-    expect(launchPathFor('idea.exe', '/home/pat/project', true)).toBe('\\\\wsl$\\Ubuntu\\home\\pat\\project');
-    expect(launchPathFor('pycharm.com', '/mnt/c/repo', true)).toBe('C:\\repo');
+    expect(launchPathFor('idea.exe', '/home/pat/project', true, pureWslPath)).toBe('\\\\wsl$\\Ubuntu\\home\\pat\\project');
+    expect(launchPathFor('pycharm.com', '/mnt/c/repo', true, pureWslPath)).toBe('C:\\repo');
   });
 
   it('never translates when not running under WSL, even for a .exe name', () => {
