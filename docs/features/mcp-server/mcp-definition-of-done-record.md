@@ -1,5 +1,7 @@
 # MCP project leader — whole-feature Definition of Done record
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 > **Status update — 2026-09-20:** Record of the 2026-09-15 whole-feature assessment: all eight clauses held then — seven on evidence, clause 2 by the owner's acceptance — and the feature shipped in 0.14.0.
 
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See the leader findings, § 11 (`leader-dogfooding-2026-09-13.md`, removed).
@@ -21,7 +23,7 @@ owner's acceptance.** Clause 2 is not met on one revision, and this record does 
   see [§ Real-model reaction](#real-model-reaction-a-19--a-23-per-client). Push delivery to Claude Code
   and Codex is built (#403, #404; #374 closed). **OpenCode is out of scope for the real-model clause
   by the project owner's decision of 2026-09-13** (5 of 5 stalled runs; its reaction reporting is still
-  open as [#340](https://github.com/qodeca/xezar/issues/340); see the [unpursued wake decision](mcp-wake-opencode-decision.md)).
+  open as [#340](https://github.com/qodeca/xezar/issues/340); see the [unpursued wake decision](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/mcp-wake-opencode-decision.md)).
 - **Clause 8 holds.** Both sign-offs are written down, on
   [#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) (2026-09-12).
 - **Clause 2 is MET BY OWNER ACCEPTANCE (2026-09-15).** The project owner accepted the real-model
@@ -459,7 +461,7 @@ Why it contradicts no obligatory criterion:
 - **On `ed579e63` the card said to leave xezar’s tools ungated.** Since #411, the cockpit’s pi
   setup card explains that xezar answers the dialog (`mcp-connection-section.tsx`, pinned by
   the `mcp-connection-section.test.tsx` case naming “xezar answers the dialog (#369)”). See
-  [the extension guide](pi-leader-extension.md#approvetools-who-answers-the-dialog) and
+  [the extension guide](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/pi-leader-extension.md#approvetools-who-answers-the-dialog) and
   [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi) — merged as #370/#371 in `ed579e6`, which is
   the candidate revision itself.
 - **It adds nothing to A-19 or A-23.** On `ed579e63` both were already BLOCKED, for an unrelated reason, for all

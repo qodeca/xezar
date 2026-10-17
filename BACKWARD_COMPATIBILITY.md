@@ -84,7 +84,7 @@ were removed in one release, without a deprecation release, once Qwen Code passe
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
-- **Next release – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
+- **0.30.0 – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
   backend, provider and leader-client ids `pi` and `opencode` are gone from every schema, with
   `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the
   shipped pi scripts, the OpenCode "Attach leader" form and the `client-needs-address` refusal code.

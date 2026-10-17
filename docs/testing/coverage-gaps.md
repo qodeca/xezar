@@ -4,8 +4,9 @@ Date: 2026-09-09, measurements refreshed 2026-09-10. Branch: `feature/coverage-g
 `feature/coverage-16-files`. Commit originally audited: `e437c24`.
 
 The pi and OpenCode backends were removed later (#1046). The live inventory rows below were
-updated for that; dated measurement tables and closed gap entries that still name pi or OpenCode
-files record the code as it was measured, and those files no longer exist.
+updated for that, and the closed gap entry about the removed OpenCode runner (R16) was cut. Dated
+measurement tables that still name pi or OpenCode files record the code as it was measured: their
+totals include those files, so the rows stay, and those files no longer exist.
 
 This document ranks xezar's regression risk by **behaviour**, not by file. Measured coverage
 appears in section 4 as supporting evidence only – it never drives the ranking. A behaviour that
@@ -437,7 +438,6 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
 | ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
 | ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
-| ~~R16~~ | ~~OpenCode runner teardown bypasses its golden mock server~~ — **closed** | the suite now drives the real `mock-opencode-serve.mjs`, removing the asymmetry with codex | `opencode-server-runner.test.ts` | #55 |
 | ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts` | #56 |
 | ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
 | ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite. The planner's 57.6 % branches is still the lowest number in the file table above, so the row is worth re-reading before anyone edits that module | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |

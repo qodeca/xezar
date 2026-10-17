@@ -1,5 +1,7 @@
 # D-04 — the connection file and the one-time client setup
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 > **Status update — 2026-09-15:** Implemented; the implementation note below supersedes the original spike
 > where they differ. Original observations remain dated at `9fdcf0e`.
 
@@ -32,7 +34,7 @@ failed write that is one warning (N-07). `tracked-files.test.ts` guards both fil
 **pi, added 2026-09-11 by [#330](https://github.com/qodeca/xezar/issues/330) (WP0).** The requirements now
 name pi as a fourth required initial client, through the third-party `pi-mcp-adapter` extension (F-17).
 § 3.4 adds pi's one-time setup, and § 3.5 compares the four clients. Its evidence is the
-[pi evidence record](mcp-adapter-evidence-pi.md), run on 2026-09-11 against the real bridge, not § 8.
+[pi evidence record](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/mcp-adapter-evidence-pi.md), run on 2026-09-11 against the real bridge, not § 8.
 Everything else in this record, including "all three clients" in D-04.2 and D-04.6, describes the
 2026-09-10 run of Claude Code, Codex and OpenCode, and is unchanged.
 **Where pi's entry goes was settled later the same day by [#341](https://github.com/qodeca/xezar/issues/341)
@@ -468,7 +470,7 @@ the written-file form above is the one to document.
 ### 3.4 pi
 
 Added 2026-09-11 by [#330](https://github.com/qodeca/xezar/issues/330). Not part of the 2026-09-10
-run: "executed" below means executed on 2026-09-11 in the [pi evidence record](mcp-adapter-evidence-pi.md),
+run: "executed" below means executed on 2026-09-11 in the [pi evidence record](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/mcp-adapter-evidence-pi.md),
 against the real `xezar mcp` bridge of a real `xezar serve` at `5031bf8`, not in § 8.
 
 Local versions observed: **pi 0.85.1** (`@earendil-works/pi-coding-agent`) and **pi-mcp-adapter
@@ -616,7 +618,7 @@ program's to answer, and the leader extension, which runs inside pi, answers no 
 | Spawn working directory observed | Project root (executed) | **Not attempted** — read-only commands do not spawn | Project root (executed) | pi's session working directory (read from adapter source); the per-project binding it gives executed |
 
 The first three columns are the 2026-09-10 run in § 8. The pi column is the 2026-09-11 run in the
-[pi evidence record](mcp-adapter-evidence-pi.md).
+[pi evidence record](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/mcp-adapter-evidence-pi.md).
 
 The last row is the whole of U-M01 in one line: **no client discovers the generated file. Four
 different one-time actions, three of which put a file inside the project, and two of which need a second step:

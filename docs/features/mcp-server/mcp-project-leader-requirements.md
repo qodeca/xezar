@@ -1,5 +1,7 @@
 # MCP server for a single-project leader — requirements
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 Status: **requirements contract; the feature is implemented** (`xezar mcp` and the tools inside `xezar serve`). Date: 2026-09-08; status updated 2026-09-11.
 Audience: product owner and engineering team.
 API reference: [MCP API reference](mcp-api.md) — every tool, its arguments and results, and which tool action serves each inventory record.

@@ -1,5 +1,7 @@
 # Onboarding skill contract for P2 and P3
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 P1 provides `xez-onboard` in the public `qodeca/xezar-skills` collection.
 P2 consumes its reviewed, pinned revision and bundles a fallback with the same
 entrypoint, references and templates. P3 adds leader snippets and the verification
