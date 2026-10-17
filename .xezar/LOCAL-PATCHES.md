@@ -8,3 +8,10 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` Â
 - Upstream: local only
 - Since: 2026-10-05
 - Confirmed: yes
+
+## LP-2 â€“ keep the gate worker's MSYS=noglob out of the gate command
+- Files: .xezar/checks/lib/gate-parallel.mjs, .xezar/checks/lib/windows-process.mjs
+- Reason: on Windows the worker passed MSYS=noglob to every gate command, so Git's sh split quoted paths with a space and npm test failed in every local gate run (#1078)
+- Upstream: qodeca/xezar-skills#216
+- Since: 2026-10-17
+- Confirmed: yes

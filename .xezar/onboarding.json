@@ -314,7 +314,8 @@
       "sha256": "1c4c3ef8130a462002b561608c1a458470b31802a2d22a9bb090abd0bf507957",
       "origin": "copied",
       "kitSource": "checks/lib/gate-parallel.mjs",
-      "kitBlob": "6f0b8f843195f7ece19ec0788fc15927be17fe6c"
+      "kitBlob": "6f0b8f843195f7ece19ec0788fc15927be17fe6c",
+      "patch": "LP-2"
     },
     ".xezar/checks/lib/gate-record.sh": {
       "sha256": "93017dfab241c2ca204c22a6b279be2a20de49c5d6c25d8fc859de27d2f3e6a1",
@@ -356,7 +357,8 @@
       "sha256": "3a59e39d7b092f5517d5b890d080edd6c13803d8ee66d59d982fbe0e552f2463",
       "origin": "copied",
       "kitSource": "checks/lib/windows-process.mjs",
-      "kitBlob": "0e9a20561e5b66f52c0df4ae4b4a9070c52d410f"
+      "kitBlob": "0e9a20561e5b66f52c0df4ae4b4a9070c52d410f",
+      "patch": "LP-2"
     },
     ".xezar/checks/lib/windows-programs.mjs": {
       "sha256": "57895f7712c6df1d12005c8225068dc8c532fd7829254ce9add5ef0c54bc2ac1",
