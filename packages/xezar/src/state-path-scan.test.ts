@@ -191,7 +191,7 @@ const ALLOWED: readonly Allowance[] = [
     file: 'paths.ts',
     code: 'const home = env.HOME || env.USERPROFILE || homedir();',
     reason:
-      'agentHomePaths — CLAUDE_CONFIG_DIR, CODEX_HOME, OPENCODE_CONFIG_DIR and PI_CODING_AGENT_DIR resolve ' +
+      'agentHomePaths — CLAUDE_CONFIG_DIR, CODEX_HOME and QWEN_HOME resolve ' +
       'exactly as they do outside the mode (SP-2.3). An agent login is the machine\'s, not the project\'s; ' +
       'moving it would log the user out of a folder rather than isolate it.',
   },
@@ -235,6 +235,13 @@ const ALLOWED: readonly Allowance[] = [
     code: "join(homedir(), 'Applications', `${name}.app`),",
     count: 2,
     reason: 'Per-user application discovery on macOS. Not xezar state; the editor a user installed is the host\'s.',
+  },
+  {
+    file: 'core/qwen-run-config.ts',
+    code: 'const home = realDir(resolve(env.HOME || env.USERPROFILE || homedir()));',
+    reason:
+      "scanQwenProjectEnv — mirrors Qwen Code's own `.env` walk, which STOPS at the person's home folder. " +
+      'It must name the real home to find where Qwen stops reading; it derives no xezar state from it.',
   },
   {
     file: 'workspace/projects.ts',

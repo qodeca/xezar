@@ -7,8 +7,7 @@ import type { AgentRunner, RunnerId } from './agent-runner.ts';
 import { RUNNER_IDS } from './agent-runner.ts';
 import { ClaudeCliRunner } from './claude-cli-runner.ts';
 import { CodexAppServerRunner } from './codex-app-server-runner.ts';
-import { OpencodeServerRunner } from './opencode-server-runner.ts';
-import { PiRunner } from './pi-runner.ts';
+import { QwenRunner } from './qwen-runner.ts';
 import { createRunner } from './runner-factory.ts';
 import { RunStore } from '../runs/store.ts';
 import { closeStoreAndRemove } from '../runs/store.testkit.ts';
@@ -27,7 +26,7 @@ import { closeStoreAndRemove } from '../runs/store.testkit.ts';
  *
  * Nothing here spawns an agent CLI. Every runner constructor only resolves a
  * binary NAME (`resolveClaudeExecutable`, `XEZ_CODEX_BIN`, …) and a timeout, so
- * constructing all four is pure and works on a host with no agent installed.
+ * constructing every one is pure and works on a host with no agent installed.
  */
 
 /**
@@ -41,8 +40,7 @@ import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 const EXPECTED_RUNNER: Record<RunnerId, new () => AgentRunner> = {
   claude: ClaudeCliRunner,
   codex: CodexAppServerRunner,
-  opencode: OpencodeServerRunner,
-  pi: PiRunner,
+  qwen: QwenRunner,
 };
 
 describe('createRunner — one runner class per runner id', () => {

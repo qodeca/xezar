@@ -4,13 +4,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import WebSocket from 'ws';
-import { createConnection, type Socket } from 'node:net';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createAbWorld, PROJECT_A, XEZAR_VERSION } from '../helpers/ab-fixture.ts';
+import { createAbWorld, PROJECT_A } from '../helpers/ab-fixture.ts';
 import { LeaderCursors, runStateReader } from '../../src/mcp/reconnect.ts';
-import { leaderEventsTool, type LeaderEventsPort } from '../../src/mcp/tools/leader-events.ts';
+import type { LeaderEventsPort } from '../../src/mcp/tools/leader-events.ts';
 import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 /**
@@ -18,28 +17,29 @@ import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
  * this directory. After npm run build:server, run from packages/xezar:
  * TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
  *
- * Owner's manual command, like mcp-real-clients.test.ts: all three XEZ_REAL_MODEL_* variables
- * come only from the operator's environment. Missing any variable or a 401/403 auth probe
- * means node:test skip / NOT-RUN, never a model failure. Supply XEZ_REAL_MODEL_API_KEY. No personal account/config is read.
- * pi-runner delegates auth to pi's provider configuration (PI_CODING_AGENT_DIR/models.json);
- * it does not manufacture a key. In the shell already holding the provider's key, use
- * export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY" (replace that variable with your authorized
- * provider-key variable). The proxy uses the key only in memory; pi receives a dummy fixture credential.
- * No key in command arguments, results, or transcripts. Adapter: npm:pi-mcp-adapter@2.32.1,
- * installed into a fresh HOME, as in mcp-real-clients. Only the three explicit env vars reach the
- * model proxy. A text assertion, a model request, a stale ack or a wrong cursor cannot pass.
+ * Owner's manual command, like mcp-real-clients.test.ts. Four live legs, each judged by a model's
+ * exact acknowledgement of one pushed event, never by its prose:
+ * - `[qwen]` (#1046, replaces the pi leg): Qwen Code (0.25.2 or newer) as the leader against an
+ *   OpenAI-compatible endpoint. All three XEZ_REAL_MODEL_* variables come only from the operator's
+ *   environment; missing any variable or a 401/403 auth probe means node:test skip / NOT-RUN, never a
+ *   model failure. In the shell already holding the provider's key, use
+ *   export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY" (replace that variable with your authorized
+ *   provider-key variable). The key stays in this process's memory: a local proxy adds it to each
+ *   forwarded request, while Qwen Code runs with a FRESH temporary HOME and QWEN_HOME whose
+ *   settings.json lists one `modelProviders.openai` entry pointing at that proxy, its `envKey` naming
+ *   a variable that holds a dummy value. No personal Qwen settings, .env or login is read or written.
+ *   No key in command arguments, files, results or transcripts (`assertEvidenceClean`).
+ * - `[claude-code]` and `[codex]` (#67): the client's own configured model and login, opted in with
+ *   XEZ_REAL_MODEL_CLIENTS (see below).
  *
- * Evidence: .local/qa/mcp-real-model/<stamp>/{results.json,*.ndjson}, including exact argv,
- * revision + dirty state, model id, request counts, delivered page and service-side ack ledger.
- * A/B world supplies the real MCP socket/registry; a test-only context hook supplies leaderEvents
- * and observes ack inputs. Delivery uses the shipped pi extension's private socket, with no
- * xezar reaction adapter in the loop. The scripted text-only control must make exactly one
- * request and zero acks, then remain quiet for 45 seconds (longer than the existing harness heartbeat). The live verdict requires the exact nonce AND cursor
- * in a new service-side ack within 120 seconds. No browser coverage is claimed.
+ * Evidence: .local/qa/mcp-real-model/<stamp>-<client>/{results.json,*.ndjson,…}, including exact argv,
+ * revision + dirty state, model id, request counts and the transport-side tool-call record. Every leg
+ * runs a real `xezar serve`, a real bridge and a real client; delivery is the product's own push path.
+ * The live verdict requires the exact nonce AND cursor in a new acknowledgement within 120 seconds.
+ * No browser coverage is claimed.
  */
 const ROOT = resolve(import.meta.dirname, '../../../..');
 const COMMAND = 'TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts';
-const STANDING = 'When a xezar event arrives, acknowledge it by calling the xezar leader_events tool with action ack, cursor equal to the delivered page nextCursor, and operationId equal to react-<nonce>, where <nonce> is the 12-character token after nonce= in the event. Do not invent a nonce, poll, or acknowledge before an event arrives. After the ack, stop.';
 const WINDOW_MS = 120_000;
 type Ack = { at: number; operationId?: unknown; cursor?: unknown };
 
@@ -62,7 +62,7 @@ test('nonce judge rejects request-only, wrong nonce, wrong cursor, pre-delivery 
   assert.equal(judge([{ ...good, at: 100 + WINDOW_MS + 1 }], [], '123456abcdef', 'page', 100), 'waiting');
 });
 
-// Positive control for the service-side observation hook, without pi or a model endpoint.
+// Positive control for the service-side observation hook, without a client or a model endpoint.
 test('the real MCP service records a valid leader_events ack and advances its cursor', async () => {
   const acks: Ack[] = [];
   let port: LeaderEventsPort | undefined;
@@ -147,247 +147,17 @@ test('evidence hygiene fails on a planted key, including nested files', () => {
   } finally { rmSync(directory, TEST_DIR_RM_OPTIONS); }
 });
 
-async function until(check: () => boolean, ms: number, reason: string): Promise<void> {
-  const end = Date.now() + ms;
-  while (!check()) {
-    assert.ok(Date.now() < end, reason);
-    await delay(50);
-  }
-}
-
-async function stop(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.stdin?.end();
-  await Promise.race([new Promise<void>((done) => child.once('exit', done)), delay(2_000)]);
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-  await Promise.race([new Promise<void>((done) => child.once('exit', done)), delay(2_000)]);
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-}
-
-test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout: 780_000 }, async (t) => {
-  const baseUrl = process.env.XEZ_REAL_MODEL_BASE_URL;
-  const modelId = process.env.XEZ_REAL_MODEL_ID;
-  const key = process.env.XEZ_REAL_MODEL_API_KEY;
-  const stamp = new Date().toISOString().replaceAll(':', '-');
-  const out = join(ROOT, '.local/qa/mcp-real-model', stamp);
-  mkdirSync(out, { recursive: true });
-  const redact = (text: string): string => key ? text.replaceAll(key, '[REDACTED]') : text;
-  const save = (name: string, value: unknown): void => writeFileSync(join(out, name), redact(JSON.stringify(value, null, 2)) + '\n');
-  const record: Record<string, unknown> = {
-    case: 'A-19', client: 'pi', stamp, command: COMMAND, modelId: modelId ?? null,
-    revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
-    dirty: execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() !== '',
-    invocation: { executable: process.execPath, args: [...process.execArgv, ...process.argv.slice(1)], cwd: process.cwd() },
-    sourceHashes: Object.fromEntries(['packages/xezar/test/integration/mcp-real-model.test.ts', 'packages/xezar/test/helpers/ab-fixture.ts', 'packages/xezar/scripts/pi-leader-extension.ts'].map((path) => [path, createHash('sha256').update(readFileSync(join(ROOT, path))).digest('hex')])),
-    windowMs: WINDOW_MS, verdict: 'NOT-RUN',
-  };
-  if (!baseUrl || !modelId || !key) {
-    record.summary = 'Operator must supply XEZ_REAL_MODEL_BASE_URL, XEZ_REAL_MODEL_ID and XEZ_REAL_MODEL_API_KEY; leg skipped';
-    save('results.json', record);
-    if (key) assertEvidenceClean(out, key);
-    t.skip(String(record.summary));
-    return;
-  }
-  const target = new URL(baseUrl);
-  assert.ok(['127.0.0.1', '[::1]', 'localhost'].includes(target.hostname), 'only a local endpoint is authorized');
-  assert.equal(target.username + target.password + target.search + target.hash, '', 'credentials belong only in the API-key environment variable');
-  record.baseUrl = baseUrl;
-  let probeStatus: number;
-  try { probeStatus = await probeAuth(baseUrl, key); } catch (error) {
-    record.verdict = 'BLOCKED';
-    record.summary = 'Endpoint auth probe unavailable; no model verdict established';
-    save('results.json', record);
-    assertEvidenceClean(out, key);
-    throw error;
-  }
-  record.authProbe = { status: probeStatus, headers: recordedHeaders({ Authorization: `Bearer ${key}` }) };
-  if (authRejected(probeStatus)) {
-    record.summary = `endpoint answered HTTP ${probeStatus}: authentication rejected; leg skipped`;
-    save('results.json', record);
-    assertEvidenceClean(out, key);
-    t.skip(String(record.summary));
-    return;
-  }
-  if (probeStatus !== 200) {
-    record.verdict = 'BLOCKED';
-    record.summary = `Auth probe answered HTTP ${probeStatus}; no model verdict established`;
-    save('results.json', record);
-    assertEvidenceClean(out, key);
-    assert.fail(String(record.summary));
-  }
-  const scratch = realpathSync(mkdtempSync('/tmp/x373-'));
-  const children: ChildProcess[] = [];
-  const sockets: Socket[] = [];
-  const ledger: Ack[] = [];
-  let port: LeaderEventsPort | undefined;
-  let world: Awaited<ReturnType<typeof createAbWorld>> | undefined;
-  let mode: 'scripted' | 'real' = 'scripted';
-  let modelReached = false;
-  let rejectedStatus: number | undefined;
-  const requests: { mode: string; at: number; body: unknown; headers: Record<string, string> }[] = [];
-  const proxy = createServer(async (req, res) => {
-    try {
-      let raw = '';
-      for await (const chunk of req) {
-        raw += String(chunk);
-        if (raw.length > 2_000_000) throw new Error('request exceeds fixture limit');
-      }
-      const body = JSON.parse(raw);
-      requests.push({ mode, at: Date.now(), body, headers: recordedHeaders({ Authorization: mode === 'real' ? `Bearer ${key}` : 'fixture-no-secret' }) });
-      if (mode === 'scripted') {
-        // A text assertion is deliberately insufficient: one delivered event, one request, no ack.
-        res.writeHead(200, { 'content-type': 'text/event-stream' });
-        const chunk = (delta: unknown, finish_reason: string | null) => `data: ${JSON.stringify({ id: 'control', object: 'chat.completion.chunk', created: 1, model: modelId, choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
-        res.end(chunk({ role: 'assistant', content: 'I reacted.' }, null) + chunk({}, 'stop') + 'data: [DONE]\n\n');
-      } else {
-        const response = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
-          method: 'POST', headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
-          body: raw, signal: AbortSignal.timeout(WINDOW_MS), redirect: 'error',
-        });
-        if (authRejected(response.status)) rejectedStatus = response.status;
-        else if (response.ok) modelReached = true;
-        res.writeHead(response.status, { 'content-type': response.headers.get('content-type') ?? 'application/json' });
-        if (response.body) for await (const chunk of response.body) res.write(chunk);
-        res.end();
-      }
-    } catch (error) {
-      appendFileSync(join(out, 'proxy-errors.ndjson'), redact(JSON.stringify({ error: String(error) })) + '\n');
-      if (!res.headersSent) res.writeHead(502);
-      res.end();
-    }
-  });
-  try {
-    assert.ok(existsSync(join(ROOT, 'packages/xezar/dist/index.js')), 'run npm run build:server first');
-    record.piVersion = execFileSync('pi', ['--version'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: scratch, PI_CODING_AGENT_DIR: join(scratch, 'version-agent'), PI_OFFLINE: '1' }, timeout: 10_000 }).trim();
-    world = await createAbWorld({ toolContext(name, input, ctx) {
-      if (name === 'leader_events' && (input as { action?: string }).action === 'ack') {
-        const args = input as { operationId?: unknown; cursor?: unknown };
-        ledger.push({ at: Date.now(), operationId: args.operationId, cursor: args.cursor });
-      }
-      return { ...ctx, leaderEvents: port };
-    } });
-    // These seeded queue rows are read fixtures, not work for the queue watchdog to adopt.
-    world.a.store.updateRun(world.a.ids.queued, { status: 'cancelled' });
-    world.a.store.updateRun(world.a.ids.queued2, { status: 'cancelled' });
-    world.a.store.flush();
-    port = { journal: world.a.journal, cursors: LeaderCursors.open({ dataDir: world.a.dataDir, projectId: PROJECT_A, journal: world.a.journal }), readState: runStateReader(world.a.store, world.a.journal), secretValues: world.secrets };
-    save('fixture.json', { kind: 'ab-world', adapter: 'pi-mcp-adapter@2.32.1', transport: 'pi leader extension socket' });
-    writeFileSync(join(world.home, 'config.json'), JSON.stringify({ projects: [world.a, world.b].map((side) => ({ id: side.id, root: side.root, name: side.name, addedAt: '2026-09-13T00:00:00.000Z', lastOpenedAt: '' })) }));
-    await new Promise<void>((done) => proxy.listen(0, '127.0.0.1', done));
-    const proxyPort = (proxy.address() as { port: number }).port;
-    for (const leg of ['scripted', 'real'] as const) {
-      mode = leg;
-      const home = join(scratch, leg);
-      const agentDir = join(home, 'agent');
-      const tmp = join(scratch, leg === 'real' ? 'r' : 's');
-      mkdirSync(agentDir, { recursive: true });
-      mkdirSync(tmp, { recursive: true });
-      const env = { PATH: process.env.PATH, HOME: home, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: '1', PI_TELEMETRY: '0', TERM: 'dumb', TMPDIR: tmp };
-      const install = spawn('pi', ['install', 'npm:pi-mcp-adapter@2.32.1'], { cwd: home, env, stdio: ['ignore', 'pipe', 'pipe'] });
-      children.push(install);
-      for (const stream of [install.stdout, install.stderr]) stream.on('data', (chunk) => appendFileSync(join(out, `${leg}-install.log`), redact(String(chunk))));
-      await until(() => install.exitCode !== null || install.signalCode !== null, 120_000, 'adapter installation timed out');
-      assert.equal(install.exitCode, 0, 'pinned adapter installation failed');
-      writeFileSync(join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${proxyPort}/v1`, api: 'openai-completions', apiKey: 'fixture-no-secret', models: [{ id: modelId, name: modelId, contextWindow: 128_000, maxTokens: 4096 }] } } }));
-      writeFileSync(join(agentDir, 'mcp.json'), JSON.stringify({ settings: { directTools: true }, mcpServers: { xezar: { command: process.execPath, args: [join(ROOT, 'packages/xezar/dist/index.js'), 'mcp'], env: { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' }, lifecycle: 'keep-alive' } } }));
-      const args = ['--mode', 'rpc', '--offline', '--no-session', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--model', `fixture/${modelId}`, '--append-system-prompt', STANDING, '--extension', join(ROOT, 'packages/xezar/scripts/pi-leader-extension.ts')];
-      save(`${leg}-command.json`, { command: 'pi', args, cwd: world.a.root, install: ['pi', 'install', 'npm:pi-mcp-adapter@2.32.1'], environment: 'fresh HOME, PI_CODING_AGENT_DIR and private TMPDIR; no inherited provider credentials' });
-      const child = spawn('pi', args, { cwd: world.a.root, env, stdio: ['pipe', 'pipe', 'pipe'] });
-      children.push(child);
-      let transcript = '';
-      for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
-        const text = redact(String(chunk));
-        transcript += text;
-        appendFileSync(join(out, `${leg}-pi.ndjson`), text);
-      });
-      const descriptor = join(world.a.dataDir, 'pi-leader.json');
-      await until(() => existsSync(descriptor) && /MCP: (?!connecting)/.test(transcript), 60_000, 'pi extension/MCP setup did not become ready');
-      assert.match(transcript, /MCP:/);
-      const link = createConnection(JSON.parse(readFileSync(descriptor, 'utf8')).endpoint.socket);
-      sockets.push(link);
-      await new Promise<void>((done, reject) => { link.once('connect', done); link.once('error', reject); });
-      link.on('data', (chunk) => appendFileSync(join(out, `${leg}-extension.ndjson`), redact(String(chunk))));
-      const countBefore = requests.filter((r) => r.mode === leg).length;
-      assert.equal(countBefore, 0, 'pi must not ask the model before delivery');
-      const nonce = randomBytes(6).toString('hex');
-      world.a.store.updateRun(world.a.ids.done, { title: `Fixture task outcome nonce=${nonce}` });
-      world.a.journal.append({ category: 'E-01', kind: 'task.terminal', subject: { type: 'run', id: world.a.ids.done, version: null }, origin: 'human', causedBy: null, summary: `Fixture task completed nonce=${nonce}` });
-      const page = await leaderEventsTool.call({ action: 'read' }, { project: { id: PROJECT_A, name: world.a.name, root: world.a.root }, xezarVersion: XEZAR_VERSION, leaderEvents: port } as Parameters<typeof leaderEventsTool.call>[1]);
-      const structured = page.structuredContent as { nextCursor: string };
-      assert.ok(structured.nextCursor);
-      const before = [...ledger];
-      const deliveredAt = Date.now();
-      save(`${leg}-delivery.json`, { nonce, deliveredAt, before, page });
-      const content = page.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n');
-      link.write(JSON.stringify({ id: leg, type: 'prompt', message: `xezar leader_events delivery\n${content}` }) + '\n');
-      assert.ok(!before.some((ack) => ack.operationId === `react-${nonce}`), 'nonce ack cannot predate delivery');
-      if (leg === 'scripted') {
-        await until(() => /agent_end/.test(transcript), 30_000, 'scripted turn did not settle');
-        await delay(45_000);
-        assert.equal(requests.filter((r) => r.mode === leg).length, 1, 'scripted control: exactly one request');
-        const offered = requests.find((r) => r.mode === leg)?.body as { tools?: { function?: { name?: string } }[] };
-        assert.ok(offered.tools?.some((tool) => tool.function?.name?.endsWith('leader_events')), 'populated-input control: pi must offer the real MCP ack tool to its model');
-        assert.equal(ledger.length, before.length, 'text assertion must not count as ack');
-        record.scriptedControl = { verdict: 'PASSED', requests: 1, acks: 0, quietWindowMs: 45_000 };
-        // Fixture reset between independent clients; this is NOT a model/tool acknowledgement.
-        port.cursors.ack(structured.nextCursor);
-      } else {
-        await until(() => rejectedStatus !== undefined || judge(ledger, before, nonce, structured.nextCursor, deliveredAt) !== 'waiting', WINDOW_MS, 'FAILED: no exact nonce/cursor ack within 120 seconds');
-        if (rejectedStatus !== undefined) {
-          record.verdict = 'NOT-RUN';
-          record.summary = `endpoint answered HTTP ${rejectedStatus}: authentication rejected after probe; leg skipped`;
-          t.skip(String(record.summary));
-          return;
-        }
-        assert.equal(judge(ledger, before, nonce, structured.nextCursor, deliveredAt), 'PASSED', 'wrong nonce or cursor ack');
-        await until(() => /agent_settled/.test(transcript), 30_000, 'real turn did not settle after ack');
-        assert.equal(judge(ledger, before, nonce, structured.nextCursor, deliveredAt), 'PASSED', 'a later incorrect ack invalidates reaction');
-        record.reaction = { nonce, cursor: structured.nextCursor, deliveredAt, before, ack: ledger.find((ack) => ack.operationId === `react-${nonce}`) };
-        record.verdict = 'PASSED';
-        record.summary = 'Real model called leader_events ack with the delivered nonce and exact nextCursor';
-      }
-      link.destroy();
-      await stop(child);
-      await until(() => !existsSync(descriptor), 5000, 'pi did not remove its descriptor');
-    }
-  } catch (error) {
-    record.verdict = modelReached ? 'FAILED' : 'BLOCKED';
-    record.summary = redact(String(error));
-    throw error;
-  } finally {
-    for (const socket of sockets) socket.destroy();
-    for (const child of children) await stop(child);
-    proxy.closeAllConnections();
-    await new Promise<void>((done) => proxy.close(() => done()));
-    world?.a.store.flush();
-    await world?.dispose();
-    record.requestCounts = { scripted: requests.filter((r) => r.mode === 'scripted').length, real: requests.filter((r) => r.mode === 'real').length };
-    save('requests.json', requests);
-    save('ack-ledger.json', ledger);
-    save('results.json', record);
-    try {
-      assertEvidenceClean(out, key);
-    } catch (error) {
-      record.verdict = 'FAILED';
-      record.summary = 'Evidence hygiene failed: endpoint key found in an evidence file';
-      save('results.json', record);
-      throw error;
-    } finally { rmSync(scratch, TEST_DIR_RM_OPTIONS); }
-    t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
-  }
-});
 
 // ---- #67: the same real-model clause for Claude Code and Codex ------------------------------------
 /**
- * The pi leg above hands the page to pi's extension socket itself. Claude Code and Codex have no such
- * socket: their delivery path is the product's own (`xezar serve` → LeaderDelivery → the Claude
+ * The Claude Code and Codex delivery path is the product's own (`xezar serve` → LeaderDelivery → the Claude
  * Channels push or the Codex app-server turn), exactly as the scripted legs in mcp-real-clients.test.ts
  * drive it. So these legs reuse that world (real serve, real bridge, real client on a PTY) and replace
  * only the scripted endpoint with the client's own configured real model and account — the owner
  * authorized that paid usage for #67 on 2026-09-15. Opt in per client with
  * XEZ_REAL_MODEL_CLIENTS=claude-code,codex; without it both legs skip as NOT-RUN.
  *
- * The judge keeps the pi leg's rule — an exact nonce AND an exact cursor in a new ack within 120 s — with
+ * The judge keeps the A-19 rule — an exact nonce AND an exact cursor in a new ack within 120 s — with
  * the nonce moved to where a serve-delivered row can carry one: the run id the service mints for the
  * event's task (row summaries are fixed text). The pushed message carries no cursor, so the model must
  * read the page itself; the cursor it acks must be the nextCursor of a read, made after delivery, whose
@@ -454,8 +224,8 @@ test('serve judge rejects request-only, wrong nonce, wrong cursor, pre-delivery,
 });
 
 /**
- * #532 G11 — the acceptance sequence's judge is the one piece every opt-in client leg (pi, Claude
- * Code, Codex today; OpenCode when a live target is authorized — see the module comment) shares, so
+ * #532 G11 — the acceptance sequence's judge is the one piece every opt-in client leg (Qwen Code,
+ * Claude Code and Codex — see the module comment) shares, so
  * hardening it here hardens every leg without needing a fourth live process. This closes a gap the
  * existing table above does not: every case there is a `leader_events` call with a wrong field, never
  * a call the model made through a DIFFERENT tool that happens to carry the right-shaped arguments — an
@@ -508,9 +278,9 @@ function fixtureRepo(base: string): string {
 }
 
 type Serve = { child: ChildProcess; base: string; projectId: string; log: string };
-async function startServe(root: string, xezHome: string, codexHome: string, out: string, scratch: string): Promise<Serve> {
+async function startServe(root: string, xezHome: string, codexHome: string, out: string, scratch: string, extraEnv: Record<string, string> = {}): Promise<Serve> {
   const log = join(out, 'serve.log');
-  const env = clientEnv({ XEZ_DRY_RUN: '1', XEZ_HOME: xezHome, XEZ_SKILLS_AUTO_UPDATE: '0', CLAUDE_CONFIG_DIR: join(scratch, 'serve-claude'), CODEX_HOME: codexHome, OPENCODE_CONFIG_DIR: join(scratch, 'serve-opencode') });
+  const env = clientEnv({ XEZ_DRY_RUN: '1', XEZ_HOME: xezHome, XEZ_SKILLS_AUTO_UPDATE: '0', CLAUDE_CONFIG_DIR: join(scratch, 'serve-claude'), CODEX_HOME: codexHome, QWEN_HOME: join(scratch, 'serve-qwen'), ...extraEnv });
   const child = spawn(process.execPath, [DIST, '--repo', root, '--port', '0', '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk) => appendFileSync(log, chunk));
   const base = await waitFor('serve port', () => {
@@ -766,6 +536,227 @@ test('[codex] a real model acknowledges an app-server-delivered event with the e
     await stopChild(serve?.child);
     save('results.json', record);
     rmSync(scratch, TEST_DIR_RM_OPTIONS);
+    t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
+  }
+});
+
+// ---- #1046: the A-19 real-model clause for Qwen Code (it replaces the pi leg) ----------------------
+/**
+ * Qwen Code is the leader the person starts themselves; xezar's bridge, started by that session, sends
+ * each event into the session's own inbox (`src/mcp/qwen-messaging.ts`). So this leg is the #67 shape —
+ * real `xezar serve`, real bridge behind the tee, real `qwen` TUI on a PTY, attach, one task.done
+ * event, the serve judge — with the model behind the operator's XEZ_REAL_MODEL_* endpoint instead of
+ * a client login. Before the judge runs, three facts are asserted, so wiring alone can never pass: the
+ * owner MCP session is identified as Qwen Code, the attach answered 200 with no blocker left, and the
+ * event reached the Qwen Code session (its own `--json-file` record shows the run id, and the
+ * service's deliveredSeq covers the row).
+ */
+const QWEN_MIN_LEADER_VERSION = '0.25.2';
+const QWEN_FIXTURE_KEY_VAR = 'XEZAR_FIXTURE_MODEL_KEY';
+
+function versionAtLeast(version: string, min: string): boolean {
+  const parse = (text: string) => (/(\d+)\.(\d+)\.(\d+)/.exec(text) ?? []).slice(1).map(Number);
+  const [a, b] = [parse(version), parse(min)];
+  if (a.length !== 3) return false;
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
+  return true;
+}
+
+/**
+ * The `qwen` this leg runs, at 0.25.2 or newer, under a fresh home. Qwen Code updates itself into the
+ * operator's Qwen home (`updates/npm/<launcher hash>/`), and the launcher on PATH finds that build only
+ * through the home it runs with, so a fresh home can start the npm install's older build. Then the leg
+ * pins the operator's active self-updated build by version through the launcher's own
+ * QWEN_CODE_MANAGED_NPM_PIN. Only program files and the update pointer (`active.json`) are read; never
+ * that home's settings.json, .env or login.
+ */
+function qwenLaunch(home: string, qwenHome: string): { bin: string; version: string; env: Record<string, string>; pinned: string | null } {
+  const bin = execFileSync('which', ['qwen'], { encoding: 'utf8' }).trim();
+  const version = (extra: Record<string, string>): string => execFileSync(bin, ['--version'], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: home, QWEN_HOME: qwenHome, ...extra }, timeout: 30_000 }).trim().split('\n').at(-1) ?? '';
+  const plain = version({});
+  if (versionAtLeast(plain, QWEN_MIN_LEADER_VERSION)) return { bin, version: plain, env: {}, pinned: null };
+  const entry = realpathSync(bin);
+  const updateRoot = join(process.env.QWEN_HOME?.trim() || join(process.env.HOME ?? '/', '.qwen'), 'updates', 'npm');
+  const active = join(updateRoot, createHash('sha256').update(entry).digest('hex').slice(0, 16), 'active.json');
+  const pinned = existsSync(active) ? (JSON.parse(readFileSync(active, 'utf8')) as { version?: unknown }).version : undefined;
+  if (typeof pinned !== 'string') throw new Error(`BLOCKED: qwen on PATH is ${plain} under a fresh home, older than ${QWEN_MIN_LEADER_VERSION}, and no self-updated build was found; update Qwen Code`);
+  const env = { QWEN_CODE_MANAGED_NPM_PIN: JSON.stringify({ bootstrap: entry, version: pinned, updateRoot }) };
+  const pinnedVersion = version(env);
+  if (!versionAtLeast(pinnedVersion, QWEN_MIN_LEADER_VERSION)) throw new Error(`BLOCKED: Qwen Code ${pinnedVersion} is older than ${QWEN_MIN_LEADER_VERSION}, the oldest leader version`);
+  return { bin, version: pinnedVersion, env, pinned };
+}
+
+test('[qwen] a real model acknowledges an inbox-delivered event with the exact nonce and cursor', { timeout: 900_000 }, async (t) => {
+  const baseUrl = process.env.XEZ_REAL_MODEL_BASE_URL;
+  const modelId = process.env.XEZ_REAL_MODEL_ID;
+  const key = process.env.XEZ_REAL_MODEL_API_KEY;
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  const out = join(ROOT, '.local/qa/mcp-real-model', `${stamp}-qwen`);
+  mkdirSync(out, { recursive: true });
+  const redact = (text: string): string => (key ? text.replaceAll(key, '[REDACTED]') : text);
+  const save = (name: string, value: unknown): void => writeFileSync(join(out, name), scrub(redact(JSON.stringify(value, null, 2))) + '\n');
+  const record: Record<string, unknown> = { ...legRecord('qwen', stamp), command: COMMAND, modelId: modelId ?? null };
+  if (!baseUrl || !modelId || !key) {
+    record.summary = 'Operator must supply XEZ_REAL_MODEL_BASE_URL, XEZ_REAL_MODEL_ID and XEZ_REAL_MODEL_API_KEY; leg skipped';
+    save('results.json', record);
+    if (key) assertEvidenceClean(out, key);
+    t.skip(String(record.summary));
+    return;
+  }
+  const target = new URL(baseUrl);
+  assert.ok(['127.0.0.1', '[::1]', 'localhost'].includes(target.hostname), 'only a local endpoint is authorized');
+  assert.equal(target.username + target.password + target.search + target.hash, '', 'credentials belong only in the API-key environment variable');
+  record.baseUrl = baseUrl;
+  let probeStatus: number;
+  try { probeStatus = await probeAuth(baseUrl, key); } catch (error) {
+    record.verdict = 'BLOCKED';
+    record.summary = 'Endpoint auth probe unavailable; no model verdict established';
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    throw error;
+  }
+  record.authProbe = { status: probeStatus, headers: recordedHeaders({ Authorization: `Bearer ${key}` }) };
+  if (authRejected(probeStatus)) {
+    record.summary = `endpoint answered HTTP ${probeStatus}: authentication rejected; leg skipped`;
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    t.skip(String(record.summary));
+    return;
+  }
+  if (probeStatus !== 200) {
+    record.verdict = 'BLOCKED';
+    record.summary = `Auth probe answered HTTP ${probeStatus}; no model verdict established`;
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    assert.fail(String(record.summary));
+  }
+
+  // Short: Qwen Code's inbox socket lives under QWEN_HOME, and a Unix socket path is length-limited.
+  const scratch = realpathSync(mkdtempSync('/tmp/x1046-'));
+  const upstream = baseUrl.replace(/\/$/, '');
+  const requests: { at: number; method: string; path: string; status?: number; body: unknown; headers: Record<string, string> }[] = [];
+  let modelReached = false;
+  let rejectedStatus: number | undefined;
+  // The only holder of the key: it adds the Authorization header to each request it forwards.
+  const proxy = createServer(async (req, res) => {
+    const entry: (typeof requests)[number] = { at: Date.now(), method: req.method ?? 'GET', path: req.url ?? '/', body: null, headers: recordedHeaders({ Authorization: `Bearer ${key}` }) };
+    requests.push(entry);
+    try {
+      let raw = '';
+      for await (const chunk of req) {
+        raw += String(chunk);
+        if (raw.length > 4_000_000) throw new Error('request exceeds fixture limit');
+      }
+      try { entry.body = raw ? JSON.parse(raw) : null; } catch { entry.body = '<not JSON>'; }
+      const path = (req.url ?? '/').replace(/^\/v1(?=\/|$)/, '');
+      const response = await fetch(`${upstream}${path}`, {
+        method: entry.method, headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        ...(entry.method === 'GET' || entry.method === 'HEAD' ? {} : { body: raw }), signal: AbortSignal.timeout(WINDOW_MS), redirect: 'error',
+      });
+      entry.status = response.status;
+      if (authRejected(response.status)) rejectedStatus = response.status;
+      else if (response.ok && entry.method === 'POST') modelReached = true;
+      res.writeHead(response.status, { 'content-type': response.headers.get('content-type') ?? 'application/json' });
+      if (response.body) for await (const chunk of response.body) res.write(chunk);
+      res.end();
+    } catch (error) {
+      appendFileSync(join(out, 'proxy-errors.ndjson'), redact(JSON.stringify({ at: Date.now(), path: entry.path, error: String(error) })) + '\n');
+      if (!res.headersSent) res.writeHead(502);
+      res.end();
+    }
+  });
+  let serve: Serve | undefined;
+  let child: ChildProcess | undefined;
+  try {
+    assert.ok(existsSync(DIST), 'run npm run build:server first');
+    await new Promise<void>((done) => proxy.listen(0, '127.0.0.1', done));
+    const proxyUrl = `http://127.0.0.1:${(proxy.address() as { port: number }).port}/v1`;
+    const home = join(scratch, 'h');
+    const qwenHome = join(scratch, 'q');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(qwenHome, { recursive: true });
+    const launch = qwenLaunch(home, qwenHome);
+    record.client = { bin: launch.bin, version: launch.version, pinnedSelfUpdate: launch.pinned, model: modelId, home: 'fresh temporary HOME and QWEN_HOME; no personal Qwen settings, .env or login' };
+    // One model, behind the proxy. The key variable holds a dummy: the real key never leaves this process.
+    const settings = {
+      security: { auth: { selectedType: 'openai' } },
+      model: { name: modelId },
+      modelProviders: { openai: [{ id: modelId, name: modelId, baseUrl: proxyUrl, envKey: QWEN_FIXTURE_KEY_VAR }] },
+      general: { enableAutoUpdate: false },
+      privacy: { usageStatisticsEnabled: false },
+      memory: { enableManagedAutoMemory: false, enableManagedAutoDream: false },
+    };
+    writeFileSync(join(qwenHome, 'settings.json'), JSON.stringify(settings, null, 2));
+    save('qwen-settings.json', settings);
+    const root = fixtureRepo(scratch);
+    const xezHome = join(scratch, 'x');
+    serve = await startServe(root, xezHome, join(scratch, 'serve-codex'), out, scratch, { QWEN_HOME: join(scratch, 'serve-qwen'), HOME: home });
+    const tee = join(out, 'bridge-tee.ndjson');
+    const events = join(out, 'qwen-events.jsonl');
+    const mcpConfig = join(scratch, 'mcp.json');
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { xezar: { command: process.execPath, args: [TEE, tee, process.execPath, DIST, 'mcp'], env: { XEZ_HOME: xezHome, XEZ_DRY_RUN: '1' } } } }));
+    const args = ['--model', modelId, '--approval-mode', 'default', '--mcp-config', mcpConfig, '--allowed-mcp-server-names', 'xezar', '--allowed-tools', 'mcp__xezar__leader_events', '--append-system-prompt', SERVE_STANDING, '--json-file', events];
+    const env = clientEnv({ HOME: home, QWEN_HOME: qwenHome, [QWEN_FIXTURE_KEY_VAR]: 'fixture-no-secret', QWEN_USAGE_STATISTICS_ENABLED: '0', ...launch.env });
+    for (const name of Object.keys(env)) if (/^(QWEN_CODE_(?!MANAGED_NPM_PIN$)|DASHSCOPE_|BAILIAN_)/.test(name)) delete env[name];
+    save('command.json', { command: 'python3', args: [CLAUDE_PTY, launch.bin, ...args.map((arg) => (arg === SERVE_STANDING ? '<SERVE_STANDING>' : arg))], standing: SERVE_STANDING, cwd: '<fixture project>', environment: `fresh HOME and QWEN_HOME; ${QWEN_FIXTURE_KEY_VAR} holds a dummy; inherited agent and provider variables removed` });
+    child = spawn('python3', [CLAUDE_PTY, launch.bin, ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk: Buffer) => appendFileSync(join(out, 'qwen.pty.log'), scrub(redact(chunk.toString('utf8')))));
+    const leaderRoute = `/api/v1/p/${serve.projectId}/mcp/leader`;
+    await waitFor('Qwen Code to own the project over MCP', async () => ((await cockpitCall(serve!, leaderRoute)).json?.owner?.client === 'qwen' ? true : undefined), 120_000)
+      .catch(() => { throw new Error('BLOCKED: no Qwen Code MCP session took the project within 120 s'); });
+    const attach = await cockpitCall(serve, leaderRoute, 'POST', { action: 'attach', client: 'qwen' });
+    record.attach = { status: attach.status, leader: attach.json?.leader ?? attach.json?.error };
+    assert.equal(attach.status, 200, 'attach qwen');
+    const attached = await waitFor('an attached, unblocked Qwen Code leader', async () => {
+      const status = (await cockpitCall(serve!, leaderRoute)).json;
+      return status?.leader?.client === 'qwen' && status?.blocker === null ? status : undefined;
+    }, 60_000).catch(() => { throw new Error('BLOCKED: the Qwen Code leader did not become attached without a blocker within 60 s'); });
+    record.leaderBefore = { leader: attached.leader, deliveredSeq: attached.delivery?.deliveredSeq ?? 0 };
+    const requestsBefore = requests.filter((r) => r.method === 'POST').length;
+    record.requestsBeforeEvent = requestsBefore;
+    const sessionRecord = (): string => (existsSync(events) ? readFileSync(events, 'utf8') : '');
+    let delivered: number | undefined;
+    await reactToOneEvent({
+      serve, root, tee, record,
+      // Delivery is inside the bridge (the session's inbox), not on the tee: the Qwen Code session's own
+      // event record naming the run, and the service's deliveredSeq covering the row, are the observation.
+      deliveredWhen: (runId) => {
+        if (delivered !== undefined) return delivered;
+        const row = journalRows(root).find((entry) => entry.subject?.id === runId && entry.kind === 'task.done');
+        if (!row || !sessionRecord().includes(runId)) return undefined;
+        void cockpitCall(serve!, leaderRoute).then((status) => { if ((status.json?.delivery?.deliveredSeq ?? 0) >= row.journalSeq) delivered ??= Date.now(); });
+        return undefined;
+      },
+    });
+  } catch (error) {
+    if (rejectedStatus !== undefined && record.verdict !== 'PASSED') {
+      record.verdict = 'NOT-RUN';
+      record.summary = `endpoint answered HTTP ${rejectedStatus}: authentication rejected after probe; leg skipped`;
+      t.skip(String(record.summary));
+    } else {
+      if (record.verdict !== 'PASSED') {
+        const message = redact(String(error instanceof Error ? error.message : error));
+        record.verdict = message.startsWith('FAILED') ? 'FAILED' : message.startsWith('BLOCKED') || !modelReached ? 'BLOCKED' : 'FAILED';
+        record.summary = message;
+      }
+      throw error;
+    }
+  } finally {
+    await stopChild(child);
+    await stopChild(serve?.child);
+    proxy.closeAllConnections();
+    await new Promise<void>((done) => proxy.close(() => done()));
+    record.requestCounts = { total: requests.length, modelCalls: requests.filter((r) => r.method === 'POST').length };
+    save('requests.json', requests);
+    save('results.json', record);
+    try {
+      assertEvidenceClean(out, key);
+    } catch (error) {
+      record.verdict = 'FAILED';
+      record.summary = 'Evidence hygiene failed: endpoint key found in an evidence file';
+      save('results.json', record);
+      throw error;
+    } finally { rmSync(scratch, TEST_DIR_RM_OPTIONS); }
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });

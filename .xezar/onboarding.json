@@ -435,7 +435,8 @@
       "sha256": "a22867718cec46f9abc40a11a18a4d049df9f74133a5cece85d34d91307cada1",
       "origin": "copied",
       "kitSource": "checks/route.mjs",
-      "kitBlob": "21eabf4d4f73c2a1cedfe941258e8113fdfffc23"
+      "kitBlob": "21eabf4d4f73c2a1cedfe941258e8113fdfffc23",
+      "patch": "LP-3"
     },
     ".xezar/checks/security-scan.sh": {
       "sha256": "8d5d99dda8ea2cef9a8f17e4f4733838f5828d100a8392047de23aebde3a7d41",
@@ -529,7 +530,8 @@
     },
     ".xezar/docs/leader-guide.md": {
       "sha256": "18f676115aa349a548b1d30fbfdc51137e1f188403296363c0b26f85d34f028e",
-      "origin": "generated"
+      "origin": "generated",
+      "patch": "LP-3"
     },
     ".xezar/docs/local-patches.md": {
       "sha256": "6b40ebeb721fb9a6bb05e8ec5a73549b05c946a6bfda74f38af2806543296ddf",
@@ -559,7 +561,8 @@
       "sha256": "40bb10a4df61942429b01622e6b816903cd94d55aaf3a3d791aba1fc5f193ce7",
       "origin": "copied",
       "kitSource": "docs/routing.md",
-      "kitBlob": "b050fcbc5412f585cfc44bd292ddd2016c1d23b9"
+      "kitBlob": "b050fcbc5412f585cfc44bd292ddd2016c1d23b9",
+      "patch": "LP-3"
     },
     ".xezar/docs/ui-operations.md": {
       "sha256": "b6c2a2646c1ded120ab2ddb6d84a3a2cf0095826db0f850fc7e031d429f89ef0",
@@ -605,7 +608,8 @@
       "sha256": "7a319b99d60335e621abd5935ea83895ae4338c12cd45fd273a041c1760f5068",
       "origin": "copied",
       "kitSource": "routing.schema.json",
-      "kitBlob": "e5dda092e0313a6032bda363682c59bdf2a42cc7"
+      "kitBlob": "e5dda092e0313a6032bda363682c59bdf2a42cc7",
+      "patch": "LP-3"
     },
     ".xezar/skills/xezar-acceptance.md": {
       "sha256": "67480385a2b3acd5d6f8823cfc79315324349e34d3d54ca1ab56eff832060504",

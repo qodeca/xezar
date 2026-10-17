@@ -14,7 +14,7 @@ const ALL_STATUSES: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'disconnected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -74,10 +74,10 @@ function serve({
       if (url === '/api/v1/providers/connect' && method === 'POST') {
         return json(connect, connectCode)
       }
-      if (/^\/api\/v1\/providers\/(claude|codex|opencode|pi)\/enabled$/.test(url) && method === 'PUT') {
+      if (/^\/api\/v1\/providers\/(claude|codex|qwen)\/enabled$/.test(url) && method === 'PUT') {
         return enabledResponses.shift() ?? json(status)
       }
-      if (/^\/api\/v1\/providers\/(claude|codex|opencode|pi)\/retry$/.test(url) && method === 'POST') {
+      if (/^\/api\/v1\/providers\/(claude|codex|qwen)\/retry$/.test(url) && method === 'POST') {
         return json(retry, retryCode)
       }
       return new Promise<never>(() => {})
@@ -114,7 +114,7 @@ afterEach(() => {
 })
 
 describe('ProviderSettings', () => {
-  it('always renders Claude Code, Codex, OpenCode, and pi cards in that order', async () => {
+  it('always renders Claude Code, Codex and Qwen Code cards in that order', async () => {
     serve()
     renderSettings()
 
@@ -123,7 +123,7 @@ describe('ProviderSettings', () => {
       [...document.querySelectorAll('[data-slot="provider-card"]')].map((item) =>
         item.querySelector('h3')?.textContent,
       ),
-    ).toEqual(['Claude Code', 'Codex', 'OpenCode', 'pi'])
+    ).toEqual(['Claude Code', 'Codex', 'Qwen Code'])
   })
 
   it('presents discovery truth, enablement, and runtime recovery without hiding diagnostics', async () => {
@@ -133,10 +133,10 @@ describe('ProviderSettings', () => {
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: false },
           {
-            provider: 'opencode',
+            provider: 'qwen',
             status: 'disconnected',
             enabled: true,
-            authFailureId: 'open-1',
+            authFailureId: 'qwen-1',
             hint: 'Authentication was rejected during a run. Reconnect, then try again.',
           },
         ],
@@ -146,10 +146,10 @@ describe('ProviderSettings', () => {
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: false },
           {
-            provider: 'opencode',
+            provider: 'qwen',
             status: 'disconnected',
             enabled: true,
-            authFailureId: 'open-1',
+            authFailureId: 'qwen-1',
             hint: 'Authentication was rejected during a run. Reconnect, then try again.',
           },
         ],
@@ -168,12 +168,12 @@ describe('ProviderSettings', () => {
     expect(within(card('codex')).getByText('Disabled')).toBeTruthy()
     expect(screen.getByRole('switch', { name: 'Use Codex' })).toBeTruthy()
 
-    expect(within(card('opencode')).getByRole('button', { name: 'Connect' })).toBeTruthy()
-    expect(within(card('opencode')).getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(within(card('opencode')).getByText(/xezar cannot validate.*task/i)).toBeTruthy()
-    fireEvent.click(within(card('opencode')).getByRole('button', { name: 'Check again' }))
-    await within(card('opencode')).findByText('Not connected')
-    expect(within(card('opencode')).getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(within(card('qwen')).getByRole('button', { name: 'Connect' })).toBeTruthy()
+    expect(within(card('qwen')).getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(within(card('qwen')).getByText(/xezar cannot validate.*task/i)).toBeTruthy()
+    fireEvent.click(within(card('qwen')).getByRole('button', { name: 'Check again' }))
+    await within(card('qwen')).findByText('Not connected')
+    expect(within(card('qwen')).getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('describes unknown as a verification failure and never as disconnected', async () => {
@@ -182,7 +182,7 @@ describe('ProviderSettings', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'unknown', enabled: true },
-          { provider: 'opencode', status: 'connected', enabled: true },
+          { provider: 'qwen', status: 'connected', enabled: true },
         ],
       },
     })
@@ -243,7 +243,7 @@ describe('ProviderSettings', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -265,7 +265,7 @@ describe('ProviderSettings', () => {
 
     expect(await screen.findByText('Provider status could not be loaded')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(document.querySelectorAll('[data-slot="provider-card"]')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-slot="provider-card"]')).toHaveLength(3)
   })
 
   it('treats a malformed successful response as a safe verification error', async () => {
@@ -275,7 +275,7 @@ describe('ProviderSettings', () => {
 
     expect(await screen.findByText('Provider status could not be loaded')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(document.querySelectorAll('[data-slot="provider-card"]')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-slot="provider-card"]')).toHaveLength(3)
     expect(screen.queryByText(secret)).toBeNull()
   })
 
@@ -346,7 +346,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: false },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })))
     await waitFor(() => expect(requests.filter((request) => request.url.endsWith('/enabled'))).toHaveLength(2))
@@ -394,7 +394,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: false },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })))
     await within(card('codex')).findByText('Disabled')
@@ -417,7 +417,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: false },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })))
     await waitFor(() => expect(requests.filter((request) => request.url.endsWith('/enabled'))).toHaveLength(2))
@@ -427,7 +427,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: false },
         { provider: 'codex', status: 'disconnected', enabled: false },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })))
     await within(card('claude')).findByText('Disabled')
@@ -446,7 +446,7 @@ describe('ProviderSettings', () => {
           hint: 'Authentication was rejected during a run. Reconnect, then try again.',
         },
         { provider: 'codex' as const, status: 'disconnected' as const, enabled: true },
-        { provider: 'opencode' as const, status: 'not-installed' as const, enabled: true },
+        { provider: 'qwen' as const, status: 'not-installed' as const, enabled: true },
       ],
     }
     serve({
@@ -456,7 +456,7 @@ describe('ProviderSettings', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'disconnected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -510,7 +510,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'disconnected', enabled: false, authFailureId: 'open-1' },
+        { provider: 'qwen', status: 'disconnected', enabled: false, authFailureId: 'qwen-1' },
       ],
     }
     serve({
@@ -519,22 +519,22 @@ describe('ProviderSettings', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'disconnected', enabled: true },
-          { provider: 'opencode', status: 'connected', enabled: false },
+          { provider: 'qwen', status: 'connected', enabled: false },
         ],
       },
     })
     renderSettings()
 
-    fireEvent.click(await within(card('opencode')).findByRole('button', { name: 'Retry' }))
+    fireEvent.click(await within(card('qwen')).findByRole('button', { name: 'Retry' }))
     await waitFor(() =>
       expect(requests).toContainEqual({
         method: 'POST',
-        url: '/api/v1/providers/opencode/retry',
-        body: { authFailureId: 'open-1' },
+        url: '/api/v1/providers/qwen/retry',
+        body: { authFailureId: 'qwen-1' },
       }),
     )
-    expect(await within(card('opencode')).findByText('Configured')).toBeTruthy()
-    expect(within(card('opencode')).getByText('Disabled')).toBeTruthy()
+    expect(await within(card('qwen')).findByText('Credentials found')).toBeTruthy()
+    expect(within(card('qwen')).getByText('Disabled')).toBeTruthy()
   })
 
   it('keeps a stale retry incident visible and reports the server error', async () => {
@@ -542,7 +542,7 @@ describe('ProviderSettings', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: true, authFailureId: 'newer-incident' },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
     serve({ status: incidentStatus, retry: { error: 'That incident is no longer current.' }, retryCode: 409 })

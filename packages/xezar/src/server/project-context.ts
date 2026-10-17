@@ -1,4 +1,5 @@
 import { projectDataDir } from '../project-data-paths.ts';
+import { legacyBackendMessage, projectLegacyBackendFiles, scanLegacyBackends } from '../legacy-backends.ts';
 import { join } from 'node:path';
 import { AutomationStore } from '../automations/store.ts';
 import { reconcileAutomationReceipts } from '../automations/task-template.ts';
@@ -113,7 +114,7 @@ export interface ProjectContextDeps {
   bootProjectId?: () => string | undefined | Promise<string | undefined>;
 }
 
-export type ProjectContextFailure = 'unknown-project' | 'missing-root' | 'other-instance';
+export type ProjectContextFailure = 'unknown-project' | 'missing-root' | 'other-instance' | 'legacy-backend';
 
 /** Typed failure so the route layer can map reasons to statuses (404/409)
  *  without string matching. */
@@ -636,6 +637,11 @@ export class ProjectContexts {
     }
 
     const dataDir = projectDataDir(project.root);
+    // #1046: a project added or opened while this process runs gets the same read-only check the
+    // boot gives the projects it knows. Opened with a stored pi or OpenCode value, its run list
+    // would load empty and the next task would overwrite the history; refusing touches nothing.
+    const legacy = scanLegacyBackends(projectLegacyBackendFiles(project.root, dataDir));
+    if (legacy.length > 0) throw new ProjectContextError('legacy-backend', projectId, legacyBackendMessage(legacy));
     // A serving process never blocks on the Windows start-time check (#963): look first, off thread.
     await primeWriterClaims(dataDir);
     ownProjectData(dataDir, { claimCheck: 'remembered' });

@@ -95,7 +95,7 @@ async function settle(store: RunStore, id: string): Promise<void> {
 }
 
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`engine incidents → ${client}`, () => {
   it.each([false, true])('G7 last-line control streamed=%s delivers one completion without a second turn', async streamed => {
     const h = await deliveryHarness(client); cleanup.push(h.close);

@@ -122,12 +122,12 @@ class FakeHealthSocket {
 }
 
 describe('useRunnerModels', () => {
-  // One cache entry per runner (#794 for OpenCode, #784 for Claude): every runner xezar ships is
+  // One cache entry per runner (#784 for Claude, #1044 for Qwen Code): every runner xezar ships is
   // read from its own host catalog, so the fetch must follow the pick rather than name one CLI.
   it.each([
     ['codex', 'gpt-future'],
     ['claude', 'opus[1m]'],
-    ['opencode', 'openai/gpt-5.4'],
+    ['qwen', 'qwen3-coder-plus'],
   ] as const)('loads the workspace %s catalog from its own cache entry', async (runner, id) => {
     fetchMock.mockResolvedValue(json({ runner, models: [{ id, label: 'Future', description: '' }], source: 'live', stale: false }))
     const { result } = renderHook(() => useRunnerModels(runner), { wrapper: wrapper() })
@@ -151,7 +151,7 @@ describe('provider status workspace query', () => {
     providers: [
       { provider: 'claude', status: 'connected', enabled: true },
       { provider: 'codex', status: 'disconnected', enabled: true, hint: 'Run codex login.' },
-      { provider: 'opencode', status: 'not-installed', enabled: true },
+      { provider: 'qwen', status: 'not-installed', enabled: true },
     ],
   }
 
@@ -252,7 +252,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
     fetchMock.mockResolvedValue(json(refreshed))
@@ -283,7 +283,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'sse-1', hint: 'Reconnect.' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
 
@@ -311,7 +311,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'sse-1', hint: 'Reconnect.' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
 
@@ -328,7 +328,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: false },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
     fetchMock.mockResolvedValue(json(confirmed))
@@ -356,7 +356,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'retry-1', hint: 'Reconnect.' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
     const { result } = renderHook(() => useRetryProviderAuth(), {
@@ -371,7 +371,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'sse-2', hint: 'Reconnect again.' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })
 
@@ -388,7 +388,7 @@ describe('provider status workspace query', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'incident-1' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'stale incident' }), { status: 409 }))

@@ -8,8 +8,8 @@
  * be null, partial (streamed incrementally) or arbitrarily malformed —
  * `toolDisplay` must never throw.
  *
- * Known names covered (matched case-insensitively so claude's `Bash` and
- * opencode's `bash` share one row):
+ * Known names covered (matched case-insensitively, so `Bash` and `bash`
+ * share one row):
  *  - claude:   Bash, Edit, Write, NotebookEdit, Read, Glob, Grep, WebFetch,
  *              WebSearch, Task, Agent, Skill, TodoWrite, TaskCreate,
  *              TaskUpdate, TaskList, mcp__server__tool
@@ -18,7 +18,8 @@
  *              (codex's checklist arrives as the `turn/plan/updated`
  *              notification, not as a tool call — `todoList` is kept below only
  *              as tolerance for its non-app-server transports)
- *  - opencode: bash, edit, write, read, grep, glob, webfetch, task, todowrite
+ *  - lower-case spellings of the same tools (bash, edit, write, read, grep,
+ *    glob, webfetch, task, todowrite) that older run records carry
  */
 
 import type { ToolKind } from './ui-events.ts';
@@ -80,7 +81,7 @@ function changePaths(input: unknown): string[] {
   return paths;
 }
 
-/** The opencode research heuristic for unknown tools: the first plausible
+/** The heuristic for unknown tools: the first plausible
  *  human label in the input, in a fixed priority order. */
 function heuristicLabel(input: unknown): string | undefined {
   return field(input, 'description', 'query', 'url', 'filePath', 'file_path', 'path', 'pattern', 'name');
@@ -95,9 +96,12 @@ function titled(verb: string, label: string | undefined): string {
 export function toolDisplay(name: string, input?: unknown): ToolDisplay {
   const key = typeof name === 'string' ? name.toLowerCase() : '';
 
+  // Qwen Code's built-in tools are snake_case (`run_shell_command`, `write_file`, …) and share the
+  // rows of their Claude Code twins.
   switch (key) {
     case 'bash':
     case 'commandexecution':
+    case 'run_shell_command':
       return {
         toolKind: 'execute',
         title: titled('Ran', commandText(input)),
@@ -108,8 +112,10 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     case 'multiedit':
       return { toolKind: 'edit', title: titled('Edit', field(input, 'file_path', 'filePath', 'path')) };
     case 'write':
+    case 'write_file':
       return { toolKind: 'edit', title: titled('Write', field(input, 'file_path', 'filePath', 'path')) };
     case 'notebookedit':
+    case 'notebook_edit':
       return {
         toolKind: 'edit',
         title: titled('Edit', field(input, 'notebook_path', 'notebookPath', 'file_path', 'filePath', 'path')),
@@ -121,11 +127,16 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     }
 
     case 'read':
+    case 'read_file':
       return { toolKind: 'read', title: titled('Read', field(input, 'file_path', 'filePath', 'path')) };
+    case 'list_directory':
+      return { toolKind: 'read', title: titled('List', field(input, 'path', 'dir_path')) };
     case 'imageview':
+    case 'zoom_image':
       return { toolKind: 'read', title: titled('View image', field(input, 'path')) };
     case 'glob':
     case 'grep':
+    case 'grep_search':
       return {
         toolKind: 'search',
         title: titled('Search', field(input, 'pattern', 'query')),
@@ -133,12 +144,14 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
       };
 
     case 'webfetch':
+    case 'web_fetch':
       return { toolKind: 'fetch', title: titled('Fetch', field(input, 'url')) };
     case 'websearch':
+    case 'web_search':
       return { toolKind: 'fetch', title: titled('Web search', field(input, 'query')) };
 
     // Sub-agent spawns. claude dispatches these through `Agent` today and
-    // `Task` historically (opencode uses `task`) — both spellings resolve, and
+    // `Task` historically (lower-case `task` too) — both spellings resolve, and
     // the row says which agent, falling back to the subagent type when the
     // call carried no description.
     case 'task':
@@ -166,6 +179,7 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     }
 
     case 'todowrite':
+    case 'todo_write':
     case 'todolist':
     case 'plan':
     case 'taskcreate':
@@ -184,7 +198,7 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     }
   }
 
-  // claude/opencode MCP tools are named `mcp__server__tool` → "server.tool".
+  // claude MCP tools are named `mcp__server__tool` → "server.tool".
   if (key.startsWith('mcp__')) {
     const parts = name.split('__').filter((part) => part !== '');
     if (parts.length >= 3) {

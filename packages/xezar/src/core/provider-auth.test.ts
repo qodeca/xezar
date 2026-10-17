@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,22 +22,7 @@ import {
 const connectedResults: Record<string, ProviderCommandResult> = {
   claude: { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 },
   codex: { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 0 },
-  opencode: {
-    stdout: [
-      '┌  Credentials ~/.local/share/opencode/auth.json',
-      '│',
-      '●  Anthropic oauth',
-      '│',
-      '└  1 credential',
-    ].join('\n'),
-    stderr: '',
-    exitCode: 0,
-  },
-  pi: {
-    stdout: 'provider  model  context  max-out  thinking  images\nanthropic  claude  200K  64K  yes  yes',
-    stderr: '',
-    exitCode: 0,
-  },
+  qwen: { stdout: '0.25.2\n', stderr: '', exitCode: 0 },
 };
 
 const originalEnv = {
@@ -45,8 +30,8 @@ const originalEnv = {
   XEZ_DRY_RUN: process.env.XEZ_DRY_RUN,
   XEZ_CLAUDE_BIN: process.env.XEZ_CLAUDE_BIN,
   XEZ_CODEX_BIN: process.env.XEZ_CODEX_BIN,
-  XEZ_OPENCODE_BIN: process.env.XEZ_OPENCODE_BIN,
-  XEZ_PI_BIN: process.env.XEZ_PI_BIN,
+  XEZ_QWEN_BIN: process.env.XEZ_QWEN_BIN,
+  QWEN_HOME: process.env.QWEN_HOME,
 };
 
 beforeEach(() => {
@@ -54,8 +39,11 @@ beforeEach(() => {
   delete process.env.XEZ_DRY_RUN;
   delete process.env.XEZ_CLAUDE_BIN;
   delete process.env.XEZ_CODEX_BIN;
-  delete process.env.XEZ_OPENCODE_BIN;
-  delete process.env.XEZ_PI_BIN;
+  delete process.env.XEZ_QWEN_BIN;
+  // Qwen Code has no status command; its answer is its settings. A configured home of the test's own.
+  const qwenHome = mkdtempSync(join(tmpdir(), 'xez-provider-auth-qwen-'));
+  writeFileSync(join(qwenHome, 'settings.json'), JSON.stringify({ modelProviders: { openai: [{ id: 'local-model' }] } }));
+  process.env.QWEN_HOME = qwenHome;
 });
 
 afterEach(() => {
@@ -68,8 +56,8 @@ afterEach(() => {
 function resultFor(executable: string): ProviderCommandResult {
   if (executable === 'claude') return connectedResults.claude!;
   if (executable.includes('codex')) return connectedResults.codex!;
-  if (executable.includes('opencode')) return connectedResults.opencode!;
-  return connectedResults.pi!;
+  if (executable.includes('qwen')) return connectedResults.qwen!;
+  throw new Error(`no canned provider result for ${executable}`);
 }
 
 function runner(
@@ -90,7 +78,7 @@ describe('runtime provider authentication failures', () => {
   it.each([
     'claude CLI exited with code 1 — Failed to authenticate. API Error: 401 OAuth access token has been revoked.',
     'codex: turn failed: unauthorized',
-    'ProviderAuthError: API key expired — run `opencode auth login`',
+    'ProviderAuthError: API key expired — run `qwen` to sign in again',
     'API Error: invalid API key',
     'AuthenticationError: expired api-key',
     '401 invalid x-api-key',
@@ -292,262 +280,22 @@ describe('provider auth parsers', () => {
 
     await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'unknown' } });
   });
-
-  it.each([
-    [
-      'one ANSI-styled credential',
-      [
-        '\u001B[90m┌  Credentials ~/.local/share/opencode/auth.json\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[36m●\u001B[0m  Acme Enterprise \u001B[2moauth\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  1 credential',
-      ].join('\n'),
-    ],
-    [
-      'multiple arbitrary credential rows',
-      [
-        '┌  Credentials /srv/opencode/auth.json',
-        '│',
-        '●  Acme Enterprise oauth',
-        '●  local-provider api',
-        '●  Custom Gateway wellknown',
-        '●  Another Provider api',
-        '│',
-        '└  4 credentials',
-      ].join('\n'),
-    ],
-  ])('recognizes OpenCode %s as connected', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-  });
-
-  it('recognizes configured OpenCode models without stored credentials', async () => {
-    const runCommand = runner((executable, args) => executable === 'opencode'
-      ? { stdout: args[0] === 'models'
-        ? 'dgx-spark/deepseek-v4-flash-vision\n'
-        : '┌  Credentials ~/.local/share/opencode/auth.json\n└  0 credentials\n',
-      stderr: '', exitCode: 0 }
-      : resultFor(executable));
-    const service = new ProviderAuthService({ runCommand });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-    expect(runCommand).toHaveBeenCalledWith('opencode', ['models'], 10_000);
-  });
-
-  it('recognizes an OpenCode decorated zero-credential list as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable, args) => executable === 'opencode'
-        ? {
-          stdout: args[0] === 'models' ? '' : [
-            '┌  Credentials ~/.local/share/opencode/auth.json',
-            '│',
-            '└  0 credentials',
-          ].join('\n'),
-          stderr: '',
-          exitCode: 0,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'disconnected' } });
-  });
-
-  it.each([
-    { stdout: 'unrecognized output', stderr: '', exitCode: 0 },
-    { stdout: 'local/model', stderr: '', exitCode: 1 },
-    { stdout: '', stderr: '', exitCode: null, timedOut: true },
-  ])('does not claim OpenCode is configured when model discovery fails: %j', async (models) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable, args) => executable === 'opencode'
-        ? args[0] === 'models' ? models
-          : { stdout: '└  0 credentials\n', stderr: '', exitCode: 0 }
-        : resultFor(executable)),
-    });
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it.each([
-    [
-      'one environment variable',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '│',
-        '└  0 credentials',
-        '',
-        '┌  Environment',
-        '│',
-        '●  Anthropic ANTHROPIC_API_KEY',
-        '│',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'multiple environment variables',
-      [
-        '\u001B[90m┌  Credentials /srv/opencode/auth.json\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  0 credentials',
-        '',
-        '\u001B[90m┌  Environment\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[36m●\u001B[0m  Acme ACME_API_KEY',
-        '\u001B[36m●\u001B[0m  Custom Gateway CUSTOM_TOKEN',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  2 environment variables',
-      ].join('\n'),
-    ],
-  ])('recognizes OpenCode zero stored credentials plus %s as connected', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-  });
-
-  it.each([
-    [
-      'a missing stored-credential summary',
-      [
-        '┌  Environment',
-        '●  Acme ACME_API_KEY',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'duplicate stored-credential summaries',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '└  1 credential',
-      ].join('\n'),
-    ],
-    [
-      'conflicting environment summaries',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  1 environment variable',
-        '└  2 environment variables',
-      ].join('\n'),
-    ],
-    [
-      'a malformed environment summary',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  environment variables: many',
-      ].join('\n'),
-    ],
-    [
-      'an environment summary without its block',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'an unsafe environment count',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  9007199254740992 environment variables',
-      ].join('\n'),
-    ],
-  ])('treats OpenCode output with %s as unknown', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it('does not accept an OpenCode credential summary on an unexpected nonzero exit', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { ...connectedResults.opencode!, exitCode: 7 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it.each([
-    'New auth output format v99',
-    ['┌  Credentials ~/.local/share/opencode/auth.json', '└  credentials: many'].join('\n'),
-  ])('does not guess from OpenCode output without a valid count summary', async (stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: 'error', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it('recognizes pi model availability as connected without reading credential files', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'pi'
-        ? connectedResults.pi!
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'connected' } });
-  });
-
-  it('recognizes pi explicit no-models login guidance as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'pi'
-        ? {
-          stdout: 'No models available. Use /login to authenticate.',
-          stderr: '',
-          exitCode: 0,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'disconnected' } });
-  });
-
-  it('does not guess from unrecognized pi model output', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'pi'
-        ? { stdout: 'Models may be available', stderr: 'private detail', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'unknown' } });
-  });
 });
 
 describe('ProviderAuthService', () => {
-  it('always returns claude, codex, opencode, pi in descriptor order', async () => {
+  it('always returns claude, codex, qwen in descriptor order', async () => {
     const service = new ProviderAuthService({ runCommand: runner() });
 
     await expect(service.status()).resolves.toMatchObject({
       providers: [
         { provider: 'claude' },
         { provider: 'codex' },
-        { provider: 'opencode' },
-        { provider: 'pi' },
+        { provider: 'qwen' },
       ],
     });
   });
 
-  it('runs the four status commands concurrently with a 10 second timeout', async () => {
+  it('runs the three status commands concurrently with a 10 second timeout', async () => {
     const calls: Array<{ executable: string; args: readonly string[]; timeoutMs: number }> = [];
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });
@@ -559,12 +307,11 @@ describe('ProviderAuthService', () => {
     const service = new ProviderAuthService({ runCommand });
     const pending = service.status();
 
-    await vi.waitFor(() => expect(calls).toHaveLength(4));
+    await vi.waitFor(() => expect(calls).toHaveLength(3));
     expect(calls).toEqual([
       { executable: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 10_000 },
       { executable: 'codex', args: ['login', 'status'], timeoutMs: 10_000 },
-      { executable: 'opencode', args: ['auth', 'list'], timeoutMs: 10_000 },
-      { executable: 'pi', args: ['--list-models'], timeoutMs: 10_000 },
+      { executable: 'qwen', args: ['--version'], timeoutMs: 10_000 },
     ]);
     release();
     await expect(pending).resolves.toBeDefined();
@@ -610,8 +357,8 @@ describe('ProviderAuthService', () => {
       await service.status();
       now += 9 * 60_000;
       await service.status();
-      // Still four: one probe per provider, from the first call only.
-      expect(runCommand).toHaveBeenCalledTimes(4);
+      // Still three: one probe per provider, from the first call only.
+      expect(runCommand).toHaveBeenCalledTimes(3);
     });
 
     it('re-probes an all-connected answer once the long window passes', async () => {
@@ -622,7 +369,7 @@ describe('ProviderAuthService', () => {
       await service.status();
       now += 10 * 60_000 + 1;
       await service.status();
-      expect(runCommand).toHaveBeenCalledTimes(8);
+      expect(runCommand).toHaveBeenCalledTimes(6);
     });
 
     it('re-checks a NOT-connected answer sooner, so a terminal login is noticed on its own', async () => {
@@ -640,10 +387,10 @@ describe('ProviderAuthService', () => {
       await service.status();
       now += 59_999;
       await service.status();
-      expect(runCommand).toHaveBeenCalledTimes(4); // still inside the short window
+      expect(runCommand).toHaveBeenCalledTimes(3); // still inside the short window
       now += 2;
       await service.status();
-      expect(runCommand).toHaveBeenCalledTimes(8); // past it → re-probed
+      expect(runCommand).toHaveBeenCalledTimes(6); // past it → re-probed
     });
 
     it('serves the stale answer immediately and refreshes BEHIND it, never in front', async () => {
@@ -658,7 +405,7 @@ describe('ProviderAuthService', () => {
         now: () => now,
         runCommand: async (executable) => {
           probes += 1;
-          if (probes > 4) await gate; // only the SECOND round of probes hangs
+          if (probes > 3) await gate; // only the SECOND round of probes hangs
           return resultFor(executable);
         },
       });
@@ -672,11 +419,11 @@ describe('ProviderAuthService', () => {
           expect.objectContaining({ provider: 'claude', status: 'connected' }),
         ]),
       });
-      expect(probes).toBe(8); // …and it did kick the refresh off
+      expect(probes).toBe(6); // …and it did kick the refresh off
 
       // A reader arriving mid-revalidation is served from cache too, not attached to the probe.
       await expect(service.status()).resolves.toBeDefined();
-      expect(probes).toBe(8); // no second refresh piled on top
+      expect(probes).toBe(6); // no second refresh piled on top
       release();
     });
 
@@ -688,7 +435,7 @@ describe('ProviderAuthService', () => {
           expect.objectContaining({ provider: 'claude', status: 'connected' }),
         ]),
       });
-      expect(runCommand).toHaveBeenCalledTimes(4);
+      expect(runCommand).toHaveBeenCalledTimes(3);
     });
 
     it('applies the same asymmetry per account', async () => {
@@ -709,7 +456,7 @@ describe('ProviderAuthService', () => {
 
     await service.status();
     await service.status({ refresh: true });
-    expect(runCommand).toHaveBeenCalledTimes(8);
+    expect(runCommand).toHaveBeenCalledTimes(6);
   });
 
   it('keeps one incident id until an explicit matching clear and creates a new id afterward', async () => {
@@ -782,7 +529,7 @@ describe('ProviderAuthService', () => {
     const service = new ProviderAuthService({ runCommand });
 
     const pending = service.status();
-    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(3));
     service.reportRuntimeAuthFailure('claude');
     release();
 
@@ -839,8 +586,7 @@ describe('ProviderAuthService', () => {
       providers: [
         { provider: 'claude', status: 'connected' },
         { provider: 'codex', status: 'connected' },
-        { provider: 'opencode', status: 'connected' },
-        { provider: 'pi', status: 'connected' },
+        { provider: 'qwen', status: 'connected' },
       ],
     });
     expect(runCommand).not.toHaveBeenCalled();
@@ -867,10 +613,10 @@ describe('ProviderAuthService', () => {
     const ordinary = service.status();
     const refresh = service.status({ refresh: true });
     expect(refresh).toBe(ordinary);
-    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(3));
     release();
     await expect(Promise.all([ordinary, refresh])).resolves.toHaveLength(2);
-    expect(runCommand).toHaveBeenCalledTimes(4);
+    expect(runCommand).toHaveBeenCalledTimes(3);
   });
 
   it('gives ordinary callers one shared visible promise for a fresh probe after a latch', async () => {
@@ -887,7 +633,7 @@ describe('ProviderAuthService', () => {
     const ordinary = service.status();
 
     expect(refresh).toBe(ordinary);
-    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(3));
     release();
     await expect(ordinary.then(({ providers }) => providers[0])).resolves.toMatchObject({
       provider: 'claude',
@@ -895,28 +641,17 @@ describe('ProviderAuthService', () => {
     });
   });
 
-  it('uses XEZ_CODEX_BIN and XEZ_OPENCODE_BIN for both probe and login commands', async () => {
+  it('uses XEZ_CODEX_BIN and XEZ_QWEN_BIN for both probe and login commands', async () => {
     process.env.XEZ_CODEX_BIN = '/tools/codex custom';
-    process.env.XEZ_OPENCODE_BIN = '/tools/opencode custom';
+    process.env.XEZ_QWEN_BIN = '/tools/qwen custom';
     const runCommand = runner();
     const service = new ProviderAuthService({ runCommand, platform: 'linux' });
 
     await service.status();
     expect(runCommand).toHaveBeenCalledWith('/tools/codex custom', ['login', 'status'], 10_000);
-    expect(runCommand).toHaveBeenCalledWith('/tools/opencode custom', ['auth', 'list'], 10_000);
+    expect(runCommand).toHaveBeenCalledWith('/tools/qwen custom', ['--version'], 10_000);
     expect(service.loginCommand('codex')).toBe("'/tools/codex custom' login");
-    expect(service.loginCommand('opencode')).toBe("'/tools/opencode custom' auth login");
-  });
-
-  it('uses XEZ_PI_BIN for the model-availability probe and interactive login', async () => {
-    process.env.XEZ_PI_BIN = '/tools/pi custom';
-    const runCommand = runner((executable) =>
-      executable === '/tools/pi custom' ? connectedResults.pi! : resultFor(executable));
-    const service = new ProviderAuthService({ runCommand, platform: 'linux' });
-
-    await service.status();
-    expect(runCommand).toHaveBeenCalledWith('/tools/pi custom', ['--list-models'], 10_000);
-    expect(service.loginCommand('pi')).toBe("'/tools/pi custom' /login");
+    expect(service.loginCommand('qwen')).toBe("'/tools/qwen custom'");
   });
 
   it('uses the documented XEZ_CLAUDE_BIN override for both probe and login commands', async () => {
@@ -932,15 +667,15 @@ describe('ProviderAuthService', () => {
 
   it('renders POSIX and Windows login commands safely for executable special characters', () => {
     process.env.XEZ_CODEX_BIN = "a path/'codex'";
-    process.env.XEZ_OPENCODE_BIN = 'C:\\Program Files\\op%en&co!de".exe';
+    process.env.XEZ_QWEN_BIN = 'C:\\Program Files\\op%en&co!de".exe';
 
     expect(new ProviderAuthService({ platform: 'linux' }).loginCommand('codex'))
       .toBe("'a path/'\\''codex'\\''' login");
-    expect(new ProviderAuthService({ platform: 'win32' }).loginCommand('opencode'))
-      .toBe('"C:\\Program Files\\op^%en^&co^!de^".exe" auth login');
+    expect(new ProviderAuthService({ platform: 'win32' }).loginCommand('qwen'))
+      .toBe('"C:\\Program Files\\op^%en^&co^!de^".exe"');
   });
 
-  it('reports all four providers connected in XEZ_DRY_RUN without executing a command', async () => {
+  it('reports all three providers connected in XEZ_DRY_RUN without executing a command', async () => {
     process.env.XEZ_DRY_RUN = '1';
     const runCommand = runner();
     const service = new ProviderAuthService({ runCommand });
@@ -949,8 +684,7 @@ describe('ProviderAuthService', () => {
       providers: [
         { provider: 'claude', status: 'connected' },
         { provider: 'codex', status: 'connected' },
-        { provider: 'opencode', status: 'connected' },
-        { provider: 'pi', status: 'connected' },
+        { provider: 'qwen', status: 'connected' },
       ],
     });
     expect(runCommand).not.toHaveBeenCalled();
@@ -1005,7 +739,7 @@ describe('ProviderAuthService', () => {
       const before = spawns;
       now += 60 * 60_000; // an hour later
 
-      expect(service.peekStatus()?.providers).toHaveLength(4);
+      expect(service.peekStatus()?.providers).toHaveLength(3);
       expect(service.peekProfileStatus('claude', 'work')).toBeDefined();
       expect(spawns).toBe(before); // …and still nothing spawned
     });
@@ -1028,7 +762,7 @@ describe('ProviderAuthService', () => {
       await service.status();
       await service.profileStatus('claude', { id: 'work', configDir: '/work' });
       const before = spawns;
-      expect(service.peekStatus()?.providers).toHaveLength(4);
+      expect(service.peekStatus()?.providers).toHaveLength(3);
       expect(service.peekProfileStatus('claude', 'work')?.profileId).toBe('work');
       expect(spawns).toBe(before);
     });
@@ -1115,10 +849,6 @@ describe('ProviderAuthService', () => {
       expect(win.loginCommand('codex', 'C:\\bad"dir')).toBeNull();
     });
 
-    it('adds nothing for OpenCode, whose credentials do not follow its config dir', () => {
-      expect(new ProviderAuthService({ platform: 'linux' }).loginCommand('opencode', '/oc-work'))
-        .toBe("'opencode' auth login");
-    });
   });
 });
 
@@ -1206,7 +936,7 @@ describe('defaultRunProviderCommand – a probe stops everything it started (#89
   });
 
   // Q-02: on Windows `detached` is DETACHED_PROCESS – the probe has no console, so each console
-  // program it starts (codex and opencode start their native binary) opens a visible window.
+  // program it starts (codex starts its native binary) opens a visible window.
   it('Windows: starts the CLI hidden and NOT detached; the tree stop replaces the group', async () => {
     const child = fakeProbe();
     const start = startWith(child);
@@ -1325,7 +1055,7 @@ describe('defaultRunProviderCommand – a probe stops everything it started (#89
     vi.useFakeTimers();
     const kill = recordGroupSignals();
     const child = fakeProbe();
-    const pending = defaultRunProviderCommand('pi', ['--list-models'], TIMEOUT_MS, undefined, {
+    const pending = defaultRunProviderCommand('codex', ['login', 'status'], TIMEOUT_MS, undefined, {
       start: startWith(child),
       tree: { platform: 'linux' },
     });

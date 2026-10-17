@@ -56,7 +56,6 @@ export const SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
   { dir: '.claude/skills', source: 'agents' },
   { dir: '.codex/skills', source: 'agents' },
   { dir: '.cursor/skills', source: 'agents' },
-  { dir: '.opencode/skills', source: 'agents' },
 ];
 
 /* Deliberately `homedir()` and not `agentHomePaths().claude`: these do NOT follow an

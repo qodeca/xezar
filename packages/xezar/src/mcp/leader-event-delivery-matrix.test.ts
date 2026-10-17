@@ -57,7 +57,7 @@ function produce(h: Harness, variant: string) {
 }
 
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 production event matrix / ${client}`, () => {
   // Named breaks: omit catalog subscriptions, hide task.failed, suppress all leader-origin rows.
   it.each(variants)('%s reaches the receiving peer with exact identity and cursor', async variant => {
@@ -67,7 +67,7 @@ for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(c
       await h.settle();
       const text = h.texts().join('\n');
       for (const value of [row.eventId, row.category, row.kind, row.origin, row.subject.type, row.subject.id, h.journal.headCursor()]) expect(text).toContain(value);
-      if (client !== 'opencode' && row.subject.version) expect(text).toContain(row.subject.version);
+      if (row.subject.version) expect(text).toContain(row.subject.version);
       expect(row.category).toBe(MCP_EVENT_KIND_CATEGORY[row.kind as McpEventKind]);
       if (variant === 'verdict.posted') for (const value of ['REQUEST CHANGES', 'code-review', 'report', 'a'.repeat(40), 'verified']) expect(text).toContain(value);
       expect(h.journal.read()).toMatchObject({ events: expect.arrayContaining([row]) });
@@ -94,7 +94,7 @@ for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(c
 });
 
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 significance and ordering / ${client}`, () => {
   it('scans all-routine pages before failure, retains raw rows and never covers an unseen tail', async () => {
     // Named breaks: only Claude filters significance; task.failed is routine; cursor uses page tail.
@@ -151,18 +151,8 @@ for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(c
   });
 });
 
-// G1 requires exact subject versions at the receiving peer. #535 fixed OpenCode's renderer to
-// include it, matching the other three adapters.
-it.each(variants.filter(variant => !['config.changed', 'workflow.saved', 'workflow.deleted', 'agent-config.changed', 'executor.available', 'executor.unavailable'].includes(variant)))('#532/#535 OpenCode — %s receiving peer gets the decision version', async variant => {
-  const h = await deliveryHarness('opencode');
-  try {
-    const row = produce(h, variant); await h.settle();
-    expect(h.texts().join('\n')).toContain(row.subject.version);
-  } finally { await h.close(); }
-});
-
 // win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
+// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
 for (const client of DELIVERY_CLIENTS) it.skipIf(deliveryPeerUnavailable(client))(`#532 legacy gate without routing metadata remains significant / ${client}`, async () => {
   const h = await deliveryHarness(client);
   try {

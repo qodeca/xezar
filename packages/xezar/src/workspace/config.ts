@@ -356,8 +356,7 @@ const agentDefaultsSchema = z
       .object({
         claude: z.string().trim().min(1).max(200).optional().catch(undefined),
         codex: z.string().trim().min(1).max(200).optional().catch(undefined),
-        opencode: z.string().trim().min(1).max(200).optional().catch(undefined),
-        pi: z.string().trim().min(1).max(200).optional().catch(undefined),
+        qwen: z.string().trim().min(1).max(200).optional().catch(undefined),
       })
       .passthrough()
       .optional()
@@ -653,10 +652,16 @@ export function withoutMachineScopedKeys<T extends Record<string, unknown>>(
 }
 
 /**
- * Create single-project mode's four configuration files, for a first run with
+ * Create single-project mode's state files, for a first run with
  * `--single-project` only (#600 AC-2).
  *
- * Every one is written as an empty JSON object: each loader already treats `{}`
+ * The project settings file `.xezar/config.json` is NOT created (#1074). It is
+ * the one file a project commits on purpose, every key has a working default,
+ * and an empty copy written here made a later `git pull` that brings the real
+ * file stop with "untracked working tree files would be overwritten". Settings
+ * saved in the cockpit still create it when they are first written.
+ *
+ * Every other one is written as an empty JSON object: each loader already treats `{}`
  * as its zero-config default, so the files carry no duplicated schema knowledge
  * and an older xezar reading one sees exactly what it sees for a file it has
  * never met. That also keeps the `workspace.json` marker honest — its PRESENCE
@@ -675,6 +680,7 @@ export function createProjectStateFiles(layout: StateLayout): void {
   const linkRefusal = projectStateDirRefusal(layout);
   if (linkRefusal !== null) throw new SingleProjectStateError(`single-project state ${linkRefusal}`);
   for (const path of projectStateFiles(layout)) {
+    if (path === layout.configPath) continue;
     if (existsSync(path) || isSymbolicLink(path)) continue;
     atomicWriteJsonSync(path, {});
   }

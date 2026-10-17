@@ -59,8 +59,7 @@ export default {
   // bundled mock agent, a run the MCP suites start fails with EACCES, and the dry run refuses
   // to begin (measured: `composition.test.ts`). These are the tracked 100755 files the suites run.
   buildCommand:
-    'chmod +x packages/xezar/scripts/mock-claude.mjs packages/xezar/scripts/mock-pi-rpc.mjs ' +
+    'chmod +x packages/xezar/scripts/mock-claude.mjs ' +
     'packages/xezar/src/core/__fixtures__/claude/stub-ignores-eof-exits-143.mjs ' +
-    'packages/xezar/src/core/__fixtures__/codex/mock-codex-app-server.mjs ' +
-    'packages/xezar/src/core/__fixtures__/opencode/mock-opencode-serve.mjs',
+    'packages/xezar/src/core/__fixtures__/codex/mock-codex-app-server.mjs',
 }

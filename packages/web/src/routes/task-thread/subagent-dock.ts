@@ -8,7 +8,7 @@ import type { ThreadEntry, ThreadTurn } from './thread-state'
  * each one doing" from the reduced turns the thread already renders.
  *
  * A sub-agent is any **parent-less** `toolKind: 'task'` item (spec Q3) — claude `Task`/`Agent`,
- * opencode `subtask`, codex review mode. A task item that itself carries a `parentItemId` is a
+ * codex review mode. A task item that itself carries a `parentItemId` is a
  * sub-agent's own spawn, one level down; it is never a dock row. No backend name reaches this
  * module: parity comes from the protocol seam (`AGENT_PROTOCOL.md`), not from per-backend code.
  *
@@ -25,7 +25,7 @@ export interface SubagentSummary {
   id: string
   /** "Review the store layer" — the detail half of "Task: …", else the whole title. */
   title: string
-  /** claude `subagent_type`/`subagentType`, opencode `agent`; absent for codex. */
+  /** claude `subagent_type`/`subagentType`; absent for codex. */
   agentType?: string
   status: ToolStatus
   /** Children of kind `tool` — what the row's "N tools" count shows. */
@@ -142,8 +142,8 @@ export function collectSubagents(turns: ThreadTurn[], runIsTerminal = false): Su
   //    earlier fan-out really is history at that point — and it happens at a turn boundary
   //    rather than mid-flight, which is what made the per-item version incoherent.
   //  - **Bounded by the last finished fan-out.** Walking the whole transcript would let a
-  //    single stranded agent (overlapping opencode subtasks can leave one `running` forever —
-  //    a known mapper limitation) inject itself into every later fan-out, pin the dock open
+  //    single stranded agent (a backend that never settles an overlapping sub-agent can leave one
+  //    `running` forever) inject itself into every later fan-out, pin the dock open
   //    for the rest of the run, and hijack the collapsed head with its stale activity. Stop at
   //    the first earlier turn whose fan-out is entirely settled: that turn is history.
   const live = (item: UiToolItem): boolean => !runIsTerminal && !isSettled(item.status)

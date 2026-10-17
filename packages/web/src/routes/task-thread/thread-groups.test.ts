@@ -266,7 +266,7 @@ describe('groupThreadItems — provider authorization recovery', () => {
         seq: 2,
         ts: '2026-07-22T12:00:00.000Z',
         type: 'provider-auth-required',
-        provider: 'opencode',
+        provider: 'qwen',
         authFailureId: 'incident-3',
       } as RunEvent,
       { seq: 3, ts: '2026-07-22T12:00:00.000Z', type: 'note', message: 'run stopped' } as RunEvent,
@@ -277,7 +277,7 @@ describe('groupThreadItems — provider authorization recovery', () => {
       expect.objectContaining({ kind: 'entry', id: 'v1:2', entry: {
         kind: 'provider-auth-required',
         id: 'v1:2',
-        provider: 'opencode',
+        provider: 'qwen',
         authFailureId: 'incident-3',
       } }),
       expect.objectContaining({ kind: 'entry', id: 'v1:3' }),

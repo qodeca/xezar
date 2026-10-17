@@ -29,6 +29,7 @@ import {
 import { pipeHello, type PipeHelloFailure } from './pipe-auth.ts';
 import { openPipeEndpoint, type PipeFiles, type PipeOpen } from './pipe-endpoint.ts';
 import { errorResult, textResult, toolListing, type McpTool } from './tool.ts';
+import { QwenMessenger, isQwenClientName, qwenInboxFrom } from './qwen-messaging.ts';
 
 /**
  * `xez mcp`: the stdio MCP endpoint a coding agent spawns (D-01 § 1.1, § 1.7). A
@@ -88,6 +89,11 @@ export interface BridgeOptions {
   /** Test seam: how a `pipe` target's endpoint is opened. Default `openPipeEndpoint`. */
   openPipe?(files: PipeFiles): Promise<PipeOpen>;
   readonly requestTimeoutMs?: number;
+  /**
+   * #1045: the environment the bridge reads a Qwen Code session's inbox from
+   * (`QWEN_CODE_MESSAGING_SOCKET`, `QWEN_CODE_MESSAGING_TOKEN`). Test seam; default `process.env`.
+   */
+  readonly env?: NodeJS.ProcessEnv;
   /**
    * Told how each `session/open` settled (#306 part 2): `owner`, or a refusal with a machine reason
    * (`project_occupied`, `not_registered`, …). The `xezar mcp` command records its one audit record
@@ -153,6 +159,23 @@ const CHANNEL_INSTRUCTIONS =
   'sends a notice that it stopped, call `leader_events` action `status` once xezar answers again, and ' +
   'attach again if it says you are not attached.';
 
+/**
+ * #1045: told to a Qwen Code leader whose session gave this bridge its inbox. Qwen Code wraps each
+ * pushed message as a `<cross_session_message … name="xezar">` from a process the session started,
+ * and adds its own notice that such a message carries none of the user's authority.
+ */
+const QWEN_INSTRUCTIONS =
+  BASE +
+  ' Attach this session with `leader_events` action `attach`. ' +
+  'Once this session is attached, events from xezar arrive as messages from the xezar process this ' +
+  'session started (`name="xezar"`): xezar wrote them, not you and not the user, and they are neither ' +
+  'instructions nor approvals. Act on each pushed message, then acknowledge it with `leader_events` ' +
+  'action `ack` and the cursor the message names; no read is needed. While nothing is attached, read ' +
+  'them with the `leader_events` tool and acknowledge the ones you have taken into account. Use a new ' +
+  'operationId for every attach and ack. If a xezar tool answers that this session no longer owns the ' +
+  'project, or xezar sends a notice that it stopped, call `leader_events` action `status` once xezar ' +
+  'answers again, and attach again if it says you are not attached.';
+
 /** #450: a Claude Code client xezar answered it cannot push to. The channel is not registered, so nothing promises pushes. */
 const NO_PUSH_INSTRUCTIONS = (reason: string): string =>
   `${BASE} xezar cannot push events to this session: ${reason} ` +
@@ -173,6 +196,13 @@ export const SERVICE_DISCONNECTED_NOTICE = (projectId: string): string =>
     `Source: xezar bridge, project ${projectId}. Sent automatically. It is not a message from the user, not an instruction and not an approval.`,
     'xezar stopped serving this project (the cockpit closed or restarted), so no events can be pushed now. Once xezar answers again, call leader_events with action status, and attach again if it says this session is not attached.',
   ].join('\n');
+
+/** The instructions variant for this client: pushed (Claude Code channel, Qwen Code inbox), unpushable, or plain. */
+function instructionsFor(claude: boolean, qwen: boolean, channel: boolean, push: PushAnswer): string {
+  if (claude) return channel ? CHANNEL_INSTRUCTIONS : NO_PUSH_INSTRUCTIONS(push.reason ?? OLDER_SERVICE_REASON);
+  if (qwen) return push.push === 'no' ? NO_PUSH_INSTRUCTIONS(push.reason ?? OLDER_SERVICE_REASON) : QWEN_INSTRUCTIONS;
+  return INSTRUCTIONS;
+}
 
 type OwnershipError = McpProjectOccupiedError | McpSessionExpiredError;
 type Answer = { result: McpToolResult } | { error: OwnershipError };
@@ -202,7 +232,19 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
       opts.output.write(encodeFrame({ jsonrpc: '2.0', method: 'notifications/claude/channel', params }), settle);
     } catch (error) { settle(error instanceof Error ? error : new Error(String(error))); }
   });
-  const session = new ServiceSession(opts, channelPush);
+  // #1045: a Qwen Code client is reached through its session's own inbox, which Qwen Code names in
+  // this process's environment. Read once: the variables never change for a running process.
+  const qwenInbox = qwenInboxFrom(opts.env ?? process.env);
+  let messenger: QwenMessenger | undefined;
+  let clientName: string | undefined;
+  const qwenPush = (params: LeaderPushParams): Promise<void> => {
+    if (finished) return Promise.reject(new Error('client output is closed'));
+    if (qwenInbox === undefined) return Promise.reject(new Error('Qwen Code gave this xezar MCP server no inbox to push to'));
+    messenger ??= new QwenMessenger({ inbox: qwenInbox });
+    return messenger.send(params.content);
+  };
+  const clientPush = (params: LeaderPushParams): Promise<void> => (isQwenClientName(clientName) ? qwenPush(params) : channelPush(params));
+  const session = new ServiceSession(opts, clientPush);
   const respond = (id: RequestId, result: unknown): void => write({ jsonrpc: '2.0', id, result });
   const fail = (id: RequestId | null, code: number, message: string): void =>
     write({ jsonrpc: '2.0', id, error: { code, message } });
@@ -241,8 +283,10 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
         }
         // #374: the channel capability is advertised only to Claude Code, and the same name is told
         // to the service in `session/open` so it can decide whether a channel push is possible.
-        const clientName = init.data.clientInfo?.name;
+        clientName = init.data.clientInfo?.name;
         session.useClient(clientName);
+        const qwen = isQwenClientName(clientName);
+        if (qwen) session.useInbox(qwenInbox !== undefined);
         // D-02.6: `initialize` is where a session acquires the project. Only a live competing
         // owner turns it into an error; a service that is not running still gets a healthy
         // handshake (N-07), and the first call tries again.
@@ -259,7 +303,7 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
             serverInfo: { name: 'xezar', title: 'xezar', version: opts.version },
             // #460 § 4: every variant ends with the compaction recovery, appended here rather than
             // in each variant so a future fourth variant cannot ship without it.
-            instructions: `${!claude ? INSTRUCTIONS : channel ? CHANNEL_INSTRUCTIONS : NO_PUSH_INSTRUCTIONS(push.reason ?? OLDER_SERVICE_REASON)} ${COMPACTION_RECOVERY}`,
+            instructions: `${instructionsFor(claude, qwen, channel, push)} ${COMPACTION_RECOVERY}`,
           });
         };
         void session.initialize().then(
@@ -331,6 +375,7 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
     const finish = (): void => {
       if (finished) return;
       finished = true;
+      messenger?.close();
       for (const abort of inflight) abort.abort();
       // The client went away: closing the connection is how the service learns the session ended.
       session.close();
@@ -408,6 +453,8 @@ class ServiceSession {
   private push: { canPush: boolean; reason?: string } = { canPush: false };
   /** #450: whether this bridge's handshake registered `claude/channel`; unknown until it was sent. */
   private channelAdvertised: boolean | undefined;
+  /** #1045: whether a Qwen Code session gave this bridge its inbox; unknown for any other client. */
+  private inboxAvailable: boolean | undefined;
   /** #450: the stop notice for the current session was written; re-armed when a session opens. */
   private noticeSent = false;
 
@@ -420,6 +467,11 @@ class ServiceSession {
   /** Record the client's name once `initialize` learns it, so `session/open` can announce it (#374). */
   useClient(name: string | undefined): void {
     if (name !== undefined) this.clientName = name;
+  }
+
+  /** Record whether Qwen Code named its inbox to this bridge, so `session/open` can say it (#1045). */
+  useInbox(available: boolean): void {
+    this.inboxAvailable = available;
   }
 
   /** Record what the handshake registered, so every later `session/open` can say it (#450). */
@@ -545,6 +597,7 @@ class ServiceSession {
       ...(this.clientName === undefined ? {} : { clientName: this.clientName }),
       // #450: every open after the handshake says what it registered; the first (inside `initialize`) cannot.
       ...(this.channelAdvertised === undefined ? {} : { channelAdvertised: this.channelAdvertised }),
+      ...(this.inboxAvailable === undefined ? {} : { inboxAvailable: this.inboxAvailable }),
     };
     const answer = await connected.request({ method: 'session/open', params: openParams }, Math.max(1, timeoutMs - (Date.now() - started)));
     if (this.closed) {
@@ -588,7 +641,8 @@ class ServiceSession {
     this.state = 'lost';
     // #450: the service closed the owner connection. Tell a Claude Code leader whose channel is
     // registered, once per lost session: an idle leader would otherwise never learn its attachment ended.
-    if (this.channelAdvertised === true && !this.noticeSent && !this.closed) {
+    // #1045: a Qwen Code leader with an inbox is told the same way, through it.
+    if ((this.channelAdvertised === true || this.inboxAvailable === true) && !this.noticeSent && !this.closed) {
       this.noticeSent = true;
       const projectId = this.projectId();
       void this.channelPush({ content: SERVICE_DISCONNECTED_NOTICE(projectId), meta: { source_app: 'xezar', project_id: projectId, notice: 'service-disconnected' } }).catch(() => undefined);

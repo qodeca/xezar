@@ -70,7 +70,7 @@ type Recorded = { method: string; url: string; body?: unknown }
 let requests: Recorded[]
 
 const providersForHealth = (health: HealthResponse): ProviderStatusResponse => ({
-  providers: (['claude', 'codex', 'opencode'] as const).map((provider) => ({
+  providers: (['claude', 'codex', 'qwen'] as const).map((provider) => ({
     provider,
     status: health.checks.some((check) => check.name === provider && check.available)
       ? 'connected' as const
@@ -298,7 +298,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'disconnected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     )
@@ -317,7 +317,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     )
@@ -339,7 +339,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: false },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     )
@@ -361,7 +361,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'unknown', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     )
@@ -390,7 +390,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     }
     serve(HEALTH_MULTI, {}, providers)
@@ -399,7 +399,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     fireEvent.pointerDown(await screen.findByRole('button', { name: 'Runner' }))
     const options = await screen.findAllByRole('menuitemradio')
     expect(options.map((option) => option.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('claude'), expect.stringContaining('opencode')]),
+      expect.arrayContaining([expect.stringContaining('claude'), expect.stringContaining('qwen')]),
     )
     expect(options.some((option) => option.textContent?.includes('codex'))).toBe(false)
   })

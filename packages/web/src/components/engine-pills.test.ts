@@ -121,7 +121,7 @@ describe('useResolvedEngine provider status', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -163,7 +163,7 @@ describe('useResolvedEngine provider status', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'unknown', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -181,7 +181,7 @@ describe('useResolvedEngine provider status', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: false },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -201,7 +201,7 @@ describe('useResolvedEngine provider status', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     })
@@ -267,7 +267,7 @@ describe('engineBody', () => {
     expect(body).toEqual({ runner: undefined, model: undefined })
   })
 
-  it.each<Runner>(['claude', 'codex', 'opencode', 'pi'])(
+  it.each<Runner>(['claude', 'codex', 'qwen'])(
     'is symmetric for %s as the host default',
     (runner) => {
       expect(engineBody(resolved({ runner, defaultRunner: runner })).runner).toBeUndefined()

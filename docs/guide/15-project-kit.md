@@ -49,7 +49,7 @@ Skill discovery uses the first definition with a given name, in this order:
 1. Project `.xezar/skills/`.
 2. Project `.ai/skills/`.
 3. Project `.agents/skills/`.
-4. Project `.claude/skills/`, `.codex/skills/`, `.cursor/skills/`, then `.opencode/skills/`.
+4. Project `.claude/skills/`, `.codex/skills/`, then `.cursor/skills/`.
 5. Global `~/.agents/skills/`, then `~/.claude/skills/`.
 6. Configured team repositories.
 

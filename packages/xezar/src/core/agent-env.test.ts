@@ -232,7 +232,7 @@ describe('buildChildEnv — program search on Windows (#963)', () => {
     return [
       buildChildEnv({ backend: 'claude', source: { Path: 'C:\\Windows' } }),
       buildChildEnv({ backend: 'codex', source, extraEnv: { nodefaultcurrentdirectoryinexepath: '' } }),
-      buildChildEnv({ backend: 'pi', source: { ...source, XEZ_AGENT_ENV_FULL: '1' } }),
+      buildChildEnv({ backend: 'qwen', source: { ...source, XEZ_AGENT_ENV_FULL: '1' } }),
     ];
   };
   const expectHardened = (envs: NodeJS.ProcessEnv[]): void => {
@@ -367,47 +367,6 @@ describe('agent-profile config dirs reach the child', () => {
         source: { PATH: '/usr/bin' },
       }).CODEX_HOME,
     ).toBe('/home/u/.codex-klaudiusz');
-  });
-
-  /**
-   * pi is the third profile-capable provider (#329) and the only one whose allow-prefix (`PI_`)
-   * means a HOST `PI_CODING_AGENT_DIR` reaches the child on its own — so it is the only one where
-   * a host value and a picked account can collide. `extraEnv` is applied after the allowlist, so
-   * the account wins; without that ordering a run would use the wrong pi login's credentials.
-   */
-  it('PI_CODING_AGENT_DIR survives for pi, and the picked account outranks the host value', () => {
-    expect(
-      buildChildEnv({
-        backend: 'pi',
-        extraEnv: { PI_CODING_AGENT_DIR: '/accounts/pi-second' },
-        source: { PATH: '/usr/bin' },
-      }).PI_CODING_AGENT_DIR,
-    ).toBe('/accounts/pi-second');
-    // Host-only: that IS the default account's dir, so it rides in through the `PI_` prefix.
-    expect(
-      buildChildEnv({
-        backend: 'pi',
-        source: { PATH: '/usr/bin', PI_CODING_AGENT_DIR: '/host/pi' },
-      }).PI_CODING_AGENT_DIR,
-    ).toBe('/host/pi');
-    // Both: the account the user picked wins, never the ambient one.
-    expect(
-      buildChildEnv({
-        backend: 'pi',
-        extraEnv: { PI_CODING_AGENT_DIR: '/accounts/pi-second' },
-        source: { PATH: '/usr/bin', PI_CODING_AGENT_DIR: '/host/pi' },
-      }).PI_CODING_AGENT_DIR,
-    ).toBe('/accounts/pi-second');
-  });
-
-  it('pi’s variable does not leak sideways into another agent’s child', () => {
-    for (const backend of ['claude', 'codex', 'opencode'] as const) {
-      expect(
-        buildChildEnv({ backend, source: { PATH: '/usr/bin', PI_CODING_AGENT_DIR: '/host/pi' } })
-          .PI_CODING_AGENT_DIR,
-        backend,
-      ).toBeUndefined();
-    }
   });
 
   it('the per-run account still wins under the XEZ_AGENT_ENV_FULL escape hatch', () => {

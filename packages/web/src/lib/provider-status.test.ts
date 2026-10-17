@@ -14,7 +14,7 @@ const CONNECTED: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'connected', enabled: true },
+    { provider: 'qwen', status: 'connected', enabled: true },
   ],
 }
 
@@ -111,7 +111,7 @@ describe('complete provider-status responses', () => {
     providers: [
       { provider: 'claude', status: 'connected', enabled: false },
       { provider: 'codex', status: 'connected', enabled: true },
-      { provider: 'opencode', status: 'not-installed', enabled: true },
+      { provider: 'qwen', status: 'not-installed', enabled: true },
     ],
   }
 
@@ -125,7 +125,7 @@ describe('complete provider-status responses', () => {
         authFailureId: 'incident-2',
       },
       { provider: 'codex', status: 'connected', enabled: true },
-      { provider: 'opencode', status: 'not-installed', enabled: true },
+      { provider: 'qwen', status: 'not-installed', enabled: true },
     ],
   }
 
@@ -199,7 +199,7 @@ describe('parseProviderStatusResponse', () => {
       parseProviderStatusResponse({
         ignored: 'private top-level value',
         providers: [
-          { provider: 'opencode', status: 'unknown', enabled: true, hint: 'Try again.', raw: 'private' },
+          { provider: 'qwen', status: 'unknown', enabled: true, hint: 'Try again.', raw: 'private' },
           { provider: 'claude', status: 'connected', enabled: true, account: 'private@example.test' },
           { provider: 'codex', status: 'disconnected', enabled: false },
         ],
@@ -208,7 +208,7 @@ describe('parseProviderStatusResponse', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: false },
-        { provider: 'opencode', status: 'unknown', enabled: true, hint: 'Try again.' },
+        { provider: 'qwen', status: 'unknown', enabled: true, hint: 'Try again.' },
       ],
     })
   })
@@ -233,7 +233,7 @@ describe('parseProviderStatusResponse', () => {
         providers: [
           { provider: 'claude', status: 'connected' },
           { provider: 'codex', status: 'ready' },
-          { provider: 'opencode', status: 'connected' },
+          { provider: 'qwen', status: 'connected' },
         ],
       },
     ],
@@ -243,7 +243,7 @@ describe('parseProviderStatusResponse', () => {
         providers: [
           { provider: 'claude', status: 'connected' },
           { provider: 'claude', status: 'disconnected' },
-          { provider: 'opencode', status: 'connected' },
+          { provider: 'qwen', status: 'connected' },
         ],
       },
     ],
@@ -262,7 +262,7 @@ describe('parseProviderStatusResponse', () => {
         providers: [
           { provider: 'claude', status: 'connected' },
           { provider: 'codex', status: 'connected', hint: { raw: 'private' } },
-          { provider: 'opencode', status: 'connected' },
+          { provider: 'qwen', status: 'connected' },
         ],
       },
     ],
@@ -275,7 +275,7 @@ describe('parseProviderStatusResponse', () => {
       providers: [
         { provider: 'claude', status: 'connected' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
       ],
     })).toThrow('Invalid provider status response')
   })
@@ -285,7 +285,7 @@ describe('usableRunners', () => {
   it('returns only enabled connected providers in canonical order', () => {
     const status: ProviderStatusResponse = {
       providers: [
-        { provider: 'opencode', status: 'connected', enabled: false },
+        { provider: 'qwen', status: 'connected', enabled: false },
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: false },
       ],
@@ -315,7 +315,7 @@ describe('usableRunners', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true },
         { provider: 'codex', status: 'not-installed', enabled: true },
-        { provider: 'opencode', status: 'unknown', enabled: true },
+        { provider: 'qwen', status: 'unknown', enabled: true },
       ],
     }
 
@@ -330,7 +330,7 @@ describe('providerStatusFor', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         codex,
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     }
 

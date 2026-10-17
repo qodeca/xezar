@@ -56,7 +56,7 @@ describe('agent quota read surface', () => {
   });
 
   it('validates and applies provider/account filters and returns 404 for an unknown account', async () => {
-    expect((await apiRequest(app(), '/api/v1/workspace/agent-quota?provider=pi')).status).toBe(400);
+    expect((await apiRequest(app(), '/api/v1/workspace/agent-quota?provider=qwen')).status).toBe(400);
     const filtered = await apiRequest(app(), '/api/v1/workspace/agent-quota?provider=claude&accountId=default');
     expect(filtered.status).toBe(200);
     expect((await filtered.json() as { accounts: unknown[] }).accounts).toHaveLength(1);
@@ -101,7 +101,7 @@ describe('agent quota read surface', () => {
     expect(text).not.toContain('person@example.test');
     expect((await hosted.request('http://server/api/v1/workspace/agent-quota/refresh', {
       method: 'POST', headers: { host: 'server', origin: 'http://server', 'content-type': 'application/json' },
-      body: JSON.stringify({ provider: 'pi' }),
+      body: JSON.stringify({ provider: 'qwen' }),
     })).status).toBe(400);
     expect((await hosted.request('http://server/api/v1/workspace/agent-quota/refresh', {
       method: 'POST', headers: { host: 'server', origin: 'http://server', 'content-type': 'application/json' },

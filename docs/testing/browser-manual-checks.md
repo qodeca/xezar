@@ -2,6 +2,9 @@
 
 The following results are the dated record from QA run `5aae0719-1aec-4cf7-bb5a-47ca7bd105e0`.
 
+The pi and OpenCode backends named below were removed later (#1046); their results stay as part of
+that dated record and say nothing about the current release.
+
 | Guide part | Flow | Performed on (date, CEST) | By (runner, model, account label) | Evidence | Result |
 | --- | --- | --- | --- | --- | --- |
 | Guide 04 — Agent backends | A real agent-account login is detected and usable | 2026-09-20 (CEST) | Claude Code, sonnet, eqamana-priv | `.local/xezar/tasks/5aae0719-1aec-4cf7-bb5a-47ca7bd105e0/check1-login/` | **PASS** for Claude Code, Codex, and pi. OpenCode has no OAuth-style account login on this machine; its configured local/API providers were reachable, so that caveat is recorded rather than treated as a failure. |

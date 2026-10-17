@@ -13,7 +13,7 @@ describe('provider availability', () => {
     providers: [
       { provider: 'claude' as const, status: 'connected' as const },
       { provider: 'codex' as const, status: 'disconnected' as const },
-      { provider: 'opencode' as const, status: 'not-installed' as const },
+      { provider: 'qwen' as const, status: 'not-installed' as const },
     ],
   };
 
@@ -22,7 +22,7 @@ describe('provider availability', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: false },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     });
   });
@@ -36,11 +36,11 @@ describe('provider availability', () => {
   it('ignores Xezar provider-disable preferences under the explicit model lock', () => {
     process.env.XEZ_AGENT_MODELS_LOCKED = '1';
 
-    expect(applyProviderEnablement(response, ['claude', 'codex', 'opencode'])).toEqual({
+    expect(applyProviderEnablement(response, ['claude', 'codex', 'qwen'])).toEqual({
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     });
   });

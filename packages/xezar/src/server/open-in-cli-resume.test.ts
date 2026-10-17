@@ -25,24 +25,16 @@ const { createApp } = await import('./server.ts');
 const providerAuth = (disconnected: ProviderId[] = []) => new ProviderAuthService({
   platform: 'linux',
   runCommand: async (executable) => {
-    const provider = executable === 'claude'
+    const provider: ProviderId = executable === 'claude'
       ? 'claude'
       : executable === 'codex'
         ? 'codex'
-        : executable === 'opencode'
-          ? 'opencode'
-          : 'pi';
+        : 'qwen';
     if (disconnected.includes(provider)) return { stdout: '', stderr: '', exitCode: 1 };
     if (provider === 'claude') return { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 };
     if (provider === 'codex') return { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 0 };
-    if (provider === 'opencode') {
-      return { stdout: '┌  Credentials ~/.local/share/opencode/auth.json\n└  1 credential', stderr: '', exitCode: 0 };
-    }
-    return {
-      stdout: 'provider  model  context  max-out  thinking  images\nanthropic  claude  200K  64K  yes  yes',
-      stderr: '',
-      exitCode: 0,
-    };
+    // Qwen Code answers its version; its settings (QWEN_HOME, pinned per test) say a model is set up.
+    return { stdout: '0.25.2\n', stderr: '', exitCode: 0 };
   },
 });
 
@@ -71,6 +63,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
   let store: RunStore;
   const savedRemote = process.env.XEZ_REMOTE;
   const savedHome = process.env.XEZ_HOME;
+  const savedQwenHome = process.env.QWEN_HOME;
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-open-in-cli-'));
@@ -79,6 +72,11 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
     // developer's real workspace and its answers would depend on who ran it.
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-open-in-cli-home-'));
     process.env.XEZ_HOME = home;
+    // Qwen Code's sign-in answer is its settings: a configured home of the test's own.
+    const qwenHome = join(home, '.qwen');
+    mkdirSync(qwenHome, { recursive: true });
+    writeFileSync(join(qwenHome, 'settings.json'), JSON.stringify({ modelProviders: { openai: [{ id: 'local-model' }] } }));
+    process.env.QWEN_HOME = qwenHome;
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
     mockOpenInTerminal.mockClear();
@@ -91,6 +89,8 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
     else process.env.XEZ_REMOTE = savedRemote;
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
+    if (savedQwenHome === undefined) delete process.env.QWEN_HOME;
+    else process.env.QWEN_HOME = savedQwenHome;
   });
 
   const app = (options: { disabled?: ProviderId[]; disconnected?: ProviderId[] } = {}) =>
@@ -131,7 +131,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
   it.each([
     ['claude', 'cli:claude', 'claude --resume sess-1'],
     ['codex', 'cli:codex', 'codex resume sess-1'],
-    ['opencode', 'cli:opencode', 'opencode --session sess-1'],
+    ['qwen', 'cli:qwen', 'qwen --resume sess-1'],
   ] as const)('the %s CLI resumes its own %s session', async (runner, target, expected) => {
     const run = makeRun(runner, 'sess-1');
     const res = await openIn(run.id, target);
@@ -155,10 +155,10 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
   });
 
   it('no session yet: even the matching CLI launches fresh instead of erroring', async () => {
-    const run = makeRun('opencode', undefined);
-    const res = await openIn(run.id, 'cli:opencode');
+    const run = makeRun('qwen', undefined);
+    const res = await openIn(run.id, 'cli:qwen');
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { command: string }).command).toBe('opencode');
+    expect(((await res.json()) as { command: string }).command).toBe('qwen');
   });
 
   // The run manager seeds `sessionId` when an agent step STARTS, so a live run already carries

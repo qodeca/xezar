@@ -71,8 +71,8 @@ export interface DiscoveryFacts {
  *  `collectOnboarding`. Same shape `project_config` declares for the same reason. */
 export type DiscoveryContext = McpToolContext & { readonly service?: ServiceDispatch };
 
-const RUNNERS: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
-const LABEL: Record<Runner, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' };
+const RUNNERS: readonly Runner[] = ['claude', 'codex', 'qwen'];
+const LABEL: Record<Runner, string> = { claude: 'Claude Code', codex: 'Codex', qwen: 'Qwen Code' };
 const PROVIDERS_SETTINGS = 'Settings → Agents → Providers';
 /** The page name, followed by its address when this cockpit's address is known. Without one (hosted
  *  mode, where a cockpit IS running but this process recorded no address) it is the running cockpit's. */

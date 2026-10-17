@@ -73,7 +73,7 @@ function stubFetch(overrides: Record<string, () => Response> = {}): SentRequest[
           providers: [
             { provider: 'claude', status: 'connected', enabled: true },
             { provider: 'codex', status: 'not-installed', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         })
       }
@@ -337,7 +337,7 @@ describe('actions hit their endpoints', () => {
           providers: [
             { provider: 'claude', status: 'disconnected', enabled: true },
             { provider: 'codex', status: 'unknown', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         }),
     })
@@ -359,7 +359,7 @@ describe('actions hit their endpoints', () => {
           providers: [
             { provider: 'claude', status: 'disconnected', enabled: true },
             { provider: 'codex', status: 'unknown', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         }),
     })
@@ -381,7 +381,7 @@ describe('actions hit their endpoints', () => {
           providers: [
             { provider: 'claude', status: 'disconnected', enabled: true },
             { provider: 'codex', status: 'connected', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         }),
     })
@@ -581,7 +581,7 @@ describe('Open in… menu — agent CLI resume labeling (#402)', () => {
   const CLI_LABELS: Record<string, string> = {
     'cli:claude': 'Claude CLI',
     'cli:codex': 'Codex CLI',
-    'cli:opencode': 'OpenCode',
+    'cli:qwen': 'Qwen Code',
   }
   const openTargets = (ids: string[]) => ({
     targets: ids.map((id) => ({ id, label: CLI_LABELS[id] ?? id })),
@@ -602,7 +602,7 @@ describe('Open in… menu — agent CLI resume labeling (#402)', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       }),
     })
@@ -628,7 +628,7 @@ describe('Open in… menu — agent CLI resume labeling (#402)', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       }),
     })
@@ -656,7 +656,7 @@ describe('Open in… menu — agent CLI resume labeling (#402)', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true },
           codex,
-          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       }),
     })
@@ -1125,18 +1125,18 @@ describe('meta line, tabs, pill and resume hint', () => {
 
   it('the agent badge reveals runner and model on click, reading "auto" when the model is unset', async () => {
     stubFetch()
-    renderHeader(run('done', { runner: 'opencode' }))
+    renderHeader(run('done', { runner: 'qwen' }))
     const meta = document.querySelector('[data-slot="run-meta"]') as HTMLElement
-    fireEvent.pointerDown(within(meta).getByRole('button', { name: /Agent: opencode/ }))
+    fireEvent.pointerDown(within(meta).getByRole('button', { name: /Agent: qwen/ }))
     const menu = await screen.findByRole('menu')
-    expect(within(menu).getByText('runner: opencode')).not.toBeNull()
+    expect(within(menu).getByText('runner: qwen')).not.toBeNull()
     expect(within(menu).getByText('model: auto')).not.toBeNull()
   })
 
   // #416: the record persists only the runner the caller ASKED for (`src/runs/store.ts`), while
   // the run executes as `input.runner ?? config.defaultRunner` (`src/workflows/run.ts`). So a
   // record without a runner must name the repo's DEFAULT agent — hardcoding 'claude' here would
-  // confidently name the wrong agent on a codex/opencode repo, which is the exact question the
+  // confidently name the wrong agent on a codex or qwen repo, which is the exact question the
   // badge exists to answer.
   it('a run with no explicit runner names the active project config default, not boot health', async () => {
     stubFetch({
@@ -1308,13 +1308,13 @@ describe('meta line, tabs, pill and resume hint', () => {
     stubFetch()
     const writeText = vi.fn(() => Promise.resolve())
     vi.stubGlobal('navigator', { clipboard: { writeText } })
-    renderHeader(run('failed', { runner: 'opencode', worktreePath: '/tmp/wt' }))
+    renderHeader(run('failed', { runner: 'qwen', worktreePath: '/tmp/wt' }))
 
     const hint = document.querySelector('[data-slot="resume-hint"]') as HTMLElement
-    expect(hint.textContent).toContain('cd /tmp/wt && opencode --session sess-1')
+    expect(hint.textContent).toContain('cd /tmp/wt && qwen --resume sess-1')
     fireEvent.click(hint)
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('cd /tmp/wt && opencode --session sess-1')
+      expect(writeText).toHaveBeenCalledWith('cd /tmp/wt && qwen --resume sess-1')
     })
   })
 

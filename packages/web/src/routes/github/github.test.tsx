@@ -147,7 +147,7 @@ const PROVIDERS_CONNECTED: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'not-installed', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -155,7 +155,7 @@ const PROVIDERS_MULTI: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'connected', enabled: true },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'disconnected', enabled: true },
+    { provider: 'qwen', status: 'disconnected', enabled: true },
   ],
 }
 
@@ -163,7 +163,7 @@ const PROVIDERS_NONE: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true },
     { provider: 'codex', status: 'unknown', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -1389,7 +1389,7 @@ describe('the hand-to-agent backend pills (#401)', () => {
           providers: [
             { provider: 'claude', status: 'disconnected', enabled: true },
             { provider: 'codex', status: 'connected', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         } satisfies ProviderStatusResponse),
     })
@@ -1414,7 +1414,7 @@ describe('the hand-to-agent backend pills (#401)', () => {
           providers: [
             { provider: 'claude', status: 'connected', enabled: false },
             { provider: 'codex', status: 'connected', enabled: true },
-            { provider: 'opencode', status: 'not-installed', enabled: true },
+            { provider: 'qwen', status: 'not-installed', enabled: true },
           ],
         } satisfies ProviderStatusResponse),
     })

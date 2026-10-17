@@ -10,8 +10,7 @@ import { z } from 'zod';
 
 /**
  * Newest first. D-01 § 1.6: the bridge must support at least these two, because the
- * three required clients disagree today — Claude Code and OpenCode offer
- * `2025-11-25`, Codex offers `2025-06-18` (D-01 E1–E3).
+ * required clients disagree today — Claude Code offers `2025-11-25`, Codex offers `2025-06-18` (D-01 E1–E3).
  */
 export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18'] as const;
 

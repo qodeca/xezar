@@ -104,10 +104,10 @@ describe('settings → agents against a spec-owned fixture server', () => {
   it('renders every knob, agent-agnostically named', () => {
     gotoAgents()
     browser.waitForFunction(`document.querySelector('[data-slot="agents-base-branch"]') !== null`)
-    // claude · codex · opencode · pi — `pi` is offered unconditionally (new-task-form.ts).
-    expect(browser.count('[data-slot="agents-runner"] [role="radio"]')).toBe(4)
-    // One model preset per runner, `pi` included.
-    expect(browser.count('[data-slot="agents-model"]')).toBe(4)
+    // claude · codex · qwen — every runner in new-task-form.ts is offered.
+    expect(browser.count('[data-slot="agents-runner"] [role="radio"]')).toBe(3)
+    // One model preset per runner.
+    expect(browser.count('[data-slot="agents-model"]')).toBe(3)
     expect(browser.count('[data-slot="agents-system-prompt"]')).toBe(1)
     // The dry-run fixture is a git checkout, so the base-branch picker is the real control.
     expect(browser.count('[data-slot="agents-base-branch"]')).toBe(1)
@@ -130,7 +130,7 @@ describe('settings → agents against a spec-owned fixture server', () => {
     const before = await waitForConfig(() => true)
     setSelect('[data-slot="agents-model"][data-runner="claude"]', 'opus')
     const config = await waitForConfig((c) => c.defaultModels.claude === 'opus')
-    for (const runner of ['codex', 'opencode', 'pi']) {
+    for (const runner of ['codex', 'qwen']) {
       expect(config.defaultModels[runner]).toEqual(before.defaultModels[runner])
     }
   })
@@ -167,16 +167,16 @@ describe('settings → agents against a spec-owned fixture server', () => {
     // `gotoAgents()` returns on the NEW document with the section mounted, and that is a weaker
     // fact than "the picker has rendered": the count below reads `aria-checked`, and a read that
     // lands before the picker's rows have painted answers 0 without any wrong value existing
-    // (`expected +0 to be 1`, run 35091385012). So wait for the ROW SET to be rendered — four
-    // rows, each carrying its own checked state — and keep the three value assertions exactly as
+    // (`expected +0 to be 1`, run 35091385012). So wait for the ROW SET to be rendered — three
+    // rows (claude, codex, qwen), each carrying its own checked state — and keep the three value assertions exactly as
     // they are. This is a structural signal on purpose: it looks at no value at all, so a wrong
-    // persisted runner still renders four rows, still passes the wait, and still fails the
+    // persisted runner still renders three rows, still passes the wait, and still fails the
     // assertion below with the value it really shows. Repeating the three assertions as a wait
     // would be the version that masks a wrong value, which is what this case must not become.
     gotoAgents()
     browser.waitForFunction(`(() => {
       const rows = [...document.querySelectorAll('[data-slot="agents-runner"] [role="radio"]')]
-      return rows.length === 4 && rows.every((row) => row.hasAttribute('aria-checked'))
+      return rows.length === 3 && rows.every((row) => row.hasAttribute('aria-checked'))
     })()`)
     expect(browser.count('[data-slot="agents-runner"] [data-value="codex"][aria-checked="true"]')).toBe(1)
     expect(

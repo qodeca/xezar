@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { chmod, lstat, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,10 +125,32 @@ export function codexPermissions(
   if (isReadOnlyStep(allowedTools)) {
     return {
       sandbox: 'workspace-write',
-      workspaceWrite: { network_access: !networkOff, writable_roots: [...(additionalDirectories ?? [])] },
+      workspaceWrite: { network_access: !networkOff, writable_roots: codexWritableRoots(additionalDirectories ?? []) },
     };
   }
   return { sandbox: networkOff ? 'workspace-write' : 'danger-full-access' };
+}
+
+/**
+ * The writable roots as Codex's sandbox can take them (#1080). On Linux a run's TMPDIR is a short
+ * link to its real folder (#1065, for Chrome's socket), and both are run roots. bubblewrap refuses a
+ * writable root that is a link ("cannot enforce sandbox read-only path <link>/.git because it
+ * crosses writable symlink"), and then every shell command of the step failed. A root that is a link
+ * is given as the folder it leads to, once; every other root stays as written. Writes through the
+ * link still land in that folder, which stays writable.
+ */
+export function codexWritableRoots(roots: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const root of roots) {
+    let target = root;
+    try {
+      if (lstatSync(root).isSymbolicLink()) target = realpathSync(root);
+    } catch {
+      // A root that does not exist yet stays as written.
+    }
+    if (!out.includes(target)) out.push(target);
+  }
+  return out;
 }
 
 /**

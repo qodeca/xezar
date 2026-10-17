@@ -119,7 +119,7 @@ export async function seedScenario(cockpit: Cockpit, browser: AgentBrowser): Pro
 
   renderCheckoutAsset(cockpit, browser)
 
-  // The tasks list shows every backend: each task names its own runner, and the scripted agents
+  // The tasks list shows more than one backend: each task names its own runner, and the scripted agents
   // in `agents/` play each one its own turn (`agents/scenarios.mjs`).
   // Finished work first, oldest first, so the list reads like a real afternoon.
   runs.failed = await createRun(cockpit, { task: 'Upgrade the payment SDK to v5', workflow: 'quick-task', runner: 'claude' })
@@ -127,7 +127,7 @@ export async function seedScenario(cockpit: Cockpit, browser: AgentBrowser): Pro
 
   runs.doneA = await createRun(cockpit, { task: 'Add a dark-mode toggle to the site header', workflow: 'quick-task', runner: 'codex' })
   await settleDone(cockpit, runs.doneA)
-  runs.doneB = await createRun(cockpit, { task: 'Fix the rounding error in the cart total', workflow: 'quick-task', runner: 'pi' })
+  runs.doneB = await createRun(cockpit, { task: 'Fix the rounding error in the cart total', workflow: 'quick-task', runner: 'codex' })
   await settleDone(cockpit, runs.doneB)
 
   // Two variants of one task that went two different ways, both parked at review: the compare view.
@@ -171,7 +171,7 @@ export async function seedScenario(cockpit: Cockpit, browser: AgentBrowser): Pro
   // The second project for All tasks: its own runs (seeded before the long runs fill the workspace-wide slots), then unregistered again so every other
   // capture shows the single-project shell most people run.
   await api(cockpit, 'POST', '/projects', { root: cockpit.docsRoot })
-  runs.docs = await createRun(cockpit, { task: 'Document the new pricing API', workflow: 'quick-task', runner: 'pi' }, DOCS_PROJECT)
+  runs.docs = await createRun(cockpit, { task: 'Document the new pricing API', workflow: 'quick-task', runner: 'codex' }, DOCS_PROJECT)
   await settleDone(cockpit, runs.docs, DOCS_PROJECT)
   // Terminal only: a project with a live task cannot be unregistered.
   runs.docsFailed = await createRun(cockpit, { task: 'Fix broken links in the getting-started guide', workflow: 'quick-task', runner: 'codex' }, DOCS_PROJECT)
@@ -183,7 +183,7 @@ export async function seedScenario(cockpit: Cockpit, browser: AgentBrowser): Pro
   runs.running = await createRun(cockpit, { task: 'Standardise date handling across checkout', workflow: 'quick-task', runner: 'claude' })
   runs.runningB = await createRun(cockpit, { task: 'Add rate limiting to the public API', workflow: 'quick-task', runner: 'codex' })
   for (const id of [runs.running, runs.runningB]) await waitForStatus(cockpit, runPath(id), ['running'])
-  runs.queuedA = await createRun(cockpit, { task: 'Write the release notes for 1.5.0', workflow: 'quick-task', runner: 'pi' })
+  runs.queuedA = await createRun(cockpit, { task: 'Write the release notes for 1.5.0', workflow: 'quick-task', runner: 'codex' })
   runs.queuedB = await createRun(cockpit, { task: 'Refresh the README screenshots', workflow: 'quick-task', runner: 'claude' })
   await waitForStatus(cockpit, runPath(runs.queuedB), ['queued'])
 
@@ -572,11 +572,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     open(ctx, demo('/settings/mcp-connection'), theme)
     wait(ctx.browser, exists('[data-slot="mcp-connection-section"] [data-slot="mcp-leader"]'))
     // No owner is identified yet, so the client picker defaults to Codex (#404's `?? 'codex'`
-    // fallback) — pick OpenCode instead, since it is the one client the setup guide (13:224)
-    // captions this capture for (the "person-driven OpenCode attachment" walkthrough).
-    wait(ctx.browser, exists('[data-slot="mcp-leader-client"] [data-value="opencode"]'))
-    ctx.browser.click('[data-slot="mcp-leader-client"] [data-value="opencode"]')
-    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader-client"] [data-value="opencode"]').getAttribute('aria-checked') === 'true'`)
+    // fallback) — pick Qwen Code instead, so the capture shows a person choosing the client.
+    wait(ctx.browser, exists('[data-slot="mcp-leader-client"] [data-value="qwen"]'))
+    ctx.browser.click('[data-slot="mcp-leader-client"] [data-value="qwen"]')
+    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader-client"] [data-value="qwen"]').getAttribute('aria-checked') === 'true'`)
     // The card's top, not only the leader status further down — a center scroll cut off the
     // "Owning client" row above it (design review NB-2).
     ctx.browser.evaluate(`document.querySelector('[data-slot="mcp-leader"]').scrollIntoView({ block: 'start' })`)
@@ -586,8 +585,7 @@ export const SCENARIOS: Record<string, Scenario> = {
 
     expect(ctx.guide.hasRole('heading', 'Connection status'), 'xezar screenshot-states: MCP connection heading missing').toBe(true)
     expect(ctx.guide.hasRole('button', 'Attach leader'), 'xezar screenshot-states: Attach leader control missing').toBe(true)
-    expect(ctx.guide.hasRole('radio', 'OpenCode'), 'xezar screenshot-states: OpenCode client choice missing').toBe(true)
-    expect(ctx.guide.hasRole('textbox', 'Server address'), 'xezar screenshot-states: OpenCode server address field missing').toBe(true)
+    expect(ctx.guide.hasRole('radio', 'Qwen Code'), 'xezar screenshot-states: Qwen Code client choice missing').toBe(true)
   },
 
   'command-palette': (ctx, theme) => {

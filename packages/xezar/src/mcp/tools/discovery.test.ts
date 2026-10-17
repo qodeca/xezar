@@ -38,8 +38,7 @@ function fullHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
     checks: [
       { name: 'claude', available: true, version: '2.1.0 (Claude Code)' },
       { name: 'codex', available: false, hint: 'optional: install the Codex CLI' },
-      { name: 'opencode', available: false },
-      { name: 'pi', available: false },
+      { name: 'qwen', available: false },
       { name: 'gh', available: true, version: 'authenticated' },
       { name: 'git', available: true, version: 'git version 2.50.0' },
     ],
@@ -100,8 +99,7 @@ function facts(
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'not-installed', enabled: true },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
-        { provider: 'pi', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     },
     limits: {
@@ -161,8 +159,7 @@ describe('discover_project — the filter', () => {
         checks: [
           { name: 'claude', available: true, version: '2.1.0 (Claude Code)\njane.doe@example.com Acme Corp Max plan', hint: 'signed in as jane.doe@example.com' },
           { name: 'codex', available: true, version: '1.0.0', hint: 'org: Acme Corp' },
-          { name: 'opencode', available: false, hint: 'jane.doe@example.com' },
-          { name: 'pi', available: false },
+          { name: 'qwen', available: false, hint: 'jane.doe@example.com' },
           { name: 'gh', available: false, hint: 'Logged in to github.com account jane-doe (Acme Corp)' },
           { name: 'git', available: true },
         ],
@@ -172,8 +169,7 @@ describe('discover_project — the filter', () => {
         providers: [
           { provider: 'claude', status: 'connected', enabled: true, hint: 'jane.doe@example.com · Acme Corp · Max plan', profileId: 'jane-profile', authFailureId: 'fail-1' },
           { provider: 'codex', status: 'disconnected', enabled: true, hint: 'Pro plan for jane.doe@example.com', profileId: 'jane-2' },
-          { provider: 'opencode', status: 'not-installed', enabled: false, hint: 'Acme Corp' },
-          { provider: 'pi', status: 'unknown', hint: 'jane' },
+          { provider: 'qwen', status: 'not-installed', enabled: false, hint: 'Acme Corp' },
         ],
       },
     });
@@ -324,8 +320,7 @@ describe('discover_project — unavailable actions carry a reason', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true },
           { provider: 'codex', status: 'connected', enabled: false },
-          { provider: 'opencode', status: 'not-installed', enabled: true },
-          { provider: 'pi', status: 'unknown', enabled: true },
+          { provider: 'qwen', status: 'not-installed', enabled: true },
         ],
       },
     }));
@@ -334,9 +329,9 @@ describe('discover_project — unavailable actions carry a reason', () => {
     const reason = create.status === 'unavailable' ? create.reason : '';
     expect(reason).toMatch(/Claude Code is installed but not signed in/);
     expect(reason).toMatch(/Codex is disabled/);
-    expect(reason).toMatch(/OpenCode is not installed/);
+    expect(reason).toMatch(/Qwen Code is not installed/);
     // Review round 1 (F3). Break: a not-installed reason that names no way to install the agent.
-    expect(reason).toContain('OpenCode is not installed on this machine. Install OpenCode (from https://opencode.ai), then run `opencode auth login`.');
+    expect(reason).toContain('Qwen Code is not installed on this machine. Install Qwen Code (`npm i -g @qwen-code/qwen-code`), then run `qwen`.');
     // Review round 1 (F4). Break: with no address, telling the person to start a cockpit — this
     // fallback is reached only in hosted mode, where one is already running.
     expect(reason).toContain('Settings → Agents → Providers in the running cockpit (no address is recorded here)');
@@ -691,8 +686,8 @@ describe('discover_project — the cockpit address (#819 item 8)', () => {
  * #838 E1, E2 and E5 — what `discover_project` tells a leader about reaching the person's cockpit
  * and about installing an agent. Each case names the break it fails against.
  */
-const RUNNERS_ALL = ['claude', 'codex', 'opencode', 'pi'] as const;
-const BIN_VARS = ['XEZ_CLAUDE_BIN', 'XEZ_CODEX_BIN', 'XEZ_OPENCODE_BIN', 'XEZ_PI_BIN'] as const;
+const RUNNERS_ALL = ['claude', 'codex', 'qwen'] as const;
+const BIN_VARS = ['XEZ_CLAUDE_BIN', 'XEZ_CODEX_BIN', 'XEZ_QWEN_BIN'] as const;
 const PROBE_VARS = [...BIN_VARS, 'XEZ_DRY_RUN'] as const;
 
 describe('discover_project — links, description and install text (#838)', () => {
@@ -716,7 +711,7 @@ describe('discover_project — links, description and install text (#838)', () =
   it.each([
     ['claude', 'Claude Code', '`npm i -g @anthropic-ai/claude-code`'],
     ['codex', 'Codex', '`npm i -g @openai/codex`'],
-    ['opencode', 'OpenCode', 'from https://opencode.ai'],
+    ['qwen', 'Qwen Code', '`npm i -g @qwen-code/qwen-code`'],
   ] as const)('names the install command or page for %s when it is not installed', (runner, label, how) => {
     const discovery = buildDiscovery(facts({
       providers: { providers: RUNNERS_ALL.map((provider) => ({ provider, status: provider === runner ? 'not-installed' : 'connected', enabled: true })) },
@@ -726,15 +721,6 @@ describe('discover_project — links, description and install text (#838)', () =
     expect(agent.reason).toContain(how);
     const install = PROVIDER_INSTALL[runner]!;
     expect(agent.reason).toContain(install.value);
-  });
-
-  it('says plainly that no install command is known for pi, rather than leaving it blank or inventing one', () => {
-    expect(PROVIDER_INSTALL.pi).toBeNull();
-    const discovery = buildDiscovery(facts());
-    const reason = discovery.agents.find((a) => a.runner === 'pi')!.reason!;
-    expect(reason).toContain('pi is not installed on this machine.');
-    expect(reason).toContain('xezar knows no install command for it');
-    expect(reason).not.toMatch(/npm i|https?:\/\//);
   });
 
   // E5. Break: two sources of install text. The health checks' hints must carry exactly the

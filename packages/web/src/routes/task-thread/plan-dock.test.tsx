@@ -23,7 +23,7 @@ describe('planCounts / planActiveEntry — the odometer math', () => {
     expect(planCounts(GOLDEN)).toEqual({ done: 1, total: 3 })
   })
 
-  // opencode's `cancelled` — work dropped on purpose. Counting it would strand the
+  // A `cancelled` entry — work dropped on purpose. Counting it would strand the
   // odometer below N/N for the rest of the run.
   it('leaves cancelled entries out of the denominator, so a plan can still read done', () => {
     expect(
@@ -95,7 +95,7 @@ describe('PlanDock', () => {
     expect(document.querySelector('[data-slot="grad-edge"]')?.className).toContain('md:h-0.75')
   })
 
-  // Regression: an opencode `cancelled` todo used to be dropped by the mapper and
+  // Regression: a `cancelled` todo used to be dropped by a backend mapper and
   // never reached the dock at all. It must render — struck through, out of the score.
   it('renders a cancelled row struck through and keeps it out of the odometer', () => {
     render(

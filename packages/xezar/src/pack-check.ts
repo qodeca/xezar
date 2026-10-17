@@ -120,7 +120,7 @@ export const REQUIRED_ARCHIVE_ENTRIES = [
   'package/web/dist/index.html',
   'package/scripts/mock-claude.mjs',
   'package/scripts/codex-read-only-hook.mjs',
-  'package/scripts/pi-worktree-guard.ts',
+  'package/scripts/qwen-pre-tool-hook.mjs',
 ];
 
 /** Problems that make the archive itself unfit to judge: empty, or missing what it must ship. */

@@ -21,6 +21,7 @@ Start with Getting started below, then follow the Next links to read the guide i
 15. [Project kit](15-project-kit.md) — Create and maintain project-local workflows and skills, set project configuration and add an optional agent pipeline.
 16. [Troubleshooting and FAQ](16-troubleshooting-faq.md) — Diagnose failures, understand usage and get help.
 17. [Audit trail](17-audit-trail.md) — Find where run-state and configuration changes are recorded, and what is redacted.
+18. [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md) – Move your model providers into Qwen Code and fix the settings that still name a removed backend.
 
 For contributing to xezar itself, read [CONTRIBUTING.md](../../CONTRIBUTING.md) and [AGENTS.md](../../AGENTS.md).
 

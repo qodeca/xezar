@@ -1,9 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { createServer as createSocketServer, type AddressInfo, type Socket } from 'node:net';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { createConnection, createServer as createSocketServer } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CODEX_CONTROL_SOCKET } from './adapters/codex-link.ts';
-import { piLeaderPath } from './adapters/pi-link.ts';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, vi } from 'vitest';
@@ -22,14 +21,12 @@ import { tools } from './tools/index.ts';
 import { onWindows, shortTmpRoot } from '../../test/helpers/platform.ts';
 import { targetFor } from '../../test/helpers/mcp-raw.ts';
 
-export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'opencode', 'pi'] as const;
+export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'qwen'] as const;
 export type DeliveryClient = typeof DELIVERY_CLIENTS[number];
-/** True where this client's peer cannot be built: the Codex and pi peers listen on a Unix socket path, which
- *  Node cannot do on Windows; attaching either there is a follow-up (#963). Claude Code crosses the real
- *  service, a named pipe on Windows. Always false on POSIX. */
-export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'pi');
-const SESSION = 'ses_matrix0000000000000001';
-interface Submission { parts: Array<{ text: string; metadata?: { xezar?: { rows: string[] } } }> }
+/** True where this client's peer cannot be built: the Codex and Qwen Code peers listen on a Unix socket
+ *  path, which Node cannot do on Windows; attaching those there is a follow-up (#963). Claude Code crosses the
+ *  real service, a named pipe on Windows. Always false on POSIX. */
+export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'qwen');
 
 // Real catalog/journal/controller/adapters; only the external client is a protocol peer.
 // Claude additionally crosses the real IPC service and stdio bridge, recording channel stdout.
@@ -47,7 +44,7 @@ export async function deliveryHarness(client: DeliveryClient) {
   const requests: string[] = [];
   const ownership = new ProjectOwnership({ projectId: 'matrix', dataDir: store.dataDir });
   const codexHome = join(root, 'codex');
-  const delivery = new LeaderDelivery({ projectId: 'matrix', projectRoot: root, dataDir: store.dataDir, journal, guard, ownership,
+  const delivery = new LeaderDelivery({ projectId: 'matrix', projectRoot: root, journal, guard, ownership,
     warn: () => {}, heartbeatMs: 60_000,
     codexLeader: { home: () => codexHome },
   });
@@ -60,9 +57,11 @@ export async function deliveryHarness(client: DeliveryClient) {
     rmSync(root, TEST_DIR_RM_OPTIONS);
   };
   try {
-    if (client === 'codex') await fakeCodex(root, codexHome, received, requests, closers);
-    if (client === 'pi') await fakePi(root, store.dataDir, received, requests, closers);
-    if (client === 'claude-code') {
+    if (client === 'codex') await fakeCodexAppServer({ project: root, home: codexHome, received, requests, closers, control: { react: true, hangLoaded: false } });
+    if (client === 'claude-code' || client === 'qwen') {
+      // Qwen Code (#1045) crosses the same service and bridge; its pushes land in the session inbox the
+      // bridge finds in its environment, not on stdout.
+      const inboxEnv = client === 'qwen' ? await fakeQwenInbox(root, received, closers) : {};
       const socket = await listenMcpSocket({ project: { id: 'matrix', name: 'Matrix', root }, version: '0.0.0-test', tools,
         env: { ...process.env, XEZ_HOME: root }, dataDir: store.dataDir, ownership,
         context: { leaderControl: delivery },
@@ -78,29 +77,23 @@ export async function deliveryHarness(client: DeliveryClient) {
         if (msg.id !== undefined) { pending.get(msg.id)?.(msg.result); pending.delete(msg.id); }
       }, () => {});
       output.on('data', (chunk: Buffer) => framer.push(chunk));
-      const done = runBridge({ input, output, version: '0.0.0-test', tools,
+      const done = runBridge({ input, output, version: '0.0.0-test', tools, env: inboxEnv,
         resolveTarget: async () => targetFor(socket, { id: 'matrix', name: 'Matrix' }, { ...process.env, XEZ_HOME: root }) });
       closers.push(async () => { input.end(); await done; });
       let next = 1;
       const rpc = (method: string, params: Record<string, unknown>) => new Promise(resolve => {
         const id = next++; pending.set(id, resolve); input.write(encodeFrame({ jsonrpc: '2.0', id, method, params }));
       });
-      await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-code', version: '1' } });
+      await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: client === 'qwen' ? 'qwen-cli-mcp-client-xezar' : 'claude-code', version: '1' } });
       await rpc('tools/call', { name: 'leader_events', arguments: { action: 'status' } });
     } else {
       await ownership.acquire('matrix-owner');
       delivery.sessionOpened('matrix-owner');
       if (client === 'codex') delivery.codexAnnounced('matrix-owner', { threadId: 'matrix-thread' });
     }
-    let peer: Awaited<ReturnType<typeof fakeOpenCode>> | undefined;
-    if (client === 'opencode') {
-      peer = await fakeOpenCode(root, closers);
-      expect(await delivery.act({ action: 'attach', client, baseUrl: peer.baseUrl, sessionId: SESSION })).toMatchObject({ ok: true });
-    } else {
-      expect(await delivery.act({ action: 'attach', client })).toMatchObject({ ok: true });
-    }
+    expect(await delivery.act({ action: 'attach', client })).toMatchObject({ ok: true });
     return { root, store, journal, catalog, bus, guard, delivery, close,
-      texts: () => peer ? peer.submissions.map(s => JSON.stringify(s)) : received,
+      texts: () => received,
       requests,
       async settle() {
         await vi.waitFor(() => {
@@ -112,110 +105,61 @@ export async function deliveryHarness(client: DeliveryClient) {
   } catch (error) { await close(); throw error; }
 }
 
-/** One fake `opencode serve` session, for a test that needs an address a real adapter can check. */
-export interface FakeOpenCodeSession {
-  baseUrl: string;
-  sessionId: string;
-  stop: () => Promise<void>;
+/**
+ * A Qwen Code session's inbox (#1045): the `auth` line, then `user` frames, each answered with a
+ * `delivered` receipt on the frame's `from` socket, as Qwen Code 0.25.2 does. Returns the environment
+ * the session gives its MCP servers.
+ */
+async function fakeQwenInbox(root: string, received: string[], closers: Array<() => unknown>): Promise<NodeJS.ProcessEnv> {
+  const path = join(root, 'qwen-inbox.sock');
+  const token = 'matrix-child-token';
+  const server = createSocketServer((socket) => {
+    let buffer = '';
+    let authed = false;
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => {
+      buffer += chunk;
+      let at: number;
+      while ((at = buffer.indexOf('\n')) >= 0) {
+        const frame = JSON.parse(buffer.slice(0, at)) as { type?: string; token?: string; msgId?: string; from?: string; message?: { content?: string } };
+        buffer = buffer.slice(at + 1);
+        if (!authed) { authed = frame.type === 'auth' && frame.token === token; if (!authed) socket.destroy(); continue; }
+        if (frame.type !== 'user') continue;
+        received.push(frame.message?.content ?? '');
+        if (frame.from) {
+          const back = createConnection({ path: frame.from });
+          back.on('error', () => undefined);
+          back.end(`${JSON.stringify({ msgV: 1, type: 'control', status: 'delivered', origMsgId: frame.msgId })}\n`);
+        }
+      }
+    });
+    socket.on('error', () => undefined);
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  closers.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return { QWEN_CODE_MESSAGING_SOCKET: path, QWEN_CODE_MESSAGING_TOKEN: token };
 }
 
 /**
- * A fake `opencode serve`, small on purpose: it answers the ONE route the attach-time check reads
- * (#651) — `GET /session/:id`, with the directory the session belongs to — plus the `/event` stream
- * the delivery path opens afterwards. Everything else is a 404, exactly as OpenCode answers for a
- * session it does not know. The full fake, with submissions, history and turns, is
- * `adapters/opencode.test.ts`'s; this one exists so a `LeaderDelivery` case can attach a REAL
- * OpenCode adapter to a real address instead of to a closed port.
+ * A Codex shared app-server, as far as the production link classes talk to it: one loaded thread in
+ * `project`, listening on Codex's control socket in `home`. Records every `turn/start` in `received`
+ * and every request method in `requests`. `control.react`: answer each started turn with its
+ * `item/started`, the turn the adapter counts as a reaction. `control.hangLoaded`: take a
+ * `thread/loaded/list` and never answer it — a leader that stops answering its liveness check.
  */
-export async function fakeOpenCodeSession(opts: { directory: string; sessionId?: string }): Promise<FakeOpenCodeSession> {
-  const sessionId = opts.sessionId ?? 'ses_fixture0000000000000001';
-  const streams = new Set<ServerResponse>();
-  const server: Server = createServer((req, res) => {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    if (url.pathname === '/event') {
-      res.writeHead(200, { 'content-type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`);
-      streams.add(res);
-      res.on('close', () => streams.delete(res));
-      return;
-    }
-    const answer =
-      url.pathname === `/session/${sessionId}`
-        ? { status: 200, json: { id: sessionId, directory: opts.directory } }
-        : { status: 404, json: { name: 'NotFoundError' } };
-    res.writeHead(answer.status, { 'content-type': 'application/json' }).end(JSON.stringify(answer.json));
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return {
-    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    sessionId,
-    stop: async () => {
-      for (const stream of streams) stream.destroy();
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    },
-  };
+export interface FakeCodexAppServer {
+  project: string;
+  home: string;
+  received: string[];
+  requests: string[];
+  closers: Array<() => unknown>;
+  control: { react: boolean; hangLoaded: boolean };
+  threadId?: string;
 }
 
-async function fakeOpenCode(directory: string, closers: Array<() => unknown>) {
-  const submissions: Submission[] = [];
-  const streams = new Set<ServerResponse>();
-  const history: unknown[] = [];
-  const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void (async () => {
-      let raw = '';
-      for await (const chunk of req) raw += chunk;
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      const route = `${req.method} ${url.pathname}`;
-      const json = (status: number, body: unknown): void => {
-        res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
-      };
-      if (route === 'GET /event') {
-        res.writeHead(200, { 'content-type': 'text/event-stream' });
-        res.write(`data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`);
-        streams.add(res);
-        res.on('close', () => streams.delete(res));
-        return;
-      }
-      if (route === `GET /session/${SESSION}`) return json(200, { id: SESSION, directory });
-      if (route === 'GET /session/status') return json(200, {});
-      if (route === 'GET /permission' || route === 'GET /question') return json(200, []);
-      if (route === `GET /session/${SESSION}/message`) return json(200, history);
-      if (route === `POST /session/${SESSION}/prompt_async`) {
-        const body = JSON.parse(raw) as Submission;
-        submissions.push(body);
-        const messageId = 'msg_' + submissions.length;
-        history.push({ info: { id: messageId, role: 'user' }, parts: body.parts });
-        const emit = (type: string, properties: Record<string, unknown>): void => {
-          for (const stream of streams) stream.write(`data: ${JSON.stringify({ type, properties })}\n\n`);
-        };
-        // The submission's own frames, as OpenCode emits them: this is how the adapter learns which
-        // message to watch for a turn.
-        emit('message.updated', { sessionID: SESSION, info: { id: messageId, sessionID: SESSION, role: 'user' } });
-        for (const part of body.parts) emit('message.part.updated', { sessionID: SESSION, part: { ...part, sessionID: SESSION, messageID: messageId } });
-        res.writeHead(204).end();
-        return;
-      }
-      json(404, { name: 'NotFoundError', route });
-    })();
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  closers.push(async () => {
-    for (const stream of streams) stream.destroy();
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-  return {
-    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    submissions,
-    /** The event ids each submission carried, from its own `metadata.xezar` marker. */
-    delivered: (): string[] => submissions.flatMap((s) => s.parts.flatMap((p) => (p.metadata?.xezar?.rows ?? []).map((key) => key.split('@')[0]!))),
-  };
-}
-
-
-/** The client endpoints receive actual framed requests through the production link classes. */
-async function fakeCodex(project: string, home: string, received: string[], requests: string[], closers: Array<() => unknown>) {
+export async function fakeCodexAppServer(opts: FakeCodexAppServer): Promise<void> {
+  const { project, home, received, requests, closers, control } = opts;
+  const threadId = opts.threadId ?? 'matrix-thread';
   mkdirSync(join(home, 'app-server-control'), { recursive: true, mode: 0o700 });
   const server = createServer();
   const wss = new WebSocketServer({ noServer: true });
@@ -227,12 +171,13 @@ async function fakeCodex(project: string, home: string, received: string[], requ
         const frame = JSON.parse(raw.toString()) as { id?: number; method: string; params: Record<string, unknown> };
         if (frame.id === undefined) return;
         requests.push(frame.method);
+        if (frame.method === 'thread/loaded/list' && control.hangLoaded) return;
         let result: unknown = {};
         switch (frame.method) {
           case 'initialize': result = { codexHome: home, platformFamily: 'unix' }; break;
-          case 'thread/list': result = { data: [{ id: 'matrix-thread', cwd: project }], nextCursor: null }; break;
-          case 'thread/loaded/list': result = { data: ['matrix-thread'] }; break;
-          case 'thread/resume': result = { thread: { id: 'matrix-thread', status: { type: 'idle' }, turns: [] } }; break;
+          case 'thread/list': result = { data: [{ id: threadId, cwd: project }], nextCursor: null }; break;
+          case 'thread/loaded/list': result = { data: [threadId] }; break;
+          case 'thread/resume': result = { thread: { id: threadId, status: { type: 'idle' }, turns: [] } }; break;
           case 'thread/turns/list': result = { data: [] }; break;
           case 'thread/unsubscribe': result = { status: 'unsubscribed' }; break;
           case 'turn/start':
@@ -241,7 +186,7 @@ async function fakeCodex(project: string, home: string, received: string[], requ
             break;
         }
         client.send(JSON.stringify({ jsonrpc: '2.0', id: frame.id, result }));
-        if (frame.method === 'turn/start') client.send(JSON.stringify({ method: 'item/started', params: { threadId: 'matrix-thread', item: { type: 'userMessage', clientId: frame.params.clientUserMessageId } } }));
+        if (frame.method === 'turn/start' && control.react) client.send(JSON.stringify({ method: 'item/started', params: { threadId, item: { type: 'userMessage', clientId: frame.params.clientUserMessageId } } }));
       });
     });
   });
@@ -249,32 +194,6 @@ async function fakeCodex(project: string, home: string, received: string[], requ
   closers.push(async () => {
     for (const client of clients) client.terminate();
     await new Promise<void>(resolve => wss.close(() => resolve()));
-    await new Promise<void>(resolve => server.close(() => resolve()));
-  });
-}
-
-async function fakePi(root: string, dataDir: string, received: string[], requests: string[], closers: Array<() => unknown>) {
-  const path = join(root, 'pi.sock');
-  const sockets = new Set<Socket>();
-  const server = createSocketServer(socket => {
-    sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
-    socket.on('error', () => {});
-    const framer = new LineFramer(line => {
-      const command = JSON.parse(line) as { id: string; type: string };
-      requests.push(command.type);
-      let data: unknown;
-      if (command.type === 'get_state') data = { isStreaming: false, pendingMessageCount: 0 };
-      else if (command.type === 'get_messages') data = { messages: [] };
-      else received.push(line);
-      socket.write(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, ...(data === undefined ? {} : { data }) }) + '\n');
-    }, () => {});
-    socket.on('data', (chunk: Buffer) => framer.push(chunk));
-  });
-  await new Promise<void>(resolve => server.listen(path, resolve));
-  writeFileSync(piLeaderPath(dataDir), JSON.stringify({ schemaVersion: 1, session: { pid: process.pid, startedAt: 'fixture' }, endpoint: { socket: path } }), { mode: 0o600 });
-  closers.push(async () => {
-    for (const socket of sockets) socket.destroy();
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 }

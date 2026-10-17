@@ -3,9 +3,9 @@
 xezar runs coding-agent CLIs behind **one backend-agnostic seam** and renders
 every backend through **one normalized event vocabulary**. This document is the
 operational contract for that seam: what a runner must implement, what it must
-emit, how the emissions are tested, and what a *new* runner (e.g. `pi`, pre-rename PR 387)
-has to satisfy to be a first-class backend rather than a second-class one. `pi`
-(pre-rename PR 387) was the last one added, and §9 is its worked example.
+emit, how the emissions are tested, and what a *new* runner has to satisfy to be a
+first-class backend rather than a second-class one. Qwen Code (`qwen`) was the last one
+added; §9 is the checklist it followed.
 
 It is the concise, load-bearing contract. The code
 in `packages/xezar/src/core/` implements it; this file cites the code. When the two
@@ -33,7 +33,7 @@ id — that is the whole point of the seam.
 ### Identity
 
 ```ts
-const RUNNER_IDS = ['claude', 'codex', 'opencode', 'pi'] as const;  // the source of truth
+const RUNNER_IDS = ['claude', 'codex', 'qwen'] as const;  // the source of truth
 type RunnerId     = (typeof RUNNER_IDS)[number];                   // user-selectable
 type AgentBackend = RunnerId | 'claude-cli';                       // + legacy id, still parses
 ```
@@ -44,7 +44,7 @@ server-install "at least one agent CLI" gate, and the CLI-handoff registry.
 Some lists still repeat the literals: `runnerSchema` in `packages/contract/src/health.ts`,
 `UiBackend` in `ui-events.ts` and its api-client mirror, and `BackendCheck.name`
 in `backend-detect.ts`, among others. Find the remaining copies with
-`rg "'claude', 'codex', 'opencode', 'pi'" packages` and update them for a new runner;
+`rg "'claude', 'codex', 'qwen'" packages` and update them for a new runner;
 the contract cannot import the server.
 Inside `packages/xezar`, use `RUNNER_IDS` / `isRunnerId()` where possible — re-listing
 ids is how a runner silently goes missing from one seam (pre-rename PR 387 review).
@@ -52,6 +52,10 @@ ids is how a runner silently goes missing from one seam (pre-rename PR 387 revie
 `claude-cli` is a **legacy** backend id kept so old `runs.json` records and
 NDJSON transcripts still parse; `createRunner` maps it onto `claude`. Follow that
 precedent — never repurpose or remove a shipped id.
+
+Exception (#1046, owner-approved in #1041): the `pi` and `opencode` ids were removed. xezar
+refuses to start while a stored value still names them, and names each file and field, so no
+record is silently dropped. `claude-cli` is not part of that removal and still parses.
 
 ### `AgentRunner`
 
@@ -71,11 +75,11 @@ interface AgentRunner {
   without re-deriving a number per backend. Return the same field the session reads, or the two
   will drift. It is optional, and absent means UNKNOWN — a caller then has no deadline to speak
   of rather than a guessed one — so an existing runner and a test double stay valid without it.
-- Each backend runs as a **persistent process** so multi-turn follow-ups,
-  `waiting`, interrupt and resume all work: claude = stream-json over
-  stdin/stdout; codex = `codex app-server` JSON-RPC 2.0 (JSONL) over
-  stdin/stdout; opencode = `opencode serve` over HTTP + SSE; pi =
-  `pi --mode rpc` over JSONL stdin/stdout.
+- A session stays alive between turns so multi-turn follow-ups, `waiting`,
+  interrupt and resume all work: claude = one persistent stream-json process over
+  stdin/stdout; codex = one persistent `codex app-server` JSON-RPC 2.0 (JSONL)
+  process over stdin/stdout; qwen = one `qwen` process per turn, streamed JSON,
+  each later turn resuming the same session (§4).
 
 ### `AgentSession`
 
@@ -94,9 +98,8 @@ interface AgentSession {
 ```
 
 `startSession` RETURNS SYNCHRONOUSLY, and that stays true even for a runner that cannot spawn its
-child synchronously. pi has to ask its binary a capability question first — `--mcp-config` belongs
-to an optional extension, and the answer depends on the task's own folder and account (#548) — so
-it returns a facade over the child that is about to exist: messages, `end()` and `interrupt()`
+child synchronously, or that starts a new child per turn (Qwen Code, `qwen-runner.ts`): it
+returns a facade over the child that is about to exist: messages, `end()` and `interrupt()`
 arriving in that window are replayed onto the real session, and `result` settles with its result.
 The one thing a facade cannot answer synchronously is `pid`, so such a runner implements the
 optional `onProcessStart`, which fires with the pid when the child exists and again if the runner
@@ -149,8 +152,9 @@ obligation.** `AgentRunSpec.timeoutMs` is not advisory: when it expires a runner
 escalate to `SIGKILL` after `KILL_GRACE_MS`, gated on `trackChildExit` exactly as above.
 Leaving it at a single `interrupt()` is what made a step's `timeout:` enforceable on some
 backends and merely a suggestion on another — the defect was invisible because the
-escalation branch existed in the source and simply never ran. `pi-runner.ts` is the
-reference implementation (for the deadline path; its `timeoutKillTimer` is cleared only after `waitForExit`); a new runner should mirror it rather than invent a variant.
+escalation branch existed in the source and simply never ran. `qwen-runner.ts` is the
+reference implementation for the deadline path (it waits for the exit with `waitForExit` before
+the escalation is cleared); a new runner should mirror it rather than invent a variant.
 
 Two constraints on that path are load-bearing and neither is inferable from the code
 around them:
@@ -183,18 +187,15 @@ A **backend that dies on its own mid-turn** is a fourth ending, and the session 
   cancel (`interrupt()`) the same exit settles on the normal path, so the run ends `cancelled`.
 
 A **model-silence bound** may stop a turn on the same path, with a named error instead of the
-timeout text. pi has one (#1000, `PI_SILENCE_LIMIT_MS`, 10 minutes): it arms only while a
-turn waits on the model – in flight, no tool running, no extension dialog pending – restarts
-on every RPC line, and so also bounds a step with no wall clock (the last, interactive step,
-`timeout: none`, a Continue) without touching the protected absent-`timeout` default. A
-silent tool is work, not a hang, and is left to the wall clock. OpenCode's post-denial bound
-below is the other one.
+timeout text. Such a bound arms only while a turn waits on the model – in flight, no tool
+running – restarts on every line the backend sends, and so also bounds a step with no wall
+clock (the last, interactive step, `timeout: none`, a Continue) without touching the protected
+absent-`timeout` default. A silent tool is work, not a hang, and is left to the wall clock.
 
 `SessionOptions`:
 
 - `autonomous?` — nobody is watching: a backend’s native blocking question
-  (pi extension dialog, #369) is refused at once and recorded as a note, never
-  raised as an ask card.
+  (#369) is refused at once and recorded as a note, never raised as an ask card.
 
 - `autoEndAfterFirstTurn?` — single-turn behavior for non-interactive workflow
   steps; interactive sessions control `end()` themselves.
@@ -221,7 +222,7 @@ Notable fields (full doc-comments in the source):
   unsupported there.
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
   **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
-  unrestricted `Bash`, and OpenCode does not honor `allowedTools` at all. Codex
+  unrestricted `Bash`. Codex
   honours the read-only signal (neither `Edit` nor `Write`) by running CONFINED;
   when that step also has a `bashAllowlist`, a trusted PreToolUse hook applies the
   shared command lock before Bash (§ 6, "Read-only steps"); a bounded session record keeps that
@@ -229,46 +230,11 @@ Notable fields (full doc-comments in the source):
   Treat the default `auto` permission mode as full shell access, not a
   sandbox: a writing Codex step uses `danger-full-access` with
   `approvalPolicy: never`.
-  **OpenCode does NOT auto-approve every permission (#578 corrects the prior
-  claim here).** It defaults `external_directory` (a tool touching a path
-  outside the session directory — `$XEZ_HANDOFF_FILE`, pasted attachments,
-  the run's own NDJSON dir) and `doom_loop` (repeated identical calls) to
-  `ask`, publishing `permission.asked` on the SSE bus and blocking the tool
-  call until the ask is answered. Before #578 nothing read that event, so the
-  ask sat forever and the run died on the generic 30-minute step timeout with
-  no named cause. The runner now answers every ask as soon as it arrives, on
-  `POST /permission/:requestID/reply` with `{"reply": "once"|"reject"}`
-  (`permission.reply` in the live 1.18.31 OpenAPI; the deprecated
-  `POST /session/:id/permissions/:id` wants `{"response"}` instead and
-  answers `{"reply"}` with 400). The policy is fail-closed
-  (`opencode-permissions.ts`): `once` only for an `external_directory` ask
-  whose every pattern is an absolute path — at most one trailing `/*` or
-  `/**` segment, no other wildcard, no `..` — that resolves, symlinks
-  included, inside `spec.cwd`, `spec.additionalDirectories`, the OS temp
-  dir, or the run's own task-evidence directories in the primary checkout
-  (`.local/xezar/tasks/<runId>/` and the frozen `.local/xezar-tasks/<runId>/`
-  of the #665 dual-read window, resolved from `spec.primaryRoot`/`spec.cwd`
-  and `XEZ_TASK_ID`, #686 — the only path a run must reach outside its own
-  `cwd` that the other backends already reach through the prompt's handoff
-  contract); `reject` for every other ask and every other permission (`webfetch`,
-  `bash`, `doom_loop`, `read`, `edit`, …), never `always`. A denial is a v1
-  `note` plus a v2 non-fatal `session.error`, which does not mark the turn
-  errored. The session fails with a named error (not the generic timeout)
-  when a reply cannot be sent, when the same ask is denied
-  `MAX_REPEATED_PERMISSION_DENIAL` (3) times consecutively — an allowed ask
-  or a different denial resets that count — or after
-  `MAX_PERMISSION_DENIALS` (20) denials in total. Since #692 it also fails with
-  a named error when the session produces nothing at all for
-  `REJECT_SILENCE_MS` (5 minutes) after a `reject` — the observed shape where a
-  correct refusal was followed by no output and no new turn, which a non-final
-  step could only leave through the 30-minute wall clock and the last,
-  uncapped step could not leave at all. A new assistant part the MODEL produces
-  disarms it (`text`, `reasoning`, `tool`, `subtask`, `step-start`); a
-  `session.idle` deliberately does not, because the turn ending in silence is
-  the failure, and neither does the `step-finish`/`patch` bookkeeping the server
-  writes for the round trip that just ended — it arrives after every refusal, so
-  counting it would make the bound unreachable. Nothing is armed on a run with
-  no denied ask.
+  Qwen Code always runs with `--approval-mode=default` set by xezar, never the person's own
+  default (Qwen's is `auto`, where a model classifier decides). Headless, that mode runs the
+  tools `--allowed-tools` names and denies every other call that would need an approval, as
+  Claude Code's `dontAsk` does; a denial is reported as `declined` and the step is told not to
+  retry it (#941).
   Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324, #1007):** before `thread/start` / `thread/resume`
@@ -305,8 +271,9 @@ Use the shared helper so the mapping is uniform:
 
 ```ts
 prependSystemPrompt(spec.systemPrompt, spec.userPrompt)
-// claude, pi:      --append-system-prompt   (native channel, do NOT prepend)
-// codex / opencode: prepended here
+// claude, qwen:   --append-system-prompt   (native channel, do NOT prepend;
+//                 qwen prepends only when Windows argv cannot carry it)
+// codex:          prepended here
 ```
 
 `ContentBlock` mirrors the Anthropic wire format (`text` | `image` base64) so it
@@ -351,7 +318,7 @@ applies:
   `thread/resume`, that total already includes the pre-resume executions, so the
   resumed step total is Codex's reported figure itself (and must not add
   `startTokens` again).
-- **Claude, pi, and OpenCode** each begin accumulating tokens at zero in their
+- **Claude and Qwen Code** each begin accumulating tokens at zero in their
   session object. Their reported figure is therefore this execution's accumulated
   spend, and the step total is `startTokens + reported`.
 
@@ -404,9 +371,8 @@ retired again, say so here and in the mirror's own header.
 ### Design rules baked in
 
 1. **Item-lifecycle model** (Codex/ACP style): one stable `id` per item with
-   `started → delta → updated → completed` phases. Of the four backends in
-   `RUNNER_IDS`, codex and opencode are natively item-shaped; claude and pi are
-   mapped onto it.
+   `started → delta → updated → completed` phases. Of the three backends in
+   `RUNNER_IDS`, codex is natively item-shaped; claude and qwen are mapped onto it.
 2. **ACP vocabulary** wherever a choice is arbitrary (tool status/kind, plan
    entries, diff shape, stop reasons) — ecosystem alignment.
 3. **Per-capability degradation, never per-backend** — see §6.
@@ -424,8 +390,7 @@ type UiItem = UiMessageItem | UiReasoningItem | UiToolItem;
   `diffs?: FileDiff[]`, `locations?`, `exitCode?`, `parentItemId?`.
 
 `parentItemId` nests subagent work under the tool item that spawned it (claude
-`parent_tool_use_id`, opencode `subtask` parts, Codex collaboration receiver
-thread ids).
+`parent_tool_use_id`, Codex collaboration receiver thread ids).
 
 ### Enumerations
 
@@ -479,25 +444,7 @@ chips; the user's pick (or a free-form reply) rides the normal reply seam
 message lands (no `ask.resolved` event). Codex additionally bridges its native
 `item/tool/requestUserInput` server request onto the same event and routes the
 next answer back as the documented JSON-RPC response. Malformed or unsupported
-native requests receive an error response rather than hanging the turn. pi does
-the same for its extension-UI dialogs (#369, `packages/xezar/src/core/pi-dialog.ts`):
-an `extension_ui_request` with `method: select` or `confirm` BLOCKS pi until the
-client writes the correlated `extension_ui_response`, and it carries no `timeout`
-(pi-mcp-adapter's `approveTools` gate is one), so the runner raises it as
-`ask.requested` carrying pi's own options and answers it from the next
-`sendMessage`; a reply naming none of the options cancels the dialog rather than
-guessing. When `SessionOptions.autonomous` is set the runner refuses at once
-(`Deny` when the dialog offers it, `confirmed: false` for a confirm, else
-`cancelled`) and records the refusal as a note — never a silent approval, never
-an unbounded wait. pi puts no length limit on a choice and the card caps a label
-at 60 characters, so the card label and the wire value are kept as an
-index-aligned pair: a long choice is shown shortened with an ellipsis and the
-click still sends pi the full value, and the single-select reply is never split
-on a comma (`Allow, once` is one choice). Dialogs the card cannot carry
-(`input`, `editor`, a `select` outside 2–4 options, or one whose choices would
-render as the same label) are cancelled on arrival, a dialog still pending at `end()`
-or `interrupt()` is cancelled first, fire-and-forget methods get no response, and
-`notify` becomes a transcript note. A
+native requests receive an error response rather than hanging the turn. A
 malformed marker degrades to plain text — the prose fallback is never made
 worse.
 
@@ -536,23 +483,45 @@ Each backend has a mapper (`packages/xezar/src/core/<backend>-ui-mapper.ts`) tur
 transport into `UiEvent`s. Those mappers and their golden fixtures (§7) are the authority; the
 load-bearing rows:
 
-The table covers the first three backends. `pi` (`--mode rpc` JSONL) is mapped the
-same way, and its authority is `packages/xezar/src/core/pi-ui-mapper.ts` with the
-golden fixtures under `packages/xezar/src/core/__fixtures__/pi/`; `ui-parity.test.ts`
-runs all four.
+The table covers claude and codex; `ui-parity.test.ts` runs all three backends.
 
-| v2 event / field | claude (stream-json) | codex (app-server JSON-RPC) | opencode (serve HTTP+SSE) |
-|---|---|---|---|
-| `session.started` | `system/init` (model, tools, cwd) | `thread/started` / `thread/start` result | `POST /session` response |
-| `turn.started` | each stdin user message | `turn/started` | each prompt POST |
-| `turn.completed` + `stopReason` | `result` subtype (`success→end_turn`, `error_max_turns→max_tokens`, `error_during_execution→error`) | `turn/completed→end_turn`, `turn/failed→error`, interrupt→`cancelled` | `session.idle→end_turn` (or `error` if a `session.error` preceded) |
-| message item | `assistant` `text` blocks (deltas via `--include-partial-messages`) | `agentMessage` items | text parts |
-| reasoning item | `thinking` blocks | `reasoning` items (+ `textDelta`) | `reasoning` parts |
-| tool item | `tool_use`→running, `tool_result`→completed/failed, `permission_denials`→`declined` | `commandExecution`→execute (+`exitCode`, `outputDelta`), `fileChange`→edit (`diffs`), `mcpToolCall`→other, `webSearch`→fetch, collaboration spawn→task | tool parts (state `pending/running/completed/error→failed`, `patch` parts→`diffs`) |
-| `item.delta` `output` (live terminal) | *(none — card fills on completion; per-capability degradation)* | `item/commandExecution/outputDelta` | running-state metadata |
-| `plan.updated` | `TodoWrite` input | `turn/plan/updated` notification (plan-mode `plan` items fold in only until `turn/plan/updated` has spoken in the current turn) | `todowrite` tool |
-| subagent nesting (`parentItemId`) | `parent_tool_use_id` | collaboration receiver thread id (review mode remains childless) | child-session parts under a `subtask` |
-| `usage.updated` | `result.usage` + `total_cost_usd` | `thread/tokenUsage/updated` (no USD) | `message.updated` tokens/cost + `step-finish` |
+`qwen` (Qwen Code, `--output-format=stream-json`) follows the claude column, with these
+differences (authority: `packages/xezar/src/core/qwen-ui-mapper.ts` and the fixtures under
+`packages/xezar/src/core/__fixtures__/qwen/`):
+
+- **One process per turn.** Every turn is its own `qwen` process: the prompt on stdin,
+  `--session-id` on the first turn and `--resume` after it. Each process sends its own
+  `system/init`; only the first one becomes `session.started`. The stdin stream-json mode is not
+  used (upstream marks it under construction).
+- **Tool names** are Qwen's own (`read_file`, `edit`, `write_file`, `run_shell_command`,
+  `grep_search`, `glob`, `todo_write`, `agent`). A tool call that arrives through Qwen's
+  `tool_call` wrapper is shown under the tool it names.
+- **Errors.** An error `result` carries `error.message` and no `result` text. A "success"
+  result whose text starts with `[API Error` is a failed turn (`stopReason: error`). Exit codes
+  41–55 and 130 are named in the step's error.
+- **Usage.** There is no `total_cost_usd`. xezar prices a turn itself: 0 for a model on a local
+  endpoint, the `modelPricing` rates from the person's Qwen settings for a metered one, and no
+  cost at all when neither is known. `usage.input` excludes the cache read, as for Claude.
+- **Images** cannot ride stdin, so each image is written to a private temp folder and the
+  prompt names it as an `@path` reference (the folder is added with `--include-directories`).
+- **Questions.** Headless, Qwen's own `ask_user_question` cannot collect an answer, so xezar
+  removes it (`--exclude-tools`); a question ends the turn on the shared `XEZ:ASK` marker, as on
+  every backend.
+- **Version.** The init frame's `qwen_code_version` is checked: older than the tested minimum
+  fails the step with the update command, newer runs with a "not yet tested" note.
+
+| v2 event / field | claude (stream-json) | codex (app-server JSON-RPC) |
+|---|---|---|
+| `session.started` | `system/init` (model, tools, cwd) | `thread/started` / `thread/start` result |
+| `turn.started` | each stdin user message | `turn/started` |
+| `turn.completed` + `stopReason` | `result` subtype (`success→end_turn`, `error_max_turns→max_tokens`, `error_during_execution→error`) | `turn/completed→end_turn`, `turn/failed→error`, interrupt→`cancelled` |
+| message item | `assistant` `text` blocks (deltas via `--include-partial-messages`) | `agentMessage` items |
+| reasoning item | `thinking` blocks | `reasoning` items (+ `textDelta`) |
+| tool item | `tool_use`→running, `tool_result`→completed/failed, `permission_denials`→`declined` | `commandExecution`→execute (+`exitCode`, `outputDelta`), `fileChange`→edit (`diffs`), `mcpToolCall`→other, `webSearch`→fetch, collaboration spawn→task |
+| `item.delta` `output` (live terminal) | *(none — card fills on completion; per-capability degradation)* | `item/commandExecution/outputDelta` |
+| `plan.updated` | `TodoWrite` input | `turn/plan/updated` notification (plan-mode `plan` items fold in only until `turn/plan/updated` has spoken in the current turn) |
+| subagent nesting (`parentItemId`) | `parent_tool_use_id` | collaboration receiver thread id (review mode remains childless) |
+| `usage.updated` | `result.usage` + `total_cost_usd` | `thread/tokenUsage/updated` (no USD) |
 
 `token-usage` has a separate step-accounting mapping, because the number a runner
 emits is not uniformly scoped:
@@ -561,8 +530,7 @@ emits is not uniformly scoped:
 |---|---|---|
 | claude | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 | codex | The thread's cumulative `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`; after `thread/resume`, it includes pre-resume executions. | Codex's reported figure itself; do not add `startTokens`. |
-| opencode | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
-| pi | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
+| qwen | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 
 **Mapper robustness contract.** Inputs come off the wire and may be `null`,
 partial or malformed. A mapper **must never throw**: unparseable NDJSON lines are
@@ -571,7 +539,7 @@ produce **no events**, and malformed entries in a `plan.updated` payload are
 filtered out (a non-array plan emits no plan event at all). Mapper state is
 **explicit and immutable** — each mapper's map function takes `(frame, state)`
 and returns `{ events, state }`, never mutating the passed-in state
-(`mapClaudeMessage` / `mapCodexNotification` / `mapOpencodeEvent` / `mapPiRpcMessage`,
+(`mapClaudeMessage` / `mapCodexNotification` / the Qwen Code mapper in `qwen-ui-mapper.ts`,
 each paired with a `create<Backend>UiState`; see the claude mapper's "state carries across
 messages" tests).
 
@@ -583,8 +551,7 @@ messages" tests).
 `{ toolKind, title, subtitle? }`, computed **once** in the protocol layer (never
 in components) so the thread, activity groups and notifications all say the same
 thing. It is a pure function over untrusted input and **must never throw**. Tool
-names are matched case-insensitively, so claude's `Bash` and opencode's `bash`
-share one row; unknown tools keep the backend's name as the title with a
+names are matched case-insensitively, so `Bash` and `bash` share one row; unknown tools keep the backend's name as the title with a
 heuristic subtitle. `mcp__server__tool` names collapse to `server.tool`.
 
 ---
@@ -598,11 +565,11 @@ This is made executable: `ui-parity.test.ts` asserts each capability over each
 backend's golden-fixture expected output. If a mapper change drops a capability —
 or a new fixture set forgets one — a named row fails. The matrix:
 
-- `plan.updated` with entries (TodoWrite / todoList / todowrite)
+- `plan.updated` with entries (TodoWrite / `turn/plan/updated` / todo_write)
 - tool status `running`, `completed`, `failed`
-- reasoning items (thinking / reasoning items / reasoning parts)
-- structured diffs (Edit input / fileChange.changes / patch parts)
-- sub-agent task items (Task / review-mode span / subtask parts) — one item per
+- reasoning items (thinking / reasoning items)
+- structured diffs (Edit input / fileChange.changes)
+- sub-agent task items (Task / review-mode span) — one item per
   sub-agent: codex's `enteredReviewMode`/`exitedReviewMode` pair folds into a
   single `task` item with a running→completed lifecycle, so a consumer counting
   task items counts agents, not frames (pre-rename issue 474)
@@ -625,21 +592,20 @@ That shared module is the only signal: no step key, no `XEZ_*` variable.
 | Backend | Read-only step | Mechanism | Pinned by |
 | --- | --- | --- | --- |
 | Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` removes the file tools, and `--setting-sources user` prevents project/local settings, hooks and skills from re-widening Bash (#863). A step's `claudeSettings` adds one `--settings` file beside it (#1001): hooks only, every file read from the run's base commit, every hook script pinned, so a change under review cannot alter its own guard. A pinned `PreToolUse` hook can approve a command the `Bash(<entry>:*)` rules would deny; that is the intended trust – a hook merged on the base branch – and the reason no other settings key is accepted. `Bash(<entry>:*)` rules are built from the shared normalized entries: `ClaudeCliRunner.startSession` calls `out.push(...claudeBashRules(bashAllowlist));`. Claude Code's OWN matcher decides at run time and strips a few vendor-known-safe wrappers/assignments before matching. The shared matcher instead refuses a wrapper unless that wrapper itself is named (`WRAPPER_COMMANDS` in `read-only-lock.ts`); its simple-command parser and `COMMAND_RUNNING_ARGUMENTS` table do not protect Claude until a hook can call them | `claude-cli-runner.test.ts` |
-| Codex | **CONFINED + command-locked** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on unless `XEZ_CODEX_NETWORK=0` turns it off. On a read-only step with `bashAllowlist` present, both paths also register the shipped `PreToolUse` `Bash|apply_patch` handler, discover Codex's normalized handler hash, and grant that exact key/hash through `config/batchWrite` before turn 1; discovery, grant or verification failure stops the step. The hook is a thin payload adapter over `read-only-lock.ts`, so Bash applies the same parser, checked arguments and reason codes as pi, while `apply_patch` reaches that policy's `payload.tool-name` refusal. Blocked `PreToolUse` feedback becomes a bounded persisted v1 `note`, so the refusal reason is visible in the run event stream for either tool without reaching provider-auth detection. Codex 0.155.1 does not discover request-body hooks alone, so xezar idempotently registers a content-addressed, mode-`0444` copy from `xezCacheDir()` in the active profile's user `hooks.json`; trust is stored under its exact handler key/current hash in that profile's `config.toml`. A bounded cache record keyed by the hook payload's session id keeps a matching run fail-closed if Codex strips the marker or allowlist environment; normal completion removes it and expiry makes crash leftovers inert. Not fully ENFORCED: the worktree and branch stay writable to other non-shell Codex tools, other non-shell names are ignored, and MCP tools stay under #324 scoping, not the sandbox | `codex-app-server-runner.test.ts`, `codex-read-only-hook.test.ts` |
-| pi | partly: edit/write absent | `--tools` removes edit/write. With a `bashAllowlist`, `scripts/pi-worktree-guard.ts` is a thin adapter over `read-only-lock.ts`: one simple command must match an entry; expansion, compounds, redirects, grouping/functions, leading assignments, trailing backslashes and unnamed wrappers are refused. The sole compound exception is the exact two-part verdict-packet pipe. `COMMAND_RUNNING_ARGUMENTS` generically dispatches checked Git, find, rg and npm rows, marks reviewed argument-safe programs, and never permits `sed` or `awk`. The adapter alone owns pi flag parsing, the `tool_call` denial shape and the separate worktree guard. `[]` removes bash and refuses every command; absent/null retain #856's distinction | `read-only-lock.test.ts`, `pi-worktree-guard.test.ts`, `pi-runner.test.ts` |
-| OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |
+| Codex | **CONFINED + command-locked** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on unless `XEZ_CODEX_NETWORK=0` turns it off. On a read-only step with `bashAllowlist` present, both paths also register the shipped `PreToolUse` `Bash|apply_patch` handler, discover Codex's normalized handler hash, and grant that exact key/hash through `config/batchWrite` before turn 1; discovery, grant or verification failure stops the step. The hook is a thin payload adapter over `read-only-lock.ts`, so Bash applies the same parser, checked arguments and reason codes as Qwen Code, while `apply_patch` reaches that policy's `payload.tool-name` refusal. Blocked `PreToolUse` feedback becomes a bounded persisted v1 `note`, so the refusal reason is visible in the run event stream for either tool without reaching provider-auth detection. Codex 0.155.1 does not discover request-body hooks alone, so xezar idempotently registers a content-addressed, mode-`0444` copy from `xezCacheDir()` in the active profile's user `hooks.json`; trust is stored under its exact handler key/current hash in that profile's `config.toml`. A bounded cache record keyed by the hook payload's session id keeps a matching run fail-closed if Codex strips the marker or allowlist environment; normal completion removes it and expiry makes crash leftovers inert. Not fully ENFORCED: the worktree and branch stay writable to other non-shell Codex tools, other non-shell names are ignored, and MCP tools stay under #324 scoping, not the sandbox | `codex-app-server-runner.test.ts`, `codex-read-only-hook.test.ts` |
+| Qwen Code | **ENFORCED + command-locked** | `--exclude-tools` removes `edit`, `write_file` and `exec` (the file writers and the raw executor), and only the tools the step allows ride `--allowed-tools`. Every step with limits also gets a `PreToolUse` hook (`scripts/qwen-pre-tool-hook.mjs`, bundled from `qwen-pre-tool-hook-entry.ts`) in a run-private system settings file (`QWEN_CODE_SYSTEM_SETTINGS_PATH`, which outranks the person's and the project's settings): it refuses a file writer by name and sends `run_shell_command` through the shared `read-only-lock.ts` decision, so the parser, argument table and reason codes are those of Codex. A refusal exits with code 2 and carries its answer on stderr, which Qwen Code reads as a block even when other text reached stdout first. On Windows the hook entry asks for Qwen Code's `powershell` hook shell and its command is a PowerShell call on single-quoted paths (`qwenHookCommand`): Qwen Code's default there is `cmd.exe /d /s /c` behind Node's argument quoting, which escapes every `"` so cmd.exe could not start a double-quoted line, and the hook never ran (#1076). `[]` or no list leaves no shell. A refusal reaches the model with "Do not retry" and is persisted as `declined`. Qwen Code lets a call through when the hook cannot run (0.25.2: a hook transport failure is not a refusal) and switches every hook off under `QWEN_CODE_SAFE_MODE` or `QWEN_CODE_SIMPLE`, so a run blanks both, a turn whose node or hook script is missing is not started, and an allowlisted shell rides `--allowed-tools` as one `run_shell_command(<entry>)` rule per entry, never the bare name: Qwen Code's own permission check then refuses a command no entry starts (each part of a compound command is checked) even without the hook. That second lock does not see inside `$(…)` or backticks; the hook does. Qwen Code has no counterpart of Claude Code's `--setting-sources user`, and it adds a folder's own `.qwen/settings.json` to every run, so a read-only step whose folder file holds `hooks`, `permissions.allow`/`ask` or `tools.allowed` is refused with the file and keys named, as a project `.qwen/.env` is | `qwen-runner.test.ts`, `qwen-tool-policy.test.ts`, `qwen-hook-command.test.ts` |
 
-Plain `Bash` in a read-only list is still a shell on Claude Code, pi and Codex; a
-`bashAllowlist` narrows all three by the same prefix rule, while pi and Codex apply the shared
-parser and argument table. A new runner states its row here, and a runner that
+Plain `Bash` in a read-only list is still a shell on Claude Code, Qwen Code and Codex; a
+`bashAllowlist` narrows all three by the same prefix rule, while Qwen Code and Codex apply the
+shared parser and argument table. The shared parser refuses expansion, compounds, redirects,
+grouping and functions, leading assignments, trailing backslashes and unnamed wrappers; the sole
+compound exception is the exact two-part verdict-packet pipe, and `COMMAND_RUNNING_ARGUMENTS`
+never permits `sed` or `awk` (`read-only-lock.ts`, pinned by `read-only-lock.test.ts`). A new runner states its row here, and a runner that
 cannot enforce a read-only step says NOT APPLIED rather than implying it.
 
 Concrete compound example for a `git diff` entry: `git diff; rm -rf x` is refused on Claude Code
 because its permission matcher checks the compound parts and `rm -rf x` has no matching rule. It
-is refused on pi and Codex by the shared parser before prefix matching (`syntax.compound`). OpenCode
-does not apply `bashAllowlist`, so xezar does not stop the compound there. Since #856 pi keeps a
-restricted `bash` and evaluates it command by command; it does not drop Bash merely because a
-non-empty allowlist exists.
+is refused on Qwen Code and Codex by the shared parser before prefix matching (`syntax.compound`).
 
 ### A reviewer's verdict packet — the step declares the role (#460, #851)
 
@@ -693,26 +659,26 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 
 ---
 
-## 9. Adding a new runner (the pre-rename PR 387 `pi` checklist, as it was actually done)
+## 9. Adding a new runner
 
 A new backend is a **single class behind the seam** plus its mapper, fixtures and
 the parity row — never backend-specific types leaking past
-`packages/xezar/src/core/`. Pre-rename PR 387 added `pi` and enumerated every place the
-runner union was duplicated; that list is the concrete map, and the union now
+`packages/xezar/src/core/`. Pre-rename PR 387 enumerated every place the
+runner union was duplicated when it added a runner; that list is the concrete map, and the union now
 derives from one `RUNNER_IDS` tuple in `agent-runner.ts` so most of it is
 typecheck-enforced rather than hand-tracked.
 
 To be first-class:
 
-1. **Runner** — `packages/xezar/src/core/pi-runner.ts` implementing `AgentRunner` /
-   `AgentSession` (persistent process; `pid`; `sendMessage`/`end`/`interrupt`;
+1. **Runner** — `packages/xezar/src/core/<runner>-runner.ts` implementing `AgentRunner` /
+   `AgentSession` (a session that lives between turns; `pid`; `sendMessage`/`end`/`interrupt`;
    `result`). Honor `AgentRunSpec` uniformly — use `prependSystemPrompt` if the
    backend has no native system-prompt channel. Implement all THREE termination paths
    to the same standard (`end()`, `interrupt()`, and the `timeoutMs` deadline): each
    escalates SIGTERM→SIGKILL through `stopChildTree`, gated on `trackChildExit`, and each records that the runner
    sent the signal so the exit settles on the normal path (`isXezarStopExit`), and report a `128 + signal` exit the
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
-   `pi-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
+   `qwen-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
    `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.
    Return `timedOut: true` on a deadline stop (§1). Start the process with `launch` from
    `packages/xezar/src/platform/process-launch.ts`, never `node:child_process` –
@@ -722,14 +688,14 @@ To be first-class:
    the turn until the client answers — must never wait unbounded: bridge it onto `ask.requested`
    and answer it from the next `sendMessage`, refuse it explicitly when
    `SessionOptions.autonomous` is set, and cancel it at `end()`/`interrupt()` (codex's
-   `requestUserInput`, pi's extension dialogs — #369).
+   `requestUserInput` — #369).
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
    `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts`
    — and add its pair to `api-types.test.ts`, which fails the gate until you do (see §3).
-3. **Detection** — a `probePi()` in `backend-detect.ts` plus the `BackendCheck`
+3. **Detection** — a probe in `backend-detect.ts` plus the `BackendCheck`
    name union; degrade gracefully when the CLI is absent (never fail boot). If it
-   needs a binary override, add `XEZ_PI_BIN` — and per AGENTS.md's zero-config
+   needs a binary override, add `XEZ_<RUNNER>_BIN` (as `XEZ_QWEN_BIN`) — and per AGENTS.md's zero-config
    rule, document any new `XEZ_*` var in `.env.example` in the same commit.
 4. **Mapper** — `packages/xezar/src/core/<runner>-ui-mapper.ts` emitting the full
    v2 `UiEvent` stream **alongside** v1. Never throw on malformed input; explicit
@@ -752,7 +718,7 @@ To be first-class:
    so old `runs.json` records still parse (the `runner` enum keeps `claude-cli`
    parseable — follow that precedent).
    Two of those places are **resume policy**, and both are total `Record<RunnerId, boolean>`
-   maps in `packages/xezar/src/workflows/run.ts` precisely so a fifth id is a compile error
+   maps in `packages/xezar/src/workflows/run.ts` precisely so a new id is a compile error
    rather than a default (#676, #732): `BACKENDS_WITHOUT_RESUME` — does the runner actually
    honour `spec.resume`, or does it always open a new conversation? — and
    `BACKENDS_WITH_CUMULATIVE_TOKENS` — is the `token-usage` figure this EXECUTION's own, or the
@@ -762,7 +728,7 @@ To be first-class:
 9. **Model selection** — accept `provider/model` where relevant, and never silently
    drop or substitute a model. A backend with no default provider gets no
    `defaultProvider` in `BACKEND_MODEL_MAP` (`model-identity.ts`), so a bare id
-   fails loud — opencode and pi already work this way.
+   fails loud.
 10. **Credentials** — one entry in `BACKEND_ALLOW_PREFIXES` (`agent-env.ts`):
    `buildChildEnv` is least-privilege per backend, so a multi-provider runner
    must receive credentials for every provider its own model ids can name
@@ -780,10 +746,9 @@ current behaviour, and any new runner should follow them:
 - **Codex** — the real plan channel is the turn-level notification
   `turn/plan/updated`, not a `todoList` item (which the app-server never emits);
   map it to `plan.updated` as a full replacement.
-- **OpenCode** — `status` is free-form upstream; `cancelled` is a documented
-  value. Don't whitelist a few statuses and silently drop the rest — an
-  unrecognized status degrades to `pending` so a todo the agent wrote stays on
-  screen.
+- **Qwen Code** — `todo_write` is off by default in a headless run; the run-private settings
+  file switches it on (`tools.todoWrite.enabled`), and its `todos` input maps to `plan.updated`
+  as a full replacement, like Claude's `TodoWrite`.
 - **General** — `plan.updated` is full-replacement; only a genuinely empty list
   clears the dock (a malformed frame maps to zero events, never a wipe).
 

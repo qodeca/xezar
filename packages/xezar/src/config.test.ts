@@ -91,10 +91,10 @@ describe('loadConfig systemPrompt', () => {
     });
 
     it('round-trips per-runner presets, trimmed', async () => {
-      write({ defaultModels: { claude: ' opus ', opencode: 'openai/gpt-5.1' } });
+      write({ defaultModels: { claude: ' opus ', qwen: 'openai/gpt-5.1' } });
       expect((await loadConfig(repoRoot)).defaultModels).toEqual({
         claude: 'opus',
-        opencode: 'openai/gpt-5.1',
+        qwen: 'openai/gpt-5.1',
       });
     });
 

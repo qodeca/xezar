@@ -742,7 +742,7 @@ export function isImageAttachmentName(name: string): boolean {
  *
  * An image rides along as a block the model can view; a file (#950) is written to the run's
  * attachment folder and reaches the agent as a PATH only, which is the form its file tools want,
- * the only form that survives the codex/opencode backends (they drop image blocks before the
+ * the only form that survives the codex backend (it drops image blocks before the
  * model sees them), and the one that keeps a multi-megabyte PDF out of the prompt bounds.
  */
 export const attachmentInputSchema = z.object({

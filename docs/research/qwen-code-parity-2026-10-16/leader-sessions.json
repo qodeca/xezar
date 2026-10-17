@@ -1,0 +1,202 @@
+[
+ {
+  "session": 1,
+  "batch": "first",
+  "leaderModel": [
+   "deepseek-v4-flash-vision"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 2,
+   "ackedSeq": 2,
+   "reactedSeq": 0,
+   "latestSeq": 2
+  },
+  "blocker": null,
+  "taskId": "0844f09e-e0f7-4bc8-8078-126385df24ad",
+  "taskStatus": "failed",
+  "taskError": "step \"review\" failed: Qwen Code timed out after 10m and was killed"
+ },
+ {
+  "session": 2,
+  "batch": "first",
+  "leaderModel": [
+   "qwen38-flash-next-mlx-mixed-4-8bit"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 3,
+   "ackedSeq": 3,
+   "reactedSeq": 0,
+   "latestSeq": 3
+  },
+  "blocker": null,
+  "taskId": "d5424786-fca7-40c4-bf8d-94d139d47605",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 3,
+  "batch": "first",
+  "leaderModel": [
+   "qwen38-flash-next-mlx-mixed-4-8bit"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 5,
+   "ackedSeq": 5,
+   "reactedSeq": 0,
+   "latestSeq": 5
+  },
+  "blocker": null,
+  "taskId": "b92fb8be-8e89-45b8-94ac-23732bccfed9",
+  "taskStatus": "failed",
+  "taskError": "step \"review\" failed: Qwen Code timed out after 10m and was killed"
+ },
+ {
+  "session": 4,
+  "batch": "first",
+  "leaderModel": [
+   "qwen38-flash-next-mlx-mixed-4-8bit"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 6,
+   "ackedSeq": 6,
+   "reactedSeq": 0,
+   "latestSeq": 6
+  },
+  "blocker": null,
+  "taskId": "1a414083-6074-42be-b540-90874aa63bb6",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 5,
+  "batch": "first",
+  "leaderModel": [
+   "qwen38-flash-next-mlx-mixed-4-8bit"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 7,
+   "ackedSeq": 7,
+   "reactedSeq": 0,
+   "latestSeq": 7
+  },
+  "blocker": null,
+  "taskId": "1d2b6a34-8a83-4623-8ded-2b903a519df9",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 6,
+  "batch": "counted",
+  "leaderModel": [
+   "deepseek-v4-flash-vision"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 8,
+   "ackedSeq": 8,
+   "reactedSeq": 0,
+   "latestSeq": 8
+  },
+  "blocker": null,
+  "taskId": "56a54054-2fb9-49a6-849d-4e45b66fb3dc",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 7,
+  "batch": "counted",
+  "leaderModel": [
+   "deepseek-flash"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 9,
+   "ackedSeq": 8,
+   "reactedSeq": 0,
+   "latestSeq": 9
+  },
+  "blocker": "qwen-push-unacknowledged",
+  "taskId": "e2b08ffa-1aff-4ddb-ba2b-2d57126a4aa1",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 8,
+  "batch": "counted",
+  "leaderModel": [
+   "deepseek-v4-flash-vision"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 10,
+   "ackedSeq": 10,
+   "reactedSeq": 0,
+   "latestSeq": 10
+  },
+  "blocker": null,
+  "taskId": "4525a77e-c736-4e47-bc1f-24fab47e3b45",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 9,
+  "batch": "counted",
+  "leaderModel": [
+   "deepseek-flash"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 11,
+   "ackedSeq": 11,
+   "reactedSeq": 0,
+   "latestSeq": 11
+  },
+  "blocker": null,
+  "taskId": "4a54a72e-eb10-45a7-b03d-37dbcaea3aba",
+  "taskStatus": "done",
+  "taskError": null
+ },
+ {
+  "session": 10,
+  "batch": "counted",
+  "leaderModel": [
+   "qwen38-flash-next-mlx-mixed-4-8bit"
+  ],
+  "attached": true,
+  "pushSeenInSession": true,
+  "delivery": {
+   "state": "idle",
+   "deliveredSeq": 12,
+   "ackedSeq": 12,
+   "reactedSeq": 0,
+   "latestSeq": 12
+  },
+  "blocker": null,
+  "taskId": "b2c1fd55-d6a5-4d0f-8bcb-6e5a79ae9295",
+  "taskStatus": "done",
+  "taskError": null
+ }
+]

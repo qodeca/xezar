@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -129,6 +129,23 @@ describe('ProjectContexts', () => {
     // Not built, and nothing written under the root.
     expect(contexts.peek('gone')).toBeUndefined();
     expect(existsSync(join(rootA, '.local/xezar'))).toBe(false);
+  });
+
+  it('refuses to open a project whose saved records still name pi or OpenCode, and changes nothing (#1046)', async () => {
+    // A project added while the cockpit runs never met the boot check: opened, its run list would
+    // load empty and the next task would overwrite its history.
+    mkdirSync(join(rootA, '.local', 'xezar'), { recursive: true });
+    const runs = `${JSON.stringify([{ id: 'r1', runner: 'pi', steps: [] }])}\n`;
+    writeFileSync(join(rootA, '.local', 'xezar', 'runs.json'), runs);
+    const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
+    await expect(contexts.context('a')).rejects.toMatchObject({
+      name: 'ProjectContextError',
+      reason: 'legacy-backend',
+      message: expect.stringContaining('[0].runner = "pi", in the item with id "r1"'),
+    });
+    expect(contexts.peek('a')).toBeUndefined();
+    expect(readFileSync(join(rootA, '.local', 'xezar', 'runs.json'), 'utf8')).toBe(runs);
+    expect(readdirSync(join(rootA, '.local', 'xezar'))).toEqual(['runs.json']);
   });
 
   it('throws unknown-project for an id the registry does not hold', async () => {

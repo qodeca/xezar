@@ -41,20 +41,18 @@ const CLAUDE_MODELS: ModelOption[] = [
   { id: 'opus[1m]', label: 'Opus', description: 'most capable' },
   { id: 'sonnet', label: 'Sonnet', description: 'everyday' },
 ];
-const PI_MODELS: ModelOption[] = [
+const QWEN_MODELS: ModelOption[] = [
   { id: 'dgx-spark/deepseek-v4-flash-vision', label: 'dgx-spark/deepseek-v4-flash-vision', description: 'via DGX', local: true, vision: true },
   { id: 'deepseek-api/deepseek-flash', label: 'deepseek-api/deepseek-flash', description: 'via DeepSeek API', vision: true },
 ];
-const CODEX_MODELS: ModelOption[] = [{ id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', description: '', vision: true }];
 
-/** Claude, Codex and pi answer; OpenCode's discovery fails, so its row is the unavailable one. */
+/** Claude and Qwen Code answer; Codex's discovery fails, so its row is the unavailable one. */
 function catalog(): RunnerModelCatalog {
   return new RunnerModelCatalog({
     adapters: {
       claude: { discover: async () => CLAUDE_MODELS },
-      codex: { discover: async () => CODEX_MODELS },
-      opencode: { discover: async () => { throw new Error('opencode: command not found'); } },
-      pi: { discover: async () => PI_MODELS },
+      codex: { discover: async () => { throw new Error('codex: command not found'); } },
+      qwen: { discover: async () => QWEN_MODELS },
     },
   });
 }
@@ -122,15 +120,14 @@ describe('project_config list_models (#819 item 4)', () => {
 
     const byTool = Object.fromEntries(result.tools.map((row: { tool: string }) => [row.tool, row]));
     expect(byTool.claude).toEqual({ tool: 'claude', available: true, source: 'live', stale: false, models: CLAUDE_MODELS });
-    expect(byTool.codex).toEqual({ tool: 'codex', available: true, source: 'live', stale: false, models: CODEX_MODELS });
-    expect(byTool.pi).toEqual({ tool: 'pi', available: true, source: 'live', stale: false, models: PI_MODELS });
+    expect(byTool.qwen).toEqual({ tool: 'qwen', available: true, source: 'live', stale: false, models: QWEN_MODELS });
     // Wanted, not filtered out: the tool whose catalog cannot be read answers WHY.
-    expect(byTool.opencode).toEqual({
-      tool: 'opencode',
+    expect(byTool.codex).toEqual({
+      tool: 'codex',
       available: false,
       source: 'unavailable',
       stale: false,
-      reason: 'OpenCode model discovery is temporarily unavailable',
+      reason: 'Codex model discovery is temporarily unavailable',
       models: [],
     });
 
@@ -147,13 +144,13 @@ describe('project_config list_models (#819 item 4)', () => {
 
   it('narrows to one tool when provider is named, and the model id stays reconstructible as <tool>/<model>', async () => {
     const { app: service, root } = app();
-    const result = value(await invoke(service, root, { action: 'list_models', provider: 'pi' }));
+    const result = value(await invoke(service, root, { action: 'list_models', provider: 'qwen' }));
     expect(result.tools).toHaveLength(1);
-    expect(result.tools[0].tool).toBe('pi');
-    // pi's own `--model` takes `provider/id`, so the id is carried whole and never split or relabelled.
+    expect(result.tools[0].tool).toBe('qwen');
+    // A model id that itself contains `/` is carried whole and never split or relabelled.
     expect(result.tools[0].models.map((m: ModelOption) => `${result.tools[0].tool}/${m.id}`)).toEqual([
-      'pi/dgx-spark/deepseek-v4-flash-vision',
-      'pi/deepseek-api/deepseek-flash',
+      'qwen/dgx-spark/deepseek-v4-flash-vision',
+      'qwen/deepseek-api/deepseek-flash',
     ]);
   });
 
@@ -168,10 +165,10 @@ describe('project_config list_models (#819 item 4)', () => {
       expect('local' in model, JSON.stringify(model)).toBe(false);
       expect('vision' in model, JSON.stringify(model)).toBe(false);
     }
-    // And the pi row keeps exactly what its source proved: local only on the loopback provider.
-    const pi = value(await invoke(service, root, { action: 'list_models', provider: 'pi' })).tools[0].models;
-    expect(pi[0]).toMatchObject({ local: true, vision: true });
-    expect('local' in pi[1]).toBe(false);
+    // And the Qwen Code row keeps exactly what its source proved: local only on the loopback provider.
+    const qwen = value(await invoke(service, root, { action: 'list_models', provider: 'qwen' })).tools[0].models;
+    expect(qwen[0]).toMatchObject({ local: true, vision: true });
+    expect('local' in qwen[1]).toBe(false);
   });
 
   it('is a read: it refuses an operation key and dispatches only GET /models', async () => {

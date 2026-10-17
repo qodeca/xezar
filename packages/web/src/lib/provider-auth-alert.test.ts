@@ -11,7 +11,7 @@ const STATUS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -19,7 +19,7 @@ const NEW_STATUS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-2' },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'not-installed', enabled: true },
+    { provider: 'qwen', status: 'not-installed', enabled: true },
   ],
 }
 
@@ -27,7 +27,7 @@ describe('visibleProviderAuthIncidents', () => {
   it('lists every undismissed incident in catalog order even when Codex is connected', () => {
     const status: ProviderStatusResponse = {
       providers: [
-        { provider: 'opencode', status: 'disconnected', enabled: true, authFailureId: 'open-1' },
+        { provider: 'qwen', status: 'disconnected', enabled: true, authFailureId: 'qwen-1' },
         { provider: 'codex', status: 'connected', enabled: true },
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
       ],
@@ -35,7 +35,7 @@ describe('visibleProviderAuthIncidents', () => {
 
     expect(visibleProviderAuthIncidents(status, {})).toEqual([
       { provider: 'claude', label: 'Claude Code', authFailureId: 'claude-1' },
-      { provider: 'opencode', label: 'OpenCode', authFailureId: 'open-1' },
+      { provider: 'qwen', label: 'Qwen Code', authFailureId: 'qwen-1' },
     ])
   })
 
@@ -58,7 +58,7 @@ describe('providerAuthDismissals', () => {
     expect(providerAuthDismissals({
       claude: 'claude-1',
       codex: '',
-      opencode: 'a'.repeat(129),
+      qwen: 'a'.repeat(129),
       future: 'future-1',
     })).toEqual({ claude: 'claude-1' })
     expect(providerAuthDismissals(null)).toEqual({})
@@ -72,12 +72,12 @@ describe('mergeProviderAuthDismissals', () => {
       { codex: 'codex-1' },
       [
         { provider: 'claude', label: 'Claude Code', authFailureId: 'claude-1' },
-        { provider: 'opencode', label: 'OpenCode', authFailureId: 'open-1' },
+        { provider: 'qwen', label: 'Qwen Code', authFailureId: 'qwen-1' },
       ],
     )).toEqual({
       claude: 'claude-1',
       codex: 'codex-1',
-      opencode: 'open-1',
+      qwen: 'qwen-1',
     })
   })
 })

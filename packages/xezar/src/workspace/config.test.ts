@@ -82,10 +82,10 @@ describe('workspace config', () => {
     expect(defaultWorkspaceConfig().disabledProviders).toEqual([]);
 
     write({
-      disabledProviders: ['codex', 'future', 'codex', 4, 'opencode'],
+      disabledProviders: ['codex', 'future', 'codex', 4, 'qwen'],
       futureTopLevelKey: { keep: true },
     });
-    expect((await loadWorkspaceConfig()).disabledProviders).toEqual(['codex', 'opencode']);
+    expect((await loadWorkspaceConfig()).disabledProviders).toEqual(['codex', 'qwen']);
 
     const written = await mergeWriteWorkspaceConfig((config) => {
       config.disabledProviders = ['claude'];

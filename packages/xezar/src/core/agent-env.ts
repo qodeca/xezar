@@ -222,14 +222,10 @@ const BACKEND_ALLOW_PREFIXES: Record<AgentBackend, readonly string[]> = {
   claude: ['ANTHROPIC_', 'CLAUDE_'],
   'claude-cli': ['ANTHROPIC_', 'CLAUDE_'],
   codex: ['OPENAI_', 'CODEX_', 'AZURE_OPENAI_'],
-  opencode: MULTI_PROVIDER_PREFIXES,
-  // pi selects models as `provider/model` (#387), so it needs both its own config and any
-  // provider a configured model id can name — the same set OpenCode gets, for the same reason.
-  // Deliberately NOT `CLAUDE_`: pi is not Claude Code and reads none of its variables, and the
-  // prefix is load-bearing below — it is what unlocks the Bedrock/Vertex cloud credentials, so
-  // granting it here handed pi the whole `AWS_*` / `GOOGLE_CLOUD_*` family on any host that had
-  // set `CLAUDE_CODE_USE_BEDROCK=1` for Claude Code, plus Claude's own config dir.
-  pi: ['PI_', ...MULTI_PROVIDER_PREFIXES],
+  // Qwen Code reaches a model through whatever provider its `modelProviders` names, so it gets the
+  // same provider set, plus its own `QWEN_*` and DashScope's. The key a custom provider entry names
+  // (`envKey`, any name) is added per run by the Qwen runner through `allowNames`.
+  qwen: ['QWEN_', 'DASHSCOPE_', ...MULTI_PROVIDER_PREFIXES],
 };
 
 /** `gh` handoff (draft PRs) works in every backend — the one credential the
@@ -309,6 +305,9 @@ export interface BuildChildEnvOptions {
   extraEnv?: Record<string, string>;
   /** Source env; defaults to `process.env`. */
   source?: NodeJS.ProcessEnv;
+  /** Exact host variable NAMES this run's backend config says it reads (a Qwen Code provider's
+   *  `envKey`). Forwarded from the host like a backend prefix; never values xezar invents. */
+  allowNames?: readonly string[];
 }
 
 /**
@@ -368,6 +367,7 @@ export function buildChildEnv(opts: BuildChildEnvOptions): NodeJS.ProcessEnv {
     for (const n of VERTEX_ALLOW_NAMES) cloudNames.add(n);
   }
 
+  const configNames = upperSet(opts.allowNames ?? []);
   const out: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(source)) {
     if (value === undefined) continue;
@@ -389,6 +389,7 @@ export function buildChildEnv(opts: BuildChildEnvOptions): NodeJS.ProcessEnv {
     // reaches the on-disk NDJSON (see secret-redaction.ts).
     if (GH_ALLOW_NAMES.has(key)) return true;
     if (matchesPrefix(key, backendPrefixes)) return true;
+    if (configNames.has(key)) return true;
     if (cloudNames.has(key) || matchesPrefix(key, cloudPrefixes)) return true;
     // Explicit opt-in passthrough.
     if (passthrough.has(key)) return true;

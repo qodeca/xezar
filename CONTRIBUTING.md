@@ -131,7 +131,6 @@ there, and every such skip carries a marker on its line or in the comment direct
 | #975 | POSIX-only tools | The test needs Python's `pty`, `/bin/sh` or a `#!` script, `lsof`, or a process group (`kill(-pid)`). |
 | #976 | One-OS mechanism | The mechanism exists on one system only: Unix socket files and their path limit, or a test that runs only on Windows (named pipes, 8.3 names, drive letters, access lists) or only on Linux (`/proc`). |
 | #977 | Codex leader on Windows | Attaching a Codex leader on Windows is not built yet. |
-| #978 | pi leader on Windows | Attaching a pi leader on Windows is not built yet. |
 | #980 | Elevated Windows process | xezar refuses its MCP pipe when it runs as administrator, as every GitHub Windows runner step does. |
 
 The older `win32-r9` marker, for a test that ran on Windows and failed, is retired: fix the failure
@@ -173,7 +172,7 @@ Every module is meant to be read in one sitting.
 
 Agent backends share one seam: a backend is one class implementing the `AgentRunner` interface
 (`packages/xezar/src/core/agent-runner.ts`) that turns a prompt into a stream of normalized events.
-`pi` was added exactly that way; other CLIs can slot into the same seam.
+Qwen Code was added exactly that way; other CLIs can slot into the same seam.
 [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) is the contract a new runner must satisfy.
 
 The README is the npm page too: `packages/xezar/scripts/sync-readme.mjs` copies it into the package

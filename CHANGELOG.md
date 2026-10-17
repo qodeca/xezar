@@ -1,3 +1,83 @@
+# 0.30.0 (2026-10-17)
+
+## Highlights
+
+A breaking release. Qwen Code replaces pi and OpenCode, as a task runner and as a project leader
+with pushed events on Linux and macOS (on Windows it reads them), and xezar runs Claude Code,
+Codex and Qwen Code on Windows, Linux and macOS. Read-only Codex and Qwen Code steps stay read-only
+on Windows, and Codex reviews run on Windows and Linux again. A saved setting or task record that
+still names pi or OpenCode stops xezar with a list of what to change; the new guide page "Moving
+from pi or OpenCode to Qwen Code" shows how.
+
+## 💥 Breaking
+
+- 💥 **pi and OpenCode are removed; Qwen Code takes their place.** xezar now runs Claude Code, Codex
+  and Qwen Code, as task runners and as leader clients. `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the pi
+  scripts, the OpenCode "Attach leader" form and skills in `.opencode/skills/` are gone. Stored data
+  is not converted: while a saved setting or task record still names `pi` or `opencode`, xezar does
+  not start (every command that saves settings: `serve`, `run`, `init`, `projects`, `accounts`,
+  `providers`), the cockpit does not open such a project, and the message lists each file and
+  field to change. The new guide page
+  "Moving from pi or OpenCode to Qwen Code" shows how to move your model providers. (#1046)
+
+## 🔒 Security
+
+- 🔒 **The Qwen Code read-only lock now starts on Windows.** Its hook command was double-quoted, and
+  on Windows Qwen Code runs a hook through `cmd.exe` after Node's own quoting, so the hook never
+  started and Qwen Code let every call through. The hook now runs in PowerShell there, and a refusal
+  exits with code 2, which Qwen Code always treats as a block. (#1076)
+
+- 🔒 **A read-only Codex step on Windows is read-only again.** The command that starts xezar's
+  read-only check was written for a Linux or macOS shell, but Codex runs it through PowerShell on
+  Windows, where it could not start. Codex then let every shell command and file edit through, so
+  a review or QA step with a `bashAllowlist` could change files in its worktree. The check now
+  starts on Windows and refuses commands outside the allowlist and every file edit. (#1076)
+
+## ✨ Features
+
+- ✨ **Qwen Code is a task runner.** Pick `qwen` in the composer or in a workflow step. Runs use Qwen
+  Code's own model providers, keep read-only steps read-only, resume with `qwen --resume`, and stop
+  the whole Qwen Code process tree on interrupt. Managed auto-memory is switched off for task runs.
+  (#1044, #1042)
+
+- ✨ **Qwen Code can be the project leader, with pushed events on Linux and macOS.** A Qwen Code
+  session (0.25.2 or newer) attaches with `leader_events` and gets each event as a message in its
+  own inbox. On Windows, Qwen Code opens no inbox, so a Qwen Code leader there reads its events with
+  `leader_events` and acknowledges them; xezar now says so instead of pointing to Qwen Code settings
+  that cannot help. (#1045, #1086)
+
+## 🐛 Fixes
+
+- 🐛 **A headless Qwen Code run no longer exits early** while its session waits for the next message,
+  and a tool call a hook declined is reported once, with its reason. (#1042)
+
+- 🐛 **Project setup counts Qwen Code as an agent.** A machine with only Qwen Code installed no longer
+  reads "no agent backend was found". (#1046)
+
+- 🐛 **A first start in single-project mode no longer writes an empty `.xezar/config.json`.** That
+  file is the project's own settings, and the empty copy made a later `git pull` that brings the
+  real file stop with "untracked working tree files would be overwritten". Every setting still has
+  its default, and saving a setting in the cockpit creates the file. (#1074)
+
+- 🐛 **A task whose steps all name one agent is recorded as that agent's task.** A task that picked
+  no agent, with every step set to run on, say, Qwen Code, was recorded under the project default
+  (often Claude Code). Its header, its account hold and its model check then named an agent no step
+  used. The task now takes the agent its steps share; a mixed chain and an explicit pick keep their
+  own rule, and a Continue keeps the step's own model. (#1041)
+
+- 🐛 **Codex review and QA steps run shell commands on Linux again.** On Linux a task's temp folder
+  is a short link (#1065), and Codex's sandbox refused a writable folder given as a link, so every
+  shell command in a Codex review or QA step failed. Codex now gets the real folder the link leads to.
+  (#1080)
+
+- 🐛 **Codex reviews run on Windows again.** Codex's Windows sandbox stops Git Bash from starting,
+  so a read-only Codex step could not run a single shell script and ended without its result. Now,
+  when Git Bash dies that way and the step has a `bashAllowlist`, xezar turns the sandbox off once
+  for the rest of the step and leaves a note; the allowlist still checks every shell command and
+  file edits stay refused. A step with no allowlist, or a crash that comes back, now fails with
+  the reason instead of ending as done. `XEZ_CODEX_SANDBOX_FALLBACK=0` keeps the sandbox and
+  fails the step. (#1030)
+
 # 0.20.4 (2026-10-16)
 
 ## Highlights

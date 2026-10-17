@@ -145,8 +145,7 @@ export function unavailableAgentAccountRefusal(label: string, configDir: string)
 export const agentAccountSelectionSchema = z.object({
   claude: z.string().optional(),
   codex: z.string().optional(),
-  opencode: z.string().optional(),
-  pi: z.string().optional(),
+  qwen: z.string().optional(),
 });
 export type AgentAccountSelection = z.infer<typeof agentAccountSelectionSchema>;
 
@@ -222,9 +221,7 @@ export type ImportGlobalAccountsResponse = z.infer<typeof importGlobalAccountsRe
 export const agentProfilesResponseSchema = z.object({
   editable: z.boolean(),
   profiles: z.array(agentProfileSchema),
-  /** Providers that can carry more than one account at all — what "Add account" is offered for.
-   *  OpenCode is absent: its credentials live in a SQLite DB behind a separate `OPENCODE_DB`, so
-   *  a config-dir profile would swap settings while still billing the other account. */
+  /** Providers that can carry more than one account at all — what "Add account" is offered for. */
   profileCapableProviders: z.array(providerIdSchema),
   /** Which account each project uses, keyed by the project's realpath'd ROOT.
    *

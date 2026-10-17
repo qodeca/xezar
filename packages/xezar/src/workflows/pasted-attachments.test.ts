@@ -285,7 +285,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
    * The PDF/TXT/MD half of the same contract (#950). A file has nothing for the model to look at,
    * so the assertions are the mirror image of the screenshot case: the bytes must land on disk and
    * must NOT reach the prompt, while the path must — because the path is the only reference the
-   * agent gets, and on codex/opencode it is the only one that would survive anyway.
+   * agent gets, and on codex it is the only one that would survive anyway.
    */
   it('task-start PDF and markdown attachments land on disk and reach the agent as paths, not bytes', async () => {
     writeFileSync(argsFile, '', 'utf8');

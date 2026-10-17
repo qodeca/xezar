@@ -6,13 +6,10 @@ import { projectDataDir } from '../project-data-paths.ts';
 /**
  * The task-evidence directories of ONE run, under the PRIMARY checkout.
  *
- * One producer, two consumers, and that is the point of the module: the pi
- * worktree guard's `--xezar-allowed-roots` (#652) and the OpenCode runner's
- * `external_directory` policy (#686) must agree on the same two paths, or a
- * backend silently loses a directory another backend can reach. It lives here
- * rather than beside the OpenCode policy because it is not OpenCode's — it is
- * the answer to "where does the kit write this run's evidence", asked by every
- * backend that needs an explicit grant.
+ * One producer, and that is the point of the module: every backend that needs
+ * an explicit grant must agree on the same two paths, or a backend silently
+ * loses a directory another backend can reach (#652, #686). It is the answer to
+ * "where does the kit write this run's evidence".
  *
  * The two roots:
  *

@@ -39,33 +39,19 @@ export interface ResolvedAgentProfile {
  * Which slot of `AgentHomePaths` is a provider's home. **One table, read in both directions**, and
  * that is the fix rather than the style.
  *
- * Two sites used to answer this question separately and both got pi wrong:
- *
- * - reading, here: a ternary chain ending in `: home.claude`, so `pi` — the one provider it never
- *   named — resolved to `~/.claude`. `GET /api/v1/workspace/agent-profiles` lists over
- *   `PROVIDER_IDS`, so the pi row reported Claude's folder as pi's home before pi could carry
- *   accounts at all;
- * - writing, in `server.ts`'s `accountFiles()`: a run of conditional spreads that named claude,
- *   codex and opencode and silently did nothing for pi, so one pi account would have resolved its
- *   files inside the DEFAULT pi home.
- *
- * Half a fix twice. AGENTS.md § Changing a mechanism says to route both sites through one helper
- * rather than remember to edit both, so they now read the same table and a fifth provider is a
- * compile error in one place (#329).
- *
- * `opencode` maps to `opencodeConfig`, the one case where the provider id and the slot name
- * differ — the exact thing a lookup states plainly and a conditional spread hides.
+ * Two sites used to answer this question separately and both got one provider wrong: reading
+ * (here) fell through to `~/.claude`, and writing (in `server.ts`'s `accountFiles()`) silently did
+ * nothing. Both now read this table, so a new provider is a compile error in one place (#329).
  *
  * What the slot RESOLVES to is `agentHomePaths()`'s business, and it already honours the vendors'
- * own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_CONFIG_HOME` / `PI_CODING_AGENT_DIR`, so setting
+ * own home variables (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, …), so setting
  * one of those on the xezar process moves that provider's DEFAULT account rather than being
  * ignored.
  */
 export const HOME_SLOT: Record<ProviderId, keyof AgentHomePaths> = {
   claude: 'claude',
   codex: 'codex',
-  opencode: 'opencodeConfig',
-  pi: 'pi',
+  qwen: 'qwen',
 };
 
 /** That provider's home out of a resolved set — the READ direction of `HOME_SLOT`. */

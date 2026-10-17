@@ -69,7 +69,7 @@ export interface ThreadAsk {
 export interface ThreadProviderAuthRequired {
   kind: 'provider-auth-required'
   id: string
-  provider: 'claude' | 'codex' | 'opencode' | 'pi'
+  provider: 'claude' | 'codex' | 'qwen'
   authFailureId: string
 }
 
@@ -192,7 +192,7 @@ function str(value: unknown): string | undefined {
 }
 
 function providerId(value: unknown): ThreadProviderAuthRequired['provider'] | undefined {
-  return value === 'claude' || value === 'codex' || value === 'opencode' || value === 'pi'
+  return value === 'claude' || value === 'codex' || value === 'qwen'
     ? value
     : undefined
 }
@@ -222,7 +222,7 @@ function stripDoneMarker(text: string, stripAsk: boolean): string {
 }
 
 /**
- * Repair for legacy per-delta transcripts: codex/opencode runs recorded before the runners
+ * Repair for legacy per-delta transcripts: codex runs (and runs of backends since removed) recorded before the runners
  * coalesced v1 `text` per item persisted one `text` line PER STREAMING TOKEN, so the fold
  * synthesized one message per token ("github" / ".com" / "merc" / "ato" …, each its own
  * paragraph) and the exact-match dedup never fired — no single token equals the v2 message.
@@ -662,7 +662,7 @@ export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = 
 
   // The message half of the mixed-file dedup, resolved once the whole turn is known: a v1
   // `text` line is a duplicate exactly when some v2 message item in the same turn carries the
-  // same prose — which is the normal claude/codex/opencode path, where the v2 item lands first
+  // same prose — which is the normal claude/codex path, where the v2 item lands first
   // and its v1 twin one line later. Comparison is on marker-stripped, trimmed text because the
   // two arrive differently normalized: the server strips `XEZ:` markers from v1 `text` before
   // persisting, while v2 items carry the raw text and are stripped below at render time.

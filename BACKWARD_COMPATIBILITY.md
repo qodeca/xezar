@@ -76,10 +76,24 @@ A surface above is removed only after a deprecation that names the replacement a
 goes in, recorded under `docs/deprecations/` with an upgrade note keyed by the symptom a user will
 see. How long the notice runs is the owner's decision for each case.
 
+Exception (#1046, owner decision in #1041): the `pi` and `opencode` backends and leader clients
+were removed in one release, without a deprecation release, once Qwen Code passed the parity proof
+(#1042). The rule stands for every other surface. The removal is recorded in § 9.
+
 ## 9. Recorded breaking changes
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
+- **Next release – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
+  backend, provider and leader-client ids `pi` and `opencode` are gone from every schema, with
+  `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the
+  shipped pi scripts, the OpenCode "Attach leader" form and the `client-needs-address` refusal code.
+  Skills in `.opencode/skills/` are no longer found. Stored data is not converted. *Symptom:* while
+  any saved setting or task record still names `pi` or `opencode`, `xezar serve` and `xezar run`
+  exit with code 1 and list each file and field. *Way forward:* change each value to `qwen`,
+  `claude` or `codex`, or remove it; the guide page "Moving from pi or OpenCode to Qwen Code"
+  (`docs/guide/18-moving-from-pi-or-opencode.md`) shows how to move model providers. The owner
+  waived the §8 deprecation release for this change (#1041, #1046).
 - **0.20.0 – setup runs the Xezar Skills 3.0.3 onboarding only** (§3, and the cockpit's
   "Set up this project" / "Re-check now"). The built-in `project-setup` workflow names
   `xez-onboard-opinionated` instead of `xez-onboard`, and the bundled templates pin moves from

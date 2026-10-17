@@ -100,15 +100,13 @@ export class RunnerModelCatalog {
   }
 }
 
-/** How each runner is named in its own failure message. A `Record` rather than the chained
- *  ternary this replaced: that fell through to "OpenCode" for anything unrecognized, so pi's
- *  first failure would have reported another backend's name (#152). A new runner id now fails to
- *  compile here instead. */
+/** How each runner is named in its own failure message. A `Record` rather than a chained
+ *  ternary, which once fell through to another backend's name for an unrecognized runner (#152).
+ *  A new runner id now fails to compile here instead. */
 const RUNNER_DISPLAY_NAME: Record<RunnerId, string> = {
   claude: 'Claude',
   codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
+  qwen: 'Qwen Code',
 };
 
 function unavailableReason(runner: RunnerId): string {

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunSpec } from '../core/agent-runner.ts';
 import type { RunnerId } from '../core/agent-runner.ts';
 import { RunStore, type StepState } from '../runs/store.ts';
-import { RunManager, stepRunnersLabel } from './run.ts';
+import { RunManager, sharedStepRunner, stepRunnersLabel } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
 const run = promisify(execFile);
@@ -79,7 +79,7 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
   const STEP_RUNNER_DEF: WorkflowDef = {
     name: 'own-agent',
     source: 'file',
-    steps: [{ id: 'work', name: 'Work', prompt: '{{task}}', runner: 'opencode' }],
+    steps: [{ id: 'work', name: 'Work', prompt: '{{task}}', runner: 'qwen' }],
   };
 
   beforeEach(async () => {
@@ -117,12 +117,13 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
     model?: string;
     error?: string;
     autoResumeAt?: string;
+    runner?: RunnerId;
   }): string {
     const record = store.createRun({
       title: 't',
       workflow: input.def.name,
       task: 'do the thing',
-      runner: 'claude',
+      runner: input.runner ?? 'claude',
       model: input.model,
       steps: input.steps.map((s) => ({ id: s.id, name: s.id, kind: 'agent' as const })),
     });
@@ -151,18 +152,18 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
   }
 
   describe('#984 — Continue without an explicit agent stays on the step’s own agent', () => {
-    it('starts OpenCode and resumes its session for a step-level `runner: opencode` on a claude task', async () => {
+    it('starts Qwen Code and resumes its session for a step-level `runner: qwen` on a claude task', async () => {
       const id = recordedRun({
         def: STEP_RUNNER_DEF,
-        steps: [{ id: 'work', status: 'failed', sessionId: 'oc-1', backend: 'opencode' }],
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
       });
 
       expect(manager!.continueRun(id, { text: 'keep going' })).toEqual({ ok: true });
       const { backend, spec } = await sessionAt(0);
-      expect(backend).toBe('opencode');
+      expect(backend).toBe('qwen');
       expect(spec.resume).toBe(true);
-      expect(spec.sessionId).toBe('oc-1');
-      expect(store.getRun(id)?.steps.find((s) => s.id === 'continue-1')?.backend).toBe('opencode');
+      expect(spec.sessionId).toBe('qw-1');
+      expect(store.getRun(id)?.steps.find((s) => s.id === 'continue-1')?.backend).toBe('qwen');
       // Following the step's agent is not a switch: the task's own runner is left as it was.
       expect(store.getRun(id)?.runner).toBe('claude');
       await settled(id);
@@ -173,23 +174,23 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
       const id = recordedRun({
         def: STEP_RUNNER_DEF,
         status: 'running',
-        steps: [{ id: 'work', status: 'running', sessionId: 'oc-1', backend: 'opencode' }],
+        steps: [{ id: 'work', status: 'running', sessionId: 'qw-1', backend: 'qwen' }],
       });
       await manager!.dispose();
       manager = new RunManager(store, repoRoot);
       await manager.recover();
 
       const { backend, spec } = await sessionAt(0);
-      expect(backend).toBe('opencode');
+      expect(backend).toBe('qwen');
       expect(spec.resume).toBe(true);
-      expect(spec.sessionId).toBe('oc-1');
+      expect(spec.sessionId).toBe('qw-1');
       await settled(id);
     });
 
     it('the usage-limit auto-resume resumes on the step’s own agent', async () => {
       const id = recordedRun({
         def: STEP_RUNNER_DEF,
-        steps: [{ id: 'work', status: 'failed', sessionId: 'oc-1', backend: 'opencode' }],
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
         error: 'Claude AI usage limit reached|1756166400',
         autoResumeAt: new Date(Date.now() - 1_000).toISOString(),
       });
@@ -198,8 +199,8 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
       await manager.recover();
 
       const { backend, spec } = await sessionAt(0);
-      expect(backend).toBe('opencode');
-      expect(spec.sessionId).toBe('oc-1');
+      expect(backend).toBe('qwen');
+      expect(spec.sessionId).toBe('qw-1');
       await settled(id);
     });
 
@@ -208,7 +209,7 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
         def: STEP_RUNNER_DEF,
         status: 'queued',
         steps: [
-          { id: 'work', status: 'failed', sessionId: 'oc-1', backend: 'opencode' },
+          { id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' },
           { id: 'continue-1', status: 'pending' },
         ],
       });
@@ -217,9 +218,9 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
       await manager.recover();
 
       const { backend, spec } = await sessionAt(0);
-      expect(backend).toBe('opencode');
+      expect(backend).toBe('qwen');
       expect(spec.resume).toBe(true);
-      expect(spec.sessionId).toBe('oc-1');
+      expect(spec.sessionId).toBe('qw-1');
       await settled(id);
     });
 
@@ -250,7 +251,7 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
     it('an explicit agent choice still wins, in a fresh session', async () => {
       const id = recordedRun({
         def: STEP_RUNNER_DEF,
-        steps: [{ id: 'work', status: 'failed', sessionId: 'oc-1', backend: 'opencode' }],
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
       });
 
       expect(manager!.continueRun(id, { text: 'keep going', runner: 'codex' })).toEqual({ ok: true });
@@ -264,7 +265,7 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
     it('a follow-up that keeps the run’s agent (the untouched cockpit pill) stays on the task’s agent', async () => {
       const id = recordedRun({
         def: STEP_RUNNER_DEF,
-        steps: [{ id: 'work', status: 'failed', sessionId: 'oc-1', backend: 'opencode' }],
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
       });
 
       expect(manager!.continueRun(id, { text: 'keep going', keepRunAgent: true })).toEqual({ ok: true });
@@ -333,6 +334,85 @@ describe('a continuation keeps its step’s own agent and identity (#998)', () =
       ]);
     });
   });
+
+  describe('#1041 — a task whose agent steps all name one agent is that agent’s task', () => {
+    it('records the steps’ agent, not the project default, when the task picked none', async () => {
+      const record = manager!.startRun(STEP_RUNNER_DEF, { task: 'do the thing', worktree: false });
+
+      const { backend } = await sessionAt(0);
+      expect(backend).toBe('qwen');
+      expect(store.getRun(record.id)?.runner).toBe('qwen');
+      await settled(record.id);
+    });
+
+    // Guards that pass both ways: a mixed chain and an explicit pick keep today's rule.
+    it('keeps the project default when the agent steps name different agents', async () => {
+      const def: WorkflowDef = {
+        name: 'mixed',
+        source: 'file',
+        steps: [
+          { id: 'work', name: 'Work', prompt: '{{task}}', runner: 'qwen' },
+          { id: 'review', name: 'Review', prompt: '{{task}}' },
+        ],
+      };
+      const record = manager!.startRun(def, { task: 'do the thing', worktree: false });
+
+      await sessionAt(0);
+      expect(store.getRun(record.id)?.runner).toBe('claude');
+      await settled(record.id);
+    });
+
+    it('keeps the task’s own pick when it names one', async () => {
+      const record = manager!.startRun(STEP_RUNNER_DEF, { task: 'do the thing', worktree: false, runner: 'codex' });
+
+      await sessionAt(0);
+      expect(store.getRun(record.id)?.runner).toBe('codex');
+      await settled(record.id);
+    });
+
+    it('a Continue keeps the step’s own model when the run has none', async () => {
+      const def: WorkflowDef = {
+        name: 'own-agent-model',
+        source: 'file',
+        steps: [{ id: 'work', name: 'Work', prompt: '{{task}}', runner: 'qwen', model: 'deepseek-flash' }],
+      };
+      const id = recordedRun({
+        def,
+        runner: 'qwen',
+        steps: [{ id: 'work', status: 'failed', sessionId: 'qw-1', backend: 'qwen' }],
+      });
+
+      expect(manager!.continueRun(id, { text: 'keep going' })).toEqual({ ok: true });
+      const { backend, spec } = await sessionAt(0);
+      expect(backend).toBe('qwen');
+      expect(spec.model).toBe('deepseek-flash');
+      await settled(id);
+    });
+  });
+});
+
+describe('#1041 — sharedStepRunner', () => {
+  const def = (steps: WorkflowDef['steps']): WorkflowDef => ({ name: 'w', source: 'file', steps });
+
+  it('names the agent every agent step names, ignoring check steps', () => {
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'gates', command: 'true' },
+      { id: 'review', prompt: '{{task}}', runner: 'qwen' },
+    ]))).toBe('qwen');
+  });
+
+  it('is undefined when one agent step names none, the steps differ, or there is no agent step', () => {
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'review', prompt: '{{task}}' },
+    ]))).toBeUndefined();
+    expect(sharedStepRunner(def([
+      { id: 'work', prompt: '{{task}}', runner: 'qwen' },
+      { id: 'review', prompt: '{{task}}', runner: 'codex' },
+    ]))).toBeUndefined();
+    expect(sharedStepRunner(def([{ id: 'gates', command: 'true' }]))).toBeUndefined();
+  });
 });
 
 describe('#910 — the run header names the runner each step really uses', () => {
@@ -352,7 +432,7 @@ describe('#910 — the run header names the runner each step really uses', () =>
   });
 
   it('keeps the task’s runner when no step names its own, or there is no agent step', () => {
-    expect(stepRunnersLabel(def([{ id: 'work', prompt: '{{task}}' }]), 'pi')).toBe('runner: pi');
+    expect(stepRunnersLabel(def([{ id: 'work', prompt: '{{task}}' }]), 'qwen')).toBe('runner: qwen');
     expect(stepRunnersLabel(def([{ id: 'gates', command: 'true' }]), 'claude')).toBe('runner: claude');
   });
 });

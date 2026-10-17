@@ -5,7 +5,7 @@ import type {
 } from '@qodeca/xezar-api-client'
 import { RUNNER_LABEL } from './runner-label'
 
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'opencode', 'pi']
+const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen']
 
 export interface ProviderAuthIncident {
   provider: ProviderId

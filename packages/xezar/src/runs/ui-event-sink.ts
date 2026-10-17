@@ -127,7 +127,7 @@ export class UiEventSink {
         // session.*, turn.started, plan.updated, permission.* — plain
         // snapshot/lifecycle lines, persisted as they come. (`session.ended`
         // and fatal `session.error` are normally minted by `sessionEnded()`;
-        // mapper-emitted ones — e.g. opencode's non-fatal session.error —
+        // mapper-emitted ones — e.g. a non-fatal session.error —
         // pass through here.)
         this.persist(event);
         return;

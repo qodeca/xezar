@@ -6,9 +6,9 @@ If you would rather look before you sign anything in, [try it without a login](#
 
 ## To check prerequisites
 
-Have Node.js 22 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex, OpenCode or pi. GitHub features also need `gh`; `GITHUB_TOKEN` is the authentication fallback when `gh` is not signed in. You can start a local task without it.
+Have Node.js 22 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex or Qwen Code. GitHub features also need `gh`; `GITHUB_TOKEN` is the authentication fallback when `gh` is not signed in. You can start a local task without it.
 
-**By system.** macOS and Linux need nothing beyond the above. On Windows, install the full Git for Windows (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Follow each agent CLI's own Windows instructions. Start xezar without administrator rights, or the MCP leader bridge (`xezar mcp`) is unavailable; attaching to a running Codex session or a pi leader is not available on Windows yet. `xezar serve` warns at start-up when long file paths are off; turn on the Windows setting LongPathsEnabled (needs an administrator) and run `git config --global core.longpaths true`.
+**By system.** macOS and Linux need nothing beyond the above. On Windows, install the full Git for Windows (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Follow each agent CLI's own Windows instructions. Start xezar without administrator rights, or the MCP leader bridge (`xezar mcp`) is unavailable; attaching to a running Codex session is not available on Windows yet. `xezar serve` warns at start-up when long file paths are off; turn on the Windows setting LongPathsEnabled (needs an administrator) and run `git config --global core.longpaths true`.
 
 ## To install xezar
 
@@ -51,10 +51,9 @@ xezar uses the logins you already have; it never asks for an API key of its own.
 | --- | --- |
 | Claude Code | `claude auth login` |
 | Codex | `codex login` |
-| OpenCode | `opencode auth login` |
-| pi | `pi /login` |
+| Qwen Code | `qwen` (its first-run setup, `/auth`, sets up a model provider) |
 
-`xezar providers connect <claude|codex|opencode|pi>` does the same thing without you having to remember which command it is: it opens a terminal running that tool's own login on the machine that runs xezar. Add `--account <id>` for a second login. See the [CLI reference](12-cli-reference.md#to-sign-an-agent-tool-in-providers-connect).
+`xezar providers connect <claude|codex|qwen>` does the same thing without you having to remember which command it is: it opens a terminal running that tool's own login on the machine that runs xezar. Add `--account <id>` for a second login. See the [CLI reference](12-cli-reference.md#to-sign-an-agent-tool-in-providers-connect).
 
 In the cockpit, open the project's **Settings → Agents** to check provider availability. Select the available agent in the new-task composer.
 
@@ -90,7 +89,7 @@ Create a task to see the mock event stream without invoking a real agent CLI. Th
 
 Setup is optional. You can create ordinary tasks without ever running it, and everything above works with no setup at all. It exists for the case where you would rather have an agent read the project and prepare the files it needs than write them yourself.
 
-On a fresh project's Tasks page, xezar offers a guided setup: "New to this project? An agent can look at it and prepare the files it needs, and it shows you every change before anything is written." **Settings → Project setup** offers the same setup under **Guided setup**. Choose **Set up this project** to start it. Without an available agent backend the button stays disabled and xezar shows the reason: "Setup unavailable — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again."
+On a fresh project's Tasks page, xezar offers a guided setup: "New to this project? An agent can look at it and prepare the files it needs, and it shows you every change before anything is written." **Settings → Project setup** offers the same setup under **Guided setup**. Choose **Set up this project** to start it. Without an available agent backend the button stays disabled and xezar shows the reason: "Setup unavailable — no agent backend was found. Install Claude Code, Codex or Qwen Code, sign in, then open this page again."
 
 The button creates an ordinary task from the built-in `project-setup` workflow. It appears in the task list, and you can open or cancel it like any other task. Nothing starts it except your click or a project leader's request.
 

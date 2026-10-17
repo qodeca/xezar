@@ -198,7 +198,7 @@ describe('#819 item 6 — an unknown key says what the action takes', () => {
     const dismiss = await w.call('project_config', { action: 'dismiss_onboarding_offer', dismis: true });
     expect(text(dismiss)).toContain('Accepted for dismiss_onboarding_offer: action, operationId (required); onboardingIdentity (optional).');
     // `leader_events` has no `acceptedKeys` hook: the hint is its schema's own shape.
-    const events = await w.call('leader_events', { action: 'attach', operationId: 'op-attach-00001', client: 'pi' });
+    const events = await w.call('leader_events', { action: 'attach', operationId: 'op-attach-00001', client: 'codex' });
     expect(text(events)).toContain('Accepted for leader_events: action (required); cursor, limit, operationId (optional).');
     expect(w.dispatched).toEqual([]);
   });

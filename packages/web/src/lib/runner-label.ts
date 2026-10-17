@@ -4,9 +4,9 @@ import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar
  * The product name behind each backend id — ONE definition for the whole cockpit.
  *
  * Typed `Record<Runner, string>` against the contract's runner enum rather than a loose string
- * record on purpose: a fifth backend added to `runnerSchema` is then a compile error here instead
+ * record on purpose: a new backend added to `runnerSchema` is then a compile error here instead
  * of a surface that quietly prints nothing. That is the whole reason this file exists — the same
- * four pairs had been copied into five components, and a new backend would have had to be
+ * id/name pairs had been copied into five components, and a new backend would have had to be
  * remembered in all five.
  *
  * The composer's runner pill deliberately does NOT use this: it shows the raw id because the id is
@@ -15,8 +15,7 @@ import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar
 export const RUNNER_LABEL: Record<Runner, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
+  qwen: 'Qwen Code',
 }
 
 /**

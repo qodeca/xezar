@@ -1,0 +1,101 @@
+[
+  {
+    "type": "session.started",
+    "sessionId": "eec3362f-7a89-415d-8b10-0dcae86147e6",
+    "backend": "qwen",
+    "model": "deepseek-flash",
+    "cwd": "/work/proj",
+    "tools": [
+      "read_file",
+      "edit",
+      "write_file",
+      "glob",
+      "grep_search",
+      "run_shell_command",
+      "todo_write",
+      "agent",
+      "tool_call",
+      "tool_search"
+    ]
+  },
+  {
+    "type": "turn.started",
+    "turnId": "turn_1"
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "I'll read both files in order."
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "I'll read both files in order."
+    }
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "tool",
+      "id": "call_00_ET_waL2ge3tZRMYXl0zSs3H1115",
+      "name": "read_file",
+      "toolKind": "read",
+      "title": "Read /work/proj/README.md",
+      "status": "running",
+      "input": {
+        "file_path": "/work/proj/README.md"
+      }
+    }
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "tool",
+      "id": "call_01_ET_PgNhIa1GGXvfqaULCgY38920",
+      "name": "read_file",
+      "toolKind": "read",
+      "title": "Read /work/proj/notes.txt",
+      "status": "running",
+      "input": {
+        "file_path": "/work/proj/notes.txt"
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "tool",
+      "id": "call_00_ET_waL2ge3tZRMYXl0zSs3H1115",
+      "name": "read_file",
+      "toolKind": "read",
+      "title": "Read /work/proj/README.md",
+      "status": "completed",
+      "input": {
+        "file_path": "/work/proj/README.md"
+      },
+      "output": "line one\nline two\n"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "tool",
+      "id": "call_01_ET_PgNhIa1GGXvfqaULCgY38920",
+      "name": "read_file",
+      "toolKind": "read",
+      "title": "Read /work/proj/notes.txt",
+      "status": "completed",
+      "input": {
+        "file_path": "/work/proj/notes.txt"
+      },
+      "output": "line one\n"
+    }
+  }
+]

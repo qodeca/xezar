@@ -10,8 +10,7 @@ const ORDER: readonly ProviderId[] = PROVIDER_IDS;
 const LABEL: Record<ProviderId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
+  qwen: 'Qwen Code',
 };
 
 export function providersRequiredByWorkflow(

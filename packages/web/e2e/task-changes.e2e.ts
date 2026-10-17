@@ -164,7 +164,7 @@ describe('the Changes tab against a live dry run', () => {
 
   it('the toolbar comes from the policy: Push, Create PR, Commit, and kebab', () => {
     // Push's enablement rides the /api/v1/health answer (repo.remote), and health probes the
-    // real codex/opencode/gh CLIs — slow. Wait for the policy to settle rather than sample.
+    // real codex/qwen/gh CLIs — slow. Wait for the policy to settle rather than sample.
     browser.waitForFunction(
       `document.querySelector('[data-slot="git-toolbar"] [data-action="push"]')?.disabled === false`,
     )

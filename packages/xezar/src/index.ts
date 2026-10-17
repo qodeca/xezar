@@ -90,6 +90,7 @@ import {
 import { createProjectStateFiles } from './workspace/config.ts';
 import { npxCommand, readOwnName } from './own-package.ts';
 import { hasLine } from './text-lines.ts';
+import { bootLegacyBackendFiles, legacyBackendMessage, scanLegacyBackends } from './legacy-backends.ts';
 import {
   accountImportLines,
   askInTerminal,
@@ -126,7 +127,7 @@ Usage:
                             as they are, into a file the project may commit
   xezar providers connect <provider> [--account <id>]
                             open a terminal that signs an agent tool (claude,
-                            codex, opencode or pi) in — the built-in login, or
+                            codex or qwen) in — the built-in login, or
                             the named account. Only on the machine that runs
                             xezar: hosted mode refuses it
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
@@ -217,8 +218,8 @@ Options:
   -h, --help                  show this help
   -v, --version               print the version and exit
 
-Zero config: uses the agent CLI you are already logged in to (Claude Code, Codex,
-OpenCode or pi), and \`gh\` only for GitHub features in a GitHub project.
+Zero config: uses the agent CLI you are already logged in to (Claude Code, Codex
+or Qwen Code), and \`gh\` only for GitHub features in a GitHub project.
 Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
 (default qodeca/xezar-skills; override via .xezar/config.json);
 workflows in .xezar/workflows/.`;
@@ -518,6 +519,21 @@ async function main(): Promise<void> {
     console.error(`error  ${err.message}`);
     process.exitCode = 1;
     return;
+  }
+  // #1046: refuse to start while a saved setting or task record still names a removed agent (pi,
+  // OpenCode). Read-only, before this launch writes anything; the message names each file and
+  // field. The one stated exception to "never fail the boot" (AGENTS.md § Zero config). Every
+  // command that can save settings or records is held, not only `serve` and `run`: `projects`,
+  // `accounts`, `providers` and `init` rewrite files through loaders that silently drop the
+  // removed id (#1067 review). `mcp` and `lease` save neither, and `mcp` talks to a cockpit that
+  // has already refused.
+  if (command !== 'mcp' && command !== 'lease') {
+    const legacy = scanLegacyBackends(bootLegacyBackendFiles(stateLayout, repoRoot));
+    if (legacy.length > 0) {
+      console.error(legacyBackendMessage(legacy));
+      process.exitCode = 1;
+      return;
+    }
   }
   // The one boot line naming the mode and the state folder (FR-9.1). Not for
   // `mcp`: that command's stdout carries JSON-RPC frames for the agent, and a

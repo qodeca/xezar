@@ -22,22 +22,22 @@
 /** The backend that produced a session — mirrors `RunnerId` in
  *  `agent-runner.ts` (kept structurally identical; a type-level test
  *  guards against drift so this module stays dependency-free). */
-export type UiBackend = 'claude' | 'codex' | 'opencode' | 'pi';
+export type UiBackend = 'claude' | 'codex' | 'qwen';
 
 /**
  * Tool lifecycle status (ACP: pending/in_progress/completed/failed).
- * `running` ≡ ACP `in_progress` (opencode's word — reads better in code);
+ * `running` ≡ ACP `in_progress` (reads better in code);
  * `declined` covers codex approval declines and claude `permission_denials`.
  *
  * Per backend: claude has no pending phase (`tool_use` arrives already
  * running); codex maps `inProgress→running`, `completed/failed/declined`
- * verbatim; opencode maps `pending/running` verbatim and `error→failed`.
+ * verbatim.
  */
 export type ToolStatus = 'pending' | 'running' | 'completed' | 'failed' | 'declined';
 
 /**
  * Icon/verb hint for a tool item — a superset of ACP's ToolKind.
- * `task` = subagent spawn (claude Task / opencode subtask / codex review).
+ * `task` = subagent spawn (claude Task / codex review).
  */
 export type ToolKind =
   | 'read'
@@ -57,20 +57,17 @@ export type ToolKind =
  *
  * Per backend: claude `result` subtype success→`end_turn`,
  * error_max_turns→`max_tokens`, error_during_execution→`error`; codex
- * turn/completed→`end_turn`, turn/failed→`error`, interrupt→`cancelled`;
- * opencode `session.idle`→`end_turn` (or `error` when a session.error
- * preceded it).
+ * turn/completed→`end_turn`, turn/failed→`error`, interrupt→`cancelled`.
  */
 export type StopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'cancelled' | 'timeout' | 'error';
 
 /**
  * Status of one plan/todo entry. claude TodoWrite/TaskUpdate use the first
  * three words verbatim; codex `turn/plan/updated` sends camelCase
- * (`inProgress`) and is normalized here; opencode `todowrite` adds
- * `cancelled` ("no longer needed") — its status field is a free-form string
- * whose documented vocabulary is pending|in_progress|completed|cancelled.
+ * (`inProgress`) and is normalized here; Qwen Code's `todo_write` adds
+ * `cancelled` ("no longer needed").
  *
- * `cancelled` is opencode-only today. It is a first-class status rather than a
+ * `cancelled` is a first-class status rather than a
  * dropped row: an abandoned todo must stay visible (struck through) instead of
  * silently vanishing from the dock mid-run.
  */
@@ -91,8 +88,7 @@ export interface PlanEntry {
  * concern, not a wire concern).
  *
  * Per backend: claude `result.usage` (+ `total_cost_usd` as `costUsd` on the
- * carrying event); codex `thread/tokenUsage/updated` (no USD); opencode
- * `message.updated` info.tokens/cost and `step-finish` parts.
+ * carrying event); codex `thread/tokenUsage/updated` (no USD).
  */
 export interface TokenUsage {
   input: number;
@@ -109,7 +105,7 @@ export interface TokenUsage {
 /**
  * One file change carried by an edit-tool item.
  * claude `Edit`/`Write` input → `oldText`/`newText`; codex
- * `fileChange.changes[]` → `unified`; opencode `patch` parts → `unified`.
+ * `fileChange.changes[]` → `unified`.
  * `oldText: null` means the file is newly created.
  */
 export interface FileDiff {
@@ -142,7 +138,7 @@ export interface PermissionOption {
  * A chat message.
  * claude: `assistant` `text` blocks (whole-block, or true deltas via
  * `--include-partial-messages`); codex: `agentMessage` items (`phase` from
- * the item's own phase field); opencode: text parts of a message.
+ * the item's own phase field).
  */
 export interface UiMessageItem {
   kind: 'message';
@@ -155,8 +151,7 @@ export interface UiMessageItem {
 
 /**
  * Extended thinking / reasoning summary.
- * claude: `thinking` blocks; codex: `reasoning` items (+ textDelta);
- * opencode: `reasoning` parts.
+ * claude: `thinking` blocks; codex: `reasoning` items (+ textDelta).
  */
 export interface UiReasoningItem {
   kind: 'reasoning';
@@ -170,11 +165,10 @@ export interface UiReasoningItem {
  * claude: `tool_use` (started, status `running`) + `tool_result`
  * (completed/failed; `permission_denials` → `declined`); codex: typed items
  * (`commandExecution`→execute with `exitCode`, `fileChange`→edit with
- * `diffs`, `mcpToolCall`→other, `webSearch`→fetch); opencode: tool parts
- * (state pending/running/completed/error, `patch` parts → `diffs`).
+ * `diffs`, `mcpToolCall`→other, `webSearch`→fetch).
  *
  * `parentItemId` nests subagent work under its spawning task item —
- * claude `parent_tool_use_id`, opencode `subtask` parts, codex review items.
+ * claude `parent_tool_use_id`, codex review items.
  */
 export interface UiToolItem {
   kind: 'tool';
@@ -206,7 +200,7 @@ export type UiItem = UiMessageItem | UiReasoningItem | UiToolItem;
 /**
  * Session opened.
  * claude: `system/init` (model, tools, cwd); codex: `thread/started` or the
- * `thread/start` result; opencode: `POST /session` response.
+ * `thread/start` result.
  */
 export interface UiSessionStartedEvent {
   type: 'session.started';
@@ -233,8 +227,7 @@ export interface UiSessionErrorEvent {
 
 /**
  * A turn began.
- * claude: on each stdin user message; codex: `turn/started`;
- * opencode: on each prompt POST.
+ * claude: on each stdin user message; codex: `turn/started`.
  */
 export interface UiTurnStartedEvent {
   type: 'turn.started';
@@ -244,7 +237,7 @@ export interface UiTurnStartedEvent {
 /**
  * A turn finished.
  * claude: `result` (usage + `total_cost_usd`); codex: `turn/completed` /
- * `turn/failed`; opencode: `session.idle`.
+ * `turn/failed`.
  */
 export interface UiTurnCompletedEvent {
   type: 'turn.completed';
@@ -264,8 +257,7 @@ export interface UiItemStartedEvent {
  * Streaming append to one field of a live item.
  * claude: partial-message text deltas; codex: `item/agentMessage/delta`
  * (`text`), `item/reasoning/textDelta` (`reasoning`),
- * `item/commandExecution/outputDelta` (`output` — live terminal); opencode:
- * text/reasoning part cursor deltas, running-state metadata for `output`.
+ * `item/commandExecution/outputDelta` (`output` — live terminal).
  * claude has no live command output — the tool card fills on completion
  * (per-capability degradation, never per-backend).
  */
@@ -276,8 +268,7 @@ export interface UiItemDeltaEvent {
   delta: string;
 }
 
-/** Status flips and streamed-content snapshots (codex `item/updated`,
- *  opencode part-state flips such as pending→running). */
+/** Status flips and streamed-content snapshots (codex `item/updated`). */
 export interface UiItemUpdatedEvent {
   type: 'item.updated';
   item: UiItem;
@@ -296,8 +287,7 @@ export interface UiItemCompletedEvent {
  * reports in each tool's RESULT — see `claude-ui-mapper`); codex: the
  * `turn/plan/updated` notification carrying the whole `update_plan` list (it is
  * a turn-level notification, NOT an item — the app-server `ThreadItem` union has
- * no todo variant); opencode: `todowrite` tool input — identical
- * full-replacement semantics across all three.
+ * no todo variant) — identical full-replacement semantics across them.
  */
 export interface UiPlanUpdatedEvent {
   type: 'plan.updated';
@@ -307,10 +297,7 @@ export interface UiPlanUpdatedEvent {
 /**
  * RESERVED — wired when auto-approve becomes optional. Types only for now.
  * claude: `control_request can_use_tool`; codex: the per-item
- * `requestApproval` JSON-RPC requests; opencode: `permission.asked` /
- * `permission.replied` (the runner already answers these — see
- * `opencode-server-runner.ts`'s `handlePermissionAsked` — and reports a
- * denial as a non-fatal `session.error`, not yet through this reserved pair).
+ * `requestApproval` JSON-RPC requests.
  */
 export interface UiPermissionRequestedEvent {
   type: 'permission.requested';
@@ -346,7 +333,7 @@ export interface UiAskQuestion {
 /**
  * The agent asked the user a structured multiple-choice question via a
  * `XEZ:ASK` marker (spec `2026-07-18-askuser-across-runners`). Emitted by the
- * RunManager off the assembled turn text — uniform across claude/codex/opencode
+ * RunManager off the assembled turn text — uniform across claude/codex/qwen
  * with no per-backend mapper work. The run parks `waiting`; the cockpit renders
  * clickable option chips. Resolution is client-side — the next user message for
  * the run closes the card — so there is no separate `ask.resolved` event.
@@ -360,8 +347,7 @@ export interface UiAskRequestedEvent {
 /**
  * Cumulative-for-session raw telemetry.
  * claude: `result.usage` + `total_cost_usd`; codex:
- * `thread/tokenUsage/updated` (cost stays absent); opencode:
- * `message.updated` tokens/cost + `step-finish` increments.
+ * `thread/tokenUsage/updated` (cost stays absent).
  */
 export interface UiUsageUpdatedEvent {
   type: 'usage.updated';

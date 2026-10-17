@@ -26,7 +26,7 @@ describe('the config API', () => {
   const savedXezHome = process.env.XEZ_HOME;
   const savedCodexHome = process.env.CODEX_HOME;
   const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-  const savedXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const savedQwenHome = process.env.QWEN_HOME;
   const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
   const savedAnthropicModel = process.env.ANTHROPIC_MODEL;
   let store: RunStore;
@@ -45,7 +45,7 @@ describe('the config API', () => {
     // pinned there becomes a `defaultModels.claude` the cases below never wrote.
     // On a host with the variable unset this is exactly today's value.
     process.env.CLAUDE_CONFIG_DIR = join(homeRoot, '.claude');
-    process.env.XDG_CONFIG_HOME = join(homeRoot, '.config');
+    process.env.QWEN_HOME = join(homeRoot, '.qwen');
     // The fifth pin, and the only one no directory can stand in for: `ANTHROPIC_MODEL` is read
     // BEFORE any settings file, so with it set the four `defaultModels` cases below answer the
     // model of whatever agent started `npm test` instead of the fixture's. `vitest.setup.ts`
@@ -72,8 +72,8 @@ describe('the config API', () => {
     else process.env.CODEX_HOME = savedCodexHome;
     if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = savedClaudeConfigDir;
-    if (savedXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
-    else process.env.XDG_CONFIG_HOME = savedXdgConfigHome;
+    if (savedQwenHome === undefined) delete process.env.QWEN_HOME;
+    else process.env.QWEN_HOME = savedQwenHome;
     if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
     else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
     if (savedAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL;
@@ -119,15 +119,15 @@ describe('the config API', () => {
   it("uses the coding agents' native model settings as the initial defaults", async () => {
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
     mkdirSync(join(homeRoot, '.codex'), { recursive: true });
-    mkdirSync(join(homeRoot, '.config', 'opencode'), { recursive: true });
+    mkdirSync(join(homeRoot, '.qwen'), { recursive: true });
     writeFileSync(join(homeRoot, '.claude', 'settings.json'), '{"model":"sonnet"}');
     writeFileSync(join(homeRoot, '.codex', 'config.toml'), 'model = "gpt-5-codex"\n');
-    writeFileSync(join(homeRoot, '.config', 'opencode', 'opencode.json'), '{"model":"openai/gpt-5.1"}');
+    writeFileSync(join(homeRoot, '.qwen', 'settings.json'), '{"model":{"name":"qwen3-coder"}}');
 
     expect((await getBody()).defaultModels).toEqual({
       claude: 'sonnet',
       codex: 'gpt-5-codex',
-      opencode: 'openai/gpt-5.1',
+      qwen: 'qwen3-coder',
     });
     expect((await getBody()).modelsLocked).toBe(false);
   });

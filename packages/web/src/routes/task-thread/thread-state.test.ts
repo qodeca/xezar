@@ -317,7 +317,7 @@ describe('reduceThread — mixed v1+v2 files (the dedup rule)', () => {
   })
 })
 
-describe('reduceThread — legacy per-delta transcripts (codex/opencode runs recorded before v1 text coalescing)', () => {
+describe('reduceThread — legacy per-delta transcripts (codex runs recorded before v1 text coalescing)', () => {
   // Verbatim shape from a real broken recording: the codex runner used to emit one v1 `text`
   // per streaming delta, so the file holds one line per token — and the exact-match dedup
   // never fired, rendering one paragraph per token. The v2 item carries the whole message.

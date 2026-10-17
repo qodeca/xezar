@@ -122,7 +122,7 @@ describe('workspace runs index API', () => {
     mkdirSync(join(otherRoot, '.xezar'), { recursive: true });
     writeFileSync(
       join(otherRoot, '.xezar/config.json'),
-      JSON.stringify({ defaultRunner: 'opencode' }),
+      JSON.stringify({ defaultRunner: 'qwen' }),
       'utf8',
     );
     await registerProject(repoRoot);
@@ -153,7 +153,7 @@ describe('workspace runs index API', () => {
         id: 'cold-local',
         title: 'Local',
         createdAt: '2026-07-15T10:30:00Z',
-        runner: 'opencode',
+        runner: 'qwen',
         model: 'local/qwen3-coder-30b',
       }),
     ]);
@@ -161,8 +161,8 @@ describe('workspace runs index API', () => {
     const body = await getIndex();
     const row = (id: string) => body.runs.find((entry) => entry.id === id)!;
 
-    // Each against its OWN project: 'opencode' for the configured one, 'claude' for the boot one.
-    expect(row('cold-queued').runner).toBe('opencode');
+    // Each against its OWN project: 'qwen' for the configured one, 'claude' for the boot one.
+    expect(row('cold-queued').runner).toBe('qwen');
     expect(row('cold-queued').runnerInherited).toBe(true);
     expect(Object.keys(row('cold-queued'))).not.toContain('model');
     expect(row(bootQueued.id).runner).toBe('claude');
@@ -182,7 +182,7 @@ describe('workspace runs index API', () => {
     mkdirSync(join(otherRoot, '.xezar'), { recursive: true });
     writeFileSync(
       join(otherRoot, '.xezar/config.json'),
-      JSON.stringify({ defaultRunner: 'opencode' }),
+      JSON.stringify({ defaultRunner: 'qwen' }),
       'utf8',
     );
     await registerProject(repoRoot);

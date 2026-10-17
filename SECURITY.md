@@ -1,6 +1,6 @@
 # Security policy
 
-**xezar runs AI coding agents with shell access on your machine, as your user, and that is a different risk from a chat window: an agent can run any command you could.** By default an agent step gets unrestricted `Bash`, Codex runs with `sandbox: danger-full-access` (unless `XEZ_CODEX_NETWORK=0`), and OpenCode auto-approves its permissions (`packages/xezar/src/workflows/types.ts` `DEFAULT_ALLOWED_TOOLS`, `packages/xezar/src/core/codex-app-server-runner.ts`, `packages/xezar/src/core/opencode-server-runner.ts`). The cockpit is an HTTP server with no login of its own.
+**xezar runs AI coding agents with shell access on your machine, as your user, and that is a different risk from a chat window: an agent can run any command you could.** By default an agent step gets unrestricted `Bash`, and Codex runs with `sandbox: danger-full-access` (unless `XEZ_CODEX_NETWORK=0`) (`packages/xezar/src/workflows/types.ts` `DEFAULT_ALLOWED_TOOLS`, `packages/xezar/src/core/codex-app-server-runner.ts`). The cockpit is an HTTP server with no login of its own.
 
 This page says where the line sits between "xezar doing what it says" and "a vulnerability", how to report the second kind privately, and what happens if nobody answers.
 
@@ -41,7 +41,7 @@ Please include:
 
 - the xezar version (`xezar --version`) and how you installed it;
 - your operating system;
-- which agent backend was involved: Claude Code, Codex, OpenCode or pi;
+- which agent backend was involved: Claude Code, Codex or Qwen Code;
 - whether `XEZ_DRY_RUN` was set;
 - whether the cockpit was local or hosted (`--bind-host`, `XEZ_REMOTE=1`);
 - a reproduction: the smallest steps, request or prompt that shows the problem.

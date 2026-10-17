@@ -154,7 +154,7 @@ describe('B1 geometry: primitives carry the absolute phone target floor', () => 
     // A guard against the floor being added to four files and forgotten in the fifth — and, since
     // B1-QA-1, against it being added on ONE AXIS and called done. The old sweep accepted any of
     // the three spellings anywhere in the file, so `tabs.tsx` passed on `min-h-tap` alone while a
-    // two-character tab label ("pi") rendered 30.88px wide at ultra. Which axes a primitive needs
+    // two-character tab label rendered 30.88px wide at ultra. Which axes a primitive needs
     // is a property of how its control is sized, so it is stated per file rather than guessed:
     //
     //  - `both`    the control is content-sized on BOTH axes, so a short label can shrink it.

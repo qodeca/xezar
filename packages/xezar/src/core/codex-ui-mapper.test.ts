@@ -549,7 +549,7 @@ describe('mapCodexNotification edge cases', () => {
       expect(ended.events).toEqual([{ type: 'turn.completed', turnId: 'turn_1', stopReason: 'end_turn' }]);
     });
 
-    // The same displacement rule the opencode subtask slot would need: never leak a row.
+    // The displacement rule: never leak a row.
     it('settles the previous span when a second entered frame displaces it', () => {
       const first = mapCodexNotification(
         { method: 'item/started', params: { item: { type: 'enteredReviewMode', id: 'rv_1' } } },

@@ -41,7 +41,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 /**
  * The per-backend system-prompt delivery mechanism (spec §protocol v2
- * mapping table): claude gets `--append-system-prompt`, codex/opencode get
+ * mapping table): claude gets `--append-system-prompt`, codex gets
  * the prompt prepended to the opening user message (`prependSystemPrompt`,
  * shared by both runners).
  */
@@ -658,7 +658,7 @@ describe('a signal xezar did not send', () => {
   }, 15_000);
 });
 
-describe('prependSystemPrompt (codex/opencode delivery)', () => {
+describe('prependSystemPrompt (codex delivery)', () => {
   it('prepends the prompt as a leading block of the first user message', () => {
     expect(prependSystemPrompt('Extra rules.', 'do it')).toBe('Extra rules.\n\n---\n\ndo it');
   });

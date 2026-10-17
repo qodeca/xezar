@@ -30,11 +30,11 @@ describe('provider action gate', () => {
         { id: 'a', prompt: 'a', runner: 'codex' },
         { id: 'check', command: 'npm test' },
         { id: 'b', prompt: 'b' },
-        { id: 'c', prompt: 'c', runner: 'opencode' },
+        { id: 'c', prompt: 'c', runner: 'qwen' },
       ],
     };
 
-    expect(providersRequiredByWorkflow(workflow, 'claude')).toEqual(['claude', 'codex', 'opencode']);
+    expect(providersRequiredByWorkflow(workflow, 'claude')).toEqual(['claude', 'codex', 'qwen']);
   });
 
   it('reports disabled before missing credentials', () => {
@@ -42,7 +42,7 @@ describe('provider action gate', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: false },
-        { provider: 'opencode', status: 'not-installed', enabled: true },
+        { provider: 'qwen', status: 'not-installed', enabled: true },
       ],
     })).toBe('Codex is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider codex, enabled true).');
   });
@@ -57,8 +57,8 @@ describe('provider action gate', () => {
   );
 
   it('reports unavailable credentials when the provider status row is missing', () => {
-    expect(unavailableProviderMessage(['opencode'], { providers: [] }))
-      .toBe('OpenCode credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect opencode` on the machine that runs xezar.');
+    expect(unavailableProviderMessage(['qwen'], { providers: [] }))
+      .toBe('Qwen Code credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect qwen` on the machine that runs xezar.');
   });
 
   it('uses an explicit override before the latest step backend', () => {
@@ -68,7 +68,7 @@ describe('provider action gate', () => {
         { id: 'first', name: 'First', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'claude' },
         { id: 'last', name: 'Last', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'codex' },
       ],
-    }), 'opencode')).toBe('opencode');
+    }), 'qwen')).toBe('qwen');
   });
 
   it('uses the run runner before any historical step backend for a continuation', () => {
@@ -82,7 +82,7 @@ describe('provider action gate', () => {
   });
 
   it('uses the run runner, then Claude, when no step backend exists', () => {
-    expect(providerForExistingRun(run({ runner: 'opencode' }))).toBe('opencode');
+    expect(providerForExistingRun(run({ runner: 'qwen' }))).toBe('qwen');
     expect(providerForExistingRun(run())).toBe('claude');
   });
 
@@ -99,10 +99,10 @@ describe('provider action gate', () => {
 
   it('falls back from an un-attributed active step to the run runner, historical backend, then Claude', () => {
     expect(providerForActiveRun(run({
-      runner: 'opencode',
+      runner: 'qwen',
       currentStepId: 'active',
       steps: [{ id: 'active', name: 'Active', kind: 'agent', status: 'running', iterations: 1, tokensUsed: 0 }],
-    }))).toBe('opencode');
+    }))).toBe('qwen');
     expect(providerForActiveRun(run({
       steps: [{ id: 'previous', name: 'Previous', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'codex' }],
     }))).toBe('codex');

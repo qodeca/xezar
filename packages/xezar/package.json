@@ -1,7 +1,7 @@
 {
   "name": "@qodeca/xezar",
-  "version": "0.20.4",
-  "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex, OpenCode or pi CLI you already use — zero config, zero database.",
+  "version": "0.30.0",
+  "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex or Qwen Code CLI you already use — zero config, zero database.",
   "author": "Qodeca",
   "license": "MIT",
   "type": "module",
@@ -39,7 +39,7 @@
     "test:unit": "node --import ../../scripts/test-local-state.mjs --import tsx --test test/unit/*.test.ts",
     "test:package": "node --import ../../scripts/test-local-state.mjs --import tsx --test test/e2e/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "postbuild": "node scripts/inline-contract.mjs && node scripts/bundle-codex-hook.mjs",
+    "postbuild": "node scripts/inline-contract.mjs && node scripts/bundle-codex-hook.mjs && node scripts/bundle-qwen-hook.mjs",
     "test:server-mode": "node test/e2e/server-mode-harness.mjs"
   },
   "dependencies": {
@@ -53,8 +53,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@qodeca/xezar-api-client": "^0.20.4",
-    "@qodeca/xezar-contract": "^0.20.4",
+    "@qodeca/xezar-api-client": "^0.30.0",
+    "@qodeca/xezar-contract": "^0.30.0",
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^22.12.0",

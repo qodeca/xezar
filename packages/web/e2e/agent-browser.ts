@@ -395,9 +395,25 @@ export class AgentBrowser {
     }
   }
 
-  /** operation: interact (`press`) — a key press against whatever currently has focus. */
+  /** operation: interact (`press`) — a key press against whatever currently has focus.
+   *
+   *  Escape is dispatched inside the page instead. Under Chrome for Testing 155, agent-browser's
+   *  `press Escape` turns the page `hidden` for the rest of the session: lazy images never load
+   *  and `content-visibility: auto` content drops out of the accessibility tree, so later checks
+   *  fail far from the cause. The cockpit has no native `<dialog>`, and every Escape handler it
+   *  has listens for `keydown`, so a dispatched event is the same press to the app. Any other key
+   *  still goes through the browser, and a press that hides the page fails here, loudly. */
   press(key: string): void {
-    this.run(['press', key])
+    if (key === 'Escape') {
+      this.evaluate(
+        `(() => { const t = document.activeElement ?? document.body; for (const type of ['keydown', 'keyup']) t.dispatchEvent(new KeyboardEvent(type, { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true, composed: true })); return true })()`,
+      )
+    } else {
+      this.run(['press', key])
+    }
+    if (this.evaluate('document.visibilityState') === 'hidden') {
+      throw new Error(`xezar e2e: press ${key} left the page hidden; every later check in this session would run against a page the browser no longer renders`)
+    }
   }
 
   /** operation: interact (`fill`) — set a field's value the way typing would (real input

@@ -235,17 +235,16 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     expect(modeLines).toHaveLength(1);
     expect(modeLines[0]).toContain(join(project, '.xezar'));
 
-    // AC-2: the four files, in the project. The fifth entry is
+    // AC-2: the three state files, in the project (no `config.json`, #1074). The fifth entry is
     // `workspace.json.bak` — the config snapshot every successful merge-write
     // has always refreshed beside `config.json`, now beside the file it
     // protects. It is derived state, not a fifth state file: the first-run
-    // listing is exactly four (see `createProjectStateFiles` in
+    // listing is exactly three (see `createProjectStateFiles` in
     // `state-layout.test.ts`), and the boot's migrations have just written the
     // config. The per-machine stamp is under `.local/xezar`, deliberately NOT
     // here — this directory is the committed one.
     expect(readdirSync(join(project, '.xezar')).sort()).toEqual([
       'agent-accounts.json',
-      'config.json',
       'workspace-ui.json',
       'workspace.json',
       'workspace.json.bak',

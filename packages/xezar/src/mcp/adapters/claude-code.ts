@@ -39,7 +39,7 @@ import { omittedRoutineLine } from '../event-significance.ts';
  * Claude Code never routes a tool-approval prompt to xezar and no message can answer one (#73 "never
  * impersonate approval").
  *
- * NO NODE, NO PROCESS, NO ENVIRONMENT. Like the pi and OpenCode adapters, this file imports no
+ * NO NODE, NO PROCESS, NO ENVIRONMENT. Like the other adapters, this file imports no
  * `node:*` module, spawns nothing and reads no environment variable; a test asserts it.
  */
 

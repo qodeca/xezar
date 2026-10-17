@@ -149,7 +149,7 @@ describe('collectSubagents — Q6 visibility', () => {
     expect(subagentCounts(agents)).toEqual({ done: 0, total: 3 })
   })
 
-  // A stranded agent (overlapping opencode subtasks can leave one `running` forever) must not
+  // A stranded agent (a backend that never settles an overlapping sub-agent can leave one `running` forever) must not
   // follow the user around for the rest of the session, pinning the dock open and hijacking
   // the collapsed head with its stale activity.
   // Documented re-scope, pinned so it stays a decision: the odometer is monotonic WITHIN a

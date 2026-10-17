@@ -276,13 +276,13 @@ describe('TasksOverview — the table', () => {
           run({ id: 'chosen', runner: 'codex', model: 'gpt-5-codex' }),
           // A model on somebody's own hardware. Nothing may map this through a catalog or invent
           // a friendly name for it — the run used this string and the table says this string.
-          run({ id: 'local', runner: 'opencode', model: 'local/qwen3-coder-30b' }),
+          run({ id: 'local', runner: 'qwen', model: 'local/qwen3-coder-30b' }),
         ],
       })
 
       expect(toolCell('chosen')?.textContent).toBe('Codex')
       expect(modelCell('chosen')?.textContent).toBe('gpt-5-codex')
-      expect(toolCell('local')?.textContent).toBe('OpenCode')
+      expect(toolCell('local')?.textContent).toBe('Qwen Code')
       expect(modelCell('local')?.textContent).toBe('local/qwen3-coder-30b')
       // A value the run itself recorded is not muted — somebody chose it.
       expect(toolCell('chosen')?.getAttribute('data-inherited')).toBeNull()
@@ -292,10 +292,10 @@ describe('TasksOverview — the table', () => {
     })
 
     it("resolves an absent runner to the project's default and marks it inherited", () => {
-      renderOverview({ defaultRunner: 'opencode', runs: [run({ id: 'inherited' })] })
+      renderOverview({ defaultRunner: 'qwen', runs: [run({ id: 'inherited' })] })
 
       // Resolved, so the cell is useful — and muted, so a scan says nobody picked it.
-      expect(toolCell('inherited')?.textContent).toBe('OpenCode')
+      expect(toolCell('inherited')?.textContent).toBe('Qwen Code')
       expect(toolCell('inherited')?.getAttribute('data-inherited')).toBe('true')
       expect(toolCell('inherited')?.className).toContain('text-soft-foreground')
     })
@@ -339,7 +339,7 @@ describe('TasksOverview — the table', () => {
 
     it('puts both on the phone card too — the table is hidden below md', () => {
       renderOverview({
-        defaultRunner: 'opencode',
+        defaultRunner: 'qwen',
         runs: [
           run({ id: 'phone-chosen', runner: 'codex', model: 'gpt-5-codex' }),
           run({
@@ -366,7 +366,7 @@ describe('TasksOverview — the table', () => {
       expect(mixed?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Claude Code +1')
       expect(mixed?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('auto')
       const bare = card('phone-bare')
-      expect(bare?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('OpenCode')
+      expect(bare?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Qwen Code')
       expect(bare?.querySelector('[data-slot="task-card-tool"]')?.getAttribute('data-inherited')).toBe('true')
       expect(bare?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('auto')
       expect(bare?.querySelector('[data-slot="task-card-model"]')?.getAttribute('data-inherited')).toBe('true')
@@ -1216,7 +1216,7 @@ describe('TasksOverviewRoute — wired to the app', () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input)
       if (url === '/api/v1/runs') return json([run({ id: 'inherits', runner: undefined })])
-      if (url === '/api/v1/config') return json({ defaultRunner: 'opencode', defaultModels: {} })
+      if (url === '/api/v1/config') return json({ defaultRunner: 'qwen', defaultModels: {} })
       if (url === '/api/v1/health') return json({ defaultRunner: 'codex', capabilities: {} })
       return new Response('[]', { status: 200 })
     })
@@ -1232,7 +1232,7 @@ describe('TasksOverviewRoute — wired to the app', () => {
 
     await waitFor(() => {
       const cell = tableRow('inherits')?.querySelector('[data-slot="task-tool"]')
-      expect(cell?.textContent).toBe('OpenCode')
+      expect(cell?.textContent).toBe('Qwen Code')
     })
     expect(tableRow('inherits')?.querySelector('[data-slot="task-tool"]')?.getAttribute('data-inherited')).toBe(
       'true',

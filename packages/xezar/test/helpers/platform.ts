@@ -4,6 +4,7 @@
  * `withPlatform` is the one tool of another kind: it makes a test run a Windows branch on every OS.
  * Pinned by `test/unit/test-platform-helpers.test.ts`.
  */
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, type RmOptions } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -52,6 +53,12 @@ export function plainMsysEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Proce
 
 export function shortTmpRoot(): string {
   return onWindows ? tmpdir() : '/tmp';
+}
+
+/** A local socket a test server listens on: `<dir>/<name>` on POSIX, a unique named pipe on Windows,
+ *  where `net` cannot listen on a file path. */
+export function localSocketPath(dir: string, name: string): string {
+  return onWindows ? `\\\\.\\pipe\\xezar-test-${name}-${randomBytes(8).toString('hex')}` : join(dir, name);
 }
 
 /** Directory link. POSIX: symlink (type ignored). Windows: junction – no privilege needed; a

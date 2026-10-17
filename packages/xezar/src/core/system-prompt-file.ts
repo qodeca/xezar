@@ -1,14 +1,13 @@
 /**
  * The system prompt as a file, not an argument (#1008).
  *
- * Claude Code and pi take the system prompt on their command line. It carries the role skill, and
+ * Claude Code takes the system prompt on its command line. It carries the role skill, and
  * a long one pushed the whole line past the Windows limit (32,767 characters for `CreateProcess`):
- * the step died at spawn with `ENAMETOOLONG` before the agent started. Both CLIs read the same text
- * from a file – Claude Code through `--append-system-prompt-file`, pi through `--append-system-prompt`
- * given an existing path – so the length of the prompt no longer reaches the command line.
+ * the step died at spawn with `ENAMETOOLONG` before the agent started. The CLI reads the same text
+ * from a file through `--append-system-prompt-file`, so the length of the prompt no longer reaches
+ * the command line.
  *
- * Same placement as the pi MCP overlay (`writeMcpOverlay`): a private `mkdtemp` directory under the
- * OS temp dir, mode 0600, removed when the child exits. Never into the project.
+ * Placement: a private `mkdtemp` directory under the OS temp dir, mode 0600, removed when the child exits. Never into the project.
  *
  * Returns null when the file cannot be written; the caller then passes the text on argv as before,
  * which still works for every prompt that fits (§ Zero config: degrade, never fail).

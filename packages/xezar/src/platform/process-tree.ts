@@ -29,10 +29,14 @@ import {
 } from './msys-process-tree.ts';
 import {
   defaultTableRunner,
+  descendantPids,
   descendantTargets,
+  readProcessTable,
+  signalPid,
   STOP_CLOCK_SLACK_MS,
   type IdentifiedPid,
   type ProcessTable,
+  type SignalOutcome,
 } from './process-table.ts';
 import { readTableThenKill } from './table-then-kill.ts';
 
@@ -169,6 +173,48 @@ export function stopChildTree(
   const stopping = stopDescendantsOf([stoppedRoot(child.pid, entry, stoppedAt)], deps);
   descendantStops.set(child, stopping);
   return stopping;
+}
+
+/** Test seams for `stopChildWithDescendants`. Production passes none. */
+export interface DescendantStopDeps extends TreeStopDeps {
+  readTable: () => Promise<ProcessTable | null>;
+  signal: (pid: number, signal: NodeJS.Signals) => SignalOutcome;
+}
+
+/** How long the one process-table read of a launcher stop may take. */
+export const LAUNCHER_TABLE_TIMEOUT_MS = 2_000;
+
+/**
+ * Stop `child` and every process it started, for a child that is only a launcher: it starts the
+ * real program as its own child and waits for it (Qwen Code's `qwen`, #1042). Signalling the
+ * launcher alone ends the launcher and leaves the program – and the commands it runs – going.
+ *
+ * POSIX: one bounded process-table read, `signal` to each descendant found through parent pids
+ * while the child is still alive (so no parent pid can yet name an unrelated process), then
+ * `child.kill(signal)` as `stopChildTree` sends it. A table that cannot be read leaves only the
+ * child stopped, which is what `stopChildTree` does. Nothing once the child's exit was seen.
+ * win32: `stopChildTree`, which already stops the descendants. Resolves, never rejects.
+ */
+export async function stopChildWithDescendants(
+  child: StoppableChild,
+  signal: StopSignal,
+  deps: Partial<DescendantStopDeps> = {},
+): Promise<void> {
+  if ((deps.platform ?? process.platform) === 'win32') return stopChildTree(child, signal, deps);
+  if (hasExited(child)) return;
+  const pid = child.pid;
+  if (pid !== undefined) {
+    try {
+      const table = await (deps.readTable ?? (() => readProcessTable({ timeoutMs: LAUNCHER_TABLE_TIMEOUT_MS })))();
+      if (table && !hasExited(child)) {
+        const send = deps.signal ?? signalPid;
+        for (const target of descendantPids(table.rows, { pid })) send(target, signal as NodeJS.Signals);
+      }
+    } catch {
+      // only the child is stopped – what stopChildTree does
+    }
+  }
+  if (!hasExited(child)) await stopChildTree(child, signal, deps);
 }
 
 /**

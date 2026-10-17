@@ -4,8 +4,6 @@ import type { McpJournalRow } from '@qodeca/xezar-contract';
 import { isLeaderSignificant } from './event-significance.ts';
 import { channelMeta, renderChannelContent } from './adapters/claude-code.ts';
 import { renderCodexEventMessage } from './adapters/codex.ts';
-import { renderDispatch as renderOpenCodeDispatch } from './adapters/opencode.ts';
-import { renderPiDispatch } from './adapters/pi.ts';
 import type { EventDispatch } from './event-controller.ts';
 
 const row = (over: Partial<McpJournalRow>): McpJournalRow => ({
@@ -44,8 +42,6 @@ describe('T-18 — one conservative delivery-significance rule', () => {
     const rendered = [
       renderChannelContent(dispatch, dispatch.events, 'lead'),
       renderCodexEventMessage(dispatch),
-      renderOpenCodeDispatch(dispatch, dispatch.events),
-      renderPiDispatch(dispatch, dispatch.events, 'lead', '<marker>'),
     ];
     for (const text of rendered) {
       expect(text).toContain('alpha:9');

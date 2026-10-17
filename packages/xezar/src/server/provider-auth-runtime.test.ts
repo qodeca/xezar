@@ -18,16 +18,11 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
   codex: 'Logged in using ChatGPT',
-  opencode: [
-    '┌  Credentials ~/.local/share/opencode/auth.json',
-    '●  Anthropic oauth',
-    '└  1 credential',
-  ].join('\n'),
-  pi: 'provider  model  context  max-out  thinking  images\nanthropic  claude  200K  64K  yes  yes',
+  qwen: '0.25.2',
 };
 
 const providerForExecutable = (executable: string): ProviderId => {
-  if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi') return executable;
+  if (executable === 'claude' || executable === 'codex' || executable === 'qwen') return executable;
   throw new Error(`unexpected executable: ${executable}`);
 };
 
@@ -51,6 +46,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
       platform: 'linux',
       runCommand,
       createAuthFailureId: () => 'auth-incident-1',
+      configured: () => 'connected',
     });
   });
 
@@ -107,7 +103,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
       title: 'fallback',
       workflow: 'quick-task',
       task: 'work',
-      runner: 'opencode',
+      runner: 'qwen',
       steps: [{ id: 'work', name: 'Work', kind: 'agent' }],
     });
 
@@ -118,7 +114,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
     });
 
     expect(onInvalidated).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'opencode',
+      provider: 'qwen',
       status: 'disconnected',
     }));
   });

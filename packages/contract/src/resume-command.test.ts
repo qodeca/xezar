@@ -5,8 +5,7 @@ import { resumeCommand, type Runner } from './index.ts';
 const EXPECTED_COMMAND: Record<Runner, string> = {
   claude: 'claude --resume session-123',
   codex: 'codex resume session-123',
-  opencode: 'opencode --session session-123',
-  pi: 'pi --session session-123',
+  qwen: 'qwen --resume session-123',
 };
 
 describe('resumeCommand', () => {
@@ -22,7 +21,7 @@ describe('resumeCommand', () => {
 
   it('fails closed for unsafe or option-like session ids', () => {
     expect(resumeCommand('claude', '')).toBeNull();
-    expect(resumeCommand('pi', '--help')).toBeNull();
+    expect(resumeCommand('qwen', '--help')).toBeNull();
     expect(resumeCommand('codex', 'a && calc.exe')).toBeNull();
   });
 });

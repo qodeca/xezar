@@ -11,9 +11,9 @@ import {
 
 type AvailableStatus = Extract<McpLeaderSelfStatus, { available: true }>;
 
-const attached = (client: 'claude-code' | 'codex' | 'pi'): AvailableStatus => ({
+const attached = (client: 'claude-code' | 'codex' | 'qwen'): AvailableStatus => ({
   available: true,
-  owner: { client: client === 'claude-code' ? 'claude-code' : client === 'codex' ? 'codex' : null },
+  owner: { client },
   leader: { client, state: 'attached' },
   delivery: { state: 'idle', deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0, latestSeq: 0 },
   blocker: null,
@@ -44,17 +44,6 @@ describe('leader setup snippets and client-owned prerequisites (#464 P3, ONB-13)
       mcp_servers: { xezar: { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'] } },
     });
     expect(guide.prerequisites.join(' ')).toMatch(/Trust the project.*same Codex home/s);
-  });
-
-  it('prepares pi project config and keeps adapter, extension and ownership separate', () => {
-    // RED against: dropping `keep-alive`, the adapter prerequisite or the ownership warning.
-    const guide = leaderSetupGuide('pi');
-    expect(guide.destination).toBe('.pi/mcp.json');
-    expect(JSON.parse(guide.snippet)).toMatchObject({
-      settings: { directTools: true },
-      mcpServers: { xezar: { lifecycle: 'keep-alive' } },
-    });
-    expect(guide.prerequisites.join(' ')).toMatch(/MCP adapter.*leader extension.*own the project connection/s);
   });
 
   it('ships all four states and an honest result checklist in the offline fallback', () => {
@@ -102,9 +91,9 @@ describe('leader setup verification is current-session evidence (#464 P3, ONB-04
       'Leader setup: connected — this real tool call reached the project, but attachment is pending: Local attachment is unavailable in hosted mode.',
     );
     const blocked = {
-      ...attached('pi'),
-      blocker: { code: 'pi-not-addressable', message: 'The pi adapter is connected without the leader extension.', fix: 'Load the extension.' },
+      ...attached('qwen'),
+      blocker: { code: 'inbox-unavailable', message: 'The Qwen Code session gave its xezar bridge no inbox.', fix: 'Turn on cross-session messaging.' },
     };
-    expect(leaderSetupVerificationLine(blocked)).toMatch(/Leader setup: attached.*Current blocker:.*Load the extension/);
+    expect(leaderSetupVerificationLine(blocked)).toMatch(/Leader setup: attached.*Current blocker:.*Turn on cross-session messaging/);
   });
 });

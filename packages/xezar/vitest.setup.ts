@@ -55,10 +55,16 @@ process.env.GH_TELEMETRY = '0'
 // `src/vitest-env-isolation.test.ts` pins that this deletion stays.
 delete process.env.ANTHROPIC_MODEL
 
+// Qwen Code keeps its models, sessions and `.env` in `QWEN_HOME` (default `~/.qwen`), and xezar
+// READS that home for provider status, model discovery and every Qwen run (#1044). Unpinned, a case
+// would answer from the developer's own Qwen setup and pass or fail with it. Every worker gets an
+// empty sandbox home instead; a case that needs a configured one writes its own and pins it.
+process.env.QWEN_HOME = mkdtempSync(join(realpathSync(tmpdir()), 'xez-vitest-qwen-home-'))
+
 // Windows: a bare program name finds only `.exe` and `.com` files here – what Node itself found
-// before #963. The product also finds npm's `.cmd` shims, correctly, because that is how codex,
-// opencode and pi install; but then any case that reaches a default agent name (a model list
-// starting `codex app-server`, backend detection running `pi --version`) started the developer's
+// before #963. The product also finds npm's `.cmd` shims, correctly, because that is how codex
+// and qwen install; but then any case that reaches a default agent name (a model list
+// starting `codex app-server`, backend detection running `qwen --version`) started the developer's
 // REAL CLI, in the case's own folder, where it outlived the case and Windows refused to delete
 // the folder (EPERM). Without `.cmd` and `.bat` an npm-installed CLI is not found and the start
 // fails with ENOENT, as on a machine without it. A CLI installed as an `.exe` (a native Claude Code

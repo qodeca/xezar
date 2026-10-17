@@ -663,7 +663,7 @@ describe('countImportableGlobalAccounts — a number, read-only, never an error'
     accounts: [
       { id: 'work', provider: 'claude', configDir: '/Users/someone/.claude-work', label: 'someone@example.com' },
       { id: 'team', provider: 'codex', configDir: '/Users/someone/.codex-team', label: 'Team' },
-      { id: 'side', provider: 'pi', configDir: '/Users/someone/.pi/side', label: 'Side project' },
+      { id: 'side', provider: 'qwen', configDir: '/Users/someone/.qwen-side', label: 'Side project' },
     ],
     defaults: { claude: 'work' },
   };
@@ -736,7 +736,7 @@ describe('countImportableGlobalAccounts — a number, read-only, never an error'
   it('serialises a count and a state, and no name, id, provider or path of the global file', () => {
     const payload = JSON.stringify(globalImportSummary(layout, env));
     expect(JSON.parse(payload)).toEqual({ state: 'unknown', importable: 3 });
-    for (const leak of ['someone', '@', 'work', 'team', 'side', 'claude', 'codex', 'pi', home, '/Users']) {
+    for (const leak of ['someone', '@', 'work', 'team', 'side', 'claude', 'codex', 'qwen', home, '/Users']) {
       expect(payload, leak).not.toContain(leak);
     }
   });

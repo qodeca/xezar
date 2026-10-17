@@ -1840,16 +1840,16 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
     expect(JSON.parse(onDisk)[0].runner).toBe('claude');
   });
 
-  it('persists and reloads a `pi` run, index and step alike (#387)', () => {
+  it('persists and reloads a `qwen` run, index and step alike (#387)', () => {
     // `storedRunnerSchema` derives from `RUNNER_IDS` rather than re-listing the ids, so a new
-    // runner is readable the moment it is registered. Without this, a completed pi run would
+    // runner is readable the moment it is registered. Without this, a completed qwen run would
     // fail the whole-array parse on the next boot and take every other run down with it.
     writeFileSync(
       join(dataDir, 'runs.json'),
       JSON.stringify([
         {
           ...LEGACY_RUN,
-          runner: 'pi',
+          runner: 'qwen',
           steps: [
             {
               id: 'task',
@@ -1858,8 +1858,8 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
               status: 'done',
               iterations: 1,
               tokensUsed: 0,
-              sessionId: 'pi-sess-1',
-              backend: 'pi',
+              sessionId: 'qwen-sess-1',
+              backend: 'qwen',
             },
           ],
         },
@@ -1868,8 +1868,8 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
     );
 
     const run = RunStore.open(dataDir).getRun('legacy-1');
-    expect(run?.runner).toBe('pi');
-    expect(run?.steps[0]?.backend).toBe('pi');
+    expect(run?.runner).toBe('qwen');
+    expect(run?.steps[0]?.backend).toBe('qwen');
   });
 
   it('still rejects a runner id that is not a legacy spelling of a real backend', () => {

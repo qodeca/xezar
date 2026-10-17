@@ -88,7 +88,7 @@ describe('guide 14 — remote access', () => {
       ),
     ).toBe(true)
     // The per-client tabs and files are still readable in hosted mode — only editing is refused.
-    for (const tab of ['Claude', 'Codex', 'OpenCode', 'pi']) {
+    for (const tab of ['Claude', 'Codex', 'Qwen Code']) {
       expect(browser.hasRole('tab', tab)).toBe(true)
     }
   })

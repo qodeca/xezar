@@ -118,7 +118,7 @@ describe('model identity wiring (dry run)', () => {
   }, 30_000);
 
   it('a provider-qualified model is normalised to the bare wire form for claude', async () => {
-    // `anthropic/claude-opus-4-1` is deliberately NOT one of opencode's known
+    // `anthropic/claude-opus-4-1` is deliberately NOT one of the known
     // presets, so `continueRun`'s foreign-pin guard leaves it on the record and
     // the continuation below exercises the normaliser rather than a cleared pin.
     const id = await runToEnd({ task: 'do the thing', model: 'anthropic/claude-opus-4-1' });

@@ -97,9 +97,9 @@ describe('AgentConfigSection', () => {
     renderSection()
     await waitFor(() => expect(agentTab('claude')).toBeTruthy())
     expect(agentTab('claude').getAttribute('data-selected')).toBe('true')
-    // health only reports claude available — the other two carry the badge
+    // health only reports claude available — the others carry the badge
     await waitFor(() => expect(agentTab('codex').textContent).toContain('not installed'))
-    expect(agentTab('opencode').textContent).toContain('not installed')
+    expect(agentTab('qwen').textContent).toContain('not installed')
     expect(agentTab('claude').textContent).not.toContain('not installed')
   })
 
@@ -131,14 +131,14 @@ describe('AgentConfigSection', () => {
   it('a file read by several agents appears under every one of them (runners[], not runners[0])', async () => {
     serve({
       editable: true,
-      files: [fileOf({ id: 'project.agents', label: 'AGENTS.md', runners: ['codex', 'opencode'], kind: 'memory', format: 'markdown' })],
+      files: [fileOf({ id: 'project.agents', label: 'AGENTS.md', runners: ['codex', 'qwen'], kind: 'memory', format: 'markdown' })],
       userMcp: null,
     })
     renderSection()
     await waitFor(() => expect(agentTab('codex')).toBeTruthy())
     fireEvent.click(agentTab('codex'))
     await waitFor(() => expect(screen.getByText('AGENTS.md')).toBeTruthy())
-    fireEvent.click(agentTab('opencode'))
+    fireEvent.click(agentTab('qwen'))
     await waitFor(() => expect(screen.getByText('AGENTS.md')).toBeTruthy())
   })
 
@@ -165,7 +165,7 @@ describe('AgentConfigSection', () => {
       editable: true,
       files: [
         fileOf({ id: 'claude.project.settings', label: '.claude/settings.json' }),
-        fileOf({ id: 'opencode.project.config', label: 'opencode.json', runners: ['opencode'], holdsMcp: true }),
+        fileOf({ id: 'qwen.project.settings', label: '.qwen/settings.json', runners: ['qwen'], format: 'jsonc', holdsMcp: true }),
       ],
       userMcp: null,
     })
@@ -173,7 +173,7 @@ describe('AgentConfigSection', () => {
     await waitFor(() => expect(screen.getByText('.claude/settings.json')).toBeTruthy())
     fireEvent.click(screen.getByText('.claude/settings.json'))
     await waitFor(() => expect(screen.getByLabelText('.claude/settings.json contents')).toBeTruthy())
-    fireEvent.click(agentTab('opencode'))
+    fireEvent.click(agentTab('qwen'))
     await waitFor(() => expect(screen.queryByLabelText('.claude/settings.json contents')).toBeNull())
     expect(screen.getByText('Select a config file to view or edit it.')).toBeTruthy()
   })

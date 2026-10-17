@@ -27,7 +27,7 @@ describe('RunManager agent-profile resolution', () => {
   type Seam = {
     agentEnvForStep(
       runId: string,
-      backend: 'claude' | 'codex' | 'opencode',
+      backend: 'claude' | 'codex' | 'qwen',
       options?: { generateFollowups?: boolean; recordedProfileId?: string },
     ): Promise<{ env: Record<string, string>; profileId: string }>;
     scheduleAutoResumeIfLimited(runId: string): void;

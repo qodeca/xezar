@@ -11,8 +11,8 @@
  *  1. Claude Code's machine-readable envelope, `Claude AI usage limit reached|<epoch>` — the CLI
  *     puts it in an `is_error` result frame, which reaches xezar verbatim as the run's `error`.
  *     Exact, no locale, no parsing of prose. This is the one that matters in practice.
- *  2. An explicit reset instant in the prose (`try again at 2026-08-03T18:00:00Z`) — how Codex and
- *     OpenCode phrase the same thing when they carry a timestamp at all. Codex's own usage-limit
+ *  2. An explicit reset instant in the prose (`try again at 2026-08-03T18:00:00Z`) — how Codex can
+ *     phrase the same thing when it carries a timestamp at all. Codex's own usage-limit
  *     text names a full local date instead (`try again at Sep 20th, 2026 4:02 PM`).
  *  3. A clock-only reset in prose (`resets 8:10pm (Europe/Warsaw)`) — how Claude Code phrases
  *     session windows in some interactive output.

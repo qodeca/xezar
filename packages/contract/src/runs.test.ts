@@ -92,7 +92,7 @@ describe('runRecordSchema', () => {
     // one-way, so that "no consumer, wire type or contract schema ever sees a fourth runner".
     //
     // This pins the second half of that promise, the half this package owns: the wire enum has
-    // exactly three selectable ids plus `pi`, and widening it here would make the store's fold
+    // exactly the selectable ids, and widening it here would make the store's fold
     // pointless and let a client ASK for the legacy spelling.
     expect(runnerSchema.safeParse('claude-cli').success).toBe(false);
     expect(runnerSchema.safeParse('claude').success).toBe(true);

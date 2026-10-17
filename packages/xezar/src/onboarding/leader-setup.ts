@@ -11,7 +11,7 @@ import type { McpLeaderSelfStatus } from '@qodeca/xezar-contract';
 export const LEADER_SETUP_STATES = ['files-prepared', 'connected', 'attached', 'delivery-verified'] as const;
 export type LeaderSetupState = (typeof LEADER_SETUP_STATES)[number];
 
-export type LeaderSetupClient = 'claude-code' | 'codex' | 'pi';
+export type LeaderSetupClient = 'claude-code' | 'codex' | 'qwen';
 
 export interface LeaderSetupGuide {
   client: LeaderSetupClient;
@@ -46,27 +46,19 @@ const GUIDES: Readonly<Record<LeaderSetupClient, LeaderSetupGuide>> = {
       'For pushed events, run the shared local app-server under the same Codex home that xezar uses. A different home, an unloaded thread or a non-shared server is reported as unavailable.',
     ],
   },
-  pi: {
-    client: 'pi',
-    label: 'pi',
-    destination: '.pi/mcp.json',
+  qwen: {
+    client: 'qwen',
+    label: 'Qwen Code',
+    destination: '.qwen/settings.json',
     snippet: JSON.stringify(
-      {
-        settings: { directTools: true },
-        mcpServers: {
-          xezar: {
-            command: 'npx',
-            args: ['-y', '@qodeca/xezar', 'mcp'],
-            lifecycle: 'keep-alive',
-          },
-        },
-      },
+      { mcpServers: { xezar: { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'] } } },
       null,
       2,
     ),
     prerequisites: [
-      'Install and enable a compatible MCP adapter, then sign in yourself.',
-      'For pushed turns, load xezar’s pi leader extension. A keep-alive pi session can own the project connection, so another client may be refused until that session exits.',
+      'Use Qwen Code 0.25.2 or newer, review the project MCP entry, and set up a model provider yourself.',
+      'On Linux and macOS, pushed events use Qwen Code cross-session messaging, on unless agents.crossSessionMessaging is false; if it is false, or agents.crossSessionInbound is hold or refuse, the leader reads its events instead.',
+      'On Windows, Qwen Code has no push: it opens no inbox there (up to 0.25.2), and no setting changes this. The leader reads its events with leader_events action read and acknowledges them with action ack.',
     ],
   },
 };
@@ -93,7 +85,7 @@ export function leaderSetupFallbackInstructions(): string {
     'A snippet is only “files prepared”. It does not prove connection, trust, sign-in, attachment or delivery.',
     ...guides,
     'After the candidate is integrated, the person completes trust and sign-in, starts the chosen client in this project and makes a real xezar MCP tool call. That proves “connected”.',
-    'Claude Code, Codex and pi then call leader_events with action attach and a new operationId; leader_events action status proves “attached”. OpenCode is attached by a person through its supported control.',
+    'Claude Code, Codex and Qwen Code then call leader_events with action attach and a new operationId; leader_events action status proves “attached”.',
     'Finally, while attached, call leader_events with action read and no cursor, or account for a real pushed event. The read answer or pushed event is the “delivery verified” evidence. A status counter from an earlier session is not enough.',
     'After xezar restarts, attachment is gone: make a tool call, check status, attach again with a new operationId, then read outstanding events. Page with nextCursor while hasMore is true; a gap requires current-state reconciliation before acknowledging resumeCursor.',
     'Report pending checks, delivery blockers, task.stalled as advisory only, pending reviewer verdicts and replay limits exactly as returned. Never call the leader ready while integration, trust, sign-in, attachment or delivery verification is pending.',
@@ -143,6 +135,6 @@ export function leaderSetupVerificationLine(
   return `Leader setup: attached — status proves this session owns the attachment; a current pushed event or leader_events read is still required to verify delivery.${limitation}`;
 }
 
-function clientLabel(client: LeaderSetupClient | 'opencode'): string {
-  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : client === 'opencode' ? 'OpenCode' : 'pi';
+function clientLabel(client: LeaderSetupClient): string {
+  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : 'Qwen Code';
 }

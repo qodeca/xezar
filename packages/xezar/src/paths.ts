@@ -190,35 +190,10 @@ export function serverLockPath(instance: string = DEFAULT_SERVER_INSTANCE): stri
 /**
  * Where each coding agent keeps its per-user config, honouring the env vars the
  * vendors document: `$CLAUDE_CONFIG_DIR` relocates Claude Code's home;
- * `$CODEX_HOME` relocates Codex's; `$OPENCODE_CONFIG_DIR`, then `$XDG_CONFIG_HOME`,
- * relocate OpenCode's config dir (falling back to `~/.config`); `$PI_CODING_AGENT_DIR`
- * relocates pi's. Read per call so tests and ops can set env live.
+ * `$CODEX_HOME` relocates Codex's; `$QWEN_HOME` relocates Qwen Code's. Read per
+ * call so tests and ops can set env live.
  *
- * OpenCode's own variable is checked FIRST because it is the narrow one. Reaching
- * for `XDG_CONFIG_HOME` to move one agent's config relocates every XDG-aware tool
- * in the process — inside xezar's own e2e boot that silently deauthenticated `gh`
- * and hid the developer's global git config. `src/core/agent-profiles.ts` rejects
- * `OPENCODE_CONFIG_DIR` for AGENT PROFILES, and rightly: it moves config without
- * moving the credentials in `~/.local/share/opencode`, so a profile would swap
- * settings while still billing the other account. That objection is about identity
- * and does not reach here — this slot IS the config dir, nothing else, so the
- * config-only variable is exactly the right precision for it.
- *
- * pi relocates through `$PI_CODING_AGENT_DIR` (#329, re-checked against pi 0.85.1
- * on 2026-09-12). This repo said the opposite in five places on the strength of one
- * check on 2026-09-10, so the correction is spelled out: `pi --help` lists
- * `PI_CODING_AGENT_DIR - Config directory (default: ~/.pi/agent)` under "Environment
- * Variables", the shipped package documents it in `docs/environment-variables.md`,
- * and the binary was observed reading AND writing there — a corrupt `settings.json`
- * inside the pinned dir produced `Warning: Invalid settings file <pinned>/settings.json`,
- * and the run wrote `auth.json`, `models-store.json` and `sessions/` into it while
- * reporting "No API key found" with a populated `~/.pi/agent/auth.json` on disk. So
- * identity moves with the dir, which is what `src/core/agent-profiles.ts` needs.
- * `PI_PACKAGE_DIR` remains unrelated — it names the npm package, not the agent home.
- * `PI_CODING_AGENT_SESSION_DIR` is deliberately NOT read here: it moves session
- * storage only, so honouring it would answer a dir that holds no credentials.
- *
- * Deriving pi's home here rather than from `homedir()` at the call site is what keeps
+ * Deriving a home here rather than from `homedir()` at the call site is what keeps
  * a test or a container off a real home — the reason this helper exists at all.
  *
  * These are the DEFAULT profile's dirs. A second login of the same CLI is an
@@ -228,12 +203,10 @@ export function serverLockPath(instance: string = DEFAULT_SERVER_INSTANCE): stri
  */
 export function agentHomePaths(env: NodeJS.ProcessEnv = process.env): AgentHomePaths {
   const home = env.HOME || env.USERPROFILE || homedir();
-  const xdgConfig = env.XDG_CONFIG_HOME?.trim() || join(home, '.config');
   return {
     claude: env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude'),
     codex: env.CODEX_HOME?.trim() || join(home, '.codex'),
-    opencodeConfig: env.OPENCODE_CONFIG_DIR?.trim() || join(xdgConfig, 'opencode'),
-    pi: env.PI_CODING_AGENT_DIR?.trim() || join(home, '.pi', 'agent'),
+    qwen: env.QWEN_HOME?.trim() || join(home, '.qwen'),
   };
 }
 

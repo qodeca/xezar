@@ -280,7 +280,7 @@ describe('the mcp-leader topic on the WebSocket hub', () => {
     await until('the snapshot for b', () => b.frames.length === 1);
     expect(registry.watches).toBe(1); // the second holder starts nothing
 
-    const attached = idle({ leader: { client: 'pi', state: 'attached' } });
+    const attached = idle({ leader: { client: 'qwen', state: 'attached' } });
     registry.statuses.set('alpha', attached);
     registry.announce('alpha');
     await until('the change on both', () => a.frames.length === 2 && b.frames.length === 2);

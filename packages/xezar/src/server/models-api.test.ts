@@ -27,9 +27,9 @@ describe('workspace model catalog API', () => {
   type Discover = () => Promise<Array<{ id: string; label: string; description: string }>>;
 
   /** Claude and Codex share one adapter here — the route contract is what is under test, and each
-   *  adapter's own wire handling lives in its `*-model-catalog.test.ts`. OpenCode and pi each take
-   *  their own so a per-runner assertion can tell the answers apart. */
-  const app = (discover: Discover, opencodeDiscover: Discover = discover, piDiscover: Discover = discover) =>
+   *  adapter's own wire handling lives in its `*-model-catalog.test.ts`. Qwen Code takes its
+   *  own so a per-runner assertion can tell the answers apart. */
+  const app = (discover: Discover, qwenDiscover: Discover = discover) =>
     createApp({
       repoRoot: root,
       store,
@@ -39,8 +39,7 @@ describe('workspace model catalog API', () => {
         adapters: {
           claude: { discover },
           codex: { discover },
-          opencode: { discover: opencodeDiscover },
-          pi: { discover: piDiscover },
+          qwen: { discover: qwenDiscover },
         },
       }),
     });
@@ -102,68 +101,35 @@ describe('workspace model catalog API', () => {
     });
   });
 
-  it('GUARD — answers the OpenCode catalog too — the runner that used to have no discovery path (#794)', async () => {
+  it('GUARD — answers the Qwen Code catalog too, from its own adapter', async () => {
     const server = app(
       async () => [{ id: 'gpt-future', label: 'GPT Future', description: 'Newly available' }],
       async () => [{ id: 'openai/gpt-5.4', label: 'openai/gpt-5.4', description: 'via openai' }],
     );
-    const response = await apiRequest(server, '/api/v1/models?runner=opencode');
+    const response = await apiRequest(server, '/api/v1/models?runner=qwen');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      runner: 'opencode',
+      runner: 'qwen',
       models: [{ id: 'openai/gpt-5.4', description: 'via openai' }],
       source: 'live',
     });
   });
 
-  it('GUARD — degrades an OpenCode discovery failure the same way', async () => {
+  it('GUARD — degrades a Qwen Code discovery failure the same way, under its own name', async () => {
     const server = app(async () => [], async () => { throw new Error('secret detail'); });
-    const response = await apiRequest(server, '/api/v1/models?runner=opencode');
+    const response = await apiRequest(server, '/api/v1/models?runner=qwen');
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      runner: 'opencode', models: [], source: 'unavailable', stale: false,
-      reason: 'OpenCode model discovery is temporarily unavailable',
+      runner: 'qwen', models: [], source: 'unavailable', stale: false,
+      reason: 'Qwen Code model discovery is temporarily unavailable',
     });
   });
 
-  it('answers the pi catalog — the last runner that had no discovery path (#152)', async () => {
-    // Before this, `?runner=pi` 400d, so the cockpit fell back to three hard-coded vendor ids the
-    // host had no provider for. The route now answers with what pi is actually configured with.
-    const server = app(
-      async () => [{ id: 'gpt-future', label: 'GPT Future', description: 'Newly available' }],
-      async () => [],
-      async () => [{
-        id: 'dgx-spark/deepseek-v4-flash-vision',
-        label: 'dgx-spark/deepseek-v4-flash-vision',
-        description: 'via DGX Spark',
-      }],
-    );
-    const response = await apiRequest(server, '/api/v1/models?runner=pi');
+  it('a host with no Qwen Code model config is an empty catalog, not an error', async () => {
+    const server = app(async () => [], async () => []);
+    const response = await apiRequest(server, '/api/v1/models?runner=qwen');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      runner: 'pi',
-      models: [{ id: 'dgx-spark/deepseek-v4-flash-vision', description: 'via DGX Spark' }],
-      source: 'live',
-    });
-  });
-
-  it('degrades a pi discovery failure the same way, under its own name', async () => {
-    // The reason must name pi. The chained ternary this replaced fell through to "OpenCode" for
-    // any unrecognized runner, so pi's first failure would have blamed another backend.
-    const server = app(async () => [], async () => [], async () => { throw new Error('secret detail'); });
-    const response = await apiRequest(server, '/api/v1/models?runner=pi');
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      runner: 'pi', models: [], source: 'unavailable', stale: false,
-      reason: 'pi model discovery is temporarily unavailable',
-    });
-  });
-
-  it('a host with no pi config is an empty catalog, not an error', async () => {
-    const server = app(async () => [], async () => [], async () => []);
-    const response = await apiRequest(server, '/api/v1/models?runner=pi');
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ runner: 'pi', models: [], source: 'live' });
+    expect(await response.json()).toMatchObject({ runner: 'qwen', models: [], source: 'live' });
   });
 
   // Every runner xezar ships now discovers, so only a MISSING or unknown `runner` is rejected.
@@ -171,11 +137,11 @@ describe('workspace model catalog API', () => {
     const response = await apiRequest(app(async () => []), path);
     expect(response.status).toBe(400);
     // Derived from the contract's own list, never spelled out: the literal message this replaced
-    // named three runners and went stale the moment pi gained a catalog (#152).
+    // named three runners and went stale the moment a runner gained a catalog (#152).
     expect(await response.json()).toEqual({
       error: `runner must be one of: ${MODEL_DISCOVERY_RUNNERS.join(', ')}`,
     });
-    expect(MODEL_DISCOVERY_RUNNERS).toContain('pi');
+    expect(MODEL_DISCOVERY_RUNNERS).toContain('qwen');
   });
 
   it('is workspace-level rather than project-scoped', async () => {

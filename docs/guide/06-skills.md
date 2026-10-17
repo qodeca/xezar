@@ -28,7 +28,7 @@ When two skills have the same name, the first source below wins:
 1. Project `.xezar/skills/`.
 2. Project `.ai/skills/`.
 3. Project `.agents/skills/`.
-4. Project agent mirrors, in order: `.claude/skills/`, `.codex/skills/`, `.cursor/skills/`, `.opencode/skills/`.
+4. Project agent mirrors, in order: `.claude/skills/`, `.codex/skills/`, `.cursor/skills/`.
 5. Global `~/.agents/skills/`, then `~/.claude/skills/`.
 6. Configured team repositories.
 

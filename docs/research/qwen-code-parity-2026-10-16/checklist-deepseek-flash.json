@@ -1,0 +1,58 @@
+{
+ "session": {
+  "pass": true,
+  "detail": "session.started×1 sessionId=1b6fb173-90d2-4f44-9e31-a1074de8f278 stop=end_turn text=\"PONG\" 2868ms"
+ },
+ "usage": {
+  "pass": true,
+  "detail": "turn usage in=17368 out=490; usage.updated={\"input\":17368,\"output\":490,\"total\":30402,\"cacheRead\":12544}; token-usage={\"type\":\"token-usage\",\"tokensUsed\":19112}; cost events=[]"
+ },
+ "systemprompt": {
+  "pass": true,
+  "detail": "answer: \"llo! Ready to help with whatever you're working on. ZEBRA-42\""
+ },
+ "model": {
+  "pass": true,
+  "detail": "session.started model=deepseek-flash; unknown id refused: qwen: model \"no-such-model-xyz\" is not in your Qwen Code settings (modelProviders in ~/.qwen/settings.js"
+ },
+ "resume": {
+  "pass": true,
+  "detail": "second turn: \" in memory for future sessions.\\nMANGO-17\"; new process --resume: \"MANGO-17\""
+ },
+ "readonly": {
+  "pass": true,
+  "detail": "git status ran=true; hacked.txt exists=false; notes.txt unchanged=true; declined items=2"
+ },
+ "questions": {
+  "pass": true,
+  "detail": "XEZ:ASK parse: valid (1 question, options English/Polish/German)"
+ },
+ "mcp": {
+  "pass": true,
+  "detail": "answer has PROBE-OK-7731=true; notes=[]"
+ },
+ "events": {
+  "pass": true,
+  "detail": "plan.updated×2; tool items completed×5 (plan,read,edit); events with diffs×2; event types: session.started,turn.started,item.started,item.completed,plan.updated,turn.completed,usage.updated"
+ },
+ "termination": {
+  "pass": true,
+  "detail": "interrupt: sleep started=true, interrupted at 5818ms, ended at 5910ms, leftover sleep=0; deadline 45s: sleep started=true, ended at 45046ms timedOut=true, leftover sleep=0"
+ },
+ "images": {
+  "pass": false,
+  "detail": "answer: \"White\""
+ },
+ "dryrun": {
+  "pass": true,
+  "detail": "mock run: ok=true backend=qwen stop=end_turn text=\"Done (dry run): changed the answer to 42.\" 1071ms"
+ },
+ "accounts": {
+  "pass": true,
+  "detail": "account home run (no key in that home, so the model call may fail): model=acct-only-model answer=\"qwen: Qwen Code 0.22.3 is older than 0.25.2, the oldest vers\"; same id in the default home refused=true; session data written to the account home: [\"<encoded-scratch>-cl-deepseek-flash-accounts\"]"
+ },
+ "systemfact": {
+  "pass": true,
+  "detail": "answer: \"KESTREL-58\""
+ }
+}

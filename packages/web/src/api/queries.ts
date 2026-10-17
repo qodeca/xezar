@@ -291,12 +291,12 @@ export const workspaceQueryKeys = {
 
 /**
  * One runner's host-discovered catalog, cached per runner (#794 — this used to be hard-wired to
- * Codex, which is why OpenCode had nothing but stale presets to show).
+ * Codex, which left every other runner with nothing but stale presets to show).
  *
  * A runner with no host catalog never fetches and never resolves data, so its picker falls back
  * to static presets — callers can pass any runner and read `data`/`isError` without checking
- * first. Claude joined the discovering runners in #784; `pi` is the one that still takes the
- * fallback path today.
+ * first. Claude joined the discovering runners in #784 and Qwen Code in #1044; every runner xezar
+ * ships discovers today, so the fallback path is a guard rather than a live branch.
  *
  * `enabled` lets a caller that only MIGHT render the model pills (the thread's Continue — hooks
  * cannot be called conditionally) skip the fetch when it definitely won't.
@@ -327,9 +327,8 @@ export function useRunnerModelCatalogs(
 ): Record<Runner, ReturnType<typeof useRunnerModels>> {
   const claude = useRunnerModels('claude', enabled)
   const codex = useRunnerModels('codex', enabled)
-  const opencode = useRunnerModels('opencode', enabled)
-  const pi = useRunnerModels('pi', enabled)
-  return { claude, codex, opencode, pi }
+  const qwen = useRunnerModels('qwen', enabled)
+  return { claude, codex, qwen }
 }
 
 export function useProviderStatus() {

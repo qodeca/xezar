@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
  *    means nobody chose one and the project's `defaultRunner` applied; no `model` means the
  *    backend picked. Those resolve to a real value — hiding it would be less useful, not more —
  *    but they wear the soft foreground so a scan tells chosen from inherited without opening a row.
- * 2. **A model id is printed VERBATIM.** No catalog, no friendly name. Somebody running OpenCode
+ * 2. **A model id is printed VERBATIM.** No catalog, no friendly name. Somebody running Qwen Code
  *    against a model on their own hardware has to see exactly the string that run used.
  */
 export function ToolNameCell({

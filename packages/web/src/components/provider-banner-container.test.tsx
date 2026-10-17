@@ -15,7 +15,7 @@ const INCIDENTS: ProviderStatusResponse = {
   providers: [
     { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
     { provider: 'codex', status: 'connected', enabled: true },
-    { provider: 'opencode', status: 'disconnected', enabled: true, authFailureId: 'open-1' },
+    { provider: 'qwen', status: 'disconnected', enabled: true, authFailureId: 'qwen-1' },
   ],
 }
 
@@ -65,7 +65,7 @@ describe('ProviderBannerContainer', () => {
       appearance: { accent: 'violet' },
       dismissedProviderAuthFailures: {
         claude: 'claude-1',
-        opencode: 'open-1',
+        qwen: 'qwen-1',
       },
     }))
     const view = renderContainer(client)
@@ -78,7 +78,7 @@ describe('ProviderBannerContainer', () => {
       appearance: { accent: 'violet' },
       dismissedProviderAuthFailures: {
         claude: 'claude-1',
-        opencode: 'open-1',
+        qwen: 'qwen-1',
       },
     })
     await waitFor(() =>
@@ -89,7 +89,7 @@ describe('ProviderBannerContainer', () => {
           body: JSON.stringify({
             dismissedProviderAuthFailures: {
               claude: 'claude-1',
-              opencode: 'open-1',
+              qwen: 'qwen-1',
             },
           }),
         }),
@@ -127,7 +127,7 @@ describe('ProviderBannerContainer', () => {
 
     answerPut?.(json({ error: 'could not save auth dismissals' }, 500))
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('Claude Code, OpenCode')
+    expect(alert.textContent).toContain('Claude Code, Qwen Code')
     expect(client.getQueryData<WorkspaceUiState>(workspaceQueryKeys.uiState)).toEqual(previous)
     const error = screen.getByRole('status')
     expect(error.textContent).toBe('could not save auth dismissals')
@@ -141,7 +141,7 @@ describe('ProviderBannerContainer', () => {
       providers: [
         { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
         { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'disconnected', enabled: true },
+        { provider: 'qwen', status: 'disconnected', enabled: true },
       ],
     })
     const answerPuts: Array<(response: Response) => void> = []
@@ -163,13 +163,13 @@ describe('ProviderBannerContainer', () => {
         providers: [
           { provider: 'claude', status: 'disconnected', enabled: true, authFailureId: 'claude-1' },
           { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'opencode', status: 'disconnected', enabled: true, authFailureId: 'open-1' },
+          { provider: 'qwen', status: 'disconnected', enabled: true, authFailureId: 'qwen-1' },
         ],
       })
     })
     const secondAlert = await screen.findByRole('alert')
     expect(secondAlert.textContent).toContain(
-      'Provider authentication failed during a task: OpenCode.',
+      'Provider authentication failed during a task: Qwen Code.',
     )
     fireEvent.click(screen.getByRole('button', {
       name: 'Dismiss provider authentication alert',
@@ -183,7 +183,7 @@ describe('ProviderBannerContainer', () => {
     const restoredAlert = await screen.findByRole('alert')
     await waitFor(() =>
       expect(restoredAlert.textContent).toContain(
-        'Provider authentication failed during a task: Claude Code, OpenCode.',
+        'Provider authentication failed during a task: Claude Code, Qwen Code.',
       ),
     )
     expect(client.getQueryData<WorkspaceUiState>(workspaceQueryKeys.uiState)).toEqual(confirmed)

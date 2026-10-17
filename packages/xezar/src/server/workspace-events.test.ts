@@ -312,10 +312,10 @@ describe('GET /api/v1/workspace/events', () => {
         title: 'auth',
         workflow: 'quick-task',
         task: 'work',
-        runner: 'opencode',
+        runner: 'qwen',
         steps: [{ id: 'work', name: 'Work', kind: 'agent' }],
       });
-      other.store.updateStep(run.id, 'work', { backend: 'opencode' });
+      other.store.updateStep(run.id, 'work', { backend: 'qwen' });
       other.store.appendEvent(run.id, {
         type: 'session.error',
         stepId: 'work',
@@ -325,12 +325,12 @@ describe('GET /api/v1/workspace/events', () => {
       const body = await ws.readUntil('event: provider-status');
       expect(body).toContain(
         'event: provider-status\n'
-        + 'data: {"provider":"opencode","status":"disconnected",'
+        + 'data: {"provider":"qwen","status":"disconnected",'
         + '"hint":"Authentication was rejected during a run. Reconnect, then try again.",'
         + '"authFailureId":"auth-incident-1"}\n',
       );
       expect(payloadsOf<Record<string, unknown>>(body, 'provider-status')).toEqual([{
-        provider: 'opencode',
+        provider: 'qwen',
         status: 'disconnected',
         hint: 'Authentication was rejected during a run. Reconnect, then try again.',
         authFailureId: 'auth-incident-1',

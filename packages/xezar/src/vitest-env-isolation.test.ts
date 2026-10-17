@@ -42,7 +42,7 @@ describe('the server suite runs with no ambient agent-model pin', () => {
 /**
  * No case starts a developer's real agent CLI by its bare name on Windows (#963).
  *
- * The platform layer finds npm's `.cmd` shims – how codex, opencode and pi install – so a case
+ * The platform layer finds npm's `.cmd` shims – how codex and qwen install – so a case
  * reaching a default agent name used to start the real CLI in its own folder, where it outlived
  * the case and the folder could not be deleted (EPERM). `vitest.setup.ts` keeps `.cmd`/`.bat` out
  * of PATHEXT for the whole suite. The first case pins the behaviour, the second the mechanism.

@@ -207,7 +207,8 @@ async function resolveContext(contexts: McpProjectContextSource, projectId: stri
       // FOLDER, and no path may reach a client (N-01). It is also unreachable in practice — a
       // session is bound to this cockpit's own project, and in `project` mode that is the only
       // project with a socket — so it degrades to `unavailable`, whose cause stays server-side.
-      const reason = err.reason === 'other-instance' ? 'unavailable' : err.reason;
+      // `legacy-backend` (#1046) degrades the same way: its message lists file paths.
+      const reason = err.reason === 'other-instance' || err.reason === 'legacy-backend' ? 'unavailable' : err.reason;
       throw new McpScopeError(reason, projectId, err);
     }
     // Anything else — the writer error, or a raw fs error from building the context —

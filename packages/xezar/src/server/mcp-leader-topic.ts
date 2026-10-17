@@ -19,9 +19,8 @@ import type { TopicPublisher } from './ws.ts';
  * the route calls, so the two never disagree: every project whose MCP service is running, plus any
  * project whose service stopped while the topic was held (as the route's `available: false` answer),
  * so a page that is open sees its service go. It names clients, cursors and the server's own blocker
- * words, exactly what the GET answers: no filesystem path or home, but an OpenCode blocker may repeat
- * the address and session id the person typed, and a pi blocker pi's own error text. That is why the
- * topic keeps the hub's default trust: only the cockpit's own connection may read it.
+ * words, exactly what the GET answers: no filesystem path or home, but a blocker may repeat a
+ * client's own error text. That is why the topic keeps the hub's default trust: only the cockpit's own connection may read it.
  */
 
 /** The backstop cadence — the same 5 s the `health` topic re-reads on. */

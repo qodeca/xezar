@@ -27,7 +27,7 @@
         "default"
       ]
     },
-    "pi": {
+    "qwen": {
       "usesLogins": false
     }
   },
@@ -138,53 +138,55 @@
       "enforcesToolLimits": false,
       "advisoryOnly": false
     },
-    "pi/deepseek-api/deepseek-flash": {
-      "tool": "pi",
-      "model": "deepseek-api/deepseek-flash",
+    "qwen/deepseek-flash": {
+      "tool": "qwen",
+      "model": "deepseek-flash",
       "vendor": "deepseek",
       "tier": "cheap",
-      "vision": true,
+      "vision": false,
       "imageGeneration": false,
       "local": false,
-      "enforcesToolLimits": false,
-      "advisoryOnly": false
+      "enforcesToolLimits": true,
+      "advisoryOnly": false,
+      "notes": [
+        "Text only through Qwen Code: the image check of #1042 got a wrong colour, so it is in no row that has to see a screen."
+      ]
     },
-    "pi/deepseek-api/deepseek-v4-pro": {
-      "tool": "pi",
-      "model": "deepseek-api/deepseek-v4-pro",
+    "qwen/deepseek-v4-pro": {
+      "tool": "qwen",
+      "model": "deepseek-v4-pro",
       "vendor": "deepseek",
       "tier": "strong",
       "vision": false,
       "imageGeneration": false,
       "local": false,
-      "enforcesToolLimits": false,
+      "enforcesToolLimits": true,
       "advisoryOnly": false,
-      "fullShellReviews": true,
       "notes": [
         "No image input: it is in no row that has to see a screen.",
-        "Reviews with a full shell, the fallback when Claude has no budget; the owner accepted that risk (#89)."
+        "Reviews read-only: the Qwen runner holds a reading step read-only. It is the fallback reviewer when Claude has no budget (#89)."
       ]
     },
-    "pi/dgx-spark/deepseek-v4-flash-vision": {
-      "tool": "pi",
-      "model": "dgx-spark/deepseek-v4-flash-vision",
+    "qwen/deepseek-v4-flash-vision": {
+      "tool": "qwen",
+      "model": "deepseek-v4-flash-vision",
       "vendor": "deepseek",
       "tier": "cheap",
       "vision": true,
       "imageGeneration": false,
       "local": true,
-      "enforcesToolLimits": false,
+      "enforcesToolLimits": true,
       "advisoryOnly": true
     },
-    "pi/mac-m4/qwen38-flash-next-mlx-mixed-4-8bit": {
-      "tool": "pi",
-      "model": "mac-m4/qwen38-flash-next-mlx-mixed-4-8bit",
+    "qwen/qwen38-flash-next-mlx-mixed-4-8bit": {
+      "tool": "qwen",
+      "model": "qwen38-flash-next-mlx-mixed-4-8bit",
       "vendor": "alibaba",
       "tier": "cheap",
       "vision": true,
       "imageGeneration": false,
       "local": true,
-      "enforcesToolLimits": false,
+      "enforcesToolLimits": true,
       "advisoryOnly": true
     },
     "claude/claude-fable-5-1": {
@@ -225,14 +227,14 @@
       "rule": "A lane with local: true is in no row with writes: true."
     },
     {
-      "id": "pi-write-claude-review",
+      "id": "qwen-write-claude-review",
       "checkedAt": "merge",
-      "rule": "What a pi lane wrote merges only after a review on a Claude lane, claude/sonnet first, or else on codex/gpt-6-astra. Another DeepSeek model may review DeepSeek work, never the author's own, but that review alone does not clear the merge."
+      "rule": "What a Qwen lane wrote merges only after a review on a Claude lane, claude/sonnet first, or else on codex/gpt-6-astra. Another DeepSeek model may review DeepSeek work, never the author's own, but that review alone does not clear the merge."
     },
     {
       "id": "high-risk-other-vendor",
       "checkedAt": "dispatch",
-      "rule": "A risk-high change is reviewed by a different vendor from its author when a lane of one has budget, and never on the author's login. When no Claude lane has budget, pi/deepseek-api/deepseek-v4-pro may be that reviewer, full shell and all, of DeepSeek work too when another model wrote it."
+      "rule": "A risk-high change is reviewed by a different vendor from its author when a lane of one has budget, and never on the author's login. When no Claude lane has budget, qwen/deepseek-v4-pro may be that reviewer, of DeepSeek work too when another model wrote it."
     },
     {
       "id": "tool-limits",
@@ -387,8 +389,7 @@
         }
       ],
       "notes": [
-        "pi lanes return to this row when the engine honours a bash allowlist on pi (qodeca/xezar#856).",
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     },
     {
@@ -437,8 +438,7 @@
         }
       ],
       "notes": [
-        "pi lanes return to this row when the engine honours a bash allowlist on pi (qodeca/xezar#856).",
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     },
     {
@@ -451,7 +451,7 @@
       "writes": true,
       "trigger": "The work is collecting what already happened into a record; nothing new is decided.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-flash",
         "codex/gpt-6-luna",
         "claude/sonnet"
       ],
@@ -474,8 +474,8 @@
       "writes": true,
       "trigger": "Paths, counts, renames, link fixes: no sentence has to be composed.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-flash",
+        "qwen/deepseek-v4-pro",
         "codex/gpt-6-luna",
         "codex/gpt-5.6-terra",
         "claude/sonnet"
@@ -512,15 +512,15 @@
       "writes": true,
       "trigger": "Someone has to decide what the paragraph says, not just where it points.",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/opus"
       ],
       "notes": [
         "Sonnet is left out: it slipped twice on docs writing.",
-        "A pi write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
       ]
     },
     {
@@ -536,7 +536,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -549,7 +549,7 @@
       ],
       "secondOpinion": {
         "lanes": [
-          "pi/deepseek-api/deepseek-flash"
+          "qwen/deepseek-flash"
         ],
         "when": "always"
       },
@@ -575,7 +575,7 @@
         }
       ],
       "notes": [
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     },
     {
@@ -590,7 +590,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -613,7 +613,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -633,7 +633,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -652,8 +652,7 @@
       "trigger": "A surface has to be designed before anything is implemented: the flow, what is seen first, every state.",
       "lanes": [
         "claude/opus",
-        "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-flash"
+        "codex/gpt-6-sol"
       ],
       "never": [
         {
@@ -676,8 +675,7 @@
       "trigger": "The verdict depends on looking at a rendered screen or a mockup.",
       "lanes": [
         "claude/opus",
-        "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-flash"
+        "codex/gpt-6-sol"
       ],
       "never": [
         {
@@ -714,7 +712,7 @@
           "local": true
         },
         {
-          "lane": "pi/deepseek-api/deepseek-flash",
+          "lane": "qwen/deepseek-flash",
           "why": "owner's preference"
         }
       ]
@@ -730,8 +728,7 @@
       "trigger": "The flow has already landed and the surface now needs its look: components, tokens, layout, every state in both themes.",
       "lanes": [
         "claude/opus",
-        "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-flash"
+        "codex/gpt-6-sol"
       ],
       "never": [
         {
@@ -788,7 +785,7 @@
         "claude/opus",
         "codex/gpt-5.6-terra",
         "claude/sonnet",
-        "pi/deepseek-api/deepseek-flash"
+        "qwen/deepseek-flash"
       ],
       "never": [
         {
@@ -809,8 +806,8 @@
       "writes": true,
       "trigger": "The failing test and the file are both already known.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-flash",
+        "qwen/deepseek-v4-pro",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/sonnet"
@@ -822,7 +819,7 @@
       ],
       "notes": [
         "A test-only fix may go to codex/gpt-6-luna.",
-        "A pi write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
       ]
     },
     {
@@ -837,7 +834,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-v4-pro",
         "claude/sonnet"
       ],
       "never": [
@@ -865,8 +862,8 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash"
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash"
       ],
       "never": [
         {
@@ -875,7 +872,7 @@
       ],
       "notes": [
         "Never codex/gpt-5.6-terra alone with no review.",
-        "A pi write opens a draft PR with a red proof and needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR with a red proof and needs a full review: claude/sonnet first, then codex/gpt-6-astra."
       ]
     },
     {
@@ -889,8 +886,7 @@
       "trigger": "The change alters what a person sees on a screen.",
       "lanes": [
         "claude/opus",
-        "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-flash"
+        "codex/gpt-6-sol"
       ],
       "never": [
         {
@@ -917,7 +913,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -937,9 +933,9 @@
       "lanes": [
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-v4-pro",
         "claude/sonnet",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-flash",
         "claude/opus"
       ],
       "never": [
@@ -952,7 +948,7 @@
         }
       ],
       "notes": [
-        "A conflict in UI files goes to claude/opus first, and never to a pi lane."
+        "A conflict in UI files goes to claude/opus first, and never to a Qwen lane."
       ]
     },
     {
@@ -965,8 +961,8 @@
       "writes": true,
       "trigger": "Several approved PRs must land in order.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-flash",
+        "qwen/deepseek-v4-pro",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/sonnet",
@@ -999,8 +995,8 @@
       "writes": true,
       "trigger": "A dependency bump, with the gate as the judge.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
-        "pi/deepseek-api/deepseek-v4-pro",
+        "qwen/deepseek-flash",
+        "qwen/deepseek-v4-pro",
         "codex/gpt-5.6-terra",
         "claude/sonnet"
       ],
@@ -1021,8 +1017,8 @@
       "trigger": "People are hitting the fault right now, and waiting for the full fix costs more than shipping a narrow one and following up.",
       "narrows": "bounded-bug-fix",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-6-sol",
         "codex/gpt-5.6-terra",
         "claude/opus",
@@ -1046,7 +1042,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1069,7 +1065,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1090,8 +1086,8 @@
       "writes": true,
       "trigger": "People cannot tell what a part of the system is doing, and the change adds signals and changes no behaviour.",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/sonnet",
@@ -1113,7 +1109,6 @@
       "writes": true,
       "trigger": "Text has to become translatable, or a language the owner has listed has to be added or brought up to date.",
       "lanes": [
-        "pi/deepseek-api/deepseek-flash",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/sonnet"
@@ -1139,8 +1134,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "claude/sonnet",
-        "pi/deepseek-api/deepseek-flash"
+        "claude/sonnet"
       ],
       "never": [
         {
@@ -1161,8 +1155,8 @@
       "writes": true,
       "trigger": "The job is tests for one function, module or class with its collaborators faked, and no product behaviour changes.",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-5.6-terra",
         "codex/gpt-6-sol",
         "claude/sonnet"
@@ -1173,7 +1167,7 @@
         }
       ],
       "notes": [
-        "A pi write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
       ]
     },
     {
@@ -1186,8 +1180,8 @@
       "writes": true,
       "trigger": "The thing to prove is that two parts work together (a handler and its database, a client and an API, a command and the file system), not that one part works alone.",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-6-sol",
         "codex/gpt-5.6-terra",
         "claude/opus",
@@ -1211,7 +1205,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1231,7 +1225,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1254,7 +1248,7 @@
       "lanes": [
         "claude/sonnet",
         "claude/opus",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1268,8 +1262,8 @@
       ],
       "neverAuthor": true,
       "notes": [
-        "pi/deepseek-api/deepseek-v4-pro reviews here with a full shell when Claude has no budget; the owner accepted that risk (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
-        "Other Codex and pi lanes leave this row until their runner blocks writes in a reading step."
+        "qwen/deepseek-v4-pro reviews here, read-only, when Claude has no budget (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
+        "Other Codex and Qwen lanes are not in this row; adding one is the owner's choice."
       ]
     },
     {
@@ -1284,7 +1278,7 @@
       "lanes": [
         "claude/opus",
         "claude/sonnet",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1298,9 +1292,9 @@
       "notes": [
         "A very large diff may escalate to codex/gpt-6-astra.",
         "Sonnet is never the only reviewer of risk-high work.",
-        "A pi second opinion returns when the engine honours a bash allowlist on pi (qodeca/xezar#856).",
-        "pi/deepseek-api/deepseek-v4-pro reviews here with a full shell when Claude has no budget; the owner accepted that risk (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
-        "Other Codex and pi lanes leave this row until their runner blocks writes in a reading step."
+        "A Qwen second opinion is the owner's choice: the Qwen runner honours a bash allowlist.",
+        "qwen/deepseek-v4-pro reviews here, read-only, when Claude has no budget (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
+        "Other Codex and Qwen lanes are not in this row; adding one is the owner's choice."
       ]
     },
     {
@@ -1313,8 +1307,8 @@
       "writes": true,
       "trigger": "One verdict has to be answered or fixed.",
       "lanes": [
-        "pi/deepseek-api/deepseek-v4-pro",
-        "pi/deepseek-api/deepseek-flash",
+        "qwen/deepseek-v4-pro",
+        "qwen/deepseek-flash",
         "codex/gpt-6-sol",
         "codex/gpt-5.6-terra",
         "claude/sonnet"
@@ -1340,7 +1334,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-sol",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1367,8 +1361,7 @@
       "trigger": "The check needs a live multi-step run in a browser.",
       "lanes": [
         "claude/sonnet",
-        "codex/gpt-5.6-terra",
-        "pi/deepseek-api/deepseek-flash"
+        "codex/gpt-5.6-terra"
       ],
       "never": [
         {
@@ -1394,7 +1387,7 @@
       "trigger": "A plan, a spec or a diff has to be judged against the recorded architecture decisions.",
       "lanes": [
         "claude/opus",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1403,8 +1396,8 @@
       ],
       "neverAuthor": true,
       "notes": [
-        "pi/deepseek-api/deepseek-v4-pro reviews here with a full shell when Claude has no budget; the owner accepted that risk (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
-        "Other Codex and pi lanes leave this row until their runner blocks writes in a reading step."
+        "qwen/deepseek-v4-pro reviews here, read-only, when Claude has no budget (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
+        "Other Codex and Qwen lanes are not in this row; adding one is the owner's choice."
       ]
     },
     {
@@ -1422,7 +1415,7 @@
         "codex/gpt-6-sol",
         "codex/gpt-5.6-terra",
         "claude/sonnet",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1443,7 +1436,7 @@
       "lanes": [
         "claude/opus",
         "codex/gpt-6-astra",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1471,7 +1464,7 @@
       ],
       "notes": [
         "Anthropic re-routes most cyber-security work on Opus 5.5 to an older Opus; when the run reports a re-route or a refusal, re-dispatch the same brief on codex/gpt-6-astra.",
-        "pi/deepseek-api/deepseek-v4-pro is the one pi lane here, with a full shell, when Claude has no budget (#89); codex/gpt-6-astra is the one Codex lane here."
+        "qwen/deepseek-v4-pro is the one Qwen lane here, read-only, when Claude has no budget (#89); codex/gpt-6-astra is the one Codex lane here."
       ]
     },
     {
@@ -1486,7 +1479,7 @@
       "narrows": "full-cold-review",
       "lanes": [
         "claude/opus",
-        "pi/deepseek-api/deepseek-v4-pro"
+        "qwen/deepseek-v4-pro"
       ],
       "never": [
         {
@@ -1506,8 +1499,8 @@
       "neverClaimant": true,
       "notes": [
         "A merge-blocking claim is re-proven on the base branch with a throwaway test.",
-        "pi/deepseek-api/deepseek-v4-pro reviews here with a full shell when Claude has no budget; the owner accepted that risk (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
-        "Other Codex and pi lanes leave this row until their runner blocks writes in a reading step."
+        "qwen/deepseek-v4-pro reviews here, read-only, when Claude has no budget (#89). It may review DeepSeek work too, when another model wrote it: never-author bans the author's model, not its vendor.",
+        "Other Codex and Qwen lanes are not in this row; adding one is the owner's choice."
       ]
     },
     {
@@ -1540,7 +1533,7 @@
       "notes": [
         "Starts only on the owner's word, quoting the commit.",
         "Security, design and Major-claim verdicts inside a release still go to their own rows.",
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     },
     {
@@ -1569,7 +1562,7 @@
       ],
       "neverAuthor": true,
       "notes": [
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     },
     {
@@ -1598,7 +1591,7 @@
       ],
       "neverAuthor": true,
       "notes": [
-        "Codex and pi lanes leave this row until their runner blocks writes in a reading step; the engine confines Codex, and pi still runs with a full shell (qodeca/xezar#935)."
+        "Codex and Qwen lanes are not in this row. Both runners now hold a reading step read-only, so adding one is the owner's choice (qodeca/xezar#935)."
       ]
     }
   ]

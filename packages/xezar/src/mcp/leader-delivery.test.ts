@@ -1,6 +1,4 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,14 +10,13 @@ import { EventJournal } from './event-journal.ts';
 import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, leaderClientOf, mergeReplayed, replayedRange } from './leader-delivery.ts';
 import { textResult } from './tool.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
-import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — the two answers `LeaderDelivery` gives about things it did not choose: a session that turns
- * out not to own the project, and an attached leader whose address does not answer. Both are read
- * from the real objects (a real `EventJournal`, the real OpenCode adapter over a closed port); only
- * the owner slot is a stub, because its refusals are what these cases are about.
+ * out not to own the project, and an attached leader that does not answer. Both are read from the
+ * real objects (a real `EventJournal`, the real adapters); only the owner slot is a stub, because its
+ * refusals are what these cases are about.
  *
  * `push-delivery.test.ts` covers everything that needs the running service; this file covers what a
  * service cannot easily be put into.
@@ -36,47 +33,14 @@ const tmp = (): string => {
   return dir;
 };
 
-const servers: FakeOpenCodeSession[] = [];
-
 afterEach(async () => {
   for (const delivery of deliveries.splice(0)) delivery.close();
-  for (const server of servers.splice(0)) await server.stop();
   for (const journal of journals.splice(0)) journal.close();
   for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
-/** The shared fake `opencode serve` (#651), kept so `afterEach` closes it whatever the case did. */
-const fakeOpenCode = async (opts: { directory: string; sessionId?: string }): Promise<FakeOpenCodeSession> => {
-  const fake = await fakeOpenCodeSession(opts);
-  servers.push(fake);
-  return fake;
-};
-
-/**
- * A fake `opencode serve` that ACCEPTS the TCP connection and then never answers (#703). Nothing it
- * returns is a valid OpenCode answer — the point is that a request to it hangs until the caller's
- * own bound ends it, which is exactly what a paused `opencode serve` does. Kept in `servers`, so
- * `afterEach` closes it whatever the case did.
- */
-const neverAnsweringOpenCode = async (): Promise<FakeOpenCodeSession> => {
-  const server = createServer(() => {
-    // Deliberately writes no response and no headers: the request stays open until the caller aborts.
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const fake: FakeOpenCodeSession = {
-    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    sessionId: 'ses_never_answers_000000001',
-    stop: async () => {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    },
-  };
-  servers.push(fake);
-  return fake;
-};
-
 /** A journal of its own, and the owner slot answering as the case needs. */
-function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number, pushNotSeenMs?: number, extra: Partial<LeaderDeliveryOptions> = {}) {
+function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, pushNotSeenMs?: number, extra: Partial<LeaderDeliveryOptions> = {}) {
   const dataDir = tmp();
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
   journals.push(journal);
@@ -92,7 +56,6 @@ function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard
     guard,
     warn: (message) => warnings.push(message),
     heartbeatMs: 200,
-    ...(attachCheckMs === undefined ? {} : { opencodeAttachCheckMs: attachCheckMs }),
     ...(pushNotSeenMs === undefined ? {} : { pushNotSeenMs }),
     ...extra,
   });
@@ -118,15 +81,6 @@ const until = async (what: string, probe: () => boolean, ms = 5_000): Promise<vo
   }
 };
 
-/** Why pi-link finds no leader: on Windows attaching a pi leader is deferred (#963). */
-const PI_NO_LEADER_REASON = onWindows
-  ? 'attaching a pi leader is not available on this system yet'
-  : 'no pi leader has announced itself to this project';
-/** The attach refusal: on Windows it leaves out the leader-extension advice, which cannot help there. */
-const PI_NO_LEADER_ERROR = onWindows
-  ? `xezar has no live link to a pi leader for this project (${PI_NO_LEADER_REASON}). Events stay in the project journal and nothing is lost.`
-  : `xezar has no live link to a pi leader for this project (${PI_NO_LEADER_REASON}). pi speaks RPC over its own stdin and stdout only — it has no port, socket or attach mode — so a pi you run yourself can be reached only from inside it, by the xezar leader extension. Events stay in the project journal and nothing is lost.`;
-
 describe('a session that does not own the project', () => {
   it('gets no dispatcher, says why once in the log, and reports no delivery', () => {
     const { delivery: made, warnings } = delivery(false);
@@ -140,311 +94,34 @@ describe('a session that does not own the project', () => {
 });
 
 /**
- * The production caller. For one round of review `piReactionTarget` had exactly one caller and it
- * passed no link, so `PiReactionAdapter` was never constructed outside its own tests — "built but
- * never connected", the seventh time in this release. These cases pin the opposite: with a leader
- * announced, `act` really builds the adapter, really hands rows to it, and really lets its socket go
- * again. Without one, the behaviour is exactly what it was before any of this existed.
- */
-describe('attaching pi: the link is really produced (#330 WP2)', () => {
-  /** A link double at the SEAM `pi-link.ts` fills, so the wiring under test is the real one. */
-  function fakeLink() {
-    const sent: Record<string, unknown>[] = [];
-    let closed = false;
-    const listeners = new Set<(message: Record<string, unknown>) => void>();
-    return {
-      sent,
-      get closed() {
-        return closed;
-      },
-      emit: (message: Record<string, unknown>) => {
-        for (const listener of [...listeners]) listener(message);
-      },
-      link: {
-        get closed() {
-          return closed;
-        },
-        subscribe(listener: (message: Record<string, unknown>) => void) {
-          listeners.add(listener);
-          return () => listeners.delete(listener);
-        },
-        async request(command: Record<string, unknown>) {
-          sent.push(command);
-          if (command.type === 'get_state') return { success: true, data: { isStreaming: false, pendingMessageCount: 0 } };
-          if (command.type === 'get_messages') return { success: true, data: { messages: [] } };
-          return { success: true };
-        },
-        close() {
-          closed = true;
-        },
-      },
-    };
-  }
-
-  function deliveryWithPi(announced: boolean) {
-    const fake = fakeLink();
-    const dataDir = tmp();
-    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
-    journals.push(journal);
-    const made = new LeaderDelivery({
-      projectId: PROJECT,
-      projectRoot: dataDir,
-      journal,
-      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
-      guard: undefined,
-      warn: () => {},
-      heartbeatMs: 200,
-      piLeader: {
-        read: () =>
-          announced
-            ? { ok: true as const, descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } } }
-            : { ok: false as const, reason: 'no pi leader has announced itself to this project' },
-        connect: () => fake.link as never,
-      },
-    });
-    deliveries.push(made);
-    return { delivery: made, journal, fake };
-  }
-
-  it('builds the adapter and hands a real row to the real pi link', async () => {
-    const { delivery: made, journal, fake } = deliveryWithPi(true);
-    made.sessionOpened('session-1');
-
-    const attached = await made.act({ action: 'attach', client: 'pi' });
-    expect(attached.ok).toBe(true);
-    expect(made.status()).toMatchObject({ leader: { client: 'pi', state: 'attached' } });
-
-    row(journal);
-    await until('the row to reach pi through the link', () => fake.sent.some((c) => c.type === 'prompt'));
-    const prompt = fake.sent.find((c) => c.type === 'prompt');
-    expect(String(prompt?.message)).toContain('the base branch changed');
-    // The adapter read pi's conversation before its first submission, as it does over a real socket.
-    expect(fake.sent.map((c) => c.type)).toContain('get_messages');
-  });
-
-  it('lets the socket go when the leader is detached, so no link outlives its leader', async () => {
-    const { delivery: made, fake } = deliveryWithPi(true);
-    made.sessionOpened('session-1');
-    await made.act({ action: 'attach', client: 'pi' });
-    expect(fake.closed).toBe(false);
-
-    await made.act({ action: 'stop' });
-    expect(fake.closed).toBe(true);
-    expect(made.status()).toMatchObject({ leader: null });
-  });
-
-  it('lets the socket go when the service closes, not only on an explicit stop', async () => {
-    const { delivery: made, fake } = deliveryWithPi(true);
-    made.sessionOpened('session-1');
-    await made.act({ action: 'attach', client: 'pi' });
-
-    made.close();
-    expect(fake.closed).toBe(true);
-  });
-
-  it('turns a socket that will not dial into the blocker, never into a thrown attach', async () => {
-    const dataDir = tmp();
-    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
-    journals.push(journal);
-    const made = new LeaderDelivery({
-      projectId: PROJECT,
-      projectRoot: dataDir,
-      journal,
-      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
-      guard: undefined,
-      warn: () => {},
-      heartbeatMs: 200,
-      piLeader: {
-        read: () => ({ ok: true as const, descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } } }),
-        connect: () => {
-          throw new Error('ECONNREFUSED');
-        },
-      },
-    });
-    deliveries.push(made);
-    made.sessionOpened('session-1');
-
-    const attached = await made.act({ action: 'attach', client: 'pi' });
-    expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toMatch(/ECONNREFUSED/);
-    expect(made.status()).toMatchObject({ leader: null });
-  });
-
-  it('does not leak a socket when the link it dialled is already closed', async () => {
-    const dataDir = tmp();
-    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
-    journals.push(journal);
-    let releases = 0;
-    const made = new LeaderDelivery({
-      projectId: PROJECT,
-      projectRoot: dataDir,
-      journal,
-      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
-      guard: undefined,
-      warn: () => {},
-      heartbeatMs: 200,
-      piLeader: {
-        read: () => ({ ok: true as const, descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } } }),
-        // The pi exited between the descriptor being read and the dial completing.
-        connect: () =>
-          ({
-            closed: true,
-            subscribe: () => () => {},
-            request: async () => ({ success: false }),
-            close: () => {
-              releases += 1;
-            },
-          }) as never,
-      },
-    });
-    deliveries.push(made);
-    made.sessionOpened('session-1');
-
-    const attached = await made.act({ action: 'attach', client: 'pi' });
-    expect(attached.ok).toBe(false);
-    // Refused AND released: a blocked target must not leave the socket it was handed open.
-    expect(releases).toBe(1);
-  });
-
-  it('survives a link whose close throws, and says so once rather than failing the detach', async () => {
-    const dataDir = tmp();
-    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
-    journals.push(journal);
-    const warnings: string[] = [];
-    const made = new LeaderDelivery({
-      projectId: PROJECT,
-      projectRoot: dataDir,
-      journal,
-      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
-      guard: undefined,
-      warn: (message) => warnings.push(message),
-      heartbeatMs: 200,
-      piLeader: {
-        read: () => ({ ok: true as const, descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } } }),
-        connect: () =>
-          ({
-            closed: false,
-            subscribe: () => () => {},
-            request: async () => ({ success: true, data: { messages: [] } }),
-            close: () => {
-              throw new Error('socket already gone');
-            },
-          }) as never,
-      },
-    });
-    deliveries.push(made);
-    made.sessionOpened('session-1');
-    await made.act({ action: 'attach', client: 'pi' });
-
-    const stopped = await made.act({ action: 'stop' });
-    expect(stopped.ok).toBe(true);
-    expect(made.status()).toMatchObject({ leader: null });
-    expect(warnings.some((w) => w.includes('did not close cleanly'))).toBe(true);
-  });
-
-  it('names the reason no link could be made, instead of a flat "pi has no address"', async () => {
-    const { delivery: made } = deliveryWithPi(false);
-    made.sessionOpened('session-1');
-    const attached = await made.act({ action: 'attach', client: 'pi' });
-    expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toMatch(/no pi leader has announced itself/);
-    // And the remedy names the extension, which is the thing the person can actually do.
-    expect(made.status()).toMatchObject({ leader: null });
-  });
-});
-
-describe('attaching pi with no leader extension running (#330 WP2)', () => {
-  it('is refused with pi’s own recoverable reason, not with a schema error or a silent success', async () => {
-    const { delivery: made } = delivery(true);
-    made.sessionOpened('session-1');
-    const attached = await made.act({ action: 'attach', client: 'pi' });
-    expect(attached.ok).toBe(false);
-    // Windows names why no pi leader can attach there yet, and leaves out the extension advice (#963).
-    expect(attached.ok === false && attached.error).toMatch(onWindows ? /not available on this system yet\)\. Events stay/ : /stdin and stdout/);
-    // Nothing was attached, so the status still says there is no leader — never a leader that
-    // cannot be reached being reported as one that can.
-    const status = made.status();
-    expect(status.available && status.leader).toBeNull();
-    expect(status.available && status.blocker).toMatchObject({ code: 'no-leader-session' });
-  });
-
-  it('does not detach an OpenCode leader that is already working', async () => {
-    const { delivery: made, dataDir } = delivery(true);
-    made.sessionOpened('session-1');
-    const oc = await fakeOpenCode({ directory: dataDir });
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
-    expect(attached.ok).toBe(true);
-
-    const refused = await made.act({ action: 'attach', client: 'pi' });
-    expect(refused.ok).toBe(false);
-    const status = made.status();
-    expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
-  });
-});
-
-/**
- * QA on #358, finding 3. Every blocker about an ATTACHED leader used to be written in OpenCode's
- * words, whichever client was really attached, so a pi user who hit one was told to check an
- * `opencode serve` they are not running — the one moment the sentence has a job to do.
+ * QA on #358, finding 3. Every blocker about an ATTACHED leader used to be written in one client's
+ * words, whichever client was really attached, so a user who hit one was told to check a server they
+ * are not running — the one moment the sentence has a job to do.
  *
- * These cases read the three of them through the real `act` -> `status()` path with a pi leader
- * attached. Their OpenCode halves are in `push-delivery.test.ts`, against the real service and the
- * fake OpenCode server, because that is where those two states are reachable end to end; each of
- * those three cases now also asserts it did NOT regress into pi's words or a generic message.
- *
- * Claude Code and Codex are not here because they cannot be attached at all
- * (`mcpLeaderAttachInputSchema`): their case is `no-leader-session`, pinned below.
+ * These cases read the three of them through the real `act` -> `status()` path with a Qwen Code
+ * leader attached, over a stand-in for the owner session's bridge whose pushes can be made to fail.
+ * Claude Code's halves are in the Claude Code describe below; Codex's are in its own.
  */
 describe('a blocker about an attached leader is written in THAT client’s words (QA on #358)', () => {
-  /** A link at the `pi-link.ts` seam whose requests can be made to fail, so a leader can stop answering. */
-  function failableLink() {
+  /** The owner session's bridge as a Qwen Code session announces it; its pushes can be made to fail. */
+  function qwenTransport() {
     let failing = false;
-    let closed = false;
+    const pushed: string[] = [];
     return {
+      pushed,
       fail: (yes: boolean) => {
         failing = yes;
       },
-      link: {
-        get closed() {
-          return closed;
+      transport: {
+        push: async (content: string) => {
+          if (failing) throw new Error('the Qwen Code inbox did not confirm');
+          pushed.push(content);
         },
-        subscribe: () => () => {},
-        async request(command: Record<string, unknown>) {
-          if (failing) throw new Error('the pi leader socket went away');
-          if (command.type === 'get_state') return { success: true, data: { isStreaming: false, pendingMessageCount: 0 } };
-          if (command.type === 'get_messages') return { success: true, data: { messages: [] } };
-          return { success: true };
-        },
-        close() {
-          closed = true;
-        },
+        clientName: 'qwen-cli-mcp-client-xezar',
+        leaderPush: true,
+        inboxAvailable: true,
       },
     };
-  }
-
-  function withPi() {
-    const fake = failableLink();
-    const dataDir = tmp();
-    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
-    journals.push(journal);
-    const made = new LeaderDelivery({
-      projectId: PROJECT,
-      projectRoot: dataDir,
-      journal,
-      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
-      guard: undefined,
-      warn: () => {},
-      heartbeatMs: 200,
-      piLeader: {
-        read: () => ({
-          ok: true as const,
-          descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } },
-        }),
-        connect: () => fake.link as never,
-      },
-    });
-    deliveries.push(made);
-    return { delivery: made, journal, fake };
   }
 
   const blockerOf = (made: LeaderDelivery) => {
@@ -453,59 +130,60 @@ describe('a blocker about an attached leader is written in THAT client’s words
     return status.blocker;
   };
 
-  it('no-owner-session names pi, and never the OpenCode server a pi user is not running', async () => {
-    const { delivery: made } = withPi();
+  it('no-owner-session names Qwen Code, and never a client the Qwen Code user is not running', async () => {
+    const { delivery: made } = delivery(true);
     // No `sessionOpened`: a leader is attached and no MCP session owns the project — #331's state.
-    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+    expect((await made.act({ action: 'attach', client: 'qwen' })).ok).toBe(true);
 
     const blocker = blockerOf(made);
     expect(blocker).toMatchObject({ code: 'no-owner-session' });
-    expect(`${blocker?.message} ${blocker?.fix}`).toContain('pi');
-    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/OpenCode|opencode/);
+    expect(`${blocker?.message} ${blocker?.fix}`).toContain('Qwen Code');
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/Claude Code|Codex/);
   });
 
-  it('delivery-failing tells a pi user to check pi’s own extension, not `opencode serve`', async () => {
-    const { delivery: made, journal, fake } = withPi();
-    made.sessionOpened('session-1');
-    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+  it('delivery-failing tells a Qwen Code user to check the Qwen Code session, not another client’s', async () => {
+    const { delivery: made, journal } = delivery(true);
+    const q = qwenTransport();
+    made.sessionOpened('session-1', q.transport);
+    expect((await made.act({ action: 'attach', client: 'qwen' })).ok).toBe(true);
 
-    fake.fail(true);
+    q.fail(true);
     row(journal); // something IS waiting, which is what separates this from leader-not-answering
     await until('the failure to be observed', () => blockerOf(made)?.code === 'delivery-failing');
 
     const blocker = blockerOf(made);
-    expect(blocker?.message).toContain('pi leader');
-    expect(blocker?.fix).toMatch(/leader extension/);
-    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+    expect(blocker?.message).toContain('Qwen Code leader');
+    expect(blocker?.fix).toMatch(/Qwen Code session is still running and that its xezar MCP server is connected \(\/mcp\)/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/--dangerously-load-development-channels|app-server/);
   });
 
   it('leader-not-answering does the same with nothing waiting', async () => {
-    const { delivery: made, fake } = withPi();
+    const { delivery: made } = delivery(true);
+    // An owner session with no bridge to push through: the adapter's liveness check fails, and
+    // nothing is waiting.
     made.sessionOpened('session-1');
-    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+    expect((await made.act({ action: 'attach', client: 'qwen' })).ok).toBe(true);
 
-    fake.fail(true);
     await until('the liveness failure to be observed', () => blockerOf(made)?.code === 'leader-not-answering');
 
     const blocker = blockerOf(made);
-    expect(blocker?.message).toContain('pi leader');
-    expect(blocker?.fix).toMatch(/leader extension/);
-    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+    expect(blocker?.message).toContain('Qwen Code leader');
+    expect(blocker?.fix).toMatch(/Qwen Code session is still running/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/--dangerously-load-development-channels|app-server/);
   });
 
   /**
    * GUARD TEST: green before this change and after it, on purpose. With NOTHING attached there is no
-   * client to name, and this sentence is the one that has to speak to all four — the two that can be
-   * attached and the two that can only ever read with `leader_events`. Making the other three
-   * client-specific must not narrow it.
+   * client to name, and this sentence is the one that has to speak to every client that can be
+   * attached. Making the other three client-specific must not narrow it.
    */
-  it('with no leader attached, the message still speaks to all four clients', () => {
+  it('with no leader attached, the message still speaks to every attachable client', () => {
     const { delivery: made } = delivery(true);
     made.sessionOpened('session-1');
     const blocker = blockerOf(made);
     expect(blocker).toMatchObject({ code: 'no-leader-session' });
-    for (const client of ['Claude Code', 'Codex', 'pi']) expect(blocker?.message).toContain(client);
-    expect(blocker?.fix).toMatch(/opencode serve/);
+    for (const client of ['Claude Code', 'Codex', 'Qwen Code']) expect(blocker?.message).toContain(client);
+    for (const client of ['Claude Code', 'Qwen Code', 'Codex']) expect(blocker?.fix).toContain(`For ${client}:`);
   });
 });
 
@@ -629,7 +307,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
   it('refuses attach when the owner session is not a Claude Code session, keeping the previous leader', async () => {
     // RED against: attaching a Claude Code leader over a session that would never register the channel.
     const { delivery: made } = delivery(true);
-    made.sessionOpened('session-1', { push: async () => {}, clientName: 'opencode', leaderPush: true } as never);
+    made.sessionOpened('session-1', { push: async () => {}, clientName: 'codex-mcp-client', leaderPush: true } as never);
     const res = await made.act({ action: 'attach', client: 'claude-code' });
     expect(res.ok).toBe(false);
     expect(res.ok === false && res.error).toContain('not a Claude Code session');
@@ -655,7 +333,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
   });
 
   it('reports the failure in Claude Code’s own words when a push does not get through', async () => {
-    // RED against: telling a Claude Code user to check `opencode serve`.
+    // RED against: telling a Claude Code user to check another client's session.
     const { delivery: made, journal } = delivery(true);
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
@@ -665,7 +343,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     await until('the failure to be observed', () => blockerOf(made)?.code === 'delivery-failing');
     const blocker = blockerOf(made);
     expect(blocker?.fix).toMatch(/--dangerously-load-development-channels server:xezar/);
-    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/Qwen Code|Codex’s local app-server/);
   });
 
   it('reports claude-code-push-unconfirmed once a pushed row sits unacknowledged past a heartbeat', async () => {
@@ -698,7 +376,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
   it('reports claude-code-push-not-seen when the owner keeps calling other tools after an unacknowledged push (#886)', async () => {
     // RED against: not wiring the owner's tool calls into the adapter (`sessionCalled` a no-op, or
     // `ownerActivity` not passed), so an active leader that never saw its pushes stays "unconfirmed".
-    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300); // heartbeat 200, bound 300
+    const { delivery: made, journal } = delivery(true, [], undefined, 300); // heartbeat 200, bound 300
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
@@ -726,7 +404,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     let acked = 0;
     const published: Array<string | null> = [];
     let made: LeaderDelivery | undefined;
-    const made1 = delivery(true, [], undefined, undefined, 300, {
+    const made1 = delivery(true, [], undefined, 300, {
       leaderRecord: { acknowledged: () => acked, owedAfter: () => ({ seq: acked, sameEpoch: true }) },
       onStatusChange: () => {
         const status = made?.status();
@@ -761,7 +439,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
   it('still fires for a leader that read BEFORE the push and then kept working without the new one (#890 review, finding 1)', async () => {
     // RED against: letting any read, however old, suppress the blocker — a read made before the push
     // cannot have seen it.
-    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const { delivery: made, journal } = delivery(true, [], undefined, 300);
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
@@ -778,7 +456,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     // RED against: recording a read on arrival (a rejected read would suppress the blocker), taking a
     // success from another session or another tool, or counting a read whose answer did not carry the
     // pushed row — a gap, an empty page, or a page of other rows — as having seen it.
-    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const { delivery: made, journal } = delivery(true, [], undefined, 300);
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
@@ -820,7 +498,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
   it('forgets the owner’s activity when another session takes the project over (#886)', async () => {
     // RED against: keeping the previous owner's calls when a new owner opens without the old one
     // closing (a lapsed lease), so the new session reads as active and silent before it did anything.
-    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const { delivery: made, journal } = delivery(true, [], undefined, 300);
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
@@ -841,156 +519,6 @@ describe('attaching Claude Code: the channel push travels down the owner session
     made.sessionClosed('session-1');
     // The controller ended with its session, so nothing is delivered: the blocker says no owner.
     expect(blockerOf(made)?.code).toBe('no-owner-session');
-  });
-});
-
-/**
- * #651 — the OpenCode session is checked AT ATTACH, against the address the person gave.
- *
- * The defect: `checkSession()` ran only on the DELIVERY path, and `#blocker()` answers
- * `no-owner-session` before it reads the adapter at all, so a session belonging to another project —
- * or one that does not exist — was accepted as "attached" with no error, and the refusal appeared
- * only once an MCP session owned the project. Observed on 0.16.0 with two cockpits side by side;
- * `docs/guide/13-mcp-leader.md` had always promised the check happens now.
- *
- * Each refusal below fails against the pre-fix module (the red proof is in the PR body). The last
- * case is the GUARD: it passes both ways, and pins the default path — a session that really is this
- * project's still attaches, with no blocker.
- */
-describe('attaching OpenCode: the session is checked before the attachment is recorded (#651)', () => {
-  it('refuses a session id OpenCode does not know, with session-not-found and nothing attached', async () => {
-    const { delivery: made, dataDir } = delivery(true);
-    made.sessionOpened('session-1');
-    const oc = await fakeOpenCode({ directory: dataDir });
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: 'ses_does_not_exist_at_all' });
-    // `act` answers the route, which carries strings, not the blocker object (#450). The CODE for
-    // this same refusal is pinned on the checker itself, in `adapters/opencode.test.ts`.
-    expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toContain('OpenCode has no session ses_does_not_exist_at_all');
-    expect(attached.ok === false && attached.error).toContain('opencode serve');
-    // Nothing was recorded, so the status still says there is no leader — never "attached" for a
-    // session that cannot receive anything.
-    const status = made.status();
-    expect(status.available && status.leader).toBeNull();
-    expect(status.available && status.blocker).toMatchObject({ code: 'no-leader-session' });
-  });
-
-  it('refuses a session whose directory is another project, with wrong-project naming that directory', async () => {
-    const { delivery: made } = delivery(true);
-    made.sessionOpened('session-1');
-    const elsewhere = join(tmp(), 'another-project');
-    const oc = await fakeOpenCode({ directory: elsewhere });
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
-    expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toContain(elsewhere);
-    expect(attached.ok === false && attached.error).toContain('not to this project');
-    expect(made.status()).toMatchObject({ leader: null });
-  });
-
-  it('refuses an address that does not answer — attaching to what it cannot check is the bug', async () => {
-    const { delivery: made } = delivery(true);
-    made.sessionOpened('session-1');
-    // Port 1 is not open, so the very first request fails outright.
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
-    expect(attached.ok).toBe(false);
-    // The ATTACH-time wording, never the delivery path's (#651 review, Minor 2). The delivery
-    // sentence promises "xezar retries on its own", which is false before anything is attached: the
-    // person would wait for a retry that never comes.
-    expect(attached.ok === false && attached.error).toContain('xezar could not reach the OpenCode server, so nothing was attached.');
-    expect(attached.ok === false && attached.error).toContain('Start `opencode serve` in this project, then attach the session again.');
-    expect(attached.ok === false && attached.error).not.toContain('retries on its own');
-    expect(made.status()).toMatchObject({ leader: null });
-  });
-
-  it('keeps a leader that is already working when a second attach is refused', async () => {
-    const { delivery: made, dataDir } = delivery(true);
-    made.sessionOpened('session-1');
-    const good = await fakeOpenCode({ directory: dataDir });
-    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: good.baseUrl, sessionId: good.sessionId })).toMatchObject({ ok: true });
-    const refused = await made.act({ action: 'attach', client: 'opencode', baseUrl: good.baseUrl, sessionId: 'ses_not_a_session' });
-    expect(refused.ok).toBe(false);
-    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
-  });
-
-  /**
-   * GUARD TEST: green before this change and after it, on purpose. It pins the DEFAULT path — the
-   * session a person really opened in this project — which the refusals above must not narrow.
-   */
-  it('attaches a session opened in this project, with no blocker', async () => {
-    const { delivery: made, dataDir } = delivery(true);
-    made.sessionOpened('session-1');
-    const oc = await fakeOpenCode({ directory: dataDir });
-    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).toMatchObject({ ok: true });
-    const status = made.status();
-    expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
-    expect(status.available && status.blocker).toBeNull();
-  });
-});
-
-/**
- * #703 — the attach-time check's bound is INJECTABLE, and a server that accepts a connection and
- * then never answers is refused within it.
- *
- * The bound itself is load-bearing (#651): `POST /api/v1/mcp/leader` awaits this check, so an
- * address that accepts a TCP connection and then says nothing — a paused `opencode serve` is
- * exactly that — would otherwise hang the person's Attach leader click with no answer at all. The
- * shipped default stays 10 s; this case injects a small bound so it can assert the bound instead of
- * sleeping for ten seconds. Without the option the injected value is ignored, the default applies,
- * and this case fails (the red proof is in the PR body).
- */
-describe('the OpenCode attach-time check is bounded, and the bound is injectable (#703)', () => {
-  it('refuses a server that accepts the connection and never answers, within the injected bound', async () => {
-    const { delivery: made } = delivery(true, [], undefined, 150);
-    made.sessionOpened('session-1');
-    const silent = await neverAnsweringOpenCode();
-    // The deterministic proof that the INJECTED bound (150 ms) — never the shipped 10 s default,
-    // `OPENCODE_ATTACH_CHECK_MS` — is what ends the attach: `checkOpenCodeAttach` builds the abort
-    // signal that bounds the check from exactly the value `LeaderDelivery` was constructed with, so
-    // the value that reaches `AbortSignal.timeout` is a direct signal from the system under test.
-    // (#846: a wall-clock measurement around the call was flaky — a Node timer can fire a tick
-    // before `Date.now()` reads the bound it was given, e.g. 149 instead of 150.)
-    // With that `< 5_000` wall-clock guard gone, nothing here re-checks that the bound is actually
-    // HONOURED — only that it was CREATED with the right value. If `checkOpenCodeAttach` stopped
-    // wiring the injected signal into the fetch and the check hung instead, this case's own
-    // assertions would never run; the backstop is vitest's `testTimeout` (15 s, `vitest.config.ts`),
-    // which fails the case rather than hanging the suite.
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-    try {
-      const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: silent.baseUrl, sessionId: silent.sessionId });
-      expect(timeoutSpy).toHaveBeenCalledWith(150);
-      // Refused with the attach-time unreachable wording, and nothing was attached.
-      expect(attached.ok).toBe(false);
-      expect(attached.ok === false && attached.error).toContain('the server did not answer');
-      expect(attached.ok === false && attached.error).toContain('Nothing was attached.');
-      expect(made.status()).toMatchObject({ leader: null });
-    } finally {
-      // Local to this case (preferred over a file-wide `vi.restoreAllMocks()` in `afterEach`,
-      // :38): a failing assertion above must not leave the global `AbortSignal.timeout` patched
-      // for every later case in this file.
-      timeoutSpy.mockRestore();
-    }
-  });
-});
-
-describe('an attached leader that does not answer at all', () => {
-  it('is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
-    const { delivery: made, journal, dataDir } = delivery(true);
-    made.sessionOpened('session-1');
-    // Attached against a server that was answering (#651 refuses one that is not), which then goes
-    // away — the shape this case is about: a leader that stops answering AFTER it was attached.
-    const oc = await fakeOpenCode({ directory: dataDir });
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
-    expect(attached.ok).toBe(true);
-    await oc.stop();
-    row(journal);
-    await until('the adapter’s reason to be reported', () => {
-      const status = made.status();
-      return status.available && status.blocker?.code === 'server-unreachable';
-    });
-    const status = made.status();
-    expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
-    // Nothing was handed over, so nothing is counted as delivered.
-    expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0, latestSeq: 1 });
   });
 });
 
@@ -1166,6 +694,25 @@ describe('attaching Codex (#374)', () => {
     expect(status.available && status.blocker).toMatchObject({ code: 'codex-app-server-unreachable', fix: expect.stringContaining('leader_events') });
     expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 0, latestSeq: 2 });
     expect(journal.latestSeq).toBe(2);
+  });
+
+  // Ported from the OpenCode case of the same name (#1046): an attached leader that stops answering
+  // AFTER it was attached is reported with the adapter's own reason, and nothing counts as delivered.
+  it('an attached leader that does not answer at all is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
+    const thread = codexThread();
+    const { delivery: made, journal } = codexDelivery({ connect: async () => ({ threadId: 'thread-owner', link: thread.link, state: { waiting: false } }) });
+    const attached = await made.act({ action: 'attach', client: 'codex' });
+    expect(attached.ok).toBe(true);
+    thread.state.closed = true;
+    row(journal);
+    await until('the adapter’s reason to be reported', () => {
+      const status = made.status();
+      return status.available && status.blocker?.code === 'codex-app-server-unreachable';
+    });
+    const status = made.status();
+    expect(status.available && status.leader).toEqual({ client: 'codex', state: 'attached' });
+    // Nothing was handed over, so nothing is counted as delivered.
+    expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0, latestSeq: 1 });
   });
 
   it('the TUI exits: once app-server unloads the thread the heartbeat says so, and no turn is started into it', async () => {
@@ -1405,35 +952,36 @@ describe('Codex and Claude Code coexist in the leader status payload (#403 merge
 
 /**
  * Round-4 review, major 2: the no-leader blocker is where a Codex user lands before attaching, and it
- * used to say a Codex session "has no address xezar can attach to" and offer only an OpenCode
- * remedy. It must tell the pull-only clients from the attachable ones and give Codex's own path.
+ * used to say a Codex session "has no address xezar can attach to" and offer only another client's
+ * remedy. It must say how a leader reads until it is attached, which clients can be attached, and give
+ * Codex's own path.
  */
 describe('no leader attached: the blocker says who reads, who can be attached, and how', () => {
-  it('tells pull-only clients from attachable ones, and gives the Claude Code and Codex start, discovery and retry remedies', () => {
+  it('says how a leader reads until attached, names the attachable clients, and gives the Claude Code, Qwen Code and Codex remedies', () => {
     const { delivery: made } = delivery(true);
     const status = made.status();
     const blocker = status.available ? status.blocker : null;
     expect(blocker?.code).toBe('no-leader-session');
     expect(blocker?.message).not.toContain('has no address');
-    // Pull-only: they read their events.
-    expect(blocker?.message).toContain('A pi without xezar’s leader extension reads its events with the leader_events tool');
-    // Attachable: Claude Code over its channel, Codex through its shared app-server, and OpenCode.
+    // Until attached: any leader reads its events.
+    expect(blocker?.message).toContain('Any leader reads its events with the leader_events tool until it is attached.');
+    // Attachable: Claude Code over its channel, Qwen Code over its inbox, Codex through its shared app-server.
     expect(blocker?.message).toContain('A Claude Code session started with --dangerously-load-development-channels server:xezar');
+    expect(blocker?.message).toContain('a Qwen Code session (0.25.2 or newer)');
     expect(blocker?.message).toContain('a Codex session running on Codex’s shared local app-server');
-    expect(blocker?.message).toContain('`opencode serve`');
     expect(blocker?.message).toContain('can be attached');
     // Codex: start, discovery, retry.
     expect(blocker?.fix).toContain('codex app-server --listen unix://');
     expect(blocker?.fix).toContain('call a xezar tool once');
     expect(blocker?.fix).toContain('retry');
-    expect(blocker?.fix).toContain('opencode serve');
+    // Qwen Code: start, the tool call, the attach.
+    expect(blocker?.fix).toContain('For Qwen Code: start it in this project, let it call a xezar tool once, then attach it.');
     // Claude Code: the flag, the tool call, the attach.
     expect(blocker?.fix).toContain('--dangerously-load-development-channels server:xezar');
     // #439: attached is the normal path, the pull the fallback. #450 (T-27): the fix names the MCP door
     // the leader uses itself, never an HTTP route.
     expect(blocker?.message).toContain('Attached is how a leader normally receives them; reading with leader_events is the fallback.');
     expect(blocker?.fix).toContain('call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it');
-    expect(blocker?.fix).toContain('a person attaches the session you run with `opencode serve` in Settings → MCP connection');
     expect(blocker?.fix).not.toMatch(/POST|\/api\/v1|no MCP action attaches/);
   });
 });
@@ -1445,7 +993,8 @@ describe('no leader attached: the blocker says who reads, who can be attached, a
  * reaction, the service closing — announces it. A listener that throws never reaches the transport.
  */
 describe('announcing status changes to the cockpit topic (round 5 on #403)', () => {
-  function counted(onStatusChange: () => void) {
+  type CodexConnect = NonNullable<NonNullable<ConstructorParameters<typeof LeaderDelivery>[0]['codexLeader']>['connect']>;
+  function counted(onStatusChange: () => void, connect?: CodexConnect) {
     const dataDir = tmp();
     const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
     journals.push(journal);
@@ -1457,7 +1006,7 @@ describe('announcing status changes to the cockpit topic (round 5 on #403)', () 
       guard: undefined,
       warn: () => {},
       heartbeatMs: 200,
-      codexLeader: { connect: async () => Promise.reject(new CodexAttachError('thread', 'not loaded')), home: () => dataDir },
+      codexLeader: { connect: connect ?? (async () => Promise.reject(new CodexAttachError('thread', 'not loaded'))), home: () => dataDir },
       onStatusChange,
     });
     deliveries.push(made);
@@ -1486,15 +1035,37 @@ describe('announcing status changes to the cockpit topic (round 5 on #403)', () 
 
   it('announces each attempt against the attached leader (a delivery or a liveness check), so its cursors and blocker reach the topic', async () => {
     let changes = 0;
-    const { made, journal, dataDir } = counted(() => {
-      changes += 1;
-    });
+    // A Codex link that answers at attach, then goes away: the delivery attempt fails, which is itself
+    // a status change.
+    let closed = false;
+    const { made, journal } = counted(
+      () => {
+        changes += 1;
+      },
+      async (announcement) => ({
+        threadId: announcement.threadId,
+        state: { waiting: false },
+        link: {
+          get closed() {
+            return closed;
+          },
+          subscribe: () => () => {},
+          async request(method: string): Promise<Record<string, unknown>> {
+            if (closed) throw new Error('the Codex app-server connection is closed');
+            if (method === 'thread/loaded/list') return { data: [announcement.threadId] };
+            if (method === 'thread/resume') return { thread: { id: announcement.threadId, status: { type: 'idle' } } };
+            return {};
+          },
+          close: () => {
+            closed = true;
+          },
+        },
+      }),
+    );
     made.sessionOpened('owner');
-    // Attached against a live server (#651 refuses an address that does not answer), which then goes
-    // away: the delivery attempt fails, which is itself a status change.
-    const oc = await fakeOpenCode({ directory: dataDir });
-    await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
-    await oc.stop();
+    made.codexAnnounced('owner', { threadId: 'thread-owner' });
+    expect((await made.act({ action: 'attach', client: 'codex' })).ok).toBe(true);
+    closed = true;
     const afterAttach = changes;
     row(journal);
     await until('the failed attempt to be announced', () => changes > afterAttach);
@@ -1528,7 +1099,7 @@ describe('the MCP leader door (#450)', () => {
     const pushed: string[] = [];
     return { pushed, push: async (content) => void pushed.push(content), clientName: 'claude-code', leaderPush: true, ...over };
   };
-  function door(opts: { localHandoff?: () => boolean; heartbeatMs?: number; connectCodex?: () => void; connectPi?: () => void } = {}) {
+  function door(opts: { localHandoff?: () => boolean; heartbeatMs?: number; connectCodex?: () => void } = {}) {
     const dataDir = tmp();
     const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
     journals.push(journal);
@@ -1561,21 +1132,6 @@ describe('the MCP leader door (#450)', () => {
           };
         },
       },
-      piLeader: {
-        read: () => ({ ok: true, descriptor: { version: 1, socket: '/tmp/none.sock', pid: 1, startedAt: 'x' } as never }),
-        connect: () => {
-          opts.connectPi?.();
-          return {
-            closed: false,
-            subscribe: () => () => {},
-            async request(command: Record<string, unknown>) {
-              if (command.type === 'get_state') return { success: true, data: { isStreaming: false, pendingMessageCount: 0 } };
-              return { success: true, data: { messages: [] } };
-            },
-            close: () => {},
-          } as never;
-        },
-      },
     });
     deliveries.push(made);
     return { made, journal, dataDir };
@@ -1587,13 +1143,11 @@ describe('the MCP leader door (#450)', () => {
   };
 
   it('T-4: derives the client from the session, exactly, one case per row', () => {
-    // RED against: `startsWith` for pi-mcp-xezar, or dropping the Codex announcement branch.
+    // RED against: a looser match than exact names, or dropping the Codex announcement branch.
     expect(leaderClientOf({ codexAnnounced: true, clientName: 'claude-code' })).toBe('codex');
     expect(leaderClientOf({ codexAnnounced: false, clientName: 'claude-code' })).toBe('claude-code');
     expect(leaderClientOf({ codexAnnounced: false, clientName: 'codex-mcp-client' })).toBe('codex');
-    expect(leaderClientOf({ codexAnnounced: false, clientName: 'pi-mcp-xezar' })).toBe('pi');
-    expect(leaderClientOf({ codexAnnounced: false, clientName: 'opencode' })).toBe('opencode');
-    for (const name of [undefined, 'pi-mcp-xezar-2', 'claude-code ', 'Claude-Code', 'codex', 'pi']) {
+    for (const name of [undefined, 'claude-code ', 'Claude-Code', 'codex']) {
       expect(leaderClientOf({ codexAnnounced: false, clientName: name }), String(name)).toBeNull();
     }
   });
@@ -1613,7 +1167,7 @@ describe('the MCP leader door (#450)', () => {
     expect(self(made, 's1').blocker?.code).toBe('claude-code-push-unconfirmed');
   });
 
-  it('T-6: a Codex or pi attach from its own session re-runs the attach, so the link is dialled again', async () => {
+  it('T-6: a Codex attach from its own session re-runs the attach, so the link is dialled again', async () => {
     // RED against: answering already-attached for every client.
     let codexDials = 0;
     const codex = door({ connectCodex: () => void codexDials++ });
@@ -1622,27 +1176,22 @@ describe('the MCP leader door (#450)', () => {
     expect(await codex.made.attachSession('c1')).toMatchObject({ ok: true, outcome: 'attached', status: { leader: { client: 'codex' }, self: { attached: true } } });
     expect(await codex.made.attachSession('c1')).toMatchObject({ ok: true, outcome: 'attached' });
     expect(codexDials).toBe(2);
-
-    let piDials = 0;
-    const pi = door({ connectPi: () => void piDials++ });
-    pi.made.sessionOpened('p1', { push: async () => {}, clientName: 'pi-mcp-xezar' });
-    expect(await pi.made.attachSession('p1')).toMatchObject({ ok: true, outcome: 'attached', status: { leader: { client: 'pi' } } });
-    expect(await pi.made.attachSession('p1')).toMatchObject({ ok: true, outcome: 'attached' });
-    expect(piDials).toBe(2);
   });
 
   it('T-7: a leader never replaces or detaches a leader of another client', async () => {
-    // RED against: removing the other-client check — the model would replace the person's OpenCode leader.
-    const { made, dataDir } = door();
+    // RED against: removing the other-client check — the model would replace the attached Codex leader.
+    const { made } = door();
+    made.sessionOpened('c1', { push: async () => {}, clientName: 'codex-mcp-client' });
+    made.codexAnnounced('c1', { threadId: 'thread-c1' });
+    expect((await made.act({ action: 'attach', client: 'codex' })).ok).toBe(true);
+    made.sessionClosed('c1');
     made.sessionOpened('s1', claude());
-    const oc = await fakeOpenCode({ directory: dataDir });
-    expect((await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).ok).toBe(true);
     const attach = mcpLeaderDoorResultSchema.parse(await made.attachSession('s1'));
     expect(attach).toMatchObject({ ok: false, code: 'leader-attached-elsewhere', blocker: null });
-    expect(attach.ok === false && attach.message).toBe('An OpenCode leader is already attached to this project, and xezar does not replace it from another session. Nothing was attached.');
+    expect(attach.ok === false && attach.message).toBe('A Codex leader is already attached to this project, and xezar does not replace it from another session. Nothing was attached.');
     const stop = await made.stopSession('s1');
-    expect(stop).toMatchObject({ ok: false, code: 'leader-not-this-session', message: 'The attached leader is an OpenCode session, not this one, so nothing was detached.' });
-    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
+    expect(stop).toMatchObject({ ok: false, code: 'leader-not-this-session', message: 'The attached leader is a Codex session, not this one, so nothing was detached.' });
+    expect(made.status()).toMatchObject({ leader: { client: 'codex', state: 'attached' } });
     expect(self(made, 's1')).toMatchObject({ self: { client: 'claude-code', attached: false } });
   });
 
@@ -1683,12 +1232,10 @@ describe('the MCP leader door (#450)', () => {
     expect(await made.stopSession('new')).toMatchObject({ ok: true, outcome: 'already-stopped' });
   });
 
-  it('T-8: unknown and OpenCode clients are refused with their own reasons, before anything is attached', async () => {
+  it('T-8: an unknown client is refused with its own reason, before anything is attached', async () => {
     const { made } = door();
     made.sessionOpened('u', { push: async () => {}, clientName: 'some-client' });
     expect(await made.attachSession('u')).toMatchObject({ ok: false, code: 'client-unknown' });
-    made.sessionOpened('o', { push: async () => {}, clientName: 'opencode' });
-    expect(await made.attachSession('o')).toMatchObject({ ok: false, code: 'client-needs-address', fix: expect.stringContaining('Settings → MCP connection') });
     expect(made.status()).toMatchObject({ leader: null });
   });
 
@@ -1705,13 +1252,12 @@ describe('the MCP leader door (#450)', () => {
     const open = door();
     const cap = (key: string, t: Partial<Transport> | undefined) => open.made.pushCapability(key, t === undefined ? undefined : { push: async () => {}, ...t });
     expect(cap('k', undefined)).toMatchObject({ canPush: false, pushUnavailable: { code: 'client-unknown' } });
-    expect(cap('k', { clientName: 'opencode' })).toMatchObject({ pushUnavailable: { code: 'client-needs-address' } });
     expect(cap('k', { clientName: 'claude-code', channelAdvertised: false })).toMatchObject({ pushUnavailable: { code: 'bridge-too-old' } });
     expect(cap('k', { clientName: 'claude-code', leaderPush: true, channelAdvertised: false })).toMatchObject({
       pushUnavailable: { code: 'channel-not-advertised', message: expect.stringContaining('did not register the channel') },
     });
     expect(cap('k', { clientName: 'claude-code', leaderPush: true })).toEqual({ canPush: true });
-    expect(cap('k', { clientName: 'pi-mcp-xezar' })).toEqual({ canPush: true });
+    expect(cap('k', { clientName: 'codex-mcp-client' })).toEqual({ canPush: true });
     expect(door({ localHandoff: () => false }).made.pushCapability('k', { push: async () => {}, clientName: 'claude-code', leaderPush: true })).toMatchObject({ pushUnavailable: { code: 'hosted-mode' } });
     const unwritable = new LeaderDelivery({ projectId: PROJECT, projectRoot: tmp(), journal: { writable: false } as never, ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {}, localHandoff: () => false });
     expect(unwritable.pushCapability('k', { push: async () => {}, clientName: 'claude-code', leaderPush: true })).toMatchObject({ pushUnavailable: { code: 'delivery-unavailable' } });
@@ -1729,7 +1275,7 @@ describe('the MCP leader door (#450)', () => {
 
   it('T-10 (guard, green before #450): the route’s refusal texts are byte-identical', async () => {
     const { made } = door();
-    made.sessionOpened('s1', { push: async () => {}, clientName: 'opencode', leaderPush: true });
+    made.sessionOpened('s1', { push: async () => {}, clientName: 'codex-mcp-client', leaderPush: true });
     expect(await made.act({ action: 'attach', client: 'claude-code' })).toEqual({
       ok: false,
       error: 'The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal. fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.',
@@ -1742,16 +1288,12 @@ describe('the MCP leader door (#450)', () => {
     });
     const plain = delivery(true).delivery;
     plain.sessionOpened('s3');
-    expect(await plain.act({ action: 'attach', client: 'pi' })).toEqual({
-      ok: false,
-      error: PI_NO_LEADER_ERROR,
-    });
     expect(await plain.act({ action: 'attach', client: 'codex' })).toEqual({
       ok: false,
       error: 'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server. Your Codex session has not called a xezar tool yet, so xezar does not know which session it is. Let it call one once (for example leader_events), then attach it again. Until then, use leader_events in Codex to read saved events.',
     });
     const unwritable = new LeaderDelivery({ projectId: PROJECT, projectRoot: tmp(), journal: { writable: false } as never, ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {} });
-    expect(await unwritable.act({ action: 'attach', client: 'pi' })).toEqual({
+    expect(await unwritable.act({ action: 'attach', client: 'codex' })).toEqual({
       ok: false,
       error: 'xezar cannot write this project’s event journal, so no event is recorded and none can be delivered. The cockpit log names the file and the error.',
     });
@@ -1769,33 +1311,32 @@ describe('the MCP leader door (#450)', () => {
   });
 
   /**
-   * #532 G4: an owner-session change (another MCP session taking the project — the ordinary case an
-   * OpenCode `xezar` MCP server connects lazily into) must never itself detach or replace the
-   * attached leader. OpenCode's leader is attached by a PERSON (`act`, the HTTP door), never derived
-   * from a session, so it is the sharpest instance of the rule — nothing about who currently owns the
-   * project may touch it, and the client-mismatched owner sessions that pass through in between never
-   * become the leader either. Claude Code is the contrast worth proving end to end, not just in
+   * #532 G4: an owner-session change (another MCP session taking the project) must never itself
+   * detach or replace the attached leader. A Codex leader attached through the route (`act`, the HTTP
+   * door) is bound to its own thread on Codex's app-server, not to the session that owns the project,
+   * so nothing about who currently owns the project may touch it, and the owner sessions that pass
+   * through in between never become the leader either. Claude Code is the contrast worth proving end to end, not just in
    * status: its leader IS the live owner transport by design, so an owner switch to a new same-client
    * session carries the attachment forward with no reattach call — but only correctly if a row
    * appended after the switch is really pushed down the NEW session's bridge, never the old, closed
    * one that would silently swallow it.
    * Named break: calling `#detach()` from `sessionOpened` (an owner switch made "helpfully" clean up
-   * the previous leader) — a Claude Code or OpenCode person's attachment would be silently dropped
+   * the previous leader) — a Claude Code or Codex leader's attachment would be silently dropped
    * the moment their coding agent reconnects, with no attach/stop call and no blocker explaining why.
    */
-  it('G4: an owner-session switch alone never detaches or replaces the attached leader, OpenCode’s person-attach included', async () => {
-    const { made, dataDir } = door();
-    made.sessionOpened('s1', claude());
-    const oc = await fakeOpenCode({ directory: dataDir, sessionId: 'ses_g4owner00000000000001' });
-    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).toMatchObject({ ok: true });
-    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
+  it('G4: an owner-session switch alone never detaches or replaces the attached leader, a route-attached Codex leader included', async () => {
+    const { made } = door();
+    made.sessionOpened('s1', { push: async () => {}, clientName: 'codex-mcp-client' });
+    made.codexAnnounced('s1', { threadId: 'thread-g4owner' });
+    expect(await made.act({ action: 'attach', client: 'codex' })).toMatchObject({ ok: true });
+    expect(made.status()).toMatchObject({ leader: { client: 'codex', state: 'attached' } });
 
     // The session that owns the project changes twice, with no attach or stop call in between.
     made.sessionOpened('s2', claude());
-    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' }, blocker: null });
+    expect(made.status()).toMatchObject({ leader: { client: 'codex', state: 'attached' }, blocker: null });
     made.sessionClosed('s2');
     made.sessionOpened('s3', { push: async () => {}, clientName: 'codex-mcp-client' });
-    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' }, blocker: null });
+    expect(made.status()).toMatchObject({ leader: { client: 'codex', state: 'attached' }, blocker: null });
     // Neither of the sessions that merely OWNED the project in passing became the leader.
     expect(self(made, 's3')).toMatchObject({ self: { client: 'codex', isOwner: true, attached: false } });
 

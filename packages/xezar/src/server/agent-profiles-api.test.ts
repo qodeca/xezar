@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentProfilesResponse, AgentProfileResponse } from '@qodeca/xezar-contract';
-import { agentAccountsPath } from '../paths.ts';
+import { agentAccountsPath, agentHomePaths } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -87,25 +87,23 @@ describe('agent profiles API', () => {
       const body = await list();
       expect(body.editable).toBe(true);
       expect(body.profiles.every((p) => p.isDefault)).toBe(true);
-      expect(body.profiles.map((p) => p.provider)).toEqual(['claude', 'codex', 'opencode', 'pi']);
+      expect(body.profiles.map((p) => p.provider)).toEqual(['claude', 'codex', 'qwen']);
       expect(body.profiles.every((p) => p.id === 'default')).toBe(true);
     });
 
-    // pi joined the list on 2026-09-12 (#329): `PI_CODING_AGENT_DIR` moves its credentials as
-    // well as its config, which is the bar OpenCode still fails — OpenCode's live in a SQLite DB
-    // behind a separate `OPENCODE_DB`, so a config-dir profile would bill the other account.
-    it('names the providers that can carry an account at all — OpenCode cannot', async () => {
-      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'pi']);
+    // Qwen Code joined it with #1044: `QWEN_HOME` moves its settings, keys and OAuth credentials.
+    it('names the providers that can carry an account at all', async () => {
+      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'qwen']);
     });
 
     // The route-level half of the same fix. `defaultAgentProfile` used to fall through to
-    // `home.claude` for pi, so this row echoed Claude's folder as pi's home.
-    it('gives the pi row pi’s own home, not Claude’s', async () => {
+    // `home.claude` for a provider it did not name, so that row echoed Claude's folder as its home.
+    it('gives the qwen row Qwen Code’s own home, not Claude’s', async () => {
       const body = await list();
-      const pi = body.profiles.find((p) => p.provider === 'pi');
+      const qwen = body.profiles.find((p) => p.provider === 'qwen');
       const claude = body.profiles.find((p) => p.provider === 'claude');
-      expect(pi?.path).toMatch(/[/\\]\.pi[/\\]agent$/);
-      expect(pi?.path).not.toBe(claude?.path);
+      expect(qwen?.path).toBe(agentHomePaths().qwen);
+      expect(qwen?.path).not.toBe(claude?.path);
     });
 
     it('reports each account\'s folder state, and does not refuse one that is missing', async () => {
@@ -156,7 +154,7 @@ describe('agent profiles API', () => {
       ]);
       // The listing is still the listing: a dangling reference never removes a row or fails the
       // request, so the discovered defaults are all still there.
-      expect(body.profiles.filter((p) => p.isDefault)).toHaveLength(4);
+      expect(body.profiles.filter((p) => p.isDefault)).toHaveLength(3);
     });
 
     it('reports nothing for a clean store, and still carries the key', async () => {
@@ -191,7 +189,7 @@ describe('agent profiles API', () => {
     describe('selected — exactly one per provider, resolved the way a run resolves', () => {
       const selectedIds = (body: AgentProfilesResponse) =>
         Object.fromEntries(
-          ['claude', 'codex', 'opencode', 'pi'].map((provider) => [
+          ['claude', 'codex', 'qwen'].map((provider) => [
             provider,
             body.profiles.filter((p) => p.provider === provider && p.selected === true).map((p) => p.id),
           ]),
@@ -203,8 +201,7 @@ describe('agent profiles API', () => {
         expect(selectedIds(await list())).toEqual({
           claude: ['default'],
           codex: ['default'],
-          opencode: ['default'],
-          pi: ['default'],
+          qwen: ['default'],
         });
       });
 
@@ -289,16 +286,6 @@ describe('agent profiles API', () => {
         configDir: claudeDir('somewhere'),
       });
       expect(body.profile.id).not.toBe('default');
-    });
-
-    it('refuses OpenCode — its credentials do not follow its config dir', async () => {
-      const { status, body } = await send('POST', '/api/v1/workspace/agent-profiles', {
-        provider: 'opencode',
-        configDir: claudeDir('oc'),
-      });
-      expect(status).toBe(400);
-      expect(body.error).toContain('more than one account');
-      expect((await loadAgentAccounts()).accounts).toEqual([]);
     });
 
     it('refuses a relative folder — it would resolve against a throwaway worktree', async () => {
@@ -779,48 +766,46 @@ describe('agent profiles API', () => {
     });
 
     /**
-     * The first real exercise of #329's `accountFiles` fix. Before it, `accountHomePatch` named
-     * three providers and silently did nothing for pi, so a pi account listed the DEFAULT pi
-     * home's files. The fix was untestable until #330 WP4 gave pi catalog entries — `accountFiles`
-     * filters `scope === 'user'`, and with no pi entry the list was empty either way.
+     * The `accountFiles` fix (#329): `accountHomePatch` once named only some providers and silently
+     * did nothing for the others, so such an account listed the DEFAULT home's files.
      */
-    it('resolves a pi ACCOUNT’s files in that account’s folder, not the default pi home', async () => {
-      const dir = join(home, 'pi-second');
+    it('resolves a qwen ACCOUNT’s files in that account’s folder, not the default Qwen Code home', async () => {
+      const dir = join(home, 'qwen-second');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'settings.json'), '{}', 'utf8');
       const { status, body } = await send('POST', '/api/v1/workspace/agent-profiles', {
-        provider: 'pi',
-        label: 'Second pi',
+        provider: 'qwen',
+        label: 'Second qwen',
         configDir: dir,
       });
       expect(status).toBe(201);
 
       const row = (await list()).profiles.find((p) => p.id === body.profile.id)!;
       // Populated, so "no leak into the default home" is not "no files at all".
-      expect(row.files.map((f) => f.label).sort()).toEqual(['AGENTS.md', 'mcp.json', 'settings.json']);
+      expect(row.files.map((f) => f.label).sort()).toEqual(['settings.json']);
       for (const file of row.files) expect(file.path.startsWith(dir), file.id).toBe(true);
       expect(row.files.find((f) => f.label === 'settings.json')?.exists).toBe(true);
 
       // …and the file it would have read instead is a DIFFERENT path — the actual regression.
-      const defaultPi = (await list()).profiles.find((p) => p.provider === 'pi' && p.isDefault)!;
-      expect(row.files.every((f) => !f.path.startsWith(defaultPi.path))).toBe(true);
+      const defaultQwen = (await list()).profiles.find((p) => p.provider === 'qwen' && p.isDefault)!;
+      expect(row.files.every((f) => !f.path.startsWith(defaultQwen.path))).toBe(true);
 
       // Neither does it borrow another provider's slot: no Claude/Codex file rides along.
-      expect(row.files.every((f) => f.id.startsWith('pi.'))).toBe(true);
+      expect(row.files.every((f) => f.id.startsWith('qwen.'))).toBe(true);
     });
 
-    it('never lists a pi credential file as one of an account’s files (F-15)', async () => {
-      // `auth.json` and `models.json` sit beside the catalogued files; this route echoes absolute
-      // paths, and a catalogued credential file would become openable through /open as well.
-      const dir = join(home, 'pi-third');
+    it('never lists a qwen credential file as one of an account’s files (F-15)', async () => {
+      // `.env` (model keys) and `oauth_creds.json` sit beside the catalogued file; this route echoes
+      // absolute paths, and a catalogued credential file would become openable through /open as well.
+      const dir = join(home, 'qwen-third');
       mkdirSync(dir, { recursive: true });
       const { body } = await send('POST', '/api/v1/workspace/agent-profiles', {
-        provider: 'pi',
+        provider: 'qwen',
         configDir: dir,
       });
       const row = (await list()).profiles.find((p) => p.id === body.profile.id)!;
       expect(row.files.length).toBeGreaterThan(0);
-      for (const name of ['auth.json', 'models.json', 'models-store.json']) {
+      for (const name of ['.env', 'oauth_creds.json']) {
         expect(row.files.map((f) => f.label), name).not.toContain(name);
       }
     });

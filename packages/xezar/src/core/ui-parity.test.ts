@@ -8,8 +8,7 @@
  * future mapper change drops a capability — or a new fixture set forgets to
  * cover one — a named row fails here.
  *
- * `BACKENDS` lists every backend that owns a wire mapper. Pi uses its documented
- * RPC protocol and therefore has its own wire-faithful fixture set.
+ * `BACKENDS` lists every backend that owns a wire mapper.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import type { UiEvent, UiItem } from './ui-events.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKENDS = ['claude', 'codex', 'opencode', 'pi'] as const;
+const BACKENDS = ['claude', 'codex', 'qwen'] as const;
 
 /** Every event across every golden fixture of one backend. */
 function fixtureEvents(backend: (typeof BACKENDS)[number]): UiEvent[] {
@@ -94,10 +93,9 @@ describe('protocol v2 backend parity (every mapper emits every matrix capability
   }
 
   // Sub-agent NESTING rides on parentItemId where the wire attributes work
-  // to its parent: claude `parent_tool_use_id` and opencode child-session
-  // parts under a `subtask`. Codex's wire has no parent attribution — its
-  // matrix cell is the review-mode task items asserted above.
-  for (const backend of ['claude', 'opencode'] as const) {
+  // to its parent: claude `parent_tool_use_id`. Codex's wire has no parent
+  // attribution — its matrix cell is the review-mode task items asserted above.
+  for (const backend of ['claude'] as const) {
     it(`${backend} nests sub-agent work via parentItemId`, () => {
       expect(items(fixtureEvents(backend)).some((item) => item.parentItemId !== undefined)).toBe(true);
     });

@@ -14,14 +14,12 @@ import type {
 } from '@qodeca/xezar-contract';
 import { z } from 'zod';
 
-import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { ClaudeCodeChannelAdapter, type ClaudeCodeReplayedRange } from './adapters/claude-code.ts';
-import { OpenCodeDeliveryBlocked, OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { QwenCodeInboxAdapter } from './adapters/qwen-code.ts';
+import { isQwenClientName } from './qwen-messaging.ts';
 import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
 import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
-import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
-import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
 import {
   EVENT_CONTROLLER_HEARTBEAT_MS,
@@ -49,20 +47,13 @@ import type { McpToolResult } from './tool.ts';
  * a dispatcher following the journal for it.
  *
  * WHO IT CAN REACH, AND WHY ONLY THEM. A dispatch must reach a MODEL, and generic MCP notifications
- * start no turn in Claude Code, Codex, OpenCode or pi (D-05 § 4; #330 run A for pi; each adapter's
+ * start no turn in Claude Code or Codex on their own (D-05 § 4; each adapter's
  * evidence record). xezar NEVER starts an agent process for a leader (owner decision on #311): the
  * person runs their own leader and connects it to xezar over MCP. So an event reaches a model only
  * through a session the person runs AND tells xezar where to find — `attach`. Four clients can be
  * told today:
  *
- *  - **OpenCode** names an `opencode serve` session by URL and session id (#110).
- *  - **pi** names nothing, because it cannot: pi's RPC is stdio-only and spawn-only, so a pi the
- *    person started has no address. The address therefore comes from INSIDE it — xezar's pi leader
- *    extension opens a socket and announces it in the project's data directory, and `#piTarget()`
- *    dials that (#330 WP2, `adapters/pi-link.ts`). With no extension running there is no descriptor
- *    and the attach is refused with pi's own recoverable reason, which is exactly the behaviour that
- *    existed before the extension did.
- *  - **Codex** (#374) names nothing either: the owning Codex session announces its thread id on its
+ *  - **Codex** (#374) names nothing: the owning Codex session announces its thread id on its
  *    tool calls, and xezar finds the shared app-server in its OWN Codex home (`adapters/codex-link.ts`,
  *    the discovery rule). A refusal is remembered against the owner session with WHICH refusal it
  *    was, so the status names the cause and its fix (design review NB-1).
@@ -72,9 +63,11 @@ import type { McpToolResult } from './tool.ts';
  *    person opts in per launch with `--dangerously-load-development-channels server:xezar`; attach is
  *    refused (`claude-code-not-owner`, `claude-code-bridge-too-old`) when the owner session is not a
  *    channel-capable Claude Code bridge.
+ *  - **Qwen Code** (#1045) names nothing either: the owner MCP session's own bridge delivers each
+ *    event as a cross-session message into that Qwen session's inbox (`qwen-messaging.ts`).
  *
- * A Claude Code session started without that flag, a Codex session off the shared app-server, and a
- * pi with no leader extension still have no address at all: for them the controller keeps the rows
+ * A Claude Code session started without that flag and a Codex session off the shared app-server
+ * still have no address at all: for them the controller keeps the rows
  * in the journal, reports `disconnected`, retries at its heartbeat, and `status().blocker` says so.
  * Nothing is lost either way — such a leader reads its events with the `leader_events` tool (#251),
  * and the next session resumes after its last acknowledgement.
@@ -104,12 +97,11 @@ import type { McpToolResult } from './tool.ts';
  * project, at no model cost (N-06). It is the recoverable blocker the requirements ask for.
  *
  * Leader states: none → attached (`act` attach); attached → none (`act` stop, or the service
- * closing). An attached OpenCode session that goes away is the adapter's own recoverable blocker,
- * reported by `status()`; the controller retries it at the heartbeat. A pi leader that goes away
- * takes its socket with it, which closes the link and reports the same way.
+ * closing). An attached session that goes away is the adapter's own recoverable blocker, reported
+ * by `status()`; the controller retries it at the heartbeat.
  *
  * What xezar OPENS to reach a leader is released on every one of those exits: `#detach` closes the
- * adapter and then its `dispose` (pi's socket today), and `close()` goes through `#detach`.
+ * adapter and then its `dispose`, when it has one, and `close()` goes through `#detach`.
  *
  * What reaches a terminal state BECAUSE of this module: its controllers. No process, run, lease,
  * queue slot or worktree — it starts nothing and stops nothing but its own objects.
@@ -131,21 +123,6 @@ export const LEADER_ROLE_INSTRUCTION = [
   'When the project uses GitHub and `gh` is available, get GitHub facts (labels, review verdicts, merge state) from `gh`, which the MCP does not carry.',
   'You do not edit files yourself; tasks do the work, each in an isolated working copy (a Git worktree) or in the project folder, as the task was started.',
 ].join('\n');
-
-/**
- * The remedy for every OpenCode blocker. OpenCode's adapter is the one that names no `fix` of its
- * own, so this sentence answers both a refused attach (#651) and a blocker raised later on the
- * delivery path — one wording, so the two cannot drift apart.
- */
-const OPENCODE_BLOCKER_FIX = 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
-
-/**
- * How long the attach-time check may take before the address counts as unreachable (#651). A bound
- * is load-bearing: `POST /api/v1/mcp/leader` awaits this, so an address that accepts a connection and
- * then never answers — a paused `opencode serve` is exactly that — would otherwise hang the person's
- * Attach leader click with no answer at all.
- */
-const OPENCODE_ATTACH_CHECK_MS = 10_000;
 
 /**
  * #886: the tool whose calls are the leader reading, checking or acknowledging events — never the
@@ -200,47 +177,6 @@ export function mergeReplayed(ranges: readonly ClaudeCodeReplayedRange[], added:
 }
 
 /**
- * The attach-time wording for an unreachable server (#651 review, Minor 2). The adapter's own
- * message is the DELIVERY-path sentence — "xezar retries on its own" — which is true of a delivery
- * attempt the heartbeat repeats and false here, where nothing is attached yet. Forwarding it and
- * then appending "attach it again" contradicted itself on the cockpit surface, so this case answers
- * with what happened and what to do about it.
- */
-const OPENCODE_ATTACH_UNREACHABLE: McpLeaderBlocker = {
-  code: 'server-unreachable',
-  message: 'xezar could not reach the OpenCode server, so nothing was attached.',
-  fix: 'Start `opencode serve` in this project, then attach the session again.',
-};
-
-/**
- * The attach-time targeting check (#651): reuses the adapter's OWN `checkTarget`, which is the same
- * `#checkSession` the delivery path runs, so attach and delivery can never disagree about whether a
- * session is usable. `undefined` means the session exists and is this project's.
- *
- * Every outcome is a recoverable blocker the person reads, never a throw: an unreachable or silent
- * server answers `server-unreachable` rather than an AbortError, because failing closed is the point
- * — a target xezar could not check is not a target it attaches.
- */
-async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter, timeoutMs: number): Promise<McpLeaderBlocker | undefined> {
-  try {
-    await adapter.checkTarget(AbortSignal.timeout(timeoutMs));
-    return undefined;
-  } catch (err) {
-    // `session-not-found` and `wrong-project` are already attach-shaped and are forwarded unchanged;
-    // the unreachable one is not, because the adapter words it for the delivery path.
-    if (err instanceof OpenCodeDeliveryBlocked) {
-      if (err.blocker.code === 'server-unreachable') return OPENCODE_ATTACH_UNREACHABLE;
-      return { code: err.blocker.code, message: err.blocker.message, fix: OPENCODE_BLOCKER_FIX };
-    }
-    return {
-      code: 'server-unreachable',
-      message: `xezar could not check that OpenCode session before attaching it: the server did not answer (${err instanceof Error ? err.message : String(err)}). Nothing was attached.`,
-      fix: OPENCODE_BLOCKER_FIX,
-    };
-  }
-}
-
-/**
  * Nothing attached. The first thing a person reads before attaching, so it says which clients only
  * READ their events and which can be ATTACHED, and gives Codex's own path — start, discovery, retry
  * (round-4 review, major 2; it used to tell a Codex user their session had no address).
@@ -248,8 +184,8 @@ async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter, timeoutMs: 
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
-  fix: 'Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, a person attaches the session you run with `opencode serve` in Settings → MCP connection. For pi, attach it while it runs xezar’s leader extension.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. Any leader reads its events with the leader_events tool until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Qwen Code session (0.25.2 or newer), or a Codex session running on Codex’s shared local app-server can be attached, so events start a turn in it.',
+  fix: 'Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Qwen Code: start it in this project, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry.',
 };
 
 /**
@@ -288,23 +224,66 @@ const CLAUDE_CODE_CHANNEL_NOT_ADVERTISED: McpLeaderBlocker = {
 };
 
 /**
+ * #1045: attach refused because the MCP session that owns this project is not a Qwen Code session.
+ */
+const QWEN_NOT_OWNER: McpLeaderBlocker = {
+  code: 'qwen-not-owner',
+  message: 'The MCP session that owns this project is not a Qwen Code session, so there is no Qwen Code leader to push events to. Events are kept in the journal.',
+  fix: 'Start Qwen Code in this project, let it call a xezar tool once, then attach it again.',
+};
+
+/** #1045: the owner is a Qwen Code session whose bridge predates `leader/push`. */
+const QWEN_BRIDGE_TOO_OLD: McpLeaderBlocker = {
+  code: 'qwen-bridge-too-old',
+  message: 'This Qwen Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
+  fix: 'Restart the xezar MCP server in Qwen Code (/mcp) or start a new Qwen Code session, so it starts the current xezar bridge, then attach it again.',
+};
+
+/**
+ * #1045: Qwen Code gave its xezar bridge no inbox (`QWEN_CODE_MESSAGING_SOCKET`). Three causes, which
+ * xezar cannot tell apart from the bridge: a Qwen Code older than 0.25.2 (messaging off by default),
+ * messaging switched off in the person's Qwen settings, or the bridge started before the session
+ * opened its inbox (the start-order race in the #1043 note). The fix names all three.
+ *
+ * #1086: on Windows none of them is the cause. Qwen Code 0.25.2 makes only Unix socket paths for its
+ * automatic inbox and binds only a named pipe there, so every session starts with messaging off and
+ * no setting turns it on. A Windows leader reads its events (owner decision on #1086), and the text
+ * says that instead of sending the person to settings that cannot help. The bridge and the service run
+ * on the same machine as the Qwen Code session, so this process's platform is the session's.
+ */
+export function qwenInboxUnavailable(platform: NodeJS.Platform = process.platform): McpLeaderBlocker {
+  if (platform === 'win32') {
+    return {
+      code: 'qwen-inbox-unavailable',
+      message: 'Qwen Code has no push on Windows: it opens no inbox for its xezar MCP server there (up to 0.25.2), so a pushed event cannot reach this session. Events are kept in the journal.',
+      fix: 'No setting changes this. Read events with leader_events action read, and acknowledge each one you have accounted for with action ack and its cursor.',
+    };
+  }
+  return {
+    code: 'qwen-inbox-unavailable',
+    message: 'This Qwen Code session gave its xezar MCP server no inbox to push events to, so a pushed event could not reach it. Events are kept in the journal.',
+    fix: 'Use Qwen Code 0.25.2 or newer, and keep cross-session messaging on in its settings (agents.crossSessionMessaging, and agents.crossSessionInbound not set to hold or refuse). Then restart the xezar MCP server in Qwen Code (/mcp) or start a new session, and attach it again. Until then, read events with leader_events.',
+  };
+}
+
+const QWEN_INBOX_UNAVAILABLE: McpLeaderBlocker = qwenInboxUnavailable();
+
+/**
  * #450 — which leader client an MCP session is, from what the SESSION showed, never from an argument.
  * Exact matches only (#374: never a looser match). A Codex announcement wins: it is how a Codex session
  * identifies itself on its tool calls. The names are the ones each client's evidence record measured:
- * `claude-code` (Claude Code 2.1.270), `codex-mcp-client` (codex-cli), `pi-mcp-xezar` (pi-mcp-adapter
- * 2.32.1, not re-measured) and `opencode`.
+ * `claude-code` (Claude Code 2.1.270) and `codex-mcp-client` (codex-cli), plus Qwen Code's prefix.
  */
 export function leaderClientOf(evidence: { readonly clientName?: string | undefined; readonly codexAnnounced: boolean }): McpLeaderClient | null {
   if (evidence.codexAnnounced) return 'codex';
+  // #1045: Qwen Code names its MCP client `qwen-cli-mcp-client-<server name>` (0.25.2), so the one
+  // prefix match here; the server name is the person's own choice.
+  if (isQwenClientName(evidence.clientName)) return 'qwen';
   switch (evidence.clientName) {
     case 'claude-code':
       return 'claude-code';
     case 'codex-mcp-client':
       return 'codex';
-    case 'pi-mcp-xezar':
-      return 'pi';
-    case 'opencode':
-      return 'opencode';
     default:
       return null;
   }
@@ -326,11 +305,7 @@ const DOOR_REFUSALS: Record<Exclude<McpLeaderDoorRefusalCode, 'attach-refused' |
   },
   'client-unknown': {
     message: 'xezar cannot tell which leader client this session is, so there is nothing it could push to.',
-    fix: 'Attach from a Claude Code, Codex or pi leader. Until then, read events with leader_events.',
-  },
-  'client-needs-address': {
-    message: 'An OpenCode leader is reached at the address of the opencode serve session, which xezar does not take from an MCP session.',
-    fix: 'A person attaches this session in Settings → MCP connection. Until then, read events with leader_events.',
+    fix: 'Attach from a Claude Code, Qwen Code or Codex leader. Until then, read events with leader_events.',
   },
 };
 
@@ -339,9 +314,9 @@ const PUSH_UNAVAILABLE: Record<McpPushUnavailableCode, string> = {
   'delivery-unavailable': DOOR_REFUSALS['delivery-unavailable'].message,
   'hosted-mode': DOOR_REFUSALS['hosted-mode'].message,
   'client-unknown': 'xezar cannot tell which leader client this session is.',
-  'client-needs-address': 'An OpenCode leader is attached by a person, with its opencode serve address.',
   'bridge-too-old': CLAUDE_CODE_BRIDGE_TOO_OLD.message,
   'channel-not-advertised': CLAUDE_CODE_CHANNEL_NOT_ADVERTISED.message,
+  'inbox-unavailable': QWEN_INBOX_UNAVAILABLE.message,
 };
 
 const cannotPush = (code: McpPushUnavailableCode): McpPushCapability => ({ canPush: false, pushUnavailable: { code, message: PUSH_UNAVAILABLE[code] } });
@@ -349,40 +324,21 @@ const cannotPush = (code: McpPushUnavailableCode): McpPushCapability => ({ canPu
 /**
  * Every blocker about an ATTACHED leader is written in that leader's client's own words.
  *
- * It used to be written in OpenCode's, for all of them, so a pi user who hit one was told to check
- * an `opencode serve` they are not running (QA on #358, finding 3) — at the exact moment they needed
- * the right thing to check. The two clients are reached in completely different ways: OpenCode's
- * leader is an HTTP server the person runs, pi's is a Unix socket xezar's leader extension opens
- * from INSIDE the person's own pi, so "check the server" has no shared spelling.
+ * It used to be written in one client's words for all of them, so a user who hit one was told to
+ * check a server they were not running (QA on #358, finding 3) — at the exact moment they needed the
+ * right thing to check.
  *
- * Four can be attached (`mcpLeaderAttachInputSchema` in the contract): OpenCode, pi, Codex and — since
- * #374 — Claude Code, over its channel. `NO_LEADER` above names every client itself. Typed
- * `Record<McpLeaderSession['client'], …>` on purpose: a fifth attachable client is then a compile
+ * Three can be attached (`mcpLeaderClientSchema` in the contract): Codex, Claude Code over its
+ * channel (#374) and Qwen Code over its inbox (#1045). `NO_LEADER` above names every client itself.
+ * Typed `Record<McpLeaderSession['client'], …>` on purpose: a new attachable client is then a compile
  * error here, rather than a message that quietly names the wrong client again.
  */
 const CLIENT_WORDS: Record<
   McpLeaderSession['client'],
-  { readonly name: string; readonly lazyMcp: string; readonly check: string; readonly checkShort: string; readonly reattach: string }
+  { readonly name: string; readonly check: string; readonly checkShort: string; readonly reattach: string }
 > = {
-  opencode: {
-    name: 'OpenCode',
-    lazyMcp: ' OpenCode connects its xezar MCP server only when it first needs it.',
-    check: 'check that `opencode serve` is running and answering (a paused process still accepts connections)',
-    checkShort: 'check that `opencode serve` is running and answering',
-    reattach: 'attach the session again',
-  },
-  pi: {
-    // Nothing is claimed about WHEN pi opens its MCP connection, because nothing here measured it;
-    // the fix below works whenever it does.
-    name: 'pi',
-    lazyMcp: '',
-    check: 'check that the pi you attached is still running with xezar’s leader extension loaded (a paused process still holds its socket open)',
-    checkShort: 'check that the pi you attached is still running with xezar’s leader extension loaded',
-    reattach: 'attach it again',
-  },
   codex: {
     name: 'Codex',
-    lazyMcp: '',
     check: 'check that this Codex session is still available on Codex’s local app-server',
     checkShort: 'check that this Codex session is still available on Codex’s local app-server',
     reattach: 'retry connecting when this session is available',
@@ -391,23 +347,28 @@ const CLIENT_WORDS: Record<
     // Reached through the owner session's own bridge, so "check the leader" is "check Claude Code is
     // still running with the channel loaded" — there is no separate server the person runs.
     name: 'Claude Code',
-    lazyMcp: '',
     check: 'check that Claude Code is still running, and was started with `--dangerously-load-development-channels server:xezar`',
     checkShort: 'check that Claude Code is still running with the xezar channel loaded',
+    reattach: 'attach it again',
+  },
+  qwen: {
+    // Reached through the owner session's own bridge and that session's inbox, like Claude Code.
+    name: 'Qwen Code',
+    check: 'check that the Qwen Code session is still running and that its xezar MCP server is connected (/mcp)',
+    checkShort: 'check that the Qwen Code session is still running',
     reattach: 'attach it again',
   },
 };
 
 /**
  * #331: a leader is attached, but no MCP session owns the project, so no controller follows the
- * journal and nothing is delivered. The ORDINARY first state: OpenCode connects its MCP servers
- * lazily, so "attach first, MCP session later" is what a first user sees.
+ * journal and nothing is delivered: the leader's MCP connection has closed, or has not opened yet.
  */
 const noOwnerSession = (client: McpLeaderSession['client']): McpLeaderBlocker => {
   const words = CLIENT_WORDS[client];
   return {
     code: 'no-owner-session',
-    message: `A ${words.name} leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered.${words.lazyMcp} Events are kept in the journal meanwhile.`,
+    message: `A ${words.name} leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered. Events are kept in the journal meanwhile.`,
     fix: `Let the attached ${words.name} session call a xezar tool once (for example leader_events), so its MCP connection opens; it then receives every event it has not acknowledged.`,
   };
 };
@@ -471,23 +432,6 @@ export interface LeaderDeliveryOptions {
   /** #886 test seam: how long an unacknowledged push may be followed by tool calls. Production: five minutes. */
   readonly pushNotSeenMs?: number;
   /**
-   * Test seam for the attach-time OpenCode check (#703). Production uses the 10 s
-   * `OPENCODE_ATTACH_CHECK_MS` bound above; a case that needs a server which accepts a connection and
-   * never answers injects a small one here instead of waiting out the shipped default.
-   */
-  readonly opencodeAttachCheckMs?: number;
-  /**
-   * Where this project's state lives, for the pi leader descriptor (`adapters/pi-link.ts`). Absent
-   * it is DERIVED from `projectRoot`, which is what the service already does, so nothing upstream
-   * has to pass it for pi attach to work. A store with a relocated `dataDir` may pass its own.
-   */
-  readonly dataDir?: string;
-  /** Test seams for the pi link, so a case never touches a real socket. Production uses the module. */
-  readonly piLeader?: {
-    read?: (dataDir: string) => ReturnType<typeof readPiLeaderDescriptor>;
-    connect?: (descriptor: PiLeaderDescriptor, opts: { warn?: (message: string) => void }) => PiLeaderLink;
-  };
-  /**
    * The Codex attach path. `home` is where the service looks for the shared app-server — its own
    * `CODEX_HOME`, else `~/.codex` (`codexControlHome`); `connect` is the test seam for the dial.
    */
@@ -519,7 +463,7 @@ interface AttachedLeader {
   /** The newest row settled against it: handed over, or dropped because the leader caused it. */
   settledThrough: number;
   /**
-   * Release whatever xezar opened to REACH this leader — pi's socket today. Separate from the
+   * Release whatever xezar opened to REACH this leader, when it opened anything. Separate from the
    * adapter's own `close()`, which lets go of the session and deliberately owns no transport.
    */
   dispose?: () => void;
@@ -530,8 +474,8 @@ interface AttachedLeader {
 /**
  * What every leader adapter gives this module, whichever client it speaks to. Structural on purpose
  * — not a union of the adapter classes, which would make `deliver`'s return a union this module
- * cannot await once — so a fifth client is a new `#act` branch and nothing else here. `fix` is
- * optional because only pi's blockers carry their own remedy.
+ * cannot await once — so a new client is a new `#act` branch and nothing else here. `fix` is
+ * optional: an adapter that names no remedy of its own gets its client's `CLIENT_WORDS`.
  */
 interface LeaderAdapter extends ReactionAdapter {
   heartbeat(signal: AbortSignal): Promise<void>;
@@ -590,8 +534,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
     this.#forgetOwnerActivity();
-    if (this.#leader?.client === 'claude-code' && transport) {
-      const blocker = this.#channelEligibility(transport);
+    if ((this.#leader?.client === 'claude-code' || this.#leader?.client === 'qwen') && transport) {
+      const blocker = this.#eligibility(this.#leader.client, transport);
       if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
     }
     const started = EventController.start({
@@ -748,17 +692,18 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   /**
    * Can xezar push to this session's client? Answered in `session/open` so the bridge registers the
-   * Claude Code channel only when a push could ever arrive, and in `status`. First match wins. Codex and
-   * pi answer `true` here: their attach still checks the app-server or the extension's descriptor.
+   * Claude Code channel only when a push could ever arrive, and in `status`. First match wins. Codex
+   * answers `true` here: its attach still checks the app-server.
    */
   pushCapability(sessionKey: string, transport: McpSessionTransport | undefined): McpPushCapability {
     if (this.#closed || !this.#opts.journal.writable) return cannotPush('delivery-unavailable');
     if (this.#opts.localHandoff?.() === false) return cannotPush('hosted-mode');
     const client = this.#clientOf(sessionKey, transport);
     if (client === null) return cannotPush('client-unknown');
-    if (client === 'opencode') return cannotPush('client-needs-address');
     if (client === 'claude-code' && transport?.leaderPush !== true) return cannotPush('bridge-too-old');
     if (client === 'claude-code' && transport?.channelAdvertised === false) return cannotPush('channel-not-advertised');
+    if (client === 'qwen' && transport?.leaderPush !== true) return cannotPush('bridge-too-old');
+    if (client === 'qwen' && transport?.inboxAvailable !== true) return cannotPush('inbox-unavailable');
     return { canPush: true };
   }
 
@@ -799,9 +744,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // A leader a person or another session attached is never replaced by a model.
     if (leader !== undefined && leader.client !== client) return this.#refuse('attach', sessionKey, 'leader-attached-elsewhere');
     // Claude Code's adapter already follows the live owner's transport: re-attaching would only reset
-    // the push-unconfirmed age and hide a real blocker. Codex and pi re-run the attach, which replaces
+    // the push-unconfirmed age and hide a real blocker. Codex re-runs the attach, which replaces
     // the link and, for Codex, reconciles an unresolved hand-off.
-    if (leader?.client === 'claude-code') return { ok: true, action: 'attach', outcome: 'already-attached', status: this.sessionStatus(sessionKey) };
+    if (leader?.client === 'claude-code' || leader?.client === 'qwen') return { ok: true, action: 'attach', outcome: 'already-attached', status: this.sessionStatus(sessionKey) };
     const acted = await this.#act({ action: 'attach', client } as McpLeaderActionInput);
     if (!acted.ok) {
       const blocker = acted.blocker ?? { code: 'attach-refused', message: acted.error, fix: 'Read events with leader_events until the refusal is resolved.' };
@@ -821,14 +766,13 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   /** The checks attach and stop share, in order. The session's client when every one passes. */
-  #doorFence(sessionKey: string): { code: keyof typeof DOOR_REFUSALS } | { client: Exclude<McpLeaderClient, 'opencode'> } {
+  #doorFence(sessionKey: string): { code: keyof typeof DOOR_REFUSALS } | { client: McpLeaderClient } {
     if (this.#closed || !this.#opts.journal.writable) return { code: 'delivery-unavailable' };
     // The same boundary as the route's 409 (`server.ts`). Absent `localHandoff` is a test composition: local.
     if (this.#opts.localHandoff?.() === false) return { code: 'hosted-mode' };
     if (sessionKey !== this.#liveKey()) return { code: 'not-owner' };
     const client = this.#clientOf(sessionKey, this.#transportOf(sessionKey));
     if (client === null) return { code: 'client-unknown' };
-    if (client === 'opencode') return { code: 'client-needs-address' };
     return { client };
   }
 
@@ -894,31 +838,6 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attaching a leader that can never receive an event would answer 200 with a blocker-free status
     // for a path that delivers nothing (#309 O-3). Refuse, and say why.
     if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message, blocker: JOURNAL_UNWRITABLE };
-    if (input.client === 'pi') {
-      // pi's adapter (#330 WP2) is built the same way the OpenCode one is, and from the same kind of
-      // thing: an address the person's own leader offers. pi's RPC is stdio-only, so that address
-      // cannot be pi itself — it is the socket xezar's pi leader extension opens from INSIDE the
-      // person's pi and announces in this project's data directory (`adapters/pi-link.ts`). No
-      // extension running, no descriptor, no link: `piReactionTarget` answers with its own
-      // recoverable reason and the events stay in the journal, exactly as before this existed. The
-      // previous leader is kept either way — a refused attach must not detach one that is working.
-      const { target, dispose } = this.#piTarget();
-      if (target.kind === 'blocked') {
-        dispose?.();
-        return { ok: false, error: target.blocker.message, blocker: { code: target.blocker.code, message: target.blocker.message, fix: target.blocker.fix } };
-      }
-      this.#detach();
-      this.#refusal = undefined;
-      this.#leader = {
-        client: 'pi',
-        adapter: target.adapter,
-        failingSince: null,
-        settledThrough: 0,
-        ...(dispose ? { dispose } : {}),
-      };
-      this.#liveController()?.wake();
-      return { ok: true, status: this.status() };
-    }
     if (input.client === 'codex') {
       const found = await this.#codexTarget();
       if (found.target.kind === 'blocked') {
@@ -945,8 +864,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       // #374: the target is the owner MCP session itself, reached by writing a channel push down its
       // own bridge. Validate the owner NOW, at attach (record § 5.4): a session that is not Claude
       // Code, or one whose bridge is too old to push, is refused with its own recoverable reason —
-      // and a refused attach keeps the previous leader, like pi's. With no owner session yet, attach
-      // anyway and let `noOwnerSession` report it, exactly as OpenCode and pi do.
+      // and a refused attach keeps the previous leader. With no owner session yet, attach anyway and
+      // let `noOwnerSession` report it.
       const transport = this.#ownerTransport;
       if (transport !== undefined) {
         const blocker = this.#channelEligibility(transport);
@@ -959,7 +878,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
         adapter: new ClaudeCodeChannelAdapter({
           projectId: this.projectId,
           roleInstruction: LEADER_ROLE_INSTRUCTION,
-          push: (content, meta, signal) => this.#pushChannel(content, meta, signal),
+          push: (content, meta, signal) => this.#pushOwner('claude-code', content, meta, signal),
           alive: () => this.#ownerTransport !== undefined,
           // reactedSeq stays 0 for Claude Code (no observable reaction), so the only cursor the
           // push-unconfirmed blocker compares against is the leader's own acknowledgement.
@@ -975,94 +894,49 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
-    // #651: the session is checked HERE, before anything is recorded. It used to be checked only on
-    // the DELIVERY path, and `#blocker()` answers `no-owner-session` before it reads the adapter, so
-    // a session belonging to another project — or one that does not exist at all — was accepted as
-    // "attached" with no error and its refusal surfaced only once an MCP session owned the project.
-    // The guide has always promised the check happens now (`docs/guide/13-mcp-leader.md`).
-    // FAIL CLOSED: a server that cannot be reached is refused too, because attaching to something
-    // xezar cannot check is the bug, not a lenience. Like pi's and Claude Code's, a refused attach
-    // changes nothing — the previous leader, if any, is still attached and still working.
-    const adapter = new OpenCodeReactionAdapter({
-      target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
-      projectRoot: this.#opts.projectRoot,
-      roleInstruction: LEADER_ROLE_INSTRUCTION,
-      onReaction: (seq) => this.#recordReaction(seq),
-      ...this.#ownOperation(),
-    });
-    const refused = await checkOpenCodeAttach(adapter, this.#opts.opencodeAttachCheckMs ?? OPENCODE_ATTACH_CHECK_MS);
-    if (refused) {
-      adapter.close();
-      return { ok: false, error: `${refused.message} ${refused.fix}`, blocker: refused };
+    if (input.client === 'qwen') {
+      // #1045: as Claude Code's — the target is the owner MCP session's own bridge, which sends into
+      // that Qwen Code session's inbox. The owner is validated now; a refused attach keeps the
+      // previous leader; with no owner yet, attach and let `noOwnerSession` report it.
+      const transport = this.#ownerTransport;
+      if (transport !== undefined) {
+        const blocker = this.#eligibility('qwen', transport);
+        if (blocker) return { ok: false, error: `${blocker.message} fix: ${blocker.fix}`, blocker };
+      }
+      this.#detach();
+      this.#refusal = undefined;
+      this.#leader = {
+        client: 'qwen',
+        adapter: new QwenCodeInboxAdapter({
+          projectId: this.projectId,
+          roleInstruction: LEADER_ROLE_INSTRUCTION,
+          push: (content, signal) => this.#pushOwner('qwen', content, undefined, signal),
+          alive: () => this.#ownerTransport !== undefined,
+          acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
+          heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
+        }),
+        failingSince: null,
+        settledThrough: 0,
+      };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
     }
-    // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
-    this.#detach();
-    this.#refusal = undefined;
-    // A new leader with no history: whatever happened before it was attached was not about it.
-    this.#leader = {
-      client: 'opencode',
-      adapter,
-      failingSince: null,
-      settledThrough: 0,
-    };
-    // Deliver now, not at the next heartbeat.
-    this.#liveController()?.wake();
-    return { ok: true, status: this.status() };
+    const unknown: never = input;
+    return { ok: false, error: `xezar cannot attach this leader (${JSON.stringify(unknown)}).` };
   }
 
-  /** Stop talking to the attached session. The OpenCode process and session are the person's. */
+  /** Stop talking to the attached session. The leader's process and session are the person's. */
   #detach(): void {
     const leaving = this.#leader;
     this.#leader = undefined;
     leaving?.adapter.close();
     // The transport last, and never skipped when `close()` throws: a socket xezar opened and then
-    // leaked would keep a pi process's peer alive with nothing reading it.
+    // leaked would keep the leader's peer alive with nothing reading it.
     try {
       leaving?.dispose?.();
     } catch (err) {
-      this.#opts.warn(`[xez] the pi leader link did not close cleanly (${err instanceof Error ? err.message : String(err)})`);
+      this.#opts.warn(`[xez] the leader link did not close cleanly (${err instanceof Error ? err.message : String(err)})`);
     }
-  }
-
-  /**
-   * Build pi's target, and whatever has to be released with it. The ONE place a `PiRpcLink` is
-   * produced in this process — the answer to "who constructs the adapter", which for one round of
-   * review was nobody.
-   *
-   * Every failure is the blocker, never a throw: this is the `attach` path and the person reads the
-   * reason. A descriptor that names a dead socket is the ordinary case (a pi that exited), so it is
-   * reported as its own recoverable reason rather than as an error.
-   */
-  #piTarget(): { target: PiReactionTarget; dispose?: () => void } {
-    const base = {
-      projectId: this.projectId,
-      roleInstruction: LEADER_ROLE_INSTRUCTION,
-      onReaction: (seq: number) => this.#recordReaction(seq),
-      ...this.#ownOperation(),
-    };
-    const dataDir = this.#opts.dataDir ?? projectDataDir(this.#opts.projectRoot);
-    const read = this.#opts.piLeader?.read ?? readPiLeaderDescriptor;
-    const found = read(dataDir);
-    if (!found.ok) return { target: piReactionTarget({ ...base, unreachable: found.reason, ...(found.unsupported ? { unsupported: true } : {}) }) };
-    const connect = this.#opts.piLeader?.connect ?? connectPiLeaderLink;
-    let link: PiLeaderLink;
-    try {
-      link = connect(found.descriptor, { warn: this.#opts.warn });
-    } catch (err) {
-      return {
-        target: piReactionTarget({
-          ...base,
-          unreachable: `its socket could not be reached: ${err instanceof Error ? err.message : String(err)}`,
-        }),
-      };
-    }
-    const target = piReactionTarget({ ...base, link });
-    // A link that was already closed gives a blocked target; do not leak the socket behind it.
-    if (target.kind === 'blocked') {
-      link.close();
-      return { target };
-    }
-    return { target, dispose: () => link.close() };
   }
 
   /**
@@ -1107,14 +981,27 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    * nothing to push to: the reject is a delivery failure the controller retries, and `noOwnerSession`
    * / the blocker rules explain it.
    */
-  #pushChannel(content: string, meta: Record<string, string>, signal: AbortSignal): Promise<void> {
+  #pushOwner(client: 'claude-code' | 'qwen', content: string, meta: Record<string, string> | undefined, signal: AbortSignal): Promise<void> {
     const transport = this.#ownerTransport;
     if (transport === undefined) {
-      return Promise.reject(new Error('no Claude Code MCP session owns this project, so there is nothing to push a channel event to'));
+      return Promise.reject(new Error(`no ${CLIENT_WORDS[client].name} MCP session owns this project, so there is nothing to push an event to`));
     }
-    const blocker = this.#channelEligibility(transport);
+    const blocker = this.#eligibility(client, transport);
     if (blocker) return Promise.reject(new Error(`${blocker.message} fix: ${blocker.fix}`));
     return abortable(transport.push(content, meta), signal);
+  }
+
+  /** Can the owner session's bridge carry a push for this client? The blocker that says why not. */
+  #eligibility(client: 'claude-code' | 'qwen', transport: McpSessionTransport): McpLeaderBlocker | null {
+    return client === 'claude-code' ? this.#channelEligibility(transport) : this.#qwenEligibility(transport);
+  }
+
+  #qwenEligibility(transport: McpSessionTransport): McpLeaderBlocker | null {
+    if (transport.clientName === undefined) return QWEN_BRIDGE_TOO_OLD;
+    if (!isQwenClientName(transport.clientName)) return QWEN_NOT_OWNER;
+    if (transport.leaderPush !== true) return QWEN_BRIDGE_TOO_OLD;
+    if (transport.inboxAvailable !== true) return QWEN_INBOX_UNAVAILABLE;
+    return null;
   }
 
   #channelEligibility(transport: McpSessionTransport): McpLeaderBlocker | null {
@@ -1159,6 +1046,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (key === undefined) return null;
     if (this.#codexAnnouncements.has(key)) return { client: 'codex' };
     if (this.#ownerSessionKey === key && this.#ownerTransport?.clientName === 'claude-code') return { client: 'claude-code' };
+    if (this.#ownerSessionKey === key && isQwenClientName(this.#ownerTransport?.clientName)) return { client: 'qwen' };
     return { client: null };
   }
 
@@ -1195,16 +1083,16 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
     if (controller === undefined) return noOwnerSession(leader.client);
-    if (leader.client === 'claude-code' && this.#ownerTransport) {
-      const eligibility = this.#channelEligibility(this.#ownerTransport);
+    if ((leader.client === 'claude-code' || leader.client === 'qwen') && this.#ownerTransport) {
+      const eligibility = this.#eligibility(leader.client, this.#ownerTransport);
       if (eligibility) return eligibility;
     }
     const blocker = leader.adapter.status().blocker;
-    if (blocker) {
-      // The adapter's own `fix` when it has one (pi's does; `PiReactionAdapter.#block` always sets
-      // one, and `piReactionTarget`'s own blocker carries `PI_EXTENSION_FIX`), otherwise the
-      // OpenCode wording, which is the only adapter whose blockers name no remedy of their own.
-      const fix = blocker.fix ?? OPENCODE_BLOCKER_FIX;
+    // "Waiting for an acknowledgement" must not hide a push that is failing now (#1067 review).
+    if (blocker && !(blocker.code === 'qwen-push-unacknowledged' && leader.failingSince !== null)) {
+      // The adapter's own `fix` when it has one, otherwise the client's own check-and-reattach words.
+      const words = CLIENT_WORDS[leader.client];
+      const fix = blocker.fix ?? `To fix it, ${words.checkShort}, then ${words.reattach}.`;
       return { code: blocker.code, message: blocker.message, fix };
     }
     // From FACTS observed against THIS leader, never from the controller's state machine (rounds four

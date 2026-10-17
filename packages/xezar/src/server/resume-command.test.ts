@@ -14,8 +14,7 @@ describe('resumeCommand — session id validation', () => {
     const id = '9f8e7d6c-1234-4abc-9def-0123456789ab';
     expect(resumeCommand(undefined, id)).toBe(`claude --resume ${id}`);
     expect(resumeCommand('codex', id)).toBe(`codex resume ${id}`);
-    expect(resumeCommand('opencode', id)).toBe(`opencode --session ${id}`);
-    expect(resumeCommand('pi', id)).toBe(`pi --session ${id}`);
+    expect(resumeCommand('qwen', id)).toBe(`qwen --resume ${id}`);
   });
 
   // Every runner id must map to a command — an id that fell through to the `claude` default
@@ -36,7 +35,7 @@ describe('resumeCommand — session id validation', () => {
     expect(resumeCommand('claude', '$(touch /tmp/pwn); rm -rf ~ #')).toBeNull();
     expect(resumeCommand('claude', "a'b")).toBeNull();
     expect(resumeCommand('codex', 'a && calc.exe')).toBeNull();
-    expect(resumeCommand('opencode', 'a`id`')).toBeNull();
+    expect(resumeCommand('qwen', 'a`id`')).toBeNull();
     expect(resumeCommand('claude', 'a b')).toBeNull();
     expect(resumeCommand('claude', '')).toBeNull();
   });

@@ -4,7 +4,7 @@
  * The v1 `AgentEvent` contract treats `text` as a complete assistant block —
  * that is what claude emits, what the RunManager persists one NDJSON line per
  * event, and what every consumer renders as one paragraph (cockpit thread,
- * headless CLI). Codex and opencode stream deltas, so emitting each delta as
+ * headless CLI). Codex streams deltas, so emitting each delta as
  * its own `text` event persisted one line per token: transcripts rendered one
  * paragraph per token, and turn-end markers split across deltas (`CE`+`Z`+
  * `:D`+`ONE`) slipped past the server's per-event marker stripping.

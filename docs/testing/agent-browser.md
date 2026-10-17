@@ -201,41 +201,25 @@ too long for a file every session loads.
 
 ### What the boot pins, and why
 
-`XEZ_HOME` pins what xezar *writes* (`.local/qa/xez-home`). `CLAUDE_CONFIG_DIR`,
-`CODEX_HOME` and `OPENCODE_CONFIG_DIR` pin the user-scope files it *reads*
+`XEZ_HOME` pins what xezar *writes* (`.local/qa/xez-home`). `CLAUDE_CONFIG_DIR` and
+`CODEX_HOME` pin the user-scope files it *reads*
 (`.local/qa/agent-home/*`, mode 0700, wiped on every cold boot). `ANTHROPIC_MODEL` is
 unset because it outranks every settings file.
 
 That last one matters because the cockpit seeds each runner's model from that agent's own
-settings file by design. Without the unset, a developer with opencode configured boots the
+settings file by design. Without the unset, a developer with a Claude model configured boots the
 suite with their own model pre-filled, and a spec asserting an unset model fails on their
 machine while passing in CI.
 
 The pins are part of the reuse fingerprint (`environment.agentHome` in the descriptor), so
 an instance booted with different pins is never reused — the same rule
-`environment.singleProject` already follows. Three of those vars are what
-`agentHomePaths()` honours (`packages/xezar/src/paths.ts`, precedence pinned by
-`paths.test.ts`); `XEZ_HOME` is separate and pins only what xezar itself writes.
-`agentHomePaths()` has a fourth slot, pi, and it CAN be pinned — pi documents
-`PI_CODING_AGENT_DIR` and reads it, and `agentHomePaths().pi` resolves through it
-(re-verified against pi 0.85.1 on 2026-09-12, #329). The boot does not set it yet, so today the suite still starts pi from
-the developer's own `~/.pi/agent`. Pinning it is a deliberate follow-up, not a one-line
-addition, and takes three coordinated changes:
-
-1. `export PI_CODING_AGENT_DIR="$QA_DIR/agent-home/pi"` alongside the other three in
-   `scripts/test-env-up.sh`, plus the matching `mkdir -p` / `chmod 700`.
-2. `AGENT_HOME_FINGERPRINT` gains it, so an instance booted without the pin is not reused
-   by a run that expects it — the same rule the other three already follow.
-3. A decision on seeding. The other three sandboxes are empty on purpose, because empty is
-   what makes "no model default leaks in" true. pi is not symmetric there: it resolves its
-   model list through `packages/xezar/src/core/pi-model-catalog.ts`, reading `models.json`
-   (and `settings.json` for ordering) out of that same home, so an empty pin does not give pi
-   a blank config — a missing `models.json` is the documented "no providers configured" path
-   and returns `[]`, i.e. the picker shows `auto` alone. That is a different starting state
-   than any spec currently assumes. Whether the pinned dir ships a fixture catalog or the
-   specs assert the empty case is the open question, and it needs its own test surface.
-
-A fifth agent home that does have a variable needs adding to `test-env-up.sh` too.
+`environment.singleProject` already follows. Those two vars are what
+`agentHomePaths()` honours for Claude Code and Codex (`packages/xezar/src/paths.ts`, precedence
+pinned by `paths.test.ts`); `XEZ_HOME` is separate and pins only what xezar itself writes.
+`agentHomePaths()` has a third slot, Qwen Code, resolved through `QWEN_HOME`. Pinning it means
+exporting it in `scripts/test-env-up.sh` with the matching `mkdir -p` / `chmod 700`, and adding it
+to `AGENT_HOME_FINGERPRINT`, so an instance booted without the pin is not reused by a run that
+expects it.
 
 **A repository that runs in single-project mode is booted in the pinned global layout anyway.**
 Once `.xezar/workspace.json` is committed, a plain clone of this repository is a single-project
@@ -558,7 +542,7 @@ npm run capture:screenshots -w @qodeca/xezar-web -- -t inbox  # one state
 It boots its own dry-run server over a throwaway workspace (with the Inbox, Automations and the
 review gate switched on, and a sandboxed `HOME`), seeds it through the API, and writes straight
 into the docs folder. The server does not run the bundled test mocks: `XEZ_CLAUDE_BIN`,
-`XEZ_CODEX_BIN` and `XEZ_PI_BIN` point at the harness's own scripted agents in `capture/agents/`,
+and `XEZ_CODEX_BIN` point at the harness's own scripted agents in `capture/agents/`,
 which play each seeded task its own turn through that backend's protocol (`agents/scenarios.mjs`),
 so the pictures carry no mock text and no cloned rows. A new seeded task needs a scenario there. The list of states is `packages/web/e2e/capture/manifest.ts`;
 `packages/web/src/docs-screenshots.test.ts` holds every listed file to its size budget. No image
@@ -600,7 +584,7 @@ network), reuses an already-healthy instance instead of double-booting, and writ
 | non-zero | `TEST_E2E_STATUS=failed`  | a spec failed, or the env could not boot                                                                          |
 
 **The boot isolates the agents' USER-SCOPE config, and a spec may rely on exactly that much.**
-`XEZ_HOME` pins what xezar *writes*; `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_CONFIG_DIR`
+`XEZ_HOME` pins what xezar *writes*; `CLAUDE_CONFIG_DIR` and `CODEX_HOME`
 pin the user-scope files it *reads*, and `ANTHROPIC_MODEL` is unset because it outranks every
 settings file. What each pin is for, and what it costs to drop one, is in
 [docs/testing/agent-browser.md](agent-browser.md#running-this-repositorys-suite) § Running this repository's suite.
@@ -608,18 +592,17 @@ settings file. What each pin is for, and what it costs to drop one, is in
 Four limits are deliberate, and a spec must not assume past them:
 
 - **Project and local scope are NOT isolated.** `<repo>/.claude/settings.local.json` (the highest
-  model priority of all), `<repo>/opencode.json` and `<repo>/.codex/config.toml` resolve from the
+  model priority of all), `<repo>/.qwen/settings.json` and `<repo>/.codex/config.toml` resolve from the
   repo root, not from any home, so no pin reaches them. A model key in one of those still leaks in.
 - **Credential discovery is NOT isolated.** Keychain and `XDG_DATA_HOME` are untouched, so the
   cockpit still reports "credentials found". That is the safe direction — it means no credential
   can be written into the tree — but the boot is not a blank host.
-- **pi's home is NOT isolated.** pi honours `PI_CODING_AGENT_DIR`, but `scripts/test-env-up.sh` does not
-  set it, so the boot starts pi from the developer's own `~/.pi/agent` and a spec must not assume a
-  blank pi config. What closing that takes is in [docs/testing/agent-browser.md](agent-browser.md).
-- **OpenCode is pinned through `OPENCODE_CONFIG_DIR`, never `XDG_CONFIG_HOME`.** The XDG variable
-  is machine-wide: pinning it deauthenticated `gh` inside the boot and hid the developer's global
-  git config. If a future boot-path tool stores tokens under `$XDG_CONFIG_HOME` (`gcloud`, `op`,
-  `helm`, `flyctl`), pinning that variable would write them inside the repo.
+- **Qwen Code's home is pinned only when the boot exports `QWEN_HOME`.** Without it, a Qwen Code
+  run reads the developer's own home, so a spec must not assume a blank Qwen Code config.
+- **Never pin an agent through `XDG_CONFIG_HOME`.** The XDG variable is machine-wide: pinning it
+  deauthenticated `gh` inside the boot and hid the developer's global git config. If a future
+  boot-path tool stores tokens under `$XDG_CONFIG_HOME` (`gcloud`, `op`, `helm`, `flyctl`), pinning
+  that variable would write them inside the repo.
 
 The pins are part of the reuse fingerprint (`environment.agentHome` in the descriptor), so an
 instance booted with different pins is never reused — the same rule `environment.singleProject`

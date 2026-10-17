@@ -15,3 +15,10 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` Â
 - Upstream: qodeca/xezar-skills#216
 - Since: 2026-10-17
 - Confirmed: yes
+
+## LP-3 â€“ route this project's DeepSeek lanes through Qwen Code
+- Files: .xezar/checks/route.mjs, .xezar/routing.schema.json, .xezar/docs/routing.md, .xezar/docs/leader-guide.md
+- Reason: the engine runs claude, codex and qwen only (#1046), and qwen holds a reading step read-only (#1044); the kit still names pi and opencode
+- Upstream: local only
+- Since: 2026-10-16
+- Confirmed: yes

@@ -104,9 +104,9 @@ describe('a task started with evidenceFromRunId sees the named task evidence (#9
     expect(dirs.some((d) => d.includes('-evidence'))).toBe(false);
   });
 
-  it('criterion 3: the same review on Claude, Codex and pi sees the same evidence set', async () => {
+  it('criterion 3: the same review on Claude, Codex and Qwen Code sees the same evidence set', async () => {
     const blocks: Record<string, string> = {};
-    for (const backend of ['claude', 'codex', 'pi'] as const) {
+    for (const backend of ['claude', 'codex', 'qwen'] as const) {
       const { record, spec } = await startReview(backend);
       const at = spec.userPrompt.indexOf(`## Evidence from task ${AUTHOR_ID}`);
       expect(at, `${backend} got no evidence block`).toBeGreaterThan(-1);
@@ -114,7 +114,7 @@ describe('a task started with evidenceFromRunId sees the named task evidence (#9
       blocks[backend] = spec.userPrompt.slice(at).replaceAll(record.id, '<run>');
     }
     expect(blocks.codex).toBe(blocks.claude);
-    expect(blocks.pi).toBe(blocks.claude);
+    expect(blocks.qwen).toBe(blocks.claude);
     expect(blocks.claude).toContain(CRITERIA.trim());
   });
 

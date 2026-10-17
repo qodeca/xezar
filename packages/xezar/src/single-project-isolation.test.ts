@@ -147,19 +147,18 @@ describe('the host stays the host (SP-2.3, BR-7)', () => {
     const outside = agentHomePaths();
     enterMode();
     expect(agentHomePaths()).toEqual(outside);
-    // Not just equal: none of the four may have wandered into the project.
+    // Not just equal: none of the three may have wandered into the project.
     for (const path of Object.values(outside)) {
       expect(path.startsWith(project)).toBe(false);
     }
   });
 
-  it('the four documented relocation variables still win in the mode', () => {
+  it('the three documented relocation variables still win in the mode', () => {
     const env = {
       HOME: home,
       CLAUDE_CONFIG_DIR: '/pinned/claude',
       CODEX_HOME: '/pinned/codex',
-      OPENCODE_CONFIG_DIR: '/pinned/opencode',
-      PI_CODING_AGENT_DIR: '/pinned/pi',
+      QWEN_HOME: '/pinned/qwen',
     } as NodeJS.ProcessEnv;
     const outside = agentHomePaths(env);
     enterMode();
@@ -167,8 +166,7 @@ describe('the host stays the host (SP-2.3, BR-7)', () => {
     expect(outside).toEqual({
       claude: '/pinned/claude',
       codex: '/pinned/codex',
-      opencodeConfig: '/pinned/opencode',
-      pi: '/pinned/pi',
+      qwen: '/pinned/qwen',
     });
   });
 

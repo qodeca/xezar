@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -1229,6 +1230,20 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       },
     ]);
   }, 30_000);
+
+  it('gives a writable root that is a link as the folder it leads to, once, so bubblewrap accepts it (#1080)', () => {
+    const base = mkdtempSync(join(realpathSync(tmpdir()), 'xez-1080-'));
+    try {
+      const real = join(base, 'run-tmp');
+      mkdirSync(real);
+      const link = join(base, 'xez-short');
+      linkDir(real, link);
+      const evidence = join(base, 'evidence');
+      expect(codexPermissions(REVIEW, [evidence, link, real], {}).workspaceWrite?.writable_roots).toEqual([evidence, real]);
+    } finally {
+      rmSync(base, TEST_DIR_RM_OPTIONS);
+    }
+  });
 
   it('picks the permissions from the one signal, with XEZ_CODEX_NETWORK=0 keeping precedence over network', () => {
     const roots = ['/r'];

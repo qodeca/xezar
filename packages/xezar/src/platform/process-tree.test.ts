@@ -10,6 +10,7 @@ import {
   ownProcessGroup,
   signalProcessGroup,
   stopChildTree,
+  stopChildWithDescendants,
   stopProcessGroup,
   stopTrackedProcessTrees,
   type TreeStopDeps,
@@ -164,6 +165,53 @@ describe('stopChildTree', () => {
     expect(deps.readThenKill).not.toHaveBeenCalled();
     await stopping;
     expect(sawTurn).toEqual([true]);
+  });
+});
+
+describe('stopChildWithDescendants', () => {
+  const rows = (pairs: Array<[number, number]>): ProcRow[] => pairs.map(([pid, ppid]) => ({ pid, ppid, rssKb: 0, cpuPct: 0 }));
+  // 500 is the launcher; 501 the real program; 502 a command it runs; 600 an unrelated process.
+  const table = (): Promise<ProcessTable> => Promise.resolve({ rows: rows([[500, 1], [501, 500], [502, 501], [600, 1]]), queriedAt: 0 });
+
+  it('POSIX: signals every descendant, then the child, with the same signal', async () => {
+    const child = fakeChild(500);
+    const order: string[] = [];
+    child.kill.mockImplementation((signal) => (order.push(`child:${signal}`), true));
+    const signal = vi.fn((pid: number, sig: NodeJS.Signals) => (order.push(`${pid}:${sig}`), 'sent' as const));
+    await stopChildWithDescendants(child, 'SIGTERM', { platform: 'darwin', readTable: table, signal });
+    expect(order.sort()).toEqual(['501:SIGTERM', '502:SIGTERM', 'child:SIGTERM'].sort());
+    expect(signal).not.toHaveBeenCalledWith(600, expect.anything());
+    expect(child.kill.mock.invocationCallOrder[0]).toBeGreaterThan(signal.mock.invocationCallOrder.at(-1)!);
+  });
+
+  it('POSIX: a table that cannot be read stops the child alone, as stopChildTree does', async () => {
+    const child = fakeChild(500);
+    const signal = vi.fn(() => 'sent' as const);
+    await stopChildWithDescendants(child, 'SIGKILL', { platform: 'linux', readTable: () => Promise.resolve(null), signal });
+    await stopChildWithDescendants(child, 'SIGKILL', { platform: 'linux', readTable: () => Promise.reject(new Error('ps')), signal });
+    expect(signal).not.toHaveBeenCalled();
+    expect(child.kill.mock.calls).toEqual([['SIGKILL'], ['SIGKILL']]);
+  });
+
+  it('POSIX: signals nothing once the child has exited – its pid may be someone else’s', async () => {
+    const child = fakeChild(500);
+    child.exitCode = 0;
+    const readTable = vi.fn(table);
+    const signal = vi.fn(() => 'sent' as const);
+    await stopChildWithDescendants(child, 'SIGTERM', { platform: 'linux', readTable, signal });
+    expect(readTable).not.toHaveBeenCalled();
+    expect(signal).not.toHaveBeenCalled();
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it('win32: is stopChildTree, which already stops the descendants', async () => {
+    const child = fakeChild(500);
+    const readTable = vi.fn(table);
+    const signal = vi.fn(() => 'sent' as const);
+    await stopChildWithDescendants(child, 'SIGTERM', { platform: 'win32', isOwnChild: () => false, readTable, signal });
+    expect(readTable).not.toHaveBeenCalled();
+    expect(signal).not.toHaveBeenCalled();
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
 

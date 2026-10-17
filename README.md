@@ -15,7 +15,7 @@
 
 </div>
 
-Type a task, pick a workflow and choose **Claude Code, Codex, OpenCode or pi**.
+Type a task, pick a workflow and choose **Claude Code, Codex or Qwen Code**.
 You can mix agents per step and watch them work live in a browser cockpit on your machine.
 Git tasks get their own worktree by default. Overflow waits in a queue. Nothing merges without you.
 xezar uses your CLI logins, your `gh` and your files. No xezar account, database or cloud service.
@@ -75,7 +75,7 @@ More → [Tasks and runs](docs/guide/02-tasks-and-runs.md)
 
 - <img src="docs/assets/readme/icons/parallel-runs.svg" width="32" height="32" alt=""> **Parallel runs** – many agents at once, each followed live.
 - <img src="docs/assets/readme/icons/worktrees.svg" width="32" height="32" alt=""> **Worktrees** – git tasks default to their own `xez/<id8>` branch.
-- <img src="docs/assets/readme/icons/agents.svg" width="32" height="32" alt=""> **Four backends** – Claude Code, Codex, OpenCode, pi, mixed per step.
+- <img src="docs/assets/readme/icons/agents.svg" width="32" height="32" alt=""> **Three backends** – Claude Code, Codex, Qwen Code, mixed per step.
 - <img src="docs/assets/readme/icons/workflows.svg" width="32" height="32" alt=""> **Workflows** – short YAML chains of agent steps and shell checks.
 - <img src="docs/assets/readme/icons/skills.svg" width="32" height="32" alt=""> **Skills** – Markdown playbooks, local or from a team repo.
 - <img src="docs/assets/readme/icons/review-pr.svg" width="32" height="32" alt=""> **Review gate + draft PR** – optional; xezar never auto-merges.
@@ -109,7 +109,7 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 - [Tasks and runs](docs/guide/02-tasks-and-runs.md) – composer, queue, variants and review.
 - [Worktrees and git](docs/guide/03-worktrees-and-git.md) – branches, retention and diffs.
 
-[Read the complete 17-part user guide](docs/guide/README.md) for backends, workflows, settings, configuration, hosting and troubleshooting.
+[Read the complete 18-part user guide](docs/guide/README.md) for backends, workflows, settings, configuration, hosting and troubleshooting.
 
 ## Quick start
 
@@ -117,9 +117,9 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 
 | System | What you need |
 |---|---|
-| Every system | Node.js 22 or newer with npm, and at least one signed-in agent CLI – [`claude`](https://github.com/anthropics/claude-code), [`codex`](https://github.com/openai/codex), [OpenCode](https://opencode.ai) or [pi](https://github.com/badlogic/pi-mono). Optional: `git` for isolated working copies (Git worktrees) and the Git views, and `gh` for GitHub issues and pull requests. |
+| Every system | Node.js 22 or newer with npm, and at least one signed-in agent CLI – [`claude`](https://github.com/anthropics/claude-code), [`codex`](https://github.com/openai/codex) or [`qwen`](https://github.com/QwenLM/qwen-code) (Qwen Code). Optional: `git` for isolated working copies (Git worktrees) and the Git views, and `gh` for GitHub issues and pull requests. |
 | macOS, Linux | Nothing more. |
-| Windows | Install the full [Git for Windows](https://gitforwindows.org/) (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Install each agent CLI as its own Windows instructions describe. Turn on long paths: the Windows setting LongPathsEnabled (needs an administrator) and `git config --global core.longpaths true`. Start xezar without administrator rights: the MCP leader bridge (`xezar mcp`) is unavailable while xezar runs elevated. Attaching to a running Codex session or a pi leader is not available on Windows yet. To stop `xezar serve` there, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may not be enough to stop everything. |
+| Windows | Install the full [Git for Windows](https://gitforwindows.org/) (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Install each agent CLI as its own Windows instructions describe. Turn on long paths: the Windows setting LongPathsEnabled (needs an administrator) and `git config --global core.longpaths true`. Start xezar without administrator rights: the MCP leader bridge (`xezar mcp`) is unavailable while xezar runs elevated. Attaching to a running Codex session is not available on Windows yet. To stop `xezar serve` there, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may not be enough to stop everything. |
 
 The package installs both the `xezar` and `xez` commands.
 
@@ -131,7 +131,7 @@ npm install -g @qodeca/xezar@latest                   # upgrade
 ```
 
 To sign an agent tool in from a terminal on the machine that runs xezar, run
-`xezar providers connect <claude|codex|opencode|pi>` (add `--account <id>` for a second login): it opens
+`xezar providers connect <claude|codex|qwen>` (add `--account <id>` for a second login): it opens
 a login terminal, and it refuses in hosted mode.
 
 The cockpit picks the next free port when 4321 is busy. **Try it offline:** `XEZ_DRY_RUN=1`
@@ -145,8 +145,10 @@ More → [Getting started](docs/guide/01-getting-started.md)
 |---|---|---|
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
 | **Codex** | `codex app-server`, JSON-RPC over stdio | A step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. When that read-only step also has a `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command-prefix lock to every shell call and refuses `apply_patch`; its reason appears in the run events. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Other individual non-shell tool names are ignored |
-| **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
-| **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a non-empty `bashAllowlist` keeps a restricted Bash and an empty list removes it |
+| **Qwen Code** | One `qwen` process per turn, streamed JSON; the next turn resumes the same session | `allowedTools` passed in Qwen Code's own tool names, with the approval mode always set by xezar (`default`), so a call that is not allowed is denied. A step naming neither `Edit` nor `Write` loses the file-writing tools. A step with limits also gets a pre-tool check that applies the shared command-prefix lock to every shell call |
+
+The pi and OpenCode backends were removed. If you used one, see
+[Moving from pi or OpenCode](docs/guide/18-moving-from-pi-or-opencode.md).
 
 For the Codex command lock, xezar writes a persistent `PreToolUse` entry to the active profile's
 `$CODEX_HOME/hooks.json` and its `hooks.state."<handler key>".trusted_hash` grant to
@@ -192,10 +194,9 @@ agent accounts in later, without overwriting one this project already has. See
 | `XEZ_CLAUDE_BIN=/path/to/claude` | Override which `claude` binary is used. |
 | `XEZ_CODEX_BIN=/path/to/codex` | Override which `codex` binary is used. |
 | `XEZ_CODEX_REASONING=concise` | Codex reasoning summary: `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
-| `XEZ_OPENCODE_BIN=/path/to/opencode` | Override which `opencode` binary is used. |
-| `XEZ_PI_BIN=/path/to/pi` | Override which `pi` binary is used. |
-| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | Move the agent’s default account, including credentials (`CODEX_HOME` for Codex, `PI_CODING_AGENT_DIR` for pi). Add second logins in Settings → Agent accounts. |
-| `OPENCODE_CONFIG_DIR` | Move OpenCode configuration; credentials remain in `~/.local/share/opencode`. Defaults to `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`. |
+| `XEZ_QWEN_BIN=/path/to/qwen` | Override which `qwen` (Qwen Code) binary is used. |
+| `XEZ_QWEN_USAGE_STATISTICS=1` | Let Qwen Code send its usage statistics. By default xezar sets `QWEN_USAGE_STATISTICS_ENABLED=0` on every Qwen Code run. |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `QWEN_HOME` | Move the agent’s default account, including credentials (`CODEX_HOME` for Codex, `QWEN_HOME` for Qwen Code). Add second logins in Settings → Agent accounts. |
 | `XEZ_BROWSE_ROOT=~/` | Default root for **Add project → Open local folder…**. The picker cannot navigate above it; a saved workspace value overrides the environment default and must name an existing folder. |
 | `XEZ_PROJECTS_DIR=~/xezar/projects` | Default destination for **Clone from GitHub**. Saved workspace settings override it, and missing directories are created recursively. |
 | `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic application of tracked team-skill updates (default on). Saved global Skills settings override it; read-only detection continues. |
@@ -243,7 +244,7 @@ xezar pushes project events to the attached leader.
 Nothing is pushed until a leader is attached, and xezar gains no setting and no
 environment variable for it. The leader attaches itself with `leader_events` action
 `attach`: xezar takes the client from the leader's own MCP session (Claude Code, Codex or
-pi), so it names nothing, and `leader_events` action `status` says whether it is attached
+Qwen Code), so it names nothing, and `leader_events` action `status` says whether it is attached
 and can receive pushes. Each pushed event names the cursor to acknowledge, so no read is
 needed. An attachment ends when xezar restarts; the leader checks `status` and attaches
 again.
@@ -279,21 +280,20 @@ cockpit's address reaches the leader through the MCP only: `discover_project` ca
 in hosted mode. It is never added to `GET /api/v1/health`.
 
 A person can still attach a leader with **Attach leader** under
-**Settings → MCP connection → Connection status**, and an OpenCode leader is attached
-only that way.
+**Settings → MCP connection → Connection status**.
 An unattached leader reads events with `leader_events`. Use `gh` for GitHub facts. During project
 setup, keep four results separate: a project snippet is only **files prepared**; a real MCP tool
 result proves **connected**; `leader_events` attach/status proves **attached**; and a real pushed
 event or an attached-session `read` proves **delivery verified**. After xezar restarts, the
 attachment is gone even though journal cursors remain: call a tool, check status, attach with a new
 operation ID and read retained events again. The canonical end-to-end setup, launch, verification and
-recovery instructions for Claude Code, Codex, pi and OpenCode are in the
+recovery instructions for Claude Code, Codex and Qwen Code are in the
 [project-leader guide](docs/guide/13-mcp-leader.md).
 
 <details>
 <summary>Waking a Claude Code leader: requirements and recovery</summary>
 
-Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose "I am using this for local development" if you accept it. Then let the leader call `leader_events` action `attach`, or use **Attach leader** under **Settings → MCP connection → Connection status**, the same control that attaches Codex, OpenCode and pi. Until it is attached, the leader reads events with `leader_events`. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose "I am using this for local development" if you accept it. Then let the leader call `leader_events` action `attach`, or use **Attach leader** under **Settings → MCP connection → Connection status**, the same control that attaches Codex and Qwen Code. Until it is attached, the leader reads events with `leader_events`. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
 
 - **`claude-code-not-owner`** – The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal. fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
 - **`claude-code-bridge-too-old`** – This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal. fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
@@ -320,6 +320,10 @@ every breaking change is called out there. Read it from your installed version f
 xezar --version                 # the version you are on
 npm view @qodeca/xezar version  # the version you would get
 ```
+
+If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
+still names them, and lists each file and field to change. See
+[Moving from pi or OpenCode](docs/guide/18-moving-from-pi-or-opencode.md).
 
 ## Upgrading to 0.16.0
 

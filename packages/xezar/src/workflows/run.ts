@@ -104,24 +104,22 @@ const REPAIR_TURN_PREFIX =
   + 'away, re-read the task from the handoff file rather than guessing.';
 /**
  * Backends whose runner IGNORES `spec.resume` and always opens a new conversation (#676,
- * review round 1 Major 1). A recorded session id proves nothing about them: `opencode-server-runner.ts`
- * mints an id in `bootstrap()` with an unconditional `POST /session` and never reads `spec.resume`
- * or adopts `spec.sessionId`. A repair turn on such a backend must therefore take the fresh spawn
- * with the whole brief, loudly — "not resumed at all" must never read as "resumed fine".
+ * review round 1 Major 1). A recorded session id proves nothing about them. No current backend is
+ * one, but a repair turn on such a backend must take the fresh spawn with the whole brief, loudly — "not resumed at all" must never read as "resumed fine".
  *
  * Kept HERE, beside the rest of the resume policy, rather than as a runner flag: this is
  * the one place that decides cheap-vs-fresh, and a runner that learns to resume is one line here.
  *
  * A total `Record<RunnerId, boolean>` rather than a deny-LIST (#732 Minor C, the `runner-label.ts`
- * trick): an unlisted fifth runner would otherwise default to "can resume", which is Major 1's
+ * trick): an unlisted new runner would otherwise default to "can resume", which is Major 1's
  * shape again — a brand-new conversation told its brief is already in it. Every backend must
  * answer, so adding one to `RUNNER_IDS` is a compile error here until somebody has decided.
  */
 const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
   claude: false,
   codex: false,
-  opencode: true,
-  pi: false,
+  // One process per turn, joined by `--resume <sessionId>`: a Continue reopens the conversation.
+  qwen: false,
 };
 /**
  * Backends whose `token-usage` figure is the SESSION's cumulative total rather than this
@@ -129,7 +127,7 @@ const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
  * `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`, which on a `thread/resume`
  * already contains everything the pre-resume executions spent — so the step's total is that
  * figure itself, never `startTokens + it`. Every other runner accumulates from zero per session
- * object (`claude-cli-runner.ts:276`, `pi-runner.ts:697`, `opencode-server-runner.ts:949`), which
+ * object (`claude-cli-runner.ts`, `qwen-runner.ts`), which
  * is what the addition is for.
  *
  * Total, for the same reason as `BACKENDS_WITHOUT_RESUME` above (#732 Minor C): an unlisted
@@ -139,8 +137,8 @@ const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
 const BACKENDS_WITH_CUMULATIVE_TOKENS: Record<RunnerId, boolean> = {
   claude: false,
   codex: true,
-  opencode: false,
-  pi: false,
+  // The Qwen session object sums each turn process's `result.usage` from zero (`qwen-runner.ts`).
+  qwen: false,
 };
 /** How rarely a check step's output chunks report liveness (#460 § 2). One per second is far
  *  finer than the 5-minute quiet window it feeds, and keeps a megabyte of output from becoming
@@ -168,7 +166,7 @@ export const IDLE_TIMEOUT_MS = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000;
  * turn whose text ends with `XEZ:DONE` means "goal achieved, nothing to ask" —
  * the session is closed right away instead of parking at `waiting` (#347).
  * Detection runs on the accumulated turn text so delta-streaming backends
- * (codex, opencode) can't split the marker across text events.
+ * (codex) can't split the marker across text events.
  */
 const DONE_MARKER_RE = /XEZ:DONE\s*$/;
 // #524: a checkpoint may follow a standalone marker in the final turn.
@@ -659,16 +657,6 @@ export function quickTaskWorktreeInstructions(
   ].join(' ');
 }
 
-/** The roots pi's worktree guard needs (#537), for both agent construction sites. An isolated
- *  run (`cwd !== repoRoot`) gets its worktree and the primary checkout; in-place and non-Git runs
- *  get neither key, so their spec and pi arguments stay exactly as before. */
-export function worktreeGuardRoots(
-  cwd: string,
-  repoRoot: string,
-): { worktreeRoot?: string; primaryRoot?: string } {
-  return cwd === repoRoot ? {} : { worktreeRoot: cwd, primaryRoot: repoRoot };
-}
-
 /**
  * The directories a spawned agent may reach outside its worktree: the run-state
  * folder that holds its handoff file, this run's own task-evidence directories
@@ -678,16 +666,13 @@ export function worktreeGuardRoots(
  * under `XEZ_AGENT_TMPDIR=0` there is no per-run directory and the list is
  * exactly what it always was.
  *
- * The evidence directories are the ONE list `runEvidenceRoots` produces, shared
- * with the OpenCode runner (#686). `agentDirectories` feeds `additionalDirectories`
- * on the session spec for EVERY backend — both call sites below pass it
- * unconditionally, and each backend decides what to do with it: claude-cli turns
- * every entry into `--add-dir`, the OpenCode runner folds the list into its
- * permission policy, and the pi worktree guard takes the whole list as
- * `--xezar-allowed-roots` (#652). So this is not a pi-only grant: without the
- * evidence roots a pi step cannot write the diagnosis, the red proofs or the
- * phase record the kit mandates, and a Claude step's `--add-dir` set is missing
- * them too. `env` carries `XEZ_TASK_ID`, and a run without one is granted no
+ * The evidence directories are the ONE list `runEvidenceRoots` produces (#686).
+ * `agentDirectories` feeds `additionalDirectories` on the session spec for EVERY
+ * backend — both call sites below pass it unconditionally, and each backend
+ * decides what to do with it: claude-cli turns every entry into `--add-dir`, and
+ * the other backends grant the same list in their own way. Without the evidence
+ * roots a step cannot write the diagnosis, the red proofs or the phase record the
+ * kit mandates. `env` carries `XEZ_TASK_ID`, and a run without one is granted no
  * evidence root rather than a wider one.
  */
 export function agentDirectories(
@@ -777,8 +762,8 @@ export function contentBlocksOf(content: readonly PastedContent[]): ContentBlock
  * Plain-text note listing the absolute paths of pasted attachments, appended
  * to the message that carries them (#357). The base64 image blocks stay in
  * the message for the model to *view*; this note is what lets it *use* the
- * files as files — and the only usable reference on backends (codex,
- * opencode) whose `textOf()` drops image blocks before reaching the model.
+ * files as files — and the only usable reference on a backend (codex)
+ * whose `textOf()` drops image blocks before reaching the model.
  */
 export function pastedAttachmentsText(attachments: PersistedAttachment[]): string {
   const list = attachments.map((a) => `- ${a.path}`).join('\n');
@@ -2554,10 +2539,9 @@ export class RunManager {
     state.currentStepId = stepId;
     state.interrupt = () => session.interrupt();
     // Still ONE registration site. A runner whose child exists already answers through `pid`;
-    // one that has to ask its binary something first (pi, #548) answers through
-    // `onProcessStart`, which also fires again when that runner restarts its own child.
-    // Every runner spawns its child synchronously inside `startSession` (pi: announces it from the
-    // same tick as its spawn) and this runs with no await after it, so the time read FIRST here is
+    // one whose child starts later (qwen: one process per turn) answers through
+    // `onProcessStart`, which also fires again when that runner starts its next child.
+    // Every runner spawns its first child synchronously inside `startSession` and this runs with no await after it, so the time read FIRST here is
     // the spawn time the #943 ledger pins the root by – within its 2 s window. First, before
     // `registerRunProcess`: on Windows that starts the sampler's first PowerShell read, and
     // starting PowerShell blocks this thread for up to a second or more under load (T-02). Read
@@ -2928,8 +2912,8 @@ export class RunManager {
 
     // Tell the agent where the pasted files live on disk (#357): image blocks still ride along
     // so the model can *view* them, but a real path is what lets it *operate* on them (save,
-    // `cp`, attach to a GitHub issue/PR) — and it's the only usable reference on backends (codex,
-    // opencode) that drop image blocks entirely before reaching the model, and the ONLY reference
+    // `cp`, attach to a GitHub issue/PR) — and it's the only usable reference on a backend (codex)
+    // that drops image blocks entirely before reaching the model, and the ONLY reference
     // at all for a non-image attachment (#950), which is why `contentBlocksOf` drops file blocks
     // here rather than letting one reach a backend that has no idea what it is.
     const blocks = contentBlocksOf(content);
@@ -3172,7 +3156,7 @@ export class RunManager {
     // Attachments pasted into the follow-up composer, on the same terms as a live-session
     // message (#357): persisted to the run's own attachment store so the thread renders the
     // bubble's images rather than a bare count, and handed to the agent as absolute paths
-    // appended to the prompt (so it can operate on them — and because codex/opencode drop image
+    // appended to the prompt (so it can operate on them — and because codex drops image
     // blocks before they reach the model). An image ALSO rides along as a base64 block so the
     // model can view it; a file (#950) has nothing to view and travels as its path alone.
     const freshAttachments = this.persistPastedAttachments(runId, images);
@@ -3588,7 +3572,6 @@ export class RunManager {
           : openingPrompt,
         ...(openingImages.length ? { images: openingImages } : {}),
         cwd: state.cwd,
-        ...worktreeGuardRoots(state.cwd, this.repoRoot),
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
         ...(continueClaudeSettings.file ? { claudeSettingsFile: continueClaudeSettings.file } : {}),
@@ -3859,10 +3842,10 @@ export class RunManager {
       }
     }
 
-    // Resolve the agent backend for this run: the task choice (GUI) wins over
-    // the config default. Per-step `runner` can still override it below.
+    // Resolve the agent backend for this run: the task choice (GUI) wins, then the one agent every
+    // agent step names, then the config default. Per-step `runner` can still override it below.
     const config = await loadConfig(this.repoRoot);
-    const taskBackend: RunnerId = input.runner ?? config.defaultRunner;
+    const taskBackend: RunnerId = input.runner ?? sharedStepRunner(workflow) ?? config.defaultRunner;
     // The account may have gone into a usage-limit hold since this run was dequeued — the queue
     // gate cannot be the only one, because dequeue is not the moment of no return. Nothing has
     // happened yet here, so the run goes back to the queue untouched (spec
@@ -4445,7 +4428,7 @@ export class RunManager {
       }
       if (sessionError) return;
       if (event.type === 'session') {
-        // Codex/OpenCode mint their own session id — persist it so resume works.
+        // Codex mints its own session id — persist it so resume works.
         this.store.updateStep(runId, step.id, { sessionId: event.sessionId, backend });
       }
       if (event.type === 'token-usage') {
@@ -4543,7 +4526,7 @@ export class RunManager {
     const stepBackend = step.runner ?? taskBackend;
     // Normalise the selected model to canonical `provider/model` and back to the
     // backend's own wire form via the ONE shared mapper (#405). Fail-loud: an
-    // unresolvable model (e.g. a bare id on opencode) returns the step error
+    // unresolvable model returns the step error
     // instead of letting the backend silently substitute its default.
     let backendModel: string | undefined;
     try {
@@ -4676,8 +4659,7 @@ export class RunManager {
             // A resumed session already saw them; re-sending would re-bill the same blocks.
             images: resumedSessionId === undefined ? images : undefined,
             cwd: state.cwd,
-            ...worktreeGuardRoots(state.cwd, this.repoRoot),
-            allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
+                allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
             bashAllowlist: step.bashAllowlist,
             ...(stepClaudeSettings.file ? { claudeSettingsFile: stepClaudeSettings.file } : {}),
             // The handoff file and this run's evidence directory live outside the worktree — grant access.
@@ -4699,8 +4681,7 @@ export class RunManager {
           {
             autoEndAfterFirstTurn: !interactive,
             onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
-            // A backend's native question (a pi extension dialog, #369) is refused at once in
-            // an autonomous run — the same "never park at `waiting`" rule the turn-end nudge keeps.
+            // A backend's native question is refused at once in an autonomous run — the same "never park at `waiting`" rule the turn-end nudge keeps.
             autonomous: state.autonomous === true,
           },
         );
@@ -5482,6 +5463,19 @@ export class RunManager {
  * reads `runner: codex`; steps on more than one read `runners: codex, claude`, in step order. A
  * workflow with no agent step names the task's runner, as it always did.
  */
+/**
+ * The agent every agent step names, when they all name the same one (#1041). A task that picked no
+ * agent and whose steps all run on, say, Qwen Code IS a Qwen Code task: its record, its account
+ * hold and its model check follow that agent, not the project default no step uses. `undefined`
+ * when a step names none (it runs on the task's agent) or the steps name different agents.
+ */
+export function sharedStepRunner(workflow: WorkflowDef): RunnerId | undefined {
+  const agentSteps = workflow.steps.filter((step) => stepKind(step) === 'agent');
+  const first = agentSteps[0]?.runner;
+  if (first === undefined) return undefined;
+  return agentSteps.every((step) => step.runner === first) ? first : undefined;
+}
+
 export function stepRunnersLabel(workflow: WorkflowDef, taskBackend: RunnerId): string {
   const runners = [...new Set(workflow.steps
     .filter((step) => stepKind(step) === 'agent')
@@ -5502,7 +5496,11 @@ function continuationModel(
   sessionId: string | undefined,
   backend: RunnerId,
 ): string | undefined {
-  if (!record || backend === (record.runner ?? 'claude')) return record?.model;
+  if (!record) return undefined;
+  // On the run's own agent the run's model wins, as it always did. With no run model, the step that
+  // owns the session still pinned one: a task whose steps all name its agent takes that agent as its
+  // own (`sharedStepRunner`), and its steps' models must survive a Continue.
+  if (backend === (record.runner ?? 'claude') && record.model !== undefined) return record.model;
   const defSteps = record.workflowDef?.steps ?? [];
   const owner = sessionId === undefined
     ? undefined
@@ -5587,7 +5585,7 @@ export function skillSystemPrompt(
 /**
  * Expand a registry-backed slash skill in one prompt string before it reaches a
  * backend. Claude otherwise intercepts an unknown leading slash command, and
- * Codex/OpenCode have no native slash-skill lookup at all (#676).
+ * Codex has no native slash-skill lookup at all (#676).
  *
  * Only a match at character zero counts, and unknown commands pass through
  * byte-for-byte — a backend's OWN slash commands must keep working. The caller

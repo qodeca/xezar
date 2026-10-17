@@ -1,0 +1,22 @@
+{
+  "commit": "599846770e221fb59c6df7949369fb5113413586",
+  "version": "0.30.0",
+  "qwenCode": "0.25.2",
+  "batch": [
+    { "run": "ec6a45c2", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "ebd4468d", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error (#1087)", "why": "complete answer, no XEZ:DONE in the last message; no refused call" },
+    { "run": "1f5c0eda", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "d4ea20ad", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "done", "note": "1 call refused by the read-only lock (node --test), then npm test; reasoned about the handoff file it could not write before XEZ:DONE" },
+    { "run": "23464dfe", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "731ee226", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error (#1087)", "why": "complete answer that offers a follow-up change, no XEZ:DONE; 1 command refused by the lock (prefix.entry) and answered" },
+    { "run": "abf996e5", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "c8a522d2", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error (#1087)", "why": "complete answer, no XEZ:DONE; 4 commands refused by the lock (syntax.compound, prefix.entry) and answered" },
+    { "run": "0f468462", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "d7964517", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" }
+  ],
+  "leaderSession": {
+    "n": 13, "leaderModel": "deepseek-flash", "task": "35851816", "taskResult": "done",
+    "attachedAt": "14.6 s", "taskFinishedAt": "140.8 s", "pushSeenAt": "140.8 s (same 0.5 s poll)",
+    "status": { "deliveredSeq": 3, "ackedSeq": 3, "reactedSeq": 0, "blocker": null }
+  }
+}

@@ -21,7 +21,7 @@ import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtu
  *
  * Reachability: fully reachable — `XEZ_DRY_RUN=1` mocks every agent, and the leader is the REAL
  * `xez mcp` bridge (the built CLI) speaking JSON-RPC on stdio, exactly what Claude Code, Codex or
- * OpenCode would spawn; no model, account or network is involved.
+ * Qwen Code would spawn; no model, account or network is involved.
  *
  * WHY ITS OWN SERVER, UNDER /tmp. The shared env serves this checkout, and the MCP socket lives at
  * `<XEZ_HOME>/ipc/<projectId>.sock` with a ~104-byte limit (D-01 E5): a data root under a task
@@ -239,7 +239,7 @@ describe('A-01 / A-17 / A-23 — the MCP connection screen', () => {
   it('separates the one-time user step from what xezar does, per client, and never claims autodiscovery', () => {
     browser.goto(`${baseUrl}/p/${projectId}/settings/mcp-connection`)
     browser.waitForFunction(`document.querySelector('[data-slot="mcp-connection-section"]') !== null`)
-    const cards = browser.evaluate(`JSON.stringify(['claude-code', 'codex', 'opencode', 'pi'].map((name) => {
+    const cards = browser.evaluate(`JSON.stringify(['claude-code', 'qwen-code', 'codex'].map((name) => {
       const card = document.querySelector('[data-slot="mcp-client-' + name + '"]')
       return {
         name,
