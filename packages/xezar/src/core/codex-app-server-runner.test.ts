@@ -1228,11 +1228,11 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       const real = join(base, 'run-tmp');
       mkdirSync(real);
       const link = join(base, 'xez-short');
-      symlinkSync(real, link, 'dir');
+      linkDir(real, link);
       const evidence = join(base, 'evidence');
       expect(codexPermissions(REVIEW, [evidence, link, real], {}).workspaceWrite?.writable_roots).toEqual([evidence, real]);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, TEST_DIR_RM_OPTIONS);
     }
   });
 
