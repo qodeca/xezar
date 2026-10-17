@@ -35,6 +35,10 @@ Use the existing cockpit, as the message recommends. One process owns a project'
 
 Stop the process that owns the project before starting a replacement. Do not delete an active writer claim to bypass the check. If the error specifically identifies a foreign-host claim, remove only that named claim file after establishing that the other machine no longer uses the directory. The error includes the claim path, recorded host and PID to help identify it.
 
+### “xezar did not start: saved settings or task records still name an agent that xezar no longer runs”
+
+The pi and OpenCode backends were removed. xezar lists each file and field that still names one and changes nothing itself. Change each value to `qwen`, `claude` or `codex`, or remove it, then start xezar again. [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md) shows each step.
+
 ### GitHub actions say “gh CLI not found”
 
 The error says ``gh CLI not found — install it and run `gh auth login` ``. Install the GitHub CLI on the machine running xezar and sign in there. A `GITHUB_TOKEN` in that process's environment can supply credentials to `gh`; it does not replace the executable. For a draft PR, the related error is `gh not found — install the GitHub CLI and run …, or merge the branch locally`.
@@ -56,16 +60,6 @@ npm run build:web
 ```
 
 This is a checkout build command. The published package is meant to include the built cockpit; if an installed package shows the hint, include the installation method and version in a bug report.
-
-### The tag is there, but `npm` still shows the old version
-
-That is normal, not a failed release, and it has two separate causes worth knowing before you go looking for a fault.
-
-**npm can keep serving the previous version for a while.** The tag and the GitHub release appear first, and `npm view @qodeca/xezar version` catches up afterwards — around a quarter of an hour, in one case observed here. Wait a few minutes and ask again before concluding that nothing published.
-
-**A project's own manifest keeps naming the previous version on purpose.** The version a release publishes is stamped during the release run, not committed beforehand, so the commit the tag points at can still hold the previous number. A follow-up pull request brings the repository in line afterwards. Until that lands, "the trunk says 0.17.0 and the registry says 0.18.0" is the expected middle state — and xezar's own 0.18.0 tag is exactly that: its `package.json` reads `0.17.0`. Any project whose release stamps its own version has the same window.
-
-So a green release run and an existing tag are the evidence that it published. Check those first, and read the registry and the default branch as things that catch up rather than as the verdict.
 
 ## Does it send my code anywhere?
 

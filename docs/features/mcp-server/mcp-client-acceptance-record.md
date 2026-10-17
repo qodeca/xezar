@@ -1,5 +1,7 @@
 # MCP real-client acceptance record — A-01, A-17, A-18, A-19, A-20, A-23
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 > **Status update — 2026-09-20:** Historical acceptance record (run 2026-09-11, with an A-01 re-run the same day). Its results stand as the acceptance evidence for A-01 and A-17–A-23; the 2026-09-15 operating rule below supersedes it wherever it treats pulling as the leader's normal path or the cockpit as the leader's surface.
 
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See the leader findings, § 11 (`leader-dogfooding-2026-09-13.md`, removed).
