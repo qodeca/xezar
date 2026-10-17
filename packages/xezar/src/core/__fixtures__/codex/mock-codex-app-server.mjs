@@ -270,7 +270,7 @@ rl.on('line', (line) => {
     emit({ method: 'turn/started', params: { turn: { id: 'turn_mock_1', status: 'inProgress', items: [] } } });
     const turnText = msg.params?.input?.map?.((part) => part.text ?? '').join('\n') ?? '';
     if (process.env.MOCK_CODEX_HOOK_LOG && registeredHook?.command) {
-      const match = registeredHook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/);
+      const match = registeredHook.command.match(/^(?:& )?'[^']+' '([^']+)' --xezar-read-only-hook$/);
       const invoked = match
         ? spawnSync(process.execPath, [match[1], '--xezar-read-only-hook'], {
             input: JSON.stringify({
