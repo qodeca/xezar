@@ -9,9 +9,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortDirLinkPath } from '../platform/short-dir-link.ts';
 
 import {
   AgentTempDirError,
@@ -237,7 +238,11 @@ describe('a short TMPDIR where the per-run folder is too deep for a socket (#106
     const env = agentTmpEnv(dataDir, RUN, {}, 'linux');
     const visible = env.TMPDIR as string;
     expect(visible).not.toBe(agentTmpDir(dataDir, RUN));
-    expect(Buffer.byteLength(visible + CHROME_SOCKET_SUFFIX)).toBeLessThan(108);
+    // The link lives in the host temp folder. The test run moves that folder into the checkout,
+    // so its length here depends on where the checkout is; Linux hands a task `/tmp`.
+    expect(visible).toBe(shortDirLinkPath(agentTmpDir(dataDir, RUN)));
+    const onLinux = shortDirLinkPath(agentTmpDir(dataDir, RUN), join(sep, 'tmp'));
+    expect(Buffer.byteLength(onLinux + CHROME_SOCKET_SUFFIX)).toBeLessThan(108);
     expect(env.TEMP).toBe(visible);
     expect(env.TMP).toBe(visible);
     writeFileSync(join(visible, 'scratch.txt'), 'x', 'utf8');
