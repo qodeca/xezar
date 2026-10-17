@@ -26,7 +26,9 @@ import {
   codexHookCommand,
   codexPermissions,
   codexReadOnlyHook,
+  codexSandboxCrashAction,
   codexWindowsSandboxConfig,
+  isCodexBashSandboxCrash,
 } from './codex-app-server-runner.js';
 
 const hostCodexHome = process.env.CODEX_HOME;
@@ -1401,4 +1403,136 @@ describe('a dead app-server whose stdout never ends (#895)', () => {
       spawnHook.override = null;
     }
   });
+});
+
+/**
+ * #1030: Codex's unelevated Windows sandbox kills every Git Bash a read-only step starts. The owner's
+ * fix (2026-10-16): lift the sandbox once, only where the bashAllowlist hook still keeps the step
+ * read-only, and fail the step in every other case – never leave it to end as done.
+ */
+describe('a Git Bash crash inside the Codex sandbox (#1030)', () => {
+  const mockBin = fileURLToPath(new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url));
+  const REVIEW = ['Read', 'Grep', 'Glob', 'Bash'];
+  const CRASH_LINE =
+    '      0 [main] bash (23784) C:\\Program Files\\Git\\usr\\bin\\bash.exe: *** fatal error - ' +
+    'CreateFileMapping S-1-5-21-1504711166-3655588297-3458958062-1001.1, Win32 error 5.  Terminating.\n';
+
+  it('knows the crash by its exact line, and nothing else', () => {
+    expect(isCodexBashSandboxCrash({ type: 'commandExecution', status: 'failed', aggregatedOutput: CRASH_LINE })).toBe(true);
+    expect(isCodexBashSandboxCrash({ type: 'commandExecution', status: 'failed', aggregatedOutput: 'fatal: not a git repository\n' })).toBe(false);
+    expect(isCodexBashSandboxCrash({
+      type: 'commandExecution', status: 'failed',
+      aggregatedOutput: 'bash.exe: *** fatal error - couldn\'t create signal pipe, Win32 error 5\n',
+    })).toBe(false);
+    expect(isCodexBashSandboxCrash({ type: 'agentMessage', text: CRASH_LINE })).toBe(false);
+    expect(isCodexBashSandboxCrash({ type: 'commandExecution', status: 'failed' })).toBe(false);
+  });
+
+  it('lifts the sandbox only for a read-only step its allowlist still guards, and only once', () => {
+    const base = { sandbox: 'workspace-write' as const, readOnlyHook: true, lifted: false, env: {} };
+    expect(codexSandboxCrashAction(base)).toEqual({ action: 'lift' });
+    expect(codexSandboxCrashAction({ ...base, lifted: true })).toMatchObject({ action: 'fail', reason: expect.stringMatching(/still crashed after xezar turned the sandbox off/) });
+    expect(codexSandboxCrashAction({ ...base, readOnlyHook: false })).toMatchObject({ action: 'fail', reason: expect.stringMatching(/no bashAllowlist/) });
+    expect(codexSandboxCrashAction({ ...base, env: { XEZ_CODEX_SANDBOX_FALLBACK: '0' } })).toMatchObject({ action: 'fail', reason: expect.stringMatching(/XEZ_CODEX_SANDBOX_FALLBACK=0/) });
+    expect(codexSandboxCrashAction({ ...base, env: { XEZ_CODEX_NETWORK: '0' } })).toMatchObject({ action: 'fail', reason: expect.stringMatching(/XEZ_CODEX_NETWORK=0/) });
+    // A writing step already runs with full access: its crash is not the sandbox's doing.
+    expect(codexSandboxCrashAction({ ...base, sandbox: 'danger-full-access' })).toEqual({ action: 'ignore' });
+  });
+
+  it('turns the sandbox off for the rest of the step and still refuses every write', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-1030-lift-'));
+    const log = join(dir, 'rpc.ndjson');
+    const hookLog = join(dir, 'hook.ndjson');
+    const events: AgentEvent[] = [];
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it mock:bash-crash',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_RPC_LOG: log,
+            MOCK_CODEX_HOOK_LOG: hookLog,
+            MOCK_CODEX_HOOK_PROBES: JSON.stringify([
+              { tool_name: 'Bash', tool_input: { command: 'git status' } },
+              { tool_name: 'Bash', tool_input: { command: 'echo x > f' } },
+              { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Add File: f\n+x\n*** End Patch\n' } },
+            ]),
+          },
+        },
+        (event) => events.push(event),
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+
+      const rpc = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { method: string; params?: Record<string, unknown> });
+      const turns = rpc.filter((entry) => entry.method === 'turn/start' || entry.method === 'turn/interrupt');
+      expect(turns.map((entry) => entry.method)).toEqual(['turn/start', 'turn/interrupt', 'turn/start']);
+      expect(turns[0]!.params?.sandboxPolicy).toBeUndefined();
+      expect(turns[2]!.params?.sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+      expect(JSON.stringify(turns[2]!.params?.input)).toMatch(/Run again each command that failed/);
+      // The stopped turn is not a turn boundary: the run sees exactly the one the lifted turn ends.
+      expect(events.filter((event) => event.type === 'turn-end')).toHaveLength(1);
+      expect(events.filter((event) => event.type === 'error')).toEqual([]);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'note', message: expect.stringMatching(/#1030.*turned the sandbox off for the rest of this step/s) }));
+
+      // The allowlist hook decides alone once the sandbox is off, and it still refuses writes.
+      const lifted = readFileSync(hookLog, 'utf8').trim().split('\n')
+        .map((line) => JSON.parse(line) as { probe: string; sandboxPolicy: unknown; status: number; stdout: string })
+        .filter((entry) => entry.sandboxPolicy !== null);
+      expect(lifted).toHaveLength(3);
+      const [allowed, redirect, patch] = lifted;
+      expect(allowed).toMatchObject({ status: 0, stdout: '' });
+      expect(redirect!.stdout).toMatch(/"permissionDecision":"deny"/);
+      expect(patch).toMatchObject({ probe: 'apply_patch' });
+      expect(patch!.stdout).toMatch(/"permissionDecision":"deny"/);
+    } finally {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    }
+  }, 20_000);
+
+  it('fails a read-only step with no allowlist instead of turning the sandbox off', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-1030-nohook-'));
+    const log = join(dir, 'rpc.ndjson');
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it mock:bash-crash',
+          cwd: dir,
+          allowedTools: REVIEW,
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_RPC_LOG: log },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/no bashAllowlist, so nothing would keep it read-only/);
+      const rpc = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { method: string; params?: Record<string, unknown> });
+      expect(rpc.filter((entry) => entry.params?.sandboxPolicy !== undefined)).toEqual([]);
+    } finally {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    }
+  }, 20_000);
+
+  it('fails the step when Git Bash still crashes after the lift', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-1030-again-'));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir, MOCK_CODEX_BASH_CRASH: 'always' },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/still crashed after xezar turned the sandbox off/);
+    } finally {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    }
+  }, 20_000);
 });
