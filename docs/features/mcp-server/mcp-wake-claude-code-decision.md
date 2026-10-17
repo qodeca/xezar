@@ -505,7 +505,7 @@ installed into the repository.
 #374 (Claude Code leg), #73 (the delivery hierarchy), #311 (xezar starts no leader process). Requirements: F-17,
 F-20, F-21, N-06, N-07, N-10, A-19, A-23. Related records: [D-05](mcp-d05-async-event-contract-decision.md) § 4 and
 § 6.9; [Claude Code adapter evidence](mcp-adapter-evidence-claude-code.md) (CH1, OB-1); [the pi leader
-extension](pi-leader-extension.md) (the reaction-path precedent); [the Definition of Done
+extension](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/pi-leader-extension.md) (the reaction-path precedent); [the Definition of Done
 record](mcp-definition-of-done-record.md) (A-19 and A-23 rows). Code read: `packages/xezar/src/mcp/leader-delivery.ts`,
 `adapters/claude-code.ts`, `protocol.ts`, `bridge.ts`, `ipc.ts`, `event-controller.ts`, `tools/leader-events.ts`,
 `packages/contract/src/mcp-leader.ts`, `packages/web/src/routes/settings/mcp-connection-section.tsx`.
