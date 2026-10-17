@@ -169,7 +169,9 @@ Commit `9f3147a0` (PR #1067 at version 0.30.0: `main` merged up to `dde302d2`, p
 
 | Run | Model | Runs | Done | Failed | Class |
 | --- | --- | --- | --- | --- | --- |
-| Batch | `deepseek-v4-pro` | 10 (6 change, 4 review) | 8 | 2 (`0a16e2c1`, `340d1b47`) | model error |
+| Batch | `deepseek-v4-pro` | 5 (3 change, 2 review) | 4 | 1 (`340d1b47`) | model error |
+| Batch | `deepseek-flash` | 1 (1 review) | 0 | 1 (`0a16e2c1`) | model error |
+| Batch | local `qwen38-flash-next-mlx-mixed-4-8bit` | 4 (3 change, 1 review) | 4 | 0 | – |
 | Leader session 12 | `deepseek-flash` | task `92e2115f` | done | – | – |
 
 - **The two failures** are the same model error: each review gave a complete answer, its last
@@ -185,20 +187,43 @@ Commit `9f3147a0` (PR #1067 at version 0.30.0: `main` merged up to `dde302d2`, p
 
 | Run | Model | Runs | Done | Failed | Class |
 | --- | --- | --- | --- | --- | --- |
-| Batch | `deepseek-v4-pro` | 10 (6 change, 4 review) | 7 | 3 (`ebd4468d`, `731ee226`, `c8a522d2`) | model error (#1087) |
+| Batch | `deepseek-v4-pro` | 4 (2 change, 2 review) | 3 | 1 (`c8a522d2`) | model error (#1087) |
+| Batch | `deepseek-flash` | 3 (2 change, 1 review) | 2 | 1 (`ebd4468d`) | model error (#1087) |
+| Batch | local `qwen38-flash-next-mlx-mixed-4-8bit` | 3 (2 change, 1 review) | 2 | 1 (`731ee226`) | model error (#1087) |
 | Leader session 13 | `deepseek-flash` | task `35851816` | done | – | – |
 
 - **The three failures** are the same model error, all on reviews. Each gave a complete answer
   with no `XEZ:DONE` line, and the last step waited until its 10-minute limit. Two had commands
   refused by the read-only lock, each refused at once and answered by the model. All 6 change runs
   are done. Zero Qwen Code or xezar faults.
-- **Why reviews, not changes (#1087).** Across the three reruns (`023eb972`, `9f3147a0`,
-  `59984677`), 8 of 12 reviews and 0 of 18 changes ended this way. The agent contract tells every step to update its handoff file, and a read-only
+- **Why reviews, not changes (#1087).** Across the four reruns (`023eb972`, `9f3147a0`,
+  `59984677`, `c468303c`), 10 of 16 reviews and 1 of 24 changes ended this way. The agent contract tells every step to update its handoff file, and a read-only
   step cannot write it. A passing review (`d4ea20ad`) shows the model weighing that before it wrote
   `XEZ:DONE`. That instruction is older than this work and the same on every backend, so it is filed
   as #1087. It does not block 0.30.0 (owner decision).
 - **Leader session 13:** attached at 14.6 s; the task finished at 140.8 s and its event was in the
   session in the same 0.5 s poll; delivered 3, acknowledged 3, no blocker.
+
+**The released head.** Commit `c468303c`, the head both systems verified and the code released as
+v0.30.0 (`64f52c6a`), has the same code as `59984677` plus the two report files above. Same setup.
+Evidence: `qwen-code-parity-2026-10-16/rerun-c468303c.json`.
+
+| Run | Model | Runs | Done | Failed | Class |
+| --- | --- | --- | --- | --- | --- |
+| Batch | `deepseek-v4-pro` | 4 (3 change, 1 review) | 3 | 1 (`7a7c4acd`) | model error (#1087) |
+| Batch | `deepseek-flash` | 1 (1 review) | 0 | 1 (`8c41ea0d`) | model error (#1087) |
+| Batch | local `qwen38-flash-next-mlx-mixed-4-8bit` | 5 (4 change, 1 review) | 4 | 1 (`57916e1e`) | model error |
+| Leader session 14 | `deepseek-flash` | task `e63dc2bb` | done | – | – |
+
+- **The three failures** have no `XEZ:DONE` in the last message, so the step waited until its limit.
+  Two are reviews (#1087). The third, `57916e1e`, is a change on the local model: it edited the
+  README, ran `npm test` (2 pass), committed, and then ended without the marker. It is the first
+  change run in the reruns to fail this way. Zero Qwen Code or xezar faults.
+- **Leader session 14:** attached at 14.6 s; the task finished at 176.9 s and its event was in the
+  session in the same 0.5 s poll; delivered 4, acknowledged 4, no blocker.
+- **Correction.** The first versions of the `9f3147a0` and `59984677` evidence named `deepseek-v4-pro`
+  for every run. Each worker project pins its own model (worker 0 `deepseek-v4-pro`, worker 1
+  `deepseek-flash`, worker 2 the local model), so the tables and files above now name the right one.
 
 ## Failures and their classification
 
