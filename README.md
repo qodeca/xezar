@@ -246,8 +246,9 @@ environment variable for it. The leader attaches itself with `leader_events` act
 `attach`: xezar takes the client from the leader's own MCP session (Claude Code, Codex or
 Qwen Code), so it names nothing, and `leader_events` action `status` says whether it is attached
 and can receive pushes. Each pushed event names the cursor to acknowledge, so no read is
-needed. An attachment ends when xezar restarts; the leader checks `status` and attaches
-again.
+needed. On Windows, Qwen Code opens no inbox for pushed events, so a Qwen Code leader there
+reads its events with `leader_events` `read` and acknowledges them with `ack`. An attachment
+ends when xezar restarts; the leader checks `status` and attaches again.
 
 **After a context compaction the leader reads, it does not wait.** A compaction drops
 whatever pushed messages were still in the leader's context, and xezar re-pushes nothing
