@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import {
   mkdirSync,
@@ -21,7 +22,13 @@ import { FILE_SYMLINKS, linkDir, onWindows, withPlatform, TEST_DIR_RM_OPTIONS } 
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
-import { CodexAppServerRunner, codexPermissions, codexReadOnlyHook, codexWindowsSandboxConfig } from './codex-app-server-runner.js';
+import {
+  CodexAppServerRunner,
+  codexHookCommand,
+  codexPermissions,
+  codexReadOnlyHook,
+  codexWindowsSandboxConfig,
+} from './codex-app-server-runner.js';
 
 const hostCodexHome = process.env.CODEX_HOME;
 beforeEach(() => {
@@ -1036,7 +1043,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       const command = installed.hooks.PreToolUse.find((entry) => entry.matcher === 'Bash|apply_patch')?.hooks[0]?.command;
       expect(command).toBeTypeOf('string');
       if (!command) throw new Error('installed Bash hook has no command');
-      const script = command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
+      const script = command.match(/^(?:& )?'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
       expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\\\/]\\.local[\\\\/]xezar[\\\\/]cache[\\\\/]codex-hook[\\\\/][a-f0-9]{64}\\.mjs$`));
       if (!script) throw new Error('installed Bash hook command has no cache script path');
       expect(statSync(script).mode & 0o777).toBe(0o444);
@@ -1104,7 +1111,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       allowedTools: REVIEW,
       bashAllowlist: ['git status'],
     })!;
-    const currentScript = hook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
+    const currentScript = hook.command.match(/^(?:& )?'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
     if (!currentScript) throw new Error('current hook command has no cache script path');
     const differentDigestScript = join(dirname(currentScript), `${'0'.repeat(64)}.mjs`);
     if (entryKinds.some((kind) => kind === 'legacy-different-digest')) {
@@ -1264,6 +1271,37 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(codexWindowsSandboxConfig('danger-full-access', 'win32')).toEqual({});
     expect(codexWindowsSandboxConfig('workspace-write', 'linux')).toEqual({});
     expect(codexWindowsSandboxConfig('workspace-write', 'darwin')).toEqual({});
+  });
+
+  // #1076: on Windows Codex runs a hook as `pwsh -NoProfile -Command <line>`. The POSIX line was a
+  // ParserError there, the hook never started, and Codex let every command and patch through.
+  it('writes the hook command line in the syntax of the shell that runs it', () => {
+    expect(codexHookCommand('/usr/bin/node', "/home/o'k/.cache/xez/codex-hook/h.mjs", 'linux'))
+      .toBe("'/usr/bin/node' '/home/o'\\''k/.cache/xez/codex-hook/h.mjs' --xezar-read-only-hook");
+    expect(codexHookCommand('/usr/local/bin/node', '/Users/u/.cache/xez/codex-hook/h.mjs', 'darwin'))
+      .toBe("'/usr/local/bin/node' '/Users/u/.cache/xez/codex-hook/h.mjs' --xezar-read-only-hook");
+    expect(codexHookCommand('C:\\Program Files\\nodejs\\node.exe', "C:\\Users\\o'k\\.cache\\xez\\codex-hook\\h.mjs", 'win32'))
+      .toBe("& 'C:\\Program Files\\nodejs\\node.exe' 'C:\\Users\\o''k\\.cache\\xez\\codex-hook\\h.mjs' --xezar-read-only-hook");
+  });
+
+  // The proof that matters: the Windows line, run the way Codex runs it, really starts the hook.
+  // win32-skip(#976): Codex starts hooks through PowerShell on Windows only; the POSIX line is pinned above
+  it.runIf(onWindows)('starts the hook through pwsh -NoProfile -Command on Windows', () => {
+    const dir = mkdtempSync(join(tmpdir(), "xez-1076 o'k "));
+    try {
+      const script = join(dir, 'hook.mjs');
+      writeFileSync(script, "process.stdout.write('hook-started ' + process.argv.slice(2).join(' '));\n");
+      // This file empties PATH, so name Windows PowerShell by its full path; `&` and `''` read the same in pwsh.
+      const powershell = join(process.env.SystemRoot ?? 'C:\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const result = spawnSync(powershell, ['-NoProfile', '-Command', codexHookCommand(process.execPath, script, 'win32')], {
+        encoding: 'utf8',
+      });
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe('hook-started --xezar-read-only-hook');
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    }
   });
 });
 

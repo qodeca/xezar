@@ -190,6 +190,23 @@ const BLOCKED_HOOK_REASON_LIMIT = 2_000;
 const BLOCKED_HOOK_TRUNCATION_MARKER = '… [truncated]';
 
 /**
+ * The hook command line, in the syntax of the shell Codex runs it in. On Linux and macOS that is a
+ * POSIX shell. On Windows Codex runs it as `pwsh -NoProfile -Command <line>` (openai/codex#48183),
+ * where a quoted path at the start is a string, not a call: the POSIX line failed there with a
+ * ParserError, the hook never started, and Codex let every command and patch through (#1076).
+ * PowerShell needs the call operator `&`, and its single quotes escape `'` by doubling it.
+ */
+export function codexHookCommand(
+  execPath: string,
+  script: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === 'win32'
+    ? `& ${powershellQuote(execPath)} ${powershellQuote(script)} --xezar-read-only-hook`
+    : `${shellQuote(execPath)} ${shellQuote(script)} --xezar-read-only-hook`;
+}
+
+/**
  * The vendor-specific registration only. Codex ignores request-body hooks until their content
  * hash is in its trust store, so bootstrap discovers and grants this exact handler before turn 1.
  */
@@ -198,7 +215,7 @@ export function codexReadOnlyHook(spec: AgentRunSpec): CodexReadOnlyHook | undef
   const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
   const digest = createHash('sha256').update(readFileSync(source)).digest('hex');
   const script = join(xezCacheDir(), 'codex-hook', `${digest}.mjs`);
-  const command = `${shellQuote(process.execPath)} ${shellQuote(script)} --xezar-read-only-hook`;
+  const command = codexHookCommand(process.execPath, script);
   return {
     script,
     command,
@@ -1178,17 +1195,22 @@ function isXezarCodexHookCacheScript(script: string): boolean {
   return dirname(resolve(script)) === resolve(join(xezCacheDir(), 'codex-hook'));
 }
 
+/** Both spellings `codexHookCommand` writes: POSIX (`'…'`, `'\''` for a quote) and, from #1076,
+ *  PowerShell (`& '…'`, `''` for a quote) – so a profile written before the fix is still found
+ *  and replaced. */
 function shellQuotedWords(command: string): { executable: string; script: string; marker: string } | undefined {
   const words: string[] = [];
-  let offset = 0;
+  const powershell = command.startsWith('& ');
+  const escaped = powershell ? "''" : "'\\''";
+  let offset = powershell ? 2 : 0;
   while (words.length < 2) {
     if (command[offset] !== "'") return undefined;
     offset += 1;
     let word = '';
     while (offset < command.length) {
-      if (command.startsWith("'\\''", offset)) {
+      if (command.startsWith(escaped, offset)) {
         word += "'";
-        offset += 4;
+        offset += escaped.length;
       } else if (command[offset] === "'") {
         offset += 1;
         break;
@@ -1220,6 +1242,11 @@ async function canonicalPath(path: string): Promise<string> {
 /** Codex executes hook commands through a shell, so every generated path must be one shell word. */
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** One PowerShell word: a single-quoted string, which expands nothing; `'` is written `''`. */
+function powershellQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function hookEntryCommands(entry: unknown): string[] {
