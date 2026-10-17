@@ -180,6 +180,26 @@ Commit `9f3147a0` (PR #1067 at version 0.30.0: `main` merged up to `dde302d2`, p
 - **Leader session 12:** attached at 16.7 s; the task finished at 79.8 s and its event was in the
   session in the same 0.5 s poll; delivered 2, acknowledged 2, no blocker.
 
+**The final code commit.** Commit `59984677` adds the #1086 fix (the Windows text above) on top of
+`9f3147a0`. Same setup. Evidence: `qwen-code-parity-2026-10-16/rerun-59984677.json`.
+
+| Run | Model | Runs | Done | Failed | Class |
+| --- | --- | --- | --- | --- | --- |
+| Batch | `deepseek-v4-pro` | 10 (6 change, 4 review) | 7 | 3 (`ebd4468d`, `731ee226`, `c8a522d2`) | model error (#1087) |
+| Leader session 13 | `deepseek-flash` | task `35851816` | done | – | – |
+
+- **The three failures** are the same model error, all on reviews. Each gave a complete answer
+  with no `XEZ:DONE` line, and the last step waited until its 10-minute limit. Two had commands
+  refused by the read-only lock, each refused at once and answered by the model. All 6 change runs
+  are done. Zero Qwen Code or xezar faults.
+- **Why reviews, not changes (#1087).** Across the three reruns (`023eb972`, `9f3147a0`,
+  `59984677`), 8 of 12 reviews and 0 of 18 changes ended this way. The agent contract tells every step to update its handoff file, and a read-only
+  step cannot write it. A passing review (`d4ea20ad`) shows the model weighing that before it wrote
+  `XEZ:DONE`. That instruction is older than this work and the same on every backend, so it is filed
+  as #1087. It does not block 0.30.0 (owner decision).
+- **Leader session 13:** attached at 14.6 s; the task finished at 140.8 s and its event was in the
+  session in the same 0.5 s poll; delivered 3, acknowledged 3, no blocker.
+
 ## Failures and their classification
 
 | Where | What happened | Class | Evidence |
