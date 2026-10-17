@@ -3,16 +3,16 @@
   "version": "0.30.0",
   "qwenCode": "0.25.2",
   "batch": [
-    { "run": "0a16e2c1", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer, no XEZ:DONE in the last message; no refused call" },
-    { "run": "c536f499", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
+    { "run": "0a16e2c1", "model": "deepseek-flash", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer, no XEZ:DONE in the last message; no refused call" },
+    { "run": "c536f499", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-change", "result": "done" },
     { "run": "2e1cc634", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
     { "run": "a3824b26", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "done" },
     { "run": "44c377f8", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
-    { "run": "6a75abf8", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "done", "note": "3 calls refused by the read-only lock, each answered by the model" },
+    { "run": "6a75abf8", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-review", "result": "done", "note": "3 calls refused by the read-only lock, each answered by the model" },
     { "run": "2c338e91", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
     { "run": "340d1b47", "model": "deepseek-v4-pro", "workflow": "qwen-review", "result": "failed", "class": "model error", "why": "complete answer, no XEZ:DONE in the last message; no refused call" },
-    { "run": "fb360455", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" },
-    { "run": "feeaa967", "model": "deepseek-v4-pro", "workflow": "qwen-change", "result": "done" }
+    { "run": "fb360455", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-change", "result": "done" },
+    { "run": "feeaa967", "model": "qwen38-flash-next-mlx-mixed-4-8bit", "workflow": "qwen-change", "result": "done" }
   ],
   "leaderSession": {
     "n": 12, "leaderModel": "deepseek-flash", "task": "92e2115f", "taskResult": "done",

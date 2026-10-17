@@ -1,7 +1,7 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-14.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-17.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
@@ -11,6 +11,17 @@ On Windows, `xezar serve` stops the programs its tracked children started before
 `packages/xezar/src/AGENTS.md` § Platform layer, Processes). On Linux and macOS the exit is still
 immediate: what the children started is not stopped at shutdown. For runs still marked `running`,
 the next start stops those leftovers before the task resumes (#982).
+
+## A Qwen Code leader on Windows gets no pushed events
+
+A documented limit of Qwen Code, not xezar work: the owner decided on 2026-10-17 that a Windows Qwen
+Code leader is pull-only for 0.30.0 ([#1086](https://github.com/qodeca/xezar/issues/1086)).
+
+Qwen Code 0.25.2 opens no cross-session inbox on Windows, so its xezar bridge has nothing to push to.
+The leader reads with `leader_events` `read` and acknowledges with `ack`, and the
+`qwen-inbox-unavailable` blocker says so (`qwenInboxUnavailable` in
+`packages/xezar/src/mcp/leader-delivery.ts`). Linux and macOS keep the push. Recheck when a newer Qwen
+Code opens a named-pipe inbox on Windows.
 
 ## Write sites still using a plain rename
 
