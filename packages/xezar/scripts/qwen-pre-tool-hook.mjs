@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-// packages/xezar/src/core/qwen-pre-tool-hook-entry.ts
+// src/core/qwen-pre-tool-hook-entry.ts
 import { readFileSync } from "node:fs";
 
-// packages/xezar/src/core/read-only-lock.ts
+// src/core/read-only-lock.ts
 var ALLOWLIST_RULE = "prefix.entry";
 var FIND_ACTIONS = [
   "-exec",
@@ -361,7 +361,7 @@ function splitAllowlistedScriptPipe(command, entries) {
   return { left, right };
 }
 
-// packages/xezar/src/core/qwen-tool-policy.ts
+// src/core/qwen-tool-policy.ts
 var QWEN_TOOL_POLICY_ENV = "__XEZAR_QWEN_TOOL_POLICY";
 var QWEN_HOOK_REFUSAL_PREFIX = "xezar refused this tool call:";
 var QWEN_FILE_WRITERS = ["edit", "write_file", "notebook_edit"];
@@ -458,7 +458,7 @@ function isStringArray(value) {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
-// packages/xezar/src/core/qwen-pre-tool-hook-entry.ts
+// src/core/qwen-pre-tool-hook-entry.ts
 function main() {
   let payload;
   try {
