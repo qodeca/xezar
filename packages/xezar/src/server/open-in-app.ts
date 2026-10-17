@@ -160,15 +160,17 @@ export function detectOpenTargets(): OpenTarget[] {
 
 /** The (bin, args) a file-manager launch resolves to — pure so the per-platform routing
  *  (including the WSL→Explorer interop branch) is unit-testable without spawning anything.
- *  `platform`/`wsl` default to the real environment; tests pass them explicitly. */
+ *  `platform`/`wsl`/`translate` default to the real environment; tests pass them explicitly, so a
+ *  run inside real WSL does not answer with its own `wslpath` and distro name (#1068). */
 export function fileManagerLaunch(
   dir: string,
   platform: NodeJS.Platform = process.platform,
   wsl: boolean = isWsl(),
+  translate: (posixPath: string) => string = translateToWindowsPath,
 ): { bin: string; args: string[] } {
   if (platform === 'darwin') return { bin: 'open', args: [dir] };
   if (platform === 'win32') return { bin: 'explorer', args: [dir] };
-  if (wsl) return { bin: 'explorer.exe', args: [translateToWindowsPath(dir)] };
+  if (wsl) return { bin: 'explorer.exe', args: [translate(dir)] };
   return { bin: 'xdg-open', args: [dir] };
 }
 
@@ -217,9 +219,15 @@ export async function openInApp(targetId: string, dir: string): Promise<boolean>
 /** The path argument to hand a resolved binary: a Windows-suffixed name found through WSL
  *  interop needs the Windows-side path; a bare-name binary (native Linux, or a WSL-aware shim
  *  like VS Code's Remote-WSL `code`) takes the POSIX path unchanged. `wsl` defaults to the real
- *  environment; tests pass it explicitly so this needs no global platform stubbing. */
-export function launchPathFor(resolvedBin: string, dir: string, wsl: boolean = isWsl()): string {
-  if (wsl && /\.(com|exe)$/i.test(resolvedBin)) return translateToWindowsPath(dir);
+ *  environment; tests pass it explicitly so this needs no global platform stubbing. `translate`
+ *  likewise, so a run inside real WSL does not answer with its own `wslpath` (#1068). */
+export function launchPathFor(
+  resolvedBin: string,
+  dir: string,
+  wsl: boolean = isWsl(),
+  translate: (posixPath: string) => string = translateToWindowsPath,
+): string {
+  if (wsl && /\.(com|exe)$/i.test(resolvedBin)) return translate(dir);
   return dir;
 }
 

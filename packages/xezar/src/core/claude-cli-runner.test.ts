@@ -18,6 +18,7 @@ import {
   EOF_KILL_GRACE_MS,
   EOF_TERM_GRACE_MS,
   KILL_GRACE_MS,
+  waitForExit,
 } from './claude-cli-runner.ts';
 import { isReadOnlyStep } from './read-only-lock.ts';
 import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
@@ -715,5 +716,16 @@ describe('Claude quota telemetry', () => {
     } finally {
       rmSync(cwd, { force: true, recursive: true });
     }
+  });
+});
+
+// #1070: a child a signal ended has exitCode null and signalCode set. When it died before the
+// wait started listening, its 'exit' had already fired, and the session waited out the ~27 s
+// safety timer before reporting the step's timeout.
+describe('waitForExit — a child that a signal already ended (#1070)', () => {
+  it('resolves at once instead of waiting for an exit event that already fired', async () => {
+    const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: 'SIGTERM' });
+    const late = new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1_000));
+    await expect(Promise.race([waitForExit(child as unknown as ChildProcessWithoutNullStreams), late])).resolves.toBeNull();
   });
 });

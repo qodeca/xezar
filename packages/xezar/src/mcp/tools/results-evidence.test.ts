@@ -17,6 +17,7 @@ import type { McpToolContext } from '../tool.ts';
 import {
   RESULT_BUDGET_BYTES,
   createResultsEvidenceTool,
+  gitIsoDate,
   resultsEvidenceInputSchema,
   resultsEvidenceTool,
   type ResultsEvidenceInput,
@@ -766,4 +767,18 @@ describe('what the leader is told when a page or the service is not what the rea
     expect(missing.text).not.toContain('run gone');
     expect(missing.text).toBe((await call(ws, { read: 'summary', runId: 'no-such-task' })).text);
   }, 30_000);
+});
+
+// #1069: git 2.43 writes a UTC commit time as `+00:00`, newer git as `Z`. `committedAt` is a
+// public field, so it reads the same on every git version.
+describe('gitIsoDate — one spelling of a commit time on every git version (#1069)', () => {
+  it('spells UTC as Z, whichever way git wrote it', () => {
+    expect(gitIsoDate('2026-01-01T00:00:00+00:00')).toBe('2026-01-01T00:00:00Z');
+    expect(gitIsoDate('2026-01-01T00:00:00Z')).toBe('2026-01-01T00:00:00Z');
+  });
+
+  it('keeps any other offset exactly as git wrote it', () => {
+    expect(gitIsoDate('2026-01-01T00:00:00+02:00')).toBe('2026-01-01T00:00:00+02:00');
+    expect(gitIsoDate('2026-01-01T00:00:00-05:30')).toBe('2026-01-01T00:00:00-05:30');
+  });
 });
