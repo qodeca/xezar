@@ -157,6 +157,25 @@ the first proof never ran (`deepseek-v4-pro`, `deepseek-flash`).
   commands ran (`git log …`, `git status --porcelain`, `npm test`), and off-list commands were
   refused by the hook first, as before.
 
+## Rerun on the release head
+
+Commit `9f3147a0` (PR #1067 at version 0.30.0: `main` merged up to `dde302d2`, plus the fixes for
+#1074, #1075, #1076, #1080 and the task's recorded runner), Qwen Code 0.25.2, on macOS. Evidence:
+`qwen-code-parity-2026-10-16/rerun-9f3147a0.json`.
+
+| Run | Model | Runs | Done | Failed | Class |
+| --- | --- | --- | --- | --- | --- |
+| Batch | `deepseek-v4-pro` | 10 (6 change, 4 review) | 8 | 2 (`0a16e2c1`, `340d1b47`) | model error |
+| Leader session 12 | `deepseek-flash` | task `92e2115f` | done | – | – |
+
+- **The two failures** are the same model error: each review gave a complete answer, its last
+  message had no `XEZ:DONE` line, and the interactive last step waited until its 10-minute limit.
+  Neither had a refused call. All 6 change runs are done. Zero Qwen Code or xezar faults.
+- **The read-only lock in a real run:** review `6a75abf8` had 3 calls refused by the lock; the model
+  answered each one and the run is done.
+- **Leader session 12:** attached at 16.7 s; the task finished at 79.8 s and its event was in the
+  session in the same 0.5 s poll; delivered 2, acknowledged 2, no blocker.
+
 ## Failures and their classification
 
 | Where | What happened | Class | Evidence |
