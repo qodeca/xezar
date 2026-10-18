@@ -1,5 +1,7 @@
 # Test-coverage gap analysis
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 Date: 2026-09-09, measurements refreshed 2026-09-10. Branch: `feature/coverage-gap-audit`, then
 `feature/coverage-16-files`. Commit originally audited: `e437c24`.
 

@@ -428,7 +428,7 @@ describe('RunProcessSweeper on macOS – the ledger, with POSIX signals', () => 
    */
   it('a stop reads the tree first, so a program started after the last sampler read is still the run’s', async () => {
     const { machine, sweeper, reports } = harness('darwin');
-    machine.add({ pid: 600, ppid: XEZAR, startedAt: T0, cmdline: 'opencode serve' });
+    machine.add({ pid: 600, ppid: XEZAR, startedAt: T0, cmdline: 'qwen --yolo' });
     sweeper.pinRoot(RUN, 600, T0);
     machine.tick();
     // after the last read: the agent's shell tool starts `sleep 120` in a group of its own

@@ -6,7 +6,7 @@ import {
   ESBUILD_CMD,
   NPM_CMD,
   NPX_CMD,
-  OPENCODE_CMD,
+  NATIVE_EXE_CMD,
   VITEST_CMD,
   cmdShimText,
 } from './cmd-shim.testkit.ts';
@@ -34,9 +34,9 @@ describe('parseCmdShim – real shims', () => {
   });
 
   it('reads the program form for an .exe target', () => {
-    expect(parseCmdShim(OPENCODE_CMD, `${GLOBAL}\\opencode.cmd`)).toEqual({
+    expect(parseCmdShim(NATIVE_EXE_CMD, `${GLOBAL}\\native-tool.cmd`)).toEqual({
       kind: 'program',
-      program: `${GLOBAL}\\node_modules\\opencode-ai\\bin\\opencode.exe`,
+      program: `${GLOBAL}\\node_modules\\native-tool\\bin\\native-tool.exe`,
     });
   });
 
@@ -69,7 +69,7 @@ describe('the builder writes what cmd-shim writes', () => {
   it('reproduces the real shims byte for byte', () => {
     expect(cmdShimText({ prog: 'node', target: '..\\vitest\\vitest.mjs' })).toBe(VITEST_CMD);
     expect(cmdShimText({ prog: 'node', target: 'node_modules\\@openai\\codex\\bin\\codex.js' })).toBe(CODEX_CMD);
-    expect(cmdShimText({ target: 'node_modules\\opencode-ai\\bin\\opencode.exe' })).toBe(OPENCODE_CMD);
+    expect(cmdShimText({ target: 'node_modules\\native-tool\\bin\\native-tool.exe' })).toBe(NATIVE_EXE_CMD);
   });
 });
 

@@ -328,6 +328,9 @@ still names them, and lists each file and field to change. See
 
 ## Upgrading to 0.16.0
 
+> pi and OpenCode, named in this section, were removed later, in 0.30.0 – see
+> [Moving from pi or OpenCode](docs/guide/18-moving-from-pi-or-opencode.md).
+
 ### Audit trail file
 
 The audit trail is now `.local/xezar/audit.ndjson`, with a new record shape (#306). The old

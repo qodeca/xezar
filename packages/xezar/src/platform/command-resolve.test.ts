@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CODEX_CMD, COREPACK_CMD, NPM_CMD, NPX_CMD, OPENCODE_CMD, VITEST_CMD } from './cmd-shim.testkit.ts';
+import { CODEX_CMD, COREPACK_CMD, NPM_CMD, NPX_CMD, NATIVE_EXE_CMD, VITEST_CMD } from './cmd-shim.testkit.ts';
 import { CommandRefusedError, resolveCommand, type ResolveContext } from './command-resolve.ts';
 
 const NODE = 'C:\\Program Files\\nodejs\\node.exe';
@@ -150,9 +150,9 @@ describe('resolveCommand – shims and scripts', () => {
   });
 
   it('starts the program form directly', () => {
-    const files = { [`${GLOBAL}\\opencode.cmd`]: OPENCODE_CMD, [`${GLOBAL}\\node_modules\\opencode-ai\\bin\\opencode.exe`]: '' };
-    expect(resolveOn('opencode', ['serve'], ctx(files, { PATH: GLOBAL }))).toEqual({
-      file: `${GLOBAL}\\node_modules\\opencode-ai\\bin\\opencode.exe`,
+    const files = { [`${GLOBAL}\\native-tool.cmd`]: NATIVE_EXE_CMD, [`${GLOBAL}\\node_modules\\native-tool\\bin\\native-tool.exe`]: '' };
+    expect(resolveOn('native-tool', ['serve'], ctx(files, { PATH: GLOBAL }))).toEqual({
+      file: `${GLOBAL}\\node_modules\\native-tool\\bin\\native-tool.exe`,
       args: ['serve'],
       verbatim: false,
       how: 'shim-program',
@@ -246,7 +246,7 @@ describe('resolveCommand – cmd.exe itself (D22)', () => {
 
   it('refuses a program shim whose target is cmd.exe', () => {
     const shim = `${GLOBAL}\\sneaky.cmd`;
-    const text = OPENCODE_CMD.replace('node_modules\\opencode-ai\\bin\\opencode.exe', 'cmd.exe');
+    const text = NATIVE_EXE_CMD.replace('node_modules\\native-tool\\bin\\native-tool.exe', 'cmd.exe');
     expect(refusal(() => resolveOn(shim, [], ctx({ [shim]: text, [`${GLOBAL}\\cmd.exe`]: '' }, {}))).code).toBe(
       'XEZ_CMD_DIRECT',
     );

@@ -1,5 +1,7 @@
 # Browser manual checks
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 The following results are the dated record from QA run `5aae0719-1aec-4cf7-bb5a-47ca7bd105e0`.
 
 The record also covered the pi and OpenCode backends. Those results were cut from this page after

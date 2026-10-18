@@ -5,7 +5,8 @@
  * Kept as string literals, not files: the repository stores every text file with LF
  * (`.gitattributes`), and these are CRLF. The literals were copied from files npm wrote on a
  * Windows machine (Node 24.21.0, npm 11): `node_modules/.bin/vitest.cmd` and `esbuild.cmd`, and
- * the global `codex.cmd`, `opencode.cmd`, `npm.cmd`, `npx.cmd` and `corepack.cmd`.
+ * the global `codex.cmd`, `npm.cmd`, `npx.cmd` and `corepack.cmd`. `NATIVE_EXE_CMD` keeps the exact shape
+ * npm writes for a package whose bin is a native `.exe`, with a neutral package name.
  */
 
 export const VITEST_CMD =
@@ -17,8 +18,8 @@ export const ESBUILD_CMD =
 export const CODEX_CMD =
   '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n';
 
-export const OPENCODE_CMD =
-  '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\r\n';
+export const NATIVE_EXE_CMD =
+  '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\native-tool\\bin\\native-tool.exe"   %*\r\n';
 
 export const NPM_CMD =
   ':: Created by npm, please don\'t edit manually.\r\n@ECHO OFF\r\n\r\nSETLOCAL\r\n\r\nSET "NODE_EXE=%~dp0\\node.exe"\r\nIF NOT EXIST "%NODE_EXE%" (\r\n  SET "NODE_EXE=node"\r\n)\r\n\r\nSET "NPM_PREFIX_JS=%~dp0\\node_modules\\npm\\bin\\npm-prefix.js"\r\nSET "NPM_CLI_JS=%~dp0\\node_modules\\npm\\bin\\npm-cli.js"\r\nFOR /F "delims=" %%F IN (\'CALL "%NODE_EXE%" "%NPM_PREFIX_JS%"\') DO (\r\n  SET "NPM_PREFIX_NPM_CLI_JS=%%F\\node_modules\\npm\\bin\\npm-cli.js"\r\n)\r\nIF EXIST "%NPM_PREFIX_NPM_CLI_JS%" (\r\n  SET "NPM_CLI_JS=%NPM_PREFIX_NPM_CLI_JS%"\r\n)\r\n\r\n"%NODE_EXE%" "%NPM_CLI_JS%" %*\r\n';

@@ -1,5 +1,7 @@
 # Waking a Claude Code leader from a xezar event – decision record
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented by #404 (`263464e`); the dated spike below is superseded for
 > readiness. The real-model clause has since passed by owner acceptance; see the [DoD
 > record](mcp-definition-of-done-record.md), 2026-09-15.
