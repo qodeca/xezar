@@ -6,6 +6,7 @@ import {
   staleVersionRejectionSchema,
   type RunHistoryPage,
   type StaleVersionRejection,
+  engineOwnsRun,
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
@@ -227,7 +228,7 @@ const validPathId = (id: string): boolean => id !== '.' && id !== '..' && runIdP
 type Run = GetRunValue;
 
 /** `run-actions.ts` `isRunActive`: the engine still owns the run. */
-const isActive = (run: Run): boolean => run.status === 'running' || run.status === 'queued' || run.status === 'waiting';
+const isActive = (run: Run): boolean => engineOwnsRun(run.status);
 /** `task-thread.tsx`: the composer delivers into a live session while running or waiting. */
 const sessionOpen = (run: Run): boolean => run.status === 'running' || run.status === 'waiting';
 /** `run-actions.ts` `lastSessionId` — Continue needs a recorded agent session. */

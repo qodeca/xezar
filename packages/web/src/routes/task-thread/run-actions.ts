@@ -1,4 +1,4 @@
-import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
+import { engineOwnsRun, type RunRecord, type RunStatus } from '@qodeca/xezar-api-client'
 import { cliTargetRunner } from '@/components/open-in-menu'
 import { canBeUnread, isUnread } from '@/lib/read-state'
 import { resumeCommand as getResumeCommand } from '@/lib/runner-label'
@@ -17,7 +17,7 @@ export { cliTargetRunner }
  *  claimed). `review` is deliberately NOT active — a parked review can be continued, archived
  *  or deleted like any finished run. */
 export function isRunActive(status: RunStatus): boolean {
-  return status === 'running' || status === 'queued' || status === 'waiting'
+  return engineOwnsRun(status)
 }
 
 /** The latest agent session across steps — what Continue/Terminal resume. */

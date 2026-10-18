@@ -48,6 +48,24 @@ export const runStatusSchema = z.enum([
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
 /**
+ * The statuses in which the engine still owns a run: executing (`running`), parked on its live
+ * session for input (`waiting`), or claimed by the queue (`queued`). While a run is in one of
+ * these, its session belongs to the engine – nothing may resume it in a second CLI, delete it,
+ * remove its worktree or deregister its project. `review` is deliberately NOT here: a parked
+ * review has no live process, and it can be continued, archived or deleted like a finished run.
+ *
+ * This is a fact about the RECORD. The engine's own in-memory view (`RunManager.isActive`: a run
+ * this process has started, is starting or has queued) is a different question and stays separate.
+ */
+export const ENGINE_OWNED_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
+
+/** Does the engine still own a run in this status? See `ENGINE_OWNED_RUN_STATUSES`. Takes any
+ *  string so a caller holding an unvalidated status gets `false` for anything unknown. */
+export function engineOwnsRun(status: string): boolean {
+  return (ENGINE_OWNED_RUN_STATUSES as ReadonlySet<string>).has(status);
+}
+
+/**
  * Sub-state of `running` (spec 2026-07-18-subagent-monitoring-status, #490): the agent ended its
  * turn still working on its own downstream work (a sub-agent, a monitored command) and said so
  * with the `XEZ:MONITORING` marker — a non-attention state, not "needs you".

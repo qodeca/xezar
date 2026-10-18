@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRunInputSchema, runRecordSchema } from './runs.ts';
+import { ENGINE_OWNED_RUN_STATUSES, createRunInputSchema, engineOwnsRun, runRecordSchema, runStatusSchema } from './runs.ts';
 import { runnerSchema } from './health.ts';
 import { WORKFLOW_MAX_STEPS, saveWorkflowInputSchema } from './workflows.ts';
 
@@ -128,5 +128,14 @@ describe('WORKFLOW_MAX_STEPS — every 3.0.3 kit workflow can be saved and run i
   it('runs an inline chain of nine steps, and refuses one past the cap', () => {
     expect(createRunInputSchema.safeParse({ task: 't', steps: steps(9) }).success).toBe(true);
     expect(createRunInputSchema.safeParse({ task: 't', steps: steps(WORKFLOW_MAX_STEPS + 1) }).success).toBe(false);
+  });
+});
+
+describe('engineOwnsRun – the one definition of "the engine still owns this task"', () => {
+  it('is exactly queued, running and waiting; review and every finished status are not', () => {
+    const owned = runStatusSchema.options.filter((status) => engineOwnsRun(status));
+    expect(owned).toEqual(['queued', 'running', 'waiting']);
+    expect([...ENGINE_OWNED_RUN_STATUSES].sort()).toEqual(owned);
+    expect(engineOwnsRun('review')).toBe(false);
   });
 });

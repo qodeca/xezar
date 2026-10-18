@@ -1,5 +1,5 @@
 import { lstat } from 'node:fs/promises';
-import { mcpExpectedVersionSchema, operationIdSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
+import { engineOwnsRun, mcpExpectedVersionSchema, operationIdSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
 import { hc, type InferResponseType } from 'hono/client';
 import { z } from 'zod';
 import type { RunRecord } from '../../runs/store.ts';
@@ -83,8 +83,7 @@ const PAGE_ITEMS = 100;
 const BRIEF_PREVIEW_BYTES = 1_000;
 const MESSAGE_PREVIEW_BYTES = 300;
 
-/** The cockpit's "active" (`isRunActive`) and "terminal" (`TERMINAL_STATUSES`) sets. */
-const ACTIVE_STATUSES: ReadonlySet<string> = new Set(['queued', 'running', 'waiting']);
+/** The cockpit's "terminal" (`TERMINAL_STATUSES`) set; "active" is the contract's `engineOwnsRun`. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['done', 'failed', 'review', 'cancelled']);
 
 const ACTIONS = [
@@ -458,7 +457,7 @@ function listQueue(scope: OwnershipScope, runs: readonly RunLike[], args: Args):
 }
 
 async function archive(ops: WorkOrganisation, run: RunLike, expectedVersion: string): Promise<McpToolResult> {
-  if (!run.archived && ACTIVE_STATUSES.has(run.status)) {
+  if (!run.archived && engineOwnsRun(run.status)) {
     return conflict('archive', `this task is ${run.status} — cancel it or let it finish, then archive it`, { run: slimRun(run) });
   }
   const result = await ops.adapter.archiveRun(run.id, true, expectedVersion);

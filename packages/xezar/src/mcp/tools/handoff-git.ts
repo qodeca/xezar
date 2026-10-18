@@ -15,6 +15,7 @@ import {
   runIdParamSchema,
   type ApiRun,
   type GithubPrMergeState,
+  engineOwnsRun,
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
@@ -231,8 +232,6 @@ const serviceRefusal = (action: Input['action'], res: Answer, extra: Record<stri
 export const NO_TASK = 'No such task in this project.';
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree';
 
-/** "Active" as the engine means it — `review` is parked, not active (git-actions.ts `isActive`). */
-const isActive = (status: ApiRun['status']): boolean => status === 'running' || status === 'queued' || status === 'waiting';
 
 /** The next legitimate action after a quality blocker. It offers no waiver, to anyone (A-22). */
 export const QUALITY_BLOCKER_NEXT_ACTION =
@@ -419,7 +418,7 @@ class Handoff {
         { task },
       );
     }
-    if (isActive(run.status)) {
+    if (engineOwnsRun(run.status)) {
       return policyRefusal('create_pr', 'Create PR unavailable — the run is still active; wait for the review gate', {
         task,
       });

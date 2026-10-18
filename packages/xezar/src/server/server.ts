@@ -38,6 +38,7 @@ import {
   appearanceSchema,
   agentQuotaQuerySchema,
   agentQuotaRefreshInputSchema,
+  engineOwnsRun,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -119,7 +120,7 @@ import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService
 import { getTeamSkillsCached, refreshTeamSkills, skillsCatalogVersions, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
-import type { RunEvent, RunRecord, RunStatus, RunStore } from '../runs/store.ts';
+import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
 import type { InstallChannel } from '../install-channel.ts';
 import {
   HistoryCursorError,
@@ -3173,7 +3174,6 @@ export function createApp(deps: ServerDeps) {
   // deregistering mid-run would strand a live agent process under a root no
   // route can resolve any more — the run would keep burning tokens with no
   // cockpit able to show, message or cancel it.
-  const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 
   /**
    * How many of `projectId`'s runs this process is actively responsible for.
@@ -3196,7 +3196,7 @@ export function createApp(deps: ServerDeps) {
   const activeRunCount = (projectId: string): number => {
     const ctx = contexts.peek(projectId);
     if (!ctx) return 0;
-    return ctx.store.listRuns().filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).length;
+    return ctx.store.listRuns().filter((run) => engineOwnsRun(run.status)).length;
   };
 
   // Workspace-level by design: update state spans project and global installs,
@@ -4690,7 +4690,7 @@ export function createApp(deps: ServerDeps) {
       if (cliRunner) {
         const blocked = await providerActionError([cliRunner]);
         if (blocked) return c.json({ error: blocked }, 409);
-        const engineOwnsSession = run.status === 'running' || run.status === 'queued' || run.status === 'waiting';
+        const engineOwnsSession = engineOwnsRun(run.status);
         const sessionStep = engineOwnsSession ? undefined : [...run.steps].reverse().find((s) => s.sessionId);
         const sessionId = sessionStep?.sessionId;
         // An id resumeCommand refuses (#431) degrades to a fresh CLI in the worktree,

@@ -36,6 +36,7 @@ import {
   attachmentExtension,
   isImageAttachmentName,
   isImageMediaType,
+  engineOwnsRun,
 } from '@qodeca/xezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import {
@@ -1842,7 +1843,7 @@ export class RunManager {
   async recover(): Promise<void> {
     const live = this.store
       .listRuns()
-      .filter((r) => ['queued', 'waiting', 'running'].includes(r.status))
+      .filter((r) => engineOwnsRun(r.status))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     // A crash never reaches `dropActive`, so its temp directory (#785) outlived the run.
     // Startup is the one moment we know which runs are still live, so sweep every other
@@ -2612,6 +2613,9 @@ export class RunManager {
     if (state.cancelled) session.interrupt();
   }
 
+  /** This process's own view: a run it is executing, starting or holding in its queue. Not the
+   *  record's `engineOwnsRun` (contract): after a crash a record still says `running` while no
+   *  engine holds it, until `recover()` takes it back – the question here is who holds it NOW. */
   isActive(runId: string): boolean {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
   }
