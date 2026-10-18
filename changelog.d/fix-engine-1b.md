@@ -15,3 +15,6 @@
   clean-up picks every old finished worktree first and removes them one at a time; a task
   continued in between lost its isolated working copy (Git worktree). Each removal now checks
   again that the task is still finished and not running.
+- 🐛 **A check step that reads its input no longer hangs.** A workflow check ran with an open input
+  that nothing ever wrote to or closed, so a command that asks a question or reads its input waited
+  forever. A check step now has no input at all, on Linux, macOS and Windows (Git Bash).
