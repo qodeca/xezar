@@ -126,3 +126,15 @@ export function assetContentType(file: string): string {
 /** Vite fingerprints every filename under `assets/`, so the bytes behind a URL
  *  can never change — cache them for a year. */
 export const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
+/** Headers every HTML page the service sends carries: the cockpit refuses to be
+ *  shown inside a frame on another site, so none of its controls can be presented
+ *  to a person under someone else's page. `frame-ancestors` is the current standard;
+ *  `X-Frame-Options` covers older browsers. Deliberately frame-ancestors ONLY — a
+ *  wider Content-Security-Policy would also govern the cockpit's scripts and styles.
+ *  JSON, SSE and asset responses never render as a page, so they stay as they were.
+ *  Proxies in hosted mode pass response headers through, so they need no change. */
+export const HTML_FRAME_HEADERS: Readonly<Record<string, string>> = Object.freeze({
+  'content-security-policy': "frame-ancestors 'none'",
+  'x-frame-options': 'DENY',
+});
