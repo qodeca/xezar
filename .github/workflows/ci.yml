@@ -175,6 +175,14 @@ jobs:
     # by packages/web/src/e2e-runtime-ceiling.test.ts. `verify` keeps its own 20-minute budget —
     # the jobs run side by side, so CI's added wall clock is the slower of the two, not the sum.
     timeout-minutes: 30
+    # The agent-browser release this job runs, pinned with the SHA-256 of its linux-x64 asset (the
+    # `digest` GitHub publishes for it, re-computed from a download). The binary runs with sudo
+    # below, so it must be exactly these bytes: a cached or downloaded file that does not match
+    # is never executed. Moving the pin means changing both lines; the cache key follows the
+    # version, so a new pin never restores an old binary.
+    env:
+      AGENT_BROWSER_VERSION: 0.39.1
+      AGENT_BROWSER_SHA256: 6906d3a2a67b05809932a93d99e53d1132373f0a52a617b2d6032dbb954df6fc
 
     steps:
       - name: Check out repository
@@ -203,9 +211,9 @@ jobs:
           path: |
             ~/.cache/agent-tools/agent-browser
             ~/.agent-browser/browsers
-          key: ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+          key: ${{ runner.os }}-${{ runner.arch }}-agent-browser-${{ env.AGENT_BROWSER_VERSION }}-
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+            ${{ runner.os }}-${{ runner.arch }}-agent-browser-${{ env.AGENT_BROWSER_VERSION }}-
 
       # The documented `ensure-installed` operation, run as its own step so that a provisioning
       # failure is reported HERE, with the doctor output in the log, rather than surfacing later
@@ -226,15 +234,24 @@ jobs:
             exit 1
           fi
           BIN="$TOOL_DIR/agent-browser-linux-x64"
-          if [ ! -x "$BIN" ]; then
-            echo "Downloading agent-browser (cold cache)"
+          sha_ok() { echo "$AGENT_BROWSER_SHA256  $1" | sha256sum --check --status --strict; }
+          if [ -f "$BIN" ] && sha_ok "$BIN"; then
+            echo "Reusing the cached agent-browser $AGENT_BROWSER_VERSION binary (SHA-256 verified)"
+            chmod 755 "$BIN"
+          else
+            # Cold cache, or a cached file that is not the pinned release: replace it.
+            rm -f "$BIN"
+            echo "Downloading agent-browser $AGENT_BROWSER_VERSION"
             curl -fL --retry 3 --connect-timeout 30 --max-time 600 \
               -o "$BIN.tmp" \
-              https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-linux-x64
+              "https://github.com/vercel-labs/agent-browser/releases/download/v${AGENT_BROWSER_VERSION}/agent-browser-linux-x64"
+            if ! sha_ok "$BIN.tmp"; then
+              rm -f "$BIN.tmp"
+              echo "::error title=agent-browser checksum mismatch::the downloaded v${AGENT_BROWSER_VERSION} binary does not match AGENT_BROWSER_SHA256; it was not run."
+              exit 1
+            fi
             chmod 755 "$BIN.tmp"
             mv "$BIN.tmp" "$BIN"
-          else
-            echo "Reusing the cached agent-browser binary"
           fi
 
           "$BIN" install || true
@@ -279,14 +296,12 @@ jobs:
           [ -n "$CHROME_VERSION" ] || CHROME_VERSION=unknown
           echo "agent-browser doctor exited 0 — the browser is usable; resolved Chrome: $CHROME_VERSION"
 
-          # "agent-browser 0.36.0" → "0.36.0"; `unknown` if the CLI ever stops answering, which
-          # only makes the key coarser, never wrong.
-          CLI_VERSION=$("$BIN" --version 2>/dev/null | awk 'NR==1{print $NF}' | tr -cd '0-9A-Za-z.-')
-          [ -n "$CLI_VERSION" ] || CLI_VERSION=unknown
+          # The key names the PINNED version (the restore prefix above uses the same one), so a
+          # cache saved under one pin is never restored under another.
           {
-            echo "cli-version=$CLI_VERSION"
+            echo "cli-version=$AGENT_BROWSER_VERSION"
             echo "chrome-version=$CHROME_VERSION"
-            echo "cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${CLI_VERSION}-chrome-${CHROME_VERSION}"
+            echo "cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${AGENT_BROWSER_VERSION}-chrome-${CHROME_VERSION}"
           } >> "$GITHUB_OUTPUT"
 
       # Saved with the exact resolved-Chrome key, so the next run restores that precise browser

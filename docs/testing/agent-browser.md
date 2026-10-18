@@ -20,6 +20,11 @@ preinstalled browser, or a cloud-browser account.
   `~/.agent-browser/browsers`. Only `browsers/` is safe to restore from a cache —
   the rest of `~/.agent-browser` is sockets and per-session state, and CI caches
   exactly those two paths for that reason.
+- CI (`ui-e2e` in `.github/workflows/ci.yml`) does not follow `latest`: it pins one
+  release (`AGENT_BROWSER_VERSION`) and the SHA-256 of its linux-x64 asset
+  (`AGENT_BROWSER_SHA256`), runs only a binary that matches it, and keys its cache on
+  that version. Moving the pin means changing both values (the asset's `digest` from
+  `gh release view v<version> --repo vercel-labs/agent-browser --json assets`).
 
 ## Operations
 

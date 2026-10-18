@@ -6,3 +6,6 @@
   SHA-256 and publishes exactly those bytes with provenance. The tag and GitHub Release are now
   created right after the publish and before the version-bump PR, and the run summary reports
   each of the three from its own step's outcome.
+- 🚀 **CI runs one pinned, checksum-verified agent-browser.** The `ui-e2e` job downloads a fixed
+  release instead of `latest`, runs the binary only when its SHA-256 matches the pinned value
+  (cached copies included), and keys the browser cache on that version.
