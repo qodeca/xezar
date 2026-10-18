@@ -46,9 +46,51 @@ A development task passes through these phases, and each one settles one thing:
 | QA | the change works for a user | `needs-qa` → `qa` → `qa-approved` / `qa-self-verified`, or `qa-failed` |
 | Merge | the change lands on `main` | `merge-queue` |
 
+The label set and its descriptions live in `.xezar/pipeline/labels.json`; § Labels says how
+they are applied.
+
 `blocked` and `do-not-merge` stop any phase. `ci-monitoring` means a finished run still owes a
 CI-result comment; it is not a claim. What each phase writes down, and where, is in
 `.xezar/docs/phase-record.md`.
+
+## Labels
+
+Labels are defined in `.xezar/pipeline/labels.json`. A new label is added there in the same
+pull request that starts using it. The only labels outside it are the release labels below and
+the ones automation owns, such as `mutation-nightly`.
+
+| Group | Rule | Labels |
+|---|---|---|
+| Category | exactly one | `bug`, `feature`, `refactor`, `security`, `dependencies`, `documentation` |
+| Priority | exactly one, set at triage | `priority-low`, `priority-medium`, `priority-high`, `priority-extreme` |
+| Risk | exactly one, set at triage | `risk-low`, `risk-medium`, `risk-high` |
+| Platform | at least one | `windows`, `linux`, `macos` |
+| Pipeline and meta | as § Task phases says | the phase labels |
+
+**Platform labels** name every operating system where the problem happens or where the change
+must work and be verified.
+
+- A problem seen on one system only gets that one label: a Windows-only CI flake gets `windows`.
+- A change that touches more than one system gets every one it touches: a fix to the POSIX
+  shutdown path gets `linux` and `macos`.
+- Behaviour that is the same everywhere gets all three. This includes most engine, cockpit, MCP and
+  docs work. Absence of a platform label is never "all"; it means triage is unfinished.
+- WSL counts as `linux`. When the failure depends on the Windows host under it, add `windows`
+  too.
+- The operating system in a bug report's environment block is evidence, not the label. A bug
+  reported on macOS whose cause is the same on every system gets all three.
+- When work narrows or widens the platforms, for example a reproduction proves a flake is
+  Windows-only, the person or agent who learns it updates the labels in the same step.
+
+A pull request copies the platform labels of the issue it fixes, unless its diff changes the
+set. Its verification evidence names the system it ran on. A platform that it labels but did
+not verify is reported as unchecked, as § Acceptance requires.
+
+**Release labels** (`release-x.y.z`) mark what a release must contain. They come off every open
+issue once that release ships; an issue that slipped gets the next release's label or none.
+
+`in-progress` belongs to an active claim only. A claim with no activity for a week is stale:
+remove the label and say so in a comment.
 
 ## Security before the quality verdict
 
