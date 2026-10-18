@@ -181,6 +181,23 @@ describe('publishing surface', () => {
     }
   });
 
+  it('ships only the scripts the installed CLI runs', () => {
+    // The CLI resolves four programs next to `dist/` at runtime: the dry-run mocks
+    // (claude-cli-runner.ts, qwen-runner.ts) and the two bundled tool-policy hooks
+    // (codex-app-server-runner.ts, qwen-runner.ts). Build, release and test helpers stay out.
+    const npm = npmCommand(['pack', '--dry-run', '--json', '--ignore-scripts']);
+    const packed = JSON.parse(
+      execFileSync(npm.file, npm.args, { cwd: join(repoRoot, 'packages', 'xezar'), encoding: 'utf8' }),
+    ) as Array<{ files: Array<{ path: string }> }>;
+    const scripts = packed[0]!.files.map((f) => f.path).filter((p) => p.startsWith('scripts/')).sort();
+    expect(scripts).toEqual([
+      'scripts/codex-read-only-hook.mjs',
+      'scripts/mock-claude.mjs',
+      'scripts/mock-qwen.mjs',
+      'scripts/qwen-pre-tool-hook.mjs',
+    ]);
+  }, 60_000);
+
   it('keeps the MCP mutation run (Stryker) out of what a user installs', () => {
     // #333: Stryker is the MCP mutation gate — nightly on GitHub Actions since #377 — and a
     // devDependency only. A user who installs @qodeca/xezar must get neither its ~140 packages nor

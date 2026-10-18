@@ -11,3 +11,6 @@
   (cached copies included), and keys the browser cache on that version.
 - 🚀 **CI also runs for `release/**` maintenance branches**, on pull requests and pushes, so a
   fix bound for a patch line is verified before the Release workflow ships it.
+- 🚀 **The npm package ships only the scripts the CLI runs.** `@qodeca/xezar` now carries the two
+  dry-run mocks and the two bundled tool-policy hooks from `scripts/`, not the build, release and
+  test helpers beside them (12 files down to 4).
