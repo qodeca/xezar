@@ -1,9 +1,11 @@
 # Standard process source audit and transfer register
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** The audited baseline was adapted for this repository’s own kit; see
 > installation qualification (`installation.md`, removed). Product-wide kit distribution is not
 > implemented. The original three-client qualification recommendation is dated evidence; the separate built-in
-> pi decision remains #336.
+> client decision was later settled in #336 (Claude Code, Codex and Qwen Code).
 
 Status: **completed static source-to-requirements audit; no implementation or runtime certification**. Audit date: **2026-09-09**.
 

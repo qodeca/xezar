@@ -1,5 +1,7 @@
 # MCP API reference – requirements and technical solution
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Partially implemented. This original design is superseded where the shipped
 > contract differs: artifact, generated reference, drift test, route and Settings → MCP API shipped;
 > CT-01/R-04’s shipped coverage declaration and CV-05/CV-08’s coverage view did not. Those requirements remain
@@ -823,7 +825,7 @@ makes the page succeed or fail at its one job, which is letting a human check th
 | Reader | What they are actually doing | Where they are best served | On this page |
 | --- | --- | --- | --- |
 | **A reviewer auditing the design** – the owner, or an engineer reviewing a pull request that changes a tool | Deciding whether the surface is **right**: complete, safe, consistent, honest about what it refuses, and matching the promised cockpit coverage. They read, compare and judge. They do not call anything. | Here, and in `mcp-api.md` / `mcp-api.json` in the pull request diff. | **Optimised for.** Every choice below serves this reader first. |
-| **Someone configuring a client** | Connecting Claude Code, Codex or OpenCode to this project once. | The **MCP connection** section, which already writes the client configuration and says whether the connection is available in this mode. | One link back to MCP connection. We accept being worse here: no setup snippets, no commands to copy. |
+| **Someone configuring a client** | Connecting Claude Code, Codex or Qwen Code to this project once. | The **MCP connection** section, which already writes the client configuration and says whether the connection is available in this mode. | One link back to MCP connection. We accept being worse here: no setup snippets, no commands to copy. |
 | **An engineer debugging a call** | Asking why one call failed or returned what it did. | The leader's event journal, the audit record, the result and evidence views, the acceptance tests, and a generic MCP client such as the Inspector (17.2). | The page gives them the **vocabulary** to read a result – status words, how refusals arrive, the two origins. We accept being worse here: no call history, no request/response transcript, no replay. |
 
 The first reader decides the layout. When a choice helps a debugging engineer but slows a reviewer – a form, a

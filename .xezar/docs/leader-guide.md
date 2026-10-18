@@ -173,7 +173,6 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 - **The reserved leader login is Claude Code's built-in login (`default`).** You run on it, on
   `claude/opus`. It runs no tasks and is never in a rotation. There is no second leader login.
 - Task logins are the `claude` and `codex` rotations in `routing.json`; `qwen` uses no login.
-  xezar no longer runs pi or OpenCode (#1046).
 - Codex lanes read this project's `.codex/` only when the owner has marked the project trusted.
 - The budget table is in the live campaign's `README.md`, keyed by runner and login. L2 fills it
   from `project_config` `read_quota`. A login that is out gets its state and reset time there, with

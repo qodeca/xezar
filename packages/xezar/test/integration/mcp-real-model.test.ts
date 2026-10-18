@@ -19,7 +19,7 @@ import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
  *
  * Owner's manual command, like mcp-real-clients.test.ts. Four live legs, each judged by a model's
  * exact acknowledgement of one pushed event, never by its prose:
- * - `[qwen]` (#1046, replaces the pi leg): Qwen Code (0.25.2 or newer) as the leader against an
+ * - `[qwen]` (#1046, replaces a removed backend's leg): Qwen Code (0.25.2 or newer) as the leader against an
  *   OpenAI-compatible endpoint. All three XEZ_REAL_MODEL_* variables come only from the operator's
  *   environment; missing any variable or a 401/403 auth probe means node:test skip / NOT-RUN, never a
  *   model failure. In the shell already holding the provider's key, use
@@ -252,7 +252,7 @@ test('the tee reconstructs tool calls with their answers from a frame log', () =
   assert.deepEqual(toolCalls(frames), [{ at: 1, name: 'leader_events', args: { action: 'read' }, answeredAt: 3, structured: { nextCursor: 'c' }, isError: false }]);
 });
 
-const AGENT_VARS = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE|OPENCODE_|PI_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$|VITEST|NODE_OPTIONS$)/;
+const AGENT_VARS = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$|VITEST|NODE_OPTIONS$)/;
 function clientEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(process.env)) if (!AGENT_VARS.test(name)) env[name] = value;
@@ -540,7 +540,7 @@ test('[codex] a real model acknowledges an app-server-delivered event with the e
   }
 });
 
-// ---- #1046: the A-19 real-model clause for Qwen Code (it replaces the pi leg) ----------------------
+// ---- #1046: the A-19 real-model clause for Qwen Code (it replaces a removed backend's leg) --------
 /**
  * Qwen Code is the leader the person starts themselves; xezar's bridge, started by that session, sends
  * each event into the session's own inbox (`src/mcp/qwen-messaging.ts`). So this leg is the #67 shape —

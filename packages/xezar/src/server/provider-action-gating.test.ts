@@ -31,7 +31,8 @@ const providerAuth = () => new ProviderAuthService({
     if (executable === 'claude') return { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 };
     if (executable === 'codex') return { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 0 };
     return {
-      stdout: '┌  Credentials ~/.local/share/opencode/auth.json\n└  1 credential',
+      // Anything but a bare version: qwen reads as "unknown", and this suite never asserts on it.
+      stdout: 'not a version line',
       stderr: '',
       exitCode: 0,
     };

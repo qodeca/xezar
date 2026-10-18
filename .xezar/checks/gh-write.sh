@@ -13,7 +13,7 @@
 #     {"action":"comment","kind":"pr","number":12,"body":"…"}
 #     {"action":"label","kind":"pr","number":12,"add":["…"],"remove":["…"]}
 #
-# Use the last form from a pipe: the engine's shared read-only lock (pi, Codex) allows one pipe
+# Use the last form from a pipe: the engine's shared read-only lock (Codex, Qwen Code) allows one pipe
 # only into an argument-free `bash <script>`, so `jq -n '{…,body:"…"}' | bash
 # .xezar/checks/gh-write.sh` passes on every runner and `… | gh-write.sh comment pr 12` does not.
 # Keep every `$` out of the command: Claude Code denies a command holding one in a reading step,

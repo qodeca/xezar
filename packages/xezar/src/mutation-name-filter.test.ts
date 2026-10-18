@@ -116,7 +116,7 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
   it('leaves out every guard that reads source as text and forbids `process.` — both of them, by class', () => {
     const guards = cases.filter((c) => c.readsSourceText && c.describe.startsWith('AGENTS.md — '));
     // Pinned so the scan cannot quietly change what it finds. The two guards of this class lived in
-    // the OpenCode and pi adapter tests, removed with those backends (#1046); a new guard is covered
+    // the tests of two adapters removed with their backends (#1046); a new guard is covered
     // by the loop.
     expect(guards.map((c) => `${c.file} :: ${c.describe}`)).toEqual([]);
     for (const guard of guards) {
@@ -128,7 +128,7 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
     // The exclusion must stay narrow. These three sit in the SAME describes and assert on runtime
     // behaviour, not on source text, so they can kill a mutant and must reach the mutation run.
     const siblings = cases.filter((c) => c.describe.startsWith('AGENTS.md — ') && !c.readsSourceText);
-    // The siblings lived in the OpenCode and pi adapter tests, removed with those backends (#1046).
+    // The siblings lived in the tests of two adapters removed with their backends (#1046).
     expect(siblings.map((c) => c.name)).toEqual([]);
     for (const sibling of siblings) {
       expect(excluded(sibling.full), `wrongly excluded from the mutation run: ${sibling.full}`).toBe(false);

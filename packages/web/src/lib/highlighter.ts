@@ -19,7 +19,7 @@ import type { HighlighterCore } from 'shiki/core'
  * Theming: ONE theme whose token colors are the `--syn-*` CSS variables from
  * `styles/index.css`. The variables flip with the `.light` class (Option B dual theme — not
  * `light-dark()`, which follows `color-scheme` rather than our class), so code highlighted once
- * re-themes instantly with zero JS — the opencode pattern the research singled out.
+ * re-themes instantly with zero JS — the pattern the research singled out.
  */
 
 /** A highlighted line: what both the markdown code blocks and R5's diffs render. */
