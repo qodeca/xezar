@@ -209,4 +209,91 @@ describe('useRunHistory', () => {
     process.off('unhandledRejection', unhandled)
     vi.unstubAllGlobals()
   })
+
+  describe('compaction after older pages were loaded (no gap)', () => {
+    const notes = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, index) => ({
+        seq: from + index,
+        ts: '2026-07-30T00:00:00.000Z',
+        type: 'note' as const,
+        message: `event-${from + index}`,
+      }))
+    const streamLive = (from: number, to: number) =>
+      act(() => {
+        for (let seq = from; seq <= to; seq += 1) {
+          FakeEventSource.instances.at(-1)!.emit(
+            'run-event',
+            JSON.stringify({ seq, ts: '2026-07-30T00:00:00.000Z', type: 'note', message: `event-${seq}` }),
+          )
+        }
+      })
+    /** Every seq between the first and last visible event is on screen, or reachable. */
+    const contiguous = (seqs: number[]) => seqs.every((seq, index) => index === 0 || seq === seqs[index - 1]! + 1)
+
+    it('a tail that does not reach the retained pages replaces them, and "Load earlier" walks back through the skipped items', async () => {
+      FakeEventSource.instances = []
+      vi.stubGlobal('EventSource', FakeEventSource)
+      // Retained: 1–100 (loaded with "Load earlier") and 101–200 (the first tail).
+      const firstTail: RunHistoryPage = { ...page(200), events: notes(101, 200), olderCursor: 'before-101', hasOlder: true }
+      const oldest: RunHistoryPage = { ...page(100), events: notes(1, 100) }
+      // 200 live events later the server's tail is 301–400; 201–300 sit behind its cursor.
+      const compactedTail: RunHistoryPage = { ...page(400), events: notes(301, 400), olderCursor: 'before-301', hasOlder: true }
+      const skipped: RunHistoryPage = { ...page(400), events: notes(201, 300), olderCursor: 'before-201', hasOlder: true }
+      let tails = 0
+      mockHistory.mockImplementation(async (_id, cursor) => {
+        if (cursor === 'before-101') return oldest
+        if (cursor === 'before-301') return skipped
+        if (cursor === undefined) return (tails += 1) === 1 ? firstTail : compactedTail
+        throw new Error(`unexpected cursor ${cursor}`)
+      })
+      mockContext.mockResolvedValue(context())
+      const { wrapper } = harness()
+      const { result } = renderHook(() => useRunHistory('run-1'), { wrapper })
+      await waitFor(() => expect(result.current.hasOlder).toBe(true))
+      await act(() => result.current.loadOlder())
+      await waitFor(() => expect(result.current.retainedPages).toBe(2))
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThanOrEqual(1))
+
+      streamLive(201, 400)
+      await waitFor(() => expect(result.current.visibleEvents.at(-1)?.seq).toBe(400))
+      await waitFor(() => expect(result.current.visibleEvents[0]?.seq).toBe(301))
+      expect(contiguous(result.current.visibleEvents.map(({ seq }) => seq))).toBe(true)
+      expect(result.current.hasOlder).toBe(true)
+
+      // The skipped items come back in order from the tail's own cursor.
+      await act(() => result.current.loadOlder())
+      await waitFor(() => expect(result.current.visibleEvents[0]?.seq).toBe(201))
+      expect(contiguous(result.current.visibleEvents.map(({ seq }) => seq))).toBe(true)
+      vi.unstubAllGlobals()
+    })
+
+    it('a tail that overlaps the newest retained page keeps the older pages', async () => {
+      FakeEventSource.instances = []
+      vi.stubGlobal('EventSource', FakeEventSource)
+      const firstTail: RunHistoryPage = { ...page(200), events: notes(101, 200), olderCursor: 'before-101', hasOlder: true }
+      const oldest: RunHistoryPage = { ...page(100), events: notes(1, 100) }
+      const compactedTail: RunHistoryPage = { ...page(400), events: notes(150, 400), olderCursor: 'before-150', hasOlder: true }
+      let tails = 0
+      mockHistory.mockImplementation(async (_id, cursor) => {
+        if (cursor === 'before-101') return oldest
+        if (cursor === undefined) return (tails += 1) === 1 ? firstTail : compactedTail
+        throw new Error(`unexpected cursor ${cursor}`)
+      })
+      mockContext.mockResolvedValue(context())
+      const { wrapper } = harness()
+      const { result } = renderHook(() => useRunHistory('run-1'), { wrapper })
+      await waitFor(() => expect(result.current.hasOlder).toBe(true))
+      await act(() => result.current.loadOlder())
+      await waitFor(() => expect(result.current.retainedPages).toBe(2))
+
+      streamLive(201, 400)
+      await waitFor(() => expect(result.current.retainedPages).toBe(3))
+      await waitFor(() => expect(result.current.visibleEvents.at(-1)?.seq).toBe(400))
+      const seqs = result.current.visibleEvents.map(({ seq }) => seq)
+      expect(seqs[0]).toBe(1)
+      expect(seqs).toHaveLength(400)
+      expect(contiguous(seqs)).toBe(true)
+      vi.unstubAllGlobals()
+    })
+  })
 })
