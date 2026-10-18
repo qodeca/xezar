@@ -51,6 +51,14 @@ afterEach(() => {
   sendMessage.mockReset()
 })
 
+/** The toast, not the run header's own status announcer: both are `role="status"`. */
+const findToast = () =>
+  waitFor(() => {
+    const el = document.querySelector<HTMLElement>('[data-slot="toast"]')
+    if (!el) throw new Error('no toast yet')
+    return el
+  })
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
@@ -241,7 +249,7 @@ describe('Q80 / G-21 / G-10 / G-16 the run header', () => {
     const hint = await screen.findByRole('button', { name: /take over interactively/ })
     expect(classes(hint)).toEqual(expect.arrayContaining(PHONE_ROW))
     fireEvent.click(hint)
-    expect((await screen.findByRole('status')).textContent).toBe('Command copied')
+    expect((await findToast()).textContent).toBe('Command copied')
   })
 
   it('a refused clipboard never reports success: the toast carries the command instead', async () => {
@@ -249,7 +257,7 @@ describe('Q80 / G-21 / G-10 / G-16 the run header', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText: () => Promise.reject(new Error('Document is not focused.')) } })
     renderHeader(run())
     fireEvent.click(await screen.findByRole('button', { name: /take over interactively/ }))
-    const toast = await screen.findByRole('status')
+    const toast = await findToast()
     expect(toast.textContent).toMatch(/^Run manually: /)
     expect(toast.textContent).toContain(RESUME_LINE)
     expect(toast.textContent).not.toContain('copied')

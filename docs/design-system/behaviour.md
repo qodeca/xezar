@@ -57,6 +57,11 @@ Focus rules:
 - Status dots that stand alone get `role="img"` and `aria-label` from `attention.label`; the unread marker
   is `aria-label="unread"`.
 - Counts that change are announced politely through the region that owns them; never through an alert.
+- A task's status change is announced once, by the run header's `StatusAnnouncer`
+  (`data-slot="run-status-announcer"`, `routes/task-thread/run-header.tsx`): one persistent `sr-only`
+  `role="status" aria-atomic="true"` span that says "Task status: {attention.label}" only after the label
+  changed – silent on open and on a switch to another run. The pill, the paused hint and the ask card stay
+  plain text and never get a region of their own.
 
 Rule: a changed count or a background completion is announced politely. An error the user must act on
 is `role="alert"`. A toast is `role="status"`.
