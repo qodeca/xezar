@@ -13,3 +13,6 @@
 - 🐛 **A tab left open across an upgrade recovers by itself.** When a page's code file from the
   old build is gone, the cockpit reloads once (guarded so a real outage cannot loop), and the
   error page's Retry now reloads instead of repeating the failure.
+- 🐛 **The Tasks page says when it is loading or could not load.** It used to stay blank until
+  the list answered, and blank for good when it failed; a failed "Archive finished" now shows the
+  server's message too.

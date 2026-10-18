@@ -9,6 +9,7 @@ import { queryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
 import type { ProcessUsage, RunRecord } from '@qodeca/xezar-api-client'
 import { ListViewProvider, useListView } from '@/components/list-view'
+import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { TasksOverview, TasksOverviewRoute } from '@/routes/tasks-overview'
 
 const NOW = Date.parse('2026-07-14T12:00:00.000Z')
@@ -951,12 +952,29 @@ describe('TasksOverview — header', () => {
 })
 
 describe('TasksOverview — empty and loading states', () => {
-  it('renders nothing while the run list is unknown — no premature empty state', () => {
+  it('says it is loading while the run list is unknown — no premature empty state', () => {
     renderOverview({ runs: undefined })
     expect(document.querySelector('[data-slot="tasks-empty"]')).toBeNull()
     expect(document.querySelector('[data-slot="tasks-table"]')).toBeNull()
     // The header is still there: the surface exists, only its data is pending.
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Tasks')
+    // patterns.md § 6 "Loading a page": a CenteredState, not a blank body.
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading tasks…' })).not.toBeNull()
+    expect(screen.getByText("Fetching this project's tasks.")).not.toBeNull()
+  })
+
+  it('shows a danger load error with the server message when the first load failed', () => {
+    renderOverview({ runs: undefined, loadError: 'the xezar server is not reachable' })
+    const title = screen.getByRole('heading', { level: 2, name: 'Could not load tasks' })
+    expect(title.closest('[data-slot="centered-state"]')?.getAttribute('data-tone')).toBe('danger')
+    expect(screen.getByText('the xezar server is not reachable')).not.toBeNull()
+    expect(screen.queryByText('Loading tasks…')).toBeNull()
+  })
+
+  it('keeps the last good list when only a background refetch failed', () => {
+    renderOverview({ runs: [run({ id: 'kept' })], loadError: 'boom' })
+    expect(tableRow('kept')).not.toBeNull()
+    expect(screen.queryByText('Could not load tasks')).toBeNull()
   })
 
   it('celebrates no-tasks-yet: primary tone, the twinkle backdrop, a New-task action', () => {
@@ -1331,6 +1349,53 @@ describe('TasksOverviewRoute — wired to the app', () => {
       const listFetches = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/runs')
       expect(listFetches.length).toBeGreaterThan(1)
     })
+  })
+
+  it('a failed Archive finished says why in a danger toast', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/api/v1/runs') return json([run({ id: 'd1', status: 'done' })])
+      if (url === '/api/v1/runs/archive-finished') return json({ error: 'runs.json is read-only' }, 409)
+      return new Response('[]', { status: 200 })
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter>
+          <ListViewProvider>
+            <TasksOverviewRoute />
+          </ListViewProvider>
+          <Toaster />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /Archive finished/ }))
+    const item = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="toast"]')
+      if (!el) throw new Error('no toast yet')
+      return el
+    })
+    expect(item.textContent).toBe('runs.json is read-only')
+    expect(item.getAttribute('data-tone')).toBe('danger')
+    act(() => resetToasts())
+  })
+
+  it('a failed first load of the runs list shows the load error, not an endless blank', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/api/v1/runs') return json({ error: 'cannot read runs.json' }, 400)
+      return new Response('[]', { status: 200 })
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter>
+          <ListViewProvider>
+            <TasksOverviewRoute />
+          </ListViewProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByRole('heading', { level: 2, name: 'Could not load tasks' })).not.toBeNull()
+    expect(screen.getByText('cannot read runs.json')).not.toBeNull()
   })
 
   it('PATCHes a table rename to /api/v1/runs/:id and refetches the authoritative list', async () => {

@@ -14,6 +14,7 @@ import {
   GitBranchIcon,
   ListChecksIcon,
   LinkIcon,
+  LoaderCircleIcon,
   MemoryStickIcon,
   PencilIcon,
   PlusIcon,
@@ -21,6 +22,7 @@ import {
   SearchIcon,
   SearchXIcon,
   SparklesIcon,
+  TriangleAlertIcon,
   WorkflowIcon,
 } from 'lucide-react'
 import * as React from 'react'
@@ -117,10 +119,15 @@ export function TasksOverview({
   expandedColumns = normalizeExpandedColumns(undefined),
   onToggleColumn = () => undefined,
   columnsPending = false,
+  loadError,
 }: {
-  /** Undefined while `/api/runs` has not answered: the header renders, the body stays empty —
-   *  an empty state before we know there are no runs would be a lie. */
+  /** Undefined while `/api/runs` has not answered: the header renders and the body says it is
+   *  loading (or, with `loadError`, that it could not) — an empty state before we know there are
+   *  no runs would be a lie. */
   runs: RunRecord[] | undefined
+  /** The server's message when the first load of the runs list failed (patterns.md § 6). Ignored
+   *  once `runs` holds data: a failed background refetch keeps the last good list on screen. */
+  loadError?: string
   view: ListView
   onViewChange: (view: ListView) => void
   onArchiveFinished: () => void
@@ -235,7 +242,24 @@ export function TasksOverview({
             <SearchField value={query} onChange={setQuery} placeholder="Search tasks…" label="Search tasks" />
           </div>
         )}
-        {runs === undefined ? null : visible.length === 0 ? (
+        {runs === undefined ? (
+          loadError !== undefined ? (
+            <CenteredState
+              heading="h2"
+              icon={<TriangleAlertIcon />}
+              tone="danger"
+              title="Could not load tasks"
+              subtitle={loadError}
+            />
+          ) : (
+            <CenteredState
+              heading="h2"
+              icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
+              title="Loading tasks…"
+              subtitle="Fetching this project's tasks."
+            />
+          )
+        ) : visible.length === 0 ? (
           <TasksEmptyState view={view} query={query} />
         ) : (
           <>
@@ -1152,6 +1176,7 @@ export function TasksOverviewRoute() {
   const archive = useMutation({
     mutationFn: archiveFinished,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.runs.all }),
+    onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
   // "Mark all read" (#unread-done-items): one call stamps every unread finished run; the
   // invalidate is the authoritative half — each stamped run also rides the `run` SSE.
@@ -1211,6 +1236,7 @@ export function TasksOverviewRoute() {
         expandedColumns={taskTableColumns.expandedColumns}
         onToggleColumn={taskTableColumns.toggleColumn}
         columnsPending={taskTableColumns.isPending}
+        loadError={runs.isError ? runs.error.message : undefined}
       />
     </ReferenceStatusProvider>
   )
