@@ -14,7 +14,7 @@ import {
 } from './core/provider-auth.ts';
 import { applyProviderEnablement } from './core/provider-availability.ts';
 import { runUnderGateLease } from './core/gate-lease.ts';
-import { pruneOrphans } from './git-worktree.ts';
+import { pruneOrphans, type OrphanSweep } from './git-worktree.ts';
 import { getRepoInfo } from './server/git.ts';
 import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from './config.ts';
 import { reclaimWorktrees } from './runs/retention.ts';
@@ -984,13 +984,20 @@ async function serveCommand(
   const repo = await getRepoInfo(repoRoot);
   const probedAt = Date.now();
 
-  // Startup reconcile (spec 006): sweep worktrees whose run no longer exists.
+  // Startup reconcile (spec 006): reclaim clean task folders whose run no longer exists (branch
+  // kept). Skipped when runs.json did not load cleanly: a partial run list is not a list of what
+  // xezar no longer needs.
   if (repo) {
-    const orphans = await pruneOrphans(repoRoot, new Set(store.listRuns().map((r) => r.id))).catch(
-      () => [] as string[],
-    );
-    if (orphans.length > 0) {
-      console.log(`  cleaned ${orphans.length} orphaned worktree(s): ${orphans.map((id) => id.slice(0, 8)).join(', ')}`);
+    const orphans = store.loadedCleanly
+      ? await pruneOrphans(repoRoot, new Set(store.listRuns().map((r) => r.id))).catch(
+          () => ({ removed: [], kept: [] }) as OrphanSweep,
+        )
+      : { removed: [], kept: [] };
+    if (orphans.removed.length > 0) {
+      console.log(`  cleaned ${orphans.removed.length} orphaned worktree(s), branch kept: ${orphans.removed.map((id) => id.slice(0, 8)).join(', ')}`);
+    }
+    if (orphans.kept.length > 0) {
+      console.log(`  left ${orphans.kept.length} orphaned worktree(s) with work of their own in place: ${orphans.kept.map((id) => id.slice(0, 8)).join(', ')}`);
     }
     // Count-based worktree retention (#483): reclaim finished worktrees beyond
     // the keep-limit (directory only — `xez/<id8>` branch kept, so recoverable).

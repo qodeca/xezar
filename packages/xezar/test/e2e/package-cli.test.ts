@@ -555,12 +555,18 @@ if (args.join(' ') === 'auth status --json') {
       { cwd: serveRepo },
     );
 
-    // A worktree directory with no matching run in `runs.json` — what a killed
-    // cockpit leaves behind. The store here is empty, so this entry is orphaned.
+    // A clean task worktree with no matching run in `runs.json` — what a killed
+    // cockpit or a retired record leaves behind. The store here is empty, so it is
+    // orphaned: the boot reclaims its folder and keeps its `xez/<id8>` branch.
     const orphanId = '00000000-dead-4000-8000-000000000001';
     const orphanDir = join(serveRepo, '.local', 'xezar', 'worktrees', orphanId);
-    await mkdir(orphanDir, { recursive: true });
-    await writeFile(join(orphanDir, 'leftover.txt'), 'abandoned worktree\n', 'utf8');
+    await execFile('git', ['worktree', 'add', '-q', '-b', 'xez/00000000', orphanDir], { cwd: serveRepo });
+    // A folder git does not know as a worktree may hold someone's only copy of a
+    // file: the boot leaves it where it is.
+    const strayId = '00000000-dead-4000-8000-000000000002';
+    const strayDir = join(serveRepo, '.local', 'xezar', 'worktrees', strayId);
+    await mkdir(strayDir, { recursive: true });
+    await writeFile(join(strayDir, 'leftover.txt'), 'abandoned worktree\n', 'utf8');
 
     // XEZ_HOME pins the workspace registry to a temp dir, XEZ_DRY_RUN keeps the
     // boot off the real agent CLIs, XEZ_NO_BANNER keeps the skills banner out of
@@ -594,15 +600,26 @@ if (args.join(' ') === 'auth status --json') {
         );
         assert.match(
           read(),
-          new RegExp(`cleaned 1 orphaned worktree\\(s\\): ${orphanId.slice(0, 8)}`),
+          new RegExp(`cleaned 1 orphaned worktree\\(s\\), branch kept: ${orphanId.slice(0, 8)}`),
           'the boot reports the orphaned worktree it swept',
+        );
+        assert.match(
+          read(),
+          new RegExp(`left 1 orphaned worktree\\(s\\) with work of their own in place: ${strayId.slice(0, 8)}`),
+          'the boot names the orphaned folder it left alone',
         );
       },
     );
     assert.equal(
       await exists(orphanDir),
       false,
-      'startup prunes a worktree directory whose run no longer exists',
+      'startup prunes a clean worktree directory whose run no longer exists',
+    );
+    await execFile('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/xez/00000000'], { cwd: serveRepo });
+    assert.equal(
+      await exists(join(strayDir, 'leftover.txt')),
+      true,
+      'startup never deletes a folder git does not confirm is a clean worktree',
     );
     assert.match(
       await readFile(join(serveRepo, '.local', '.gitignore'), 'utf8'),

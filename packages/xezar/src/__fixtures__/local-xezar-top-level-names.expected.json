@@ -9,6 +9,12 @@
       "feature": null
     },
     {
+      "name": "backups",
+      "kind": "directory",
+      "reason": "A copy of a runs.json that did not load cleanly, kept before the next save replaces it (runs/store.ts runIndexBackupPath).",
+      "feature": null
+    },
+    {
       "name": "runs",
       "kind": "directory",
       "reason": "The per-run event NDJSON / handoff / images directory (runs/store.ts, workflows/run.ts).",
