@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setApiBaseUrl } from '@qodeca/xezar-api-client'
 import { App } from './app'
+import { installChunkReloadGuard } from './lib/chunk-reload'
 import './styles/index.css'
 
 /**
@@ -22,6 +23,9 @@ function resolveApiBase(): string {
 }
 
 setApiBaseUrl(resolveApiBase())
+
+// A tab opened before an upgrade asks for code files the new build no longer has; reload it once.
+installChunkReloadGuard()
 
 const container = document.getElementById('root')
 if (!container) throw new Error('xezar: #root container is missing from index.html')

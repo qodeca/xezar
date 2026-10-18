@@ -480,6 +480,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: keeps the shell alive when a routed page throws; resets on navigation.
 - **Source**: `packages/web/src/components/route-error-boundary.tsx`.
 - **Copy**: `This page could not be displayed.` (`h1 text-lg font-semibold`), `Try again, or open another page from the sidebar.`, button `Try again`; container `role="alert"`.
+- **Stale code file**: when the caught error is a failed lazy-chunk load (`isChunkLoadError`, `lib/chunk-reload.ts` – a tab older than the running build), the button reloads the document instead of re-rendering, because `React.lazy` caches the failure. `main.tsx` also installs `installChunkReloadGuard`, which reloads once on Vite's `vite:preloadError`, guarded by a `sessionStorage` timestamp (`xez-chunk-reload-at`, 30 s) so a real outage cannot loop; when storage is unusable no automatic reload happens.
 - **Where used**: 1 file (`app.tsx`).
 
 ### RunNotifications

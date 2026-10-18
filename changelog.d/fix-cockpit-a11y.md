@@ -10,3 +10,6 @@
   live tail is compacted, the thread keeps its older pages only if the new tail reaches them;
   otherwise it keeps the tail alone, and "Load earlier items" walks back through every skipped
   item in order.
+- 🐛 **A tab left open across an upgrade recovers by itself.** When a page's code file from the
+  old build is gone, the cockpit reloads once (guarded so a real outage cannot loop), and the
+  error page's Retry now reloads instead of repeating the failure.
