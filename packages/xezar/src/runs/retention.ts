@@ -48,6 +48,8 @@ export function selectReclaimableWorktrees(runs: readonly RunRecord[], keep: num
  *  enforcer stays easy to test and never imports the concrete store. */
 export interface RetentionStore {
   listRuns(): RunRecord[];
+  /** The record as it is NOW — re-read right before each removal (see `reclaimWorktrees`). */
+  getRun(id: string): RunRecord | undefined;
   updateRun(id: string, patch: { worktreeReclaimedAt?: string }): unknown;
 }
 
@@ -116,6 +118,13 @@ export interface ReclaimOptions {
    * wants: they have no lifecycle to lose mid-sweep.
    */
   shouldStop?: () => boolean;
+  /**
+   * The caller's live runs (`RunManager.isActive`): queued, starting or running in this process.
+   * A Continue holds its run here before the record leaves `done` — it re-materializes the
+   * worktree first — so the record alone cannot tell the sweep that the run came back. Absent
+   * means "nothing is live", which holds for the boot sweeps that run before recovery.
+   */
+  isActive?: (runId: string) => boolean;
 }
 
 /** Reclaim looks up no automation, so that half of the ownership scope refuses everything. */
@@ -188,8 +197,14 @@ export async function reclaimWorktrees(
     // and the caller's ownership can end between any two of them. Returning what was already
     // reclaimed is honest — those directories really are gone.
     if (shouldStop()) break;
+    // Re-checked right before each removal, not only at selection: every earlier removal is an
+    // await, and a Continue may have reopened this run since — removing its worktree then pulls
+    // the working copy out from under a live task.
+    if (opts.isActive?.(id)) continue;
+    const current = store.getRun(id);
+    if (!current || !isReclaimable(current)) continue;
     const run = byId.get(id);
-    if (!run?.worktreePath) continue;
+    if (!run?.worktreePath || run.worktreePath !== current.worktreePath) continue;
     try {
       await remove(repoRoot, run.worktreePath);
       if (existsSync(run.worktreePath)) continue; // reclaim failed; retry next pass

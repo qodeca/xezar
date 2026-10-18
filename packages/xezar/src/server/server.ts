@@ -5173,10 +5173,12 @@ export function createApp(deps: ServerDeps) {
     })
 
     .post('/worktrees/reclaim', jsonZodValidator(() => reclaimBodySchema, { absent: ({}), message: 'invalid body' }), ui.route('worktree.reclaim'), async (c) => {
-      const { root: repoRoot, store } = c.get('project');
+      const { root: repoRoot, store, manager } = c.get('project');
       // The body is validated (an empty or `{}` one is accepted) but carries nothing this
       // handler reads; retention is best-effort, so 200 always.
-      const reclaimed = await reclaimWorktrees(repoRoot, store, await resolveWorktreeRetention(repoRoot));
+      const reclaimed = await reclaimWorktrees(repoRoot, store, await resolveWorktreeRetention(repoRoot), {
+        isActive: (runId) => manager.isActive(runId),
+      });
       return c.json({ reclaimed });
     });
 

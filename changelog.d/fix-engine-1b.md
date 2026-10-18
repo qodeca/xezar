@@ -11,3 +11,7 @@
 - 🐛 **A monitoring session no longer stays open forever.** A session that reports it is still
   watching background work is woken up to 40 times; after the last wake-up nothing could end it
   except a person typing. It now closes after the usual idle timeout once the wake-ups run out.
+- 🐛 **Worktree clean-up no longer removes the working copy of a task that was just continued.** The
+  clean-up picks every old finished worktree first and removes them one at a time; a task
+  continued in between lost its isolated working copy (Git worktree). Each removal now checks
+  again that the task is still finished and not running.

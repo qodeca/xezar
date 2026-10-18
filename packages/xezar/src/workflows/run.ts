@@ -2438,6 +2438,7 @@ export class RunManager {
       if (this.disposed) return;
       await reclaimWorktrees(this.repoRoot, this.store, keep, {
         shouldStop: () => this.disposed,
+        isActive: (runId) => this.isActive(runId),
       });
     } catch {
       // retention is best-effort; swallow so terminal transitions never break.
