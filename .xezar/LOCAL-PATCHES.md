@@ -25,7 +25,7 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` Â
 
 ## LP-4 â€“ drop the two backends removed in 0.30.0 from the kit text
 - Files: .xezar/checks/gh-write.sh, .xezar/checks/verdict-write.sh, .xezar/checks/local-tree.sh, .xezar/docs/parallel-tasks.md, .xezar/docs/ui-operations.md, .xezar/docs/recovery.md
-- Reason: the engine runs claude, codex and qwen only since 0.30.0 (#1041); these kit files still described the two removed backends as current (push paths, attach steps, the read-only lock, a leader-state file name and an old recovery note). The same fix belongs upstream so a later kit upgrade does not bring the old text back.
+- Reason: the engine runs claude, codex and qwen only since 0.30.0 (#1041), and these kit files still described the two removed backends as current. Each changed line is the upstream wording, verbatim: kit 3.2.0 for ui-operations.md, parallel-tasks.md, gh-write.sh and verdict-write.sh, and the fix for qodeca/xezar-skills#231 for recovery.md and local-tree.sh. An upgrade that brings those lines finds them already here, so this patch can be dropped then.
 - Upstream: qodeca/xezar-skills#231
 - Since: 2026-10-18
 - Confirmed: yes
