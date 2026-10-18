@@ -14,9 +14,9 @@
     "dependenciesUnits": "absent (single npm root)"
   },
   "detected": {
-    "baseBranch": "main",
-    "branchingModel": "trunk-based",
-    "secondBranch": null,
+    "baseBranch": "develop",
+    "branchingModel": "two-branch",
+    "secondBranch": "main",
     "designGate": true,
     "browserCandidates": [
       "chrome-devtools",
