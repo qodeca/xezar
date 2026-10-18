@@ -28,10 +28,12 @@
  * behind an issue created minutes ago, and that lag is how a second red night files a duplicate.
  * The label alone is not enough either: anybody can put a label on an unrelated issue.
  *
- * ONLY ON `main`. A `workflow_dispatch` on a feature branch measures that branch, and a green
- * branch must not close the issue that tracks `main`. The workflow guards the step with
- * `github.ref == 'refs/heads/main'`; `decide` refuses any other ref as well, so the rule holds even
- * if that guard is edited away.
+ * ONLY ON THE DEFAULT BRANCH. The schedule runs on the repository's default branch (`develop` since
+ * the two-branch model; `main` before it). A `workflow_dispatch` on any other branch measures that
+ * branch, and a green branch must not close the issue that tracks the default one. The workflow
+ * guards the step with `github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
+ * and passes that ref as `--tracked-ref`; `decide` refuses any other ref as well, so the rule holds
+ * even if that guard is edited away. Without `--tracked-ref` the tracked ref is `main`.
  *
  * FAIL CLOSED. Anything other than an explicit `green` verdict is red — a verdict that got lost on
  * the way here is not a pass. And a `gh issue list` answer that is not a JSON array throws rather
@@ -48,7 +50,7 @@ import { pathToFileURL } from 'node:url'
 export const LABEL = 'mutation-nightly'
 export const MARKER = '<!-- xezar:mutation-nightly -->'
 export const MAIN_REF = 'refs/heads/main'
-export const TITLE = 'Nightly MCP mutation gate is red on main'
+export const TITLE = 'Nightly MCP mutation gate is red on the default branch'
 
 /** @typedef {{ number: number, state: string, body?: string | null }} Issue */
 /** @typedef {{ action: 'skip' | 'none' | 'create' | 'comment' | 'reopen' | 'close' | 'note' | 'create-closed', number?: number, reason: string }} Decision */
@@ -96,13 +98,14 @@ export function findTrackingIssue(issues) {
 
 /**
  * What to do with the tracking issue for one run.
- * @param {{ verdict: unknown, ref: string | undefined, issues: unknown, newSurvivors?: number | null }} input
+ * @param {{ verdict: unknown, ref: string | undefined, issues: unknown, newSurvivors?: number | null, trackedRef?: string }} input
  *   `newSurvivors`: see `parseNewSurvivors`. Only a green run reads it; a red run comments anyway.
+ *   `trackedRef`: the default branch's ref; `MAIN_REF` when absent.
  * @returns {Decision}
  */
-export function decide({ verdict, ref, issues, newSurvivors }) {
-  if (ref !== MAIN_REF) {
-    return { action: 'skip', reason: `ref ${ref ?? '(unset)'} is not ${MAIN_REF}; the tracking issue follows main only` }
+export function decide({ verdict, ref, issues, newSurvivors, trackedRef = MAIN_REF }) {
+  if (ref !== trackedRef) {
+    return { action: 'skip', reason: `ref ${ref ?? '(unset)'} is not ${trackedRef}; the tracking issue follows the default branch only` }
   }
   const red = normaliseVerdict(verdict) === 'red'
   const issue = findTrackingIssue(issues)
@@ -164,11 +167,11 @@ export function alreadyPosted(issue, comments, runId) {
 
 /**
  * The whole path: make sure the label exists, list, decide, act — at most one comment per run.
- * @param {{ verdict: unknown, ref: string | undefined, summary: string, gh: (args: string[]) => string, runId?: string | number, newSurvivors?: number | null }} options
+ * @param {{ verdict: unknown, ref: string | undefined, summary: string, gh: (args: string[]) => string, runId?: string | number, newSurvivors?: number | null, trackedRef?: string }} options
  * @returns {Decision}
  */
-export function syncTrackingIssue({ verdict, ref, summary, gh, runId, newSurvivors }) {
-  if (ref !== MAIN_REF) return decide({ verdict, ref, issues: [] })
+export function syncTrackingIssue({ verdict, ref, summary, gh, runId, newSurvivors, trackedRef = MAIN_REF }) {
+  if (ref !== trackedRef) return decide({ verdict, ref, issues: [], trackedRef })
   // `--force` makes this idempotent: it creates the label once and is a no-op update after that.
   gh(['label', 'create', LABEL, '--color', 'B60205', '--description', 'Tracks the nightly MCP mutation gate (#377)', '--force'])
   const listed = gh(['issue', 'list', '--label', LABEL, '--state', 'all', '--limit', '100', '--json', 'number,state,body'])
@@ -179,7 +182,7 @@ export function syncTrackingIssue({ verdict, ref, summary, gh, runId, newSurvivo
   } catch {
     throw new Error(`gh issue list did not answer JSON: ${listed.slice(0, 200)}`)
   }
-  const decision = decide({ verdict, ref, issues, newSurvivors })
+  const decision = decide({ verdict, ref, issues, newSurvivors, trackedRef })
   let commands = ghCommands(decision, summary, runId)
   if (runId !== undefined && decision.number !== undefined && commands.some((args) => args[1] === 'comment')) {
     const issue = findTrackingIssue(issues) ?? {}
@@ -213,12 +216,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   const summaryPath = arg('--summary')
   if (!summaryPath) {
-    process.stderr.write('usage: tracking-issue.mjs --verdict green|red --summary <file> [--ref <ref>] [--run-id <id>] [--new-survivors <count>|unknown]\n')
+    process.stderr.write('usage: tracking-issue.mjs --verdict green|red --summary <file> [--ref <ref>] [--tracked-ref <ref>] [--run-id <id>] [--new-survivors <count>|unknown]\n')
     process.exit(2)
   }
   const decision = syncTrackingIssue({
     verdict: arg('--verdict'),
     ref: arg('--ref') ?? process.env.GITHUB_REF,
+    trackedRef: arg('--tracked-ref') ?? MAIN_REF,
     summary: readFileSync(summaryPath, 'utf8'),
     runId: arg('--run-id') ?? process.env.GITHUB_RUN_ID,
     newSurvivors: parseNewSurvivors(arg('--new-survivors')),

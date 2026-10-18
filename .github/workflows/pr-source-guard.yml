@@ -1,0 +1,57 @@
+name: PR source guard
+
+# The two-branch model: `develop` is the default branch and takes every feature PR; `main` holds
+# released work and takes release-class PRs only. Branch protection checks results, not where a PR
+# comes from, so this workflow does: while `main` is not the default branch, a PR into it must come
+# from this repository's own `promote/*` (develop at the changelog commit), `release/v*` (the
+# Release workflow's version bump) or `hotfix/*` branch. Everything else goes to the default
+# branch. While `main` IS the default (the trunk model) it checks nothing.
+#
+# WHY ITS OWN WORKFLOW. Changing a PR's base fires `edited`, not `synchronize`. Without `edited`, a
+# feature PR that went green against `develop` could be retargeted to `main` and keep its green
+# check. `ci.yml` does not listen to `edited` (a title edit would rerun the whole suite); this file
+# is one shell step, so it can.
+#
+# It has no job-level `if`, so it always reports and can be a required check on `main`. Refs reach
+# the script through env, never interpolated. No checkout, no token use, read-only permissions.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-source-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-source-guard:
+    name: PR source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Allow only release-class branches into main
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$BASE_REF" != main ] || [ "$DEFAULT_BRANCH" = main ]; then
+            echo "Not a pull request into main while another branch is the default: nothing to check."
+            exit 0
+          fi
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "::error title=PR source guard::a pull request into main must come from a branch of $THIS_REPO, not from ${HEAD_REPO:-an unknown or deleted repository}."
+            exit 1
+          fi
+          case "$HEAD_REF" in
+            promote/*|release/v*|hotfix/*)
+              echo "$HEAD_REF is a release-class branch and may target main." ;;
+            *)
+              echo "::error title=PR source guard::$HEAD_REF may not target main. Feature work goes to $DEFAULT_BRANCH; main takes only promote/*, release/v* and hotfix/* branches."
+              exit 1 ;;
+          esac

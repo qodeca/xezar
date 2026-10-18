@@ -1,12 +1,16 @@
 name: CI
 
+# `develop` is the base branch and takes every feature PR; `main` holds released work and takes
+# release-class PRs only (promotion, version bump, hotfix). CI runs for both.
 on:
   pull_request:
     branches:
       - main
+      - develop
   push:
     branches:
       - main
+      - develop
   workflow_dispatch:
 
 # Read-only, and no npm credential anywhere in this file. Ordinary PR CI verifies; it never
