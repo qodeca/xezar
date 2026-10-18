@@ -1,5 +1,7 @@
 # Onboarding – first-setup entry and post-update offer
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
+
 **Status: Approved.** Design review PASS WITH FOLLOW-UPS (§ 20); every finding has a disposition.
 Static mockups only — the product code lands in the P2 implementation PR.
 Covers **P2** of [qodeca/xezar#464](https://github.com/qodeca/xezar/issues/464).

@@ -1,5 +1,7 @@
 # Decisions – design handoff
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
+
 | | |
 |---|---|
 | **Status** | Draft, revision 2 (2026-09-14) – the five-reviewer verdict and the owner interview applied; waiting for the first `design-review` verdict (see [§18](#18-design-review)); the open decisions are OD-1..OD-8 in the requirements, none of which changes the mockup |

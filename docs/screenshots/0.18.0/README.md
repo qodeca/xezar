@@ -1,5 +1,7 @@
 # xezar 0.18.0 cockpit screenshots
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 Captured from a dry-run cockpit (`XEZ_DRY_RUN=1` with a sandboxed `XEZ_HOME`, no login, no network)
 with fixture data: a demo project with tasks in every status on Claude Code, Codex and pi, a second
 project for All tasks, three Inbox follow-ups, one automation and a second Claude login. The data,

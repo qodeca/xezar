@@ -1,5 +1,7 @@
 # MCP client behaviour spike – runtime report
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
 
 > **Status update — 2026-09-15:** Historical spike, **superseded** by the [Claude Code wake

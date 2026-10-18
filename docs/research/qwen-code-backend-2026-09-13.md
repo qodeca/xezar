@@ -1,5 +1,7 @@
 # Qwen Code as a fifth xezar backend – feasibility report
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Research only; Qwen Code is not a shipped backend
 > (`packages/contract/src/health.ts`, `runnerSchema`). External vendor/version findings below remain dated
 > 2026-09-13 evidence and were not re-verified in this sweep.

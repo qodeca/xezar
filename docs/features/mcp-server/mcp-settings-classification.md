@@ -1,5 +1,7 @@
 # MCP settings classification (D-03) — field by field
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented in `tools/project-config.ts`. The named routes and symbols
 > (`resolveProjectScope`, `hostedProfileRefusal`, `findConfigFile`, `projectsRoutes`) replace drifted
 > `server.ts` line anchors; other source anchors retain the `9fdcf0e` baseline.
@@ -103,12 +105,12 @@ reason and the alternative that was rejected.
 
 ### D-03-1 — Agent config `scope: 'user'` entries → `excluded`
 
-**Decision.** The six catalog entries whose `scope` is `'user'` are excluded from MCP entirely — no
+**Decision.** The catalog entries whose `scope` is `'user'` (five since 0.30.0) are excluded from MCP entirely — no
 read of their content, no write.
 
 **Reason.** M-16 excludes home and global file administration **even behind a project route**, and
-`~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.codex/config.toml`, `~/.codex/AGENTS.md`,
-`~/.config/opencode/opencode.json` and `~/.config/opencode/AGENTS.md` are each shared by every
+`~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.codex/config.toml`, `~/.codex/AGENTS.md`
+and `~/.qwen/settings.json` are each shared by every
 project on the machine. A leader bound to project A editing one of them changes project B, which
 Definition-of-Done clause 5 requires engineering to prove impossible.
 
@@ -278,7 +280,7 @@ and merged into that repo's own `.xezar/config.json` (`server.ts`).
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | `defaultRunner` | project-write | Names the agent this repo runs by default; effect is confined to this checkout's config file. | E-BIND, E-CONTRACT (`setConfigInputSchema.defaultRunner`, `workspace.ts:381`) | — |
-| `defaultModels.{claude,codex,opencode,pi}` | project-write | Per-runner model preset for this repo only; merged per runner so one write never clobbers another. | E-BIND, E-CONTRACT (`workspace.ts:383`); refused 409 when `agentModelsLocked(repoRoot)` (`server.ts`) | — |
+| `defaultModels.{claude,codex,qwen}` | project-write | Per-runner model preset for this repo only; merged per runner so one write never clobbers another. | E-BIND, E-CONTRACT (`workspace.ts:383`); refused 409 when `agentModelsLocked(repoRoot)` (`server.ts`) | — |
 | `modelsLocked` (write, project key) | project-write | **#677 C2, owner 2026-09-20: "Both doors, like every key" (the self-disarm hole is accepted).** `set_config` writes this project's own key through `PUT /config`; `true` stores it, `false`/`null` delete it. It cannot lift `XEZ_AGENT_MODELS_LOCKED` or the workspace key, and a body that clears the lock AND sets `defaultModels` is still refused 409 because the guard reads the lock before the write. Hosted mode allows this write like every other `PUT /config` key (#734). | E-BIND, E-CONTRACT (`setConfigInputSchema.modelsLocked`) | — |
 | `projectModelsLocked` (read) | project-read | This project's own key, so a reader can tell a lock it can lift from one it cannot. | `configAnswer` (`server.ts`) | Which of the environment, the workspace config or a user-scope file holds any other lock. |
 | `modelsLocked` (read) | safe-effective-read | The one effective consequence of the excluded user-scope files: whether native agent settings are authoritative. A boolean, and a boolean is the whole answer. | Derived by `agentModelsLocked` / `readAgentModelDefaults` (`packages/xezar/src/agent-config/models.ts`), served by `configAnswer` (`server.ts`) | Which file locked it, its path, its contents, and any account identity inside it. |
@@ -298,15 +300,15 @@ and merged into that repo's own `.xezar/config.json` (`server.ts`).
 
 ### 4.2 Project → Agent config — `agent-config-section.tsx`
 
-Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_FILES`, 14 entries).
+Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_FILES`, 13 entries since 0.30.0).
 **Every row here is gated by E-409-LOCAL**, named individually as required.
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| `claude.user.settings`, `claude.user.memory`, `codex.user.config`, `codex.user.memory`, `opencode.user.config`, `opencode.user.memory` — read AND write | excluded | **D-03-1.** The six `scope: 'user'` entries; home files shared by every project on the machine. | E-SCOPE-USER (`ConfigFileDef.scope`, `catalog.ts:52`; `findConfigFile` at `server.ts`) **plus E-409-LOCAL** (`server.ts`) | Their content, their absolute paths, and their existence beyond the `modelsLocked` boolean. |
+| `claude.user.settings`, `claude.user.memory`, `codex.user.config`, `codex.user.memory`, `qwen.user.settings` — read AND write | excluded | **D-03-1.** The five `scope: 'user'` entries; home files shared by every project on the machine. | E-SCOPE-USER (`ConfigFileDef.scope`, `catalog.ts:52`; `findConfigFile` at `server.ts`) **plus E-409-LOCAL** (`server.ts`) | Their content, their absolute paths, and their existence beyond the `modelsLocked` boolean. |
 | `claude.project.settings`, `claude.local.settings`, `claude.project.memory`, `claude.local.memory`, `project.agents` (`<repo>/AGENTS.md`) — write | project-write | In-repo files belonging to this checkout. `.local` entries are gitignored personal layers seeded into the run's worktree (`seeded: true`), still inside this project. | E-BIND, **E-409-LOCAL** (`server.ts`), E-CONTRACT (`setAgentConfigInputSchema`, content ≤ 2 000 000 bytes, `version` as the stale-write token) | — |
 | The same five — read | project-write | This project's own files. Byte-exact; xezar never re-serialises a file it opened. | E-BIND; `readConfigFile` (`server.ts`); hosted-mode 409 for `tracked === 'outside-repo'` (`server.ts`) — which none of these five are | — |
-| `claude.project.mcp` (`.mcp.json`), `codex.project.config`, `opencode.project.config` — write | project-write | In-repo project files. Full content, exactly as the cockpit writes them. | E-BIND, **E-409-LOCAL** (`server.ts`), E-CONTRACT | — |
+| `claude.project.mcp` (`.mcp.json`), `codex.project.config`, `qwen.project.settings` (`.qwen/settings.json`) — write | project-write | In-repo project files. Full content, exactly as the cockpit writes them. | E-BIND, **E-409-LOCAL** (`server.ts`), E-CONTRACT | — |
 | The same three — read | safe-effective-read | **Asymmetric by ruling.** These are the project files with `holdsMcp: true` (`catalog.ts:154`, `:228`, `:273`). An MCP server definition's argument values are the classic place a token is pasted, so the read returns STRUCTURE only: server names, transport kind, argument shape. | E-BIND; the response is built from the parsed file, never from its bytes | Every argument VALUE — command strings, `args`, `env`, headers, URLs, tokens — and the file content itself (F-15). Target: elide the MCP section only, in a file that also holds ordinary settings. Safe fallback while that is unbuilt: structure-only for the whole file, which narrows and never widens. |
 | `userMcp` block (`~/.claude.json` server names) | excluded | Claude's own home state file, shared by every project. The cockpit itself withholds it whenever `editable` is false. | `readUserMcpServers` (`packages/xezar/src/agent-config/service.ts:64`); withheld at `:117` | The path, the server names, and the file. |
 | `writable` / `readOnlyReason` flags | safe-effective-read | Whether agent config may be edited at all here — the honest capability behind E-409-LOCAL. | `listAgentConfig` (`service.ts:109`–`:110`) | Nothing beyond the boolean and its one-line reason. |
@@ -682,7 +684,7 @@ absence from responses, errors and events (A-03, A-04, A-09, A-22):
 | Family | The negative test |
 | --- | --- |
 | Accounts | **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B5; recorded 2026-09-20 after the #764 review, Minor 5).** The owner decided that agent accounts are "**Writes and identity read**" (07:41), so the first half of this row — "each is refused" — is no longer what the product does: selection, add, rename, remove, the sign-in check and Show details are leader writes and reads now, and only Connect and Open stay refused (§ 4.11 carries the per-row detail). The second half holds with one clause added and one clause narrowed: no response, error or event contains an email or a login — **including a refusal**, since the duplicate-folder 409 is redacted at the MCP door (#764 review, Major 1) — and an account PATH appears only as the echo of a `configDir` the same call supplied (#764 review, Minor 2). The cross-project half is unchanged and is what this row still tests: B's `~/.xezar/agent-accounts.json` entry is byte-identical after A's leader has done all of it, and nothing of B's reaches A. The decision is kept verbatim below as a dated record of what was true then, per § 10. <br><br> *Previously:* A's leader attempts every write in §4.11 — selection, add, rename, remove, connect, details, open — and each is refused. B's `~/.xezar/agent-accounts.json` entry is byte-identical afterwards, and no response, error or event contains an email, a login or an account path. |
-| Files (home) | A's leader attempts a read and a write of each of the six `scope: 'user'` catalog entries. Each is refused by scope, and the refusal is identical whether or not the file exists — an existence oracle is a leak. |
+| Files (home) | A's leader attempts a read and a write of each `scope: 'user'` catalog entry. Each is refused by scope, and the refusal is identical whether or not the file exists — an existence oracle is a leak. |
 | Files (project) | A's leader writes each in-repo catalog file for A. B's copies of the same-named files are unchanged, and a read of a `holdsMcp` file returns no argument value. |
 | Skills | A's leader runs the update CHECK and is refused the APPLY. The global skill installation is unchanged, and the check's response contains no scope state belonging to B. |
 | Registry | A's leader sends `PATCH /projects/<B>` with a valid B id, with `default`, and with B's slug spelled through every alias; each is refused, and B's `maxParallel` and `tags` are unchanged. `DELETE /projects/<anything>` is refused. |

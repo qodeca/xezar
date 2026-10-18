@@ -1,5 +1,7 @@
 # Agent accounts onboarding – problems, the built-in login and the import state
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
+
 **Status:** Draft – waiting for the first `design-review`. For #819 PR 9 (items 1–3, cockpit side),
 label `release-0.18.0`. Base `main` `3e3f010a`.
 

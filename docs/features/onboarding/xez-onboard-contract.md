@@ -1,5 +1,7 @@
 # Onboarding skill contract for P2 and P3
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
 
 P1 provides `xez-onboard` in the public `qodeca/xezar-skills` collection.
@@ -54,8 +56,8 @@ policy and unrelated bytes preserved. Refuse stale previews and path escapes.
   or deleting them. In non-Git projects, keep originals under `.local/` for recovery;
   no VCS ignore applies.
 - Chosen leader client only: `.mcp.json` for Claude Code, `.codex/config.toml`
-  for Codex, `.pi/mcp.json` for pi. Merge targeted entries; preserve other servers.
-  OpenCode leader setup needs a supported version-matched reference; do not guess.
+  for Codex, `.qwen/settings.json` for Qwen Code. Merge targeted entries; preserve
+  other servers.
 
 Independent operation requires no MCP. Home configuration, trust, login, adapter
 installation, leader attachment, labels and publication are outside skill writes.
@@ -126,10 +128,8 @@ current-session proof by itself.
 
 Claude Code still leaves its channel launch flag, warning and provider/administrator
 restrictions to the person. Codex still needs project trust and, for push, the shared local
-app-server under the same Codex home xezar uses. pi still needs a compatible adapter and the
-leader extension for pushed turns; its keep-alive session can own the project connection.
-OpenCode has no bundled snippet in this revision and is attached by a person through its
-supported control. See the canonical [MCP project-leader guide](../../guide/13-mcp-leader.md)
+app-server under the same Codex home xezar uses. Qwen Code gets pushed events on Linux and
+macOS (version 0.25.2 or newer); on Windows its leader reads them with `leader_events`. See the canonical [MCP project-leader guide](../../guide/13-mcp-leader.md)
 and generated [MCP tool reference](../mcp-server/mcp-api.md).
 
 After xezar restarts, a leader calls a real tool, reads `leader_events` status, attaches with
