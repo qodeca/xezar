@@ -19,3 +19,7 @@
 - 🐛 **The ask card is readable and keyboard-friendly in the light theme.** "The agent is asking"
   is no longer pale lime on white, a picked option shows a check mark, and after you answer, focus
   lands on the answer summary instead of the top of the page.
+- 🐛 **Agent config edits are no longer thrown away without asking.** "Reload from disk", opening
+  another file or agent, and leaving the page now confirm first when the open file has unsaved
+  edits, and closing the tab asks too. A newer copy fetched in the background no longer replaces
+  your draft.
