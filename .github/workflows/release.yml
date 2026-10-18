@@ -104,7 +104,9 @@ jobs:
             mkdir -p "$PACK_DIR/manifests/packages/$dir"
             cp "packages/$dir/package.json" "$PACK_DIR/manifests/packages/$dir/package.json"
           done
-          (cd "$PACK_DIR" && sha256sum -- *.tgz > SHA256SUMS && cat SHA256SUMS)
+          # GNU/BSD `sha256sum`, or `shasum -a 256` on an image without it: same file format.
+          sums() { if command -v sha256sum >/dev/null 2>&1 && sha256sum --version >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+          (cd "$PACK_DIR" && sums -- *.tgz > SHA256SUMS && cat SHA256SUMS)
 
       # The tarball, its checksum and the four stamped manifests (the bump PR commits those).
       - name: Upload the release tarball
@@ -165,7 +167,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PACK_DIR"
-          sha256sum --check --strict SHA256SUMS
+          sums() { if command -v sha256sum >/dev/null 2>&1 && sha256sum --version >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+          sums --check --strict SHA256SUMS
           [ -n "$TARBALLS" ] || { echo "::error title=Nothing to publish::the build job packed no tarball"; exit 1; }
           for tarball in $TARBALLS; do
             npm publish "./$tarball" --tag latest --access public --ignore-scripts --provenance

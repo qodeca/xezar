@@ -121,7 +121,8 @@ describe('publishing surface', () => {
       const download = publish.steps.find((s) => s.uses?.startsWith('actions/download-artifact@'));
       expect(download?.with?.name).toBe('release-package');
       const step = publish.steps[stepIndex(publish, 'publish')]!;
-      expect(step.run).toContain('sha256sum --check --strict SHA256SUMS');
+      expect(step.run).toContain('sums --check --strict SHA256SUMS');
+      expect(step.run).toContain('shasum -a 256');
       expect(step.run).toMatch(/npm publish "\.\/\$tarball" .*--provenance/);
       expect(stepIndex(publish, 'publish')).toBeGreaterThan(publish.steps.indexOf(download!));
     });
