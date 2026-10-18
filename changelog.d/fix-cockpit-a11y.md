@@ -32,3 +32,6 @@
 - 🐛 **A greyed-out composer control says why on screen.** The model, variants, Worktree and
   Autonomous controls used to explain a disabled state only in a hover tooltip, which a phone or a
   keyboard never shows; a short reason now sits beside them.
+- 🐛 **Switching projects no longer sends the old page's requests to the new project.** The
+  project scope now changes only when the new project's page is actually shown, so the page you
+  are leaving can no longer fetch, or cache answers, under the project you are opening.

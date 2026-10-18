@@ -1,5 +1,5 @@
-import { cleanup, render } from '@testing-library/react'
-import { StrictMode, useEffect } from 'react'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { StrictMode, Suspense, startTransition, use, useEffect, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ProjectScopeProvider, useProjectScope } from './project-scope-context'
@@ -138,6 +138,63 @@ describe('ProjectScopeProvider', () => {
       </div>,
     )
     expect(seen).toEqual(['a', 'b'])
+  })
+
+  // React Router runs every navigation as a transition, and a transition keeps the OLD screen
+  // mounted and rendering until the new one is ready (a lazy route's code still loading, or just
+  // React yielding mid-render). The scope used to be written while the NEW project rendered, so
+  // for that whole window the old project's screen computed keys and sent requests under the new
+  // project. The old screen must only ever see its own scope.
+  it('the old screen never renders under the new scope while a transition to it is pending', async () => {
+    const seen: string[] = []
+    let bump: () => void = () => {}
+    function OldScreen() {
+      const [, setTick] = useState(0)
+      bump = () => setTick((n) => n + 1)
+      seen.push(queryScope())
+      return <p>Old screen</p>
+    }
+    const never = new Promise<never>(() => {})
+    function SlowNewScreen(): never {
+      return use(never)
+    }
+    let go: (id: string) => void = () => {}
+    function Harness() {
+      const [project, setProject] = useState('a')
+      go = (id) => startTransition(() => setProject(id))
+      return (
+        <Suspense fallback={<p>Loading…</p>}>
+          <ProjectScopeProvider projectId={project}>
+            {project === 'a' ? <OldScreen key="a" /> : <SlowNewScreen key="b" />}
+          </ProjectScopeProvider>
+        </Suspense>
+      )
+    }
+
+    render(<Harness />)
+    expect(screen.getByText('Old screen')).toBeTruthy()
+    await act(async () => {
+      go('b')
+    })
+    // Whatever is still mounted from project a re-renders, as a query update or a click would.
+    act(() => bump())
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.filter((scope) => scope !== 'a')).toEqual([])
+  })
+
+  it('a project change renders the new children once the new scope is committed', () => {
+    const view = render(
+      <ProjectScopeProvider projectId="a">
+        <Probe />
+      </ProjectScopeProvider>,
+    )
+    view.rerender(
+      <ProjectScopeProvider projectId="b">
+        <Probe key="b" />
+      </ProjectScopeProvider>,
+    )
+    // Same synchronous update as before — no extra paint, no empty frame left on screen.
+    expect(view.getByTestId('probe').textContent).toBe('b|/api/v1/p/b|b|/api/v1/p/b/runs')
   })
 
   it('passes null through as the unscoped boot project', () => {
