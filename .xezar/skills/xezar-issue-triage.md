@@ -5,7 +5,7 @@ description: Read-only triage
 
 # Read-only triage
 
-Validate the current issue against main, history and existing work. Establish reproducibility, scope, impact and recommend act/simplify/defer/reject. No implementation, issue mutation or PR unless the assignment specifically authorizes it. Initialize evidence with `bash .xezar/checks/worktree-setup.sh --readonly-init`, typed exactly so; missing identity means unavailable, not a guessed run.
+Validate the current issue against the base branch, history and existing work. Establish reproducibility, scope, impact and recommend act/simplify/defer/reject. No implementation, issue mutation or PR unless the assignment specifically authorizes it. Initialize evidence with `bash .xezar/checks/worktree-setup.sh --readonly-init`, typed exactly so; missing identity means unavailable, not a guessed run.
 
 Inputs: report, current source and related work. Output: actionable, duplicate, already-fixed or unconfirmed with sources, reproduction and next action. Remain read-only unless issue publication is explicitly assigned. Recommend `needs-design` on any issue whose scope changes a cockpit surface.
 

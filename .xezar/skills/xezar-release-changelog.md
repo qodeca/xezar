@@ -5,7 +5,7 @@ description: Write the release changelog entry from merged PRs, with no hand-wri
 
 # Write the release changelog entry from merged PRs
 
-You are the `changelog` step of the `release` workflow (Worktree ON). Read docs/publishing.md and the top of CHANGELOG.md first. You derive the whole `# <version> (<date>)` section from the pull requests merged into `main` since the last release; nobody writes a brief for you. You edit CHANGELOG.md, fold every `changelog.d/` fragment into it and delete those fragments, and commit — CHANGELOG.md is the one document a release assembles. You do not push, publish, tag or touch package manifests — the last step does the pushing, and only the manually dispatched Release workflow publishes.
+You are the `changelog` step of the `release` workflow (Worktree ON). Read docs/publishing.md and the top of CHANGELOG.md first. You derive the whole `# <version> (<date>)` section from the pull requests merged into the base branch since the last release; nobody writes a brief for you. The base branch is the configured `baseBranch` (`<base>` below): `main` under the trunk model, `develop` (anything but `main`) under the two-branch model (LP-5). Version and tag arithmetic always reads `origin/main`, the release branch, because the Release workflow runs and tags only there. You edit CHANGELOG.md, fold every `changelog.d/` fragment into it and delete those fragments, and commit — CHANGELOG.md is the one document a release assembles. You do not push, publish, tag or touch package manifests — the last step does the pushing, and only the manually dispatched Release workflow publishes.
 
 ## The brief
 
@@ -22,7 +22,7 @@ Record the resolved target, the tag you measured from and the brief itself in `r
 ## 1. Find the boundary and the target
 
 ```sh
-git fetch --quiet origin main --tags                         # a fresh worktree has no tags yet
+git fetch --quiet origin main <base> --tags                  # a fresh worktree has no tags yet
 git describe --tags --abbrev=0 --match 'v*' origin/main     # last release tag, e.g. v0.11.1
 git log -1 --format=%cI "$(git describe --tags --abbrev=0 --match 'v*' origin/main)"   # its date
 git show origin/main:package.json | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version'
@@ -33,13 +33,15 @@ Sanity rules. The version in `package.json` on `origin/main` may still be one be
 ## 2. Collect the PRs
 
 ```sh
-gh pr list --state merged --base main --limit 200 \
+gh pr list --state merged --base <base> --limit 200 \
   --search "merged:>=<tag commit date, YYYY-MM-DD>" \
-  --json number,title,body,labels,mergedAt,mergeCommit,files
-git log <tag>..origin/main --first-parent --format='%H %s'
+  --json number,title,body,labels,mergedAt,mergeCommit,files,headRefName
+git log <tag>..origin/<base> --first-parent --no-merges --format='%H %s'
 ```
 
-Cross-check both lists: every first-parent commit on `main` since the tag is a squash of one PR (`(#N)` at the end of the subject), and every PR the search returns must have its merge commit in that range. A PR in one list and not the other is a finding to report, not a bullet to drop silently. Then exclude:
+Cross-check both lists: every first-parent, non-merge commit on `<base>` since the tag is a squash of one PR (`(#N)` at the end of the subject), and every PR the search returns must have its merge commit in that range. Under the two-branch model the tag sits on `main` and reaches `<base>` through the back-merge, so `<tag>..origin/<base>` is exactly what has not shipped; `--no-merges` drops the back-merge commits, and the PR list drops them by head branch below. A PR in one list and not the other is a finding to report, not a bullet to drop silently. Then exclude:
+
+- release-class PRs by head branch: `promote/*`, `backmerge/*` and `release/v*` (two-branch);
 
 - `chore(release): v…` manifest bumps opened by the Release workflow;
 - changelog-only PRs (`docs: record … in the changelog`, or a diff touching only CHANGELOG.md or `changelog.d/`);

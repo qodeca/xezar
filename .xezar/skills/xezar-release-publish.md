@@ -1,15 +1,24 @@
 ---
 name: xezar-release-publish
-description: Merge the changelog PR, dispatch the authorized Release run, verify npm, merge the bump PR
+description: Merge the changelog PR, promote it to main, dispatch the authorized Release run, verify npm, merge the bump PR, back-merge
 ---
 
-# Merge the changelog PR, dispatch the authorized Release run, verify npm, merge the bump PR
+# Merge the changelog PR, promote it to main, dispatch the authorized Release run, verify npm, merge the bump PR, back-merge
 
 You are the LAST step of the `release` workflow, on purpose: only the last step is uncapped by default, and CI, the Release run, npm propagation and the bot's bump PR together take longer than the 30-minute default an earlier step falls through to. Since #22 an agent step can raise or drop that wall clock with its own `timeout` key, and the ordinary author workflows now set their own limits, two hours for most. This step sets its own `timeout: 12h` in `release.yaml`; being last also permits interactive waiting — and it keeps `XEZ:ASK` live too. Every stop below is therefore a question with the evidence so far, never a silent exit. Read docs/publishing.md first. The brief `{{task}}` and `release.json` in the evidence dir (written by the `changelog` step: target version, tag, kept PRs, commit) are your inputs; the accepted brief keys are documented in `xezar-release-changelog.md`.
 
+**Branch model (LP-5).** `<base>` below is the configured `baseBranch` (`.xezar/config.json`, the value `integration-preflight.sh` reads). `main` is always the release branch: the Release workflow runs only there.
+
+| Model | `<base>` | What this step does |
+|---|---|---|
+| Trunk | `main` | b, c, d, e, f, g. Substeps b2 and h do not apply. |
+| Two-branch | `develop` (anything but `main`) | b into `<base>`, b2 promotes it to `main`, then c–f on `main`, then h back-merges `main` into `<base>`, then g. |
+
+Two-branch rules: feature-class PRs squash into `<base>`; every PR into `main` and every back-merge uses a merge commit (`gh pr merge --merge`), passes `integration-preflight.sh --release`, and is never merged with `--delete-branch`. `main` and `<base>` are never a PR's source branch – the source is always a short-lived `promote/v<version>`, `release/v<version>`, `hotfix/<name>` or `backmerge/v<version>` ref.
+
 Hard rules, all of them, for the whole step:
 
-- Never `npm publish` by hand, never push to `main`, never force-push, never edit a file, never make a new content commit. The only writers are `worktree-git.sh push`, `gh pr create`, `gh pr merge`, `gh workflow run` and the run-approval API call, each on the exact object named below.
+- Never `npm publish` by hand, never push to `main` or `<base>`, never force-push, never edit a file, never make a new content commit. The only writers are `worktree-git.sh push`, `gh pr create`, `gh pr merge`, `gh workflow run`, the run-approval API call and – two-branch only – the two ref calls in b2 and h (create a `promote/*` or `backmerge/*` ref, and GitHub's merges API on `backmerge/*`), each on the exact object named below.
 - Before waiting, record the exact object/head, finite observation deadline, supported host wait mechanism and resume checkpoint. A watch command or workflow job timeout does not bound queued/environment-approval waiting or guarantee leader wakeup; an attached leader is woken by the pushed xezar event, and one that is not attached reads it with `leader_events`. Use bounded status reads within the supported host contract; on expiry checkpoint and surface the specific continuation needed. Preserve failed attempts; rerun only under the current project policy and existing authority, never because an old issue called a test flaky.
 - Record each substep's outcome (command, object, SHA or URL, result) by appending to `publish.md` in the evidence dir as you go, so a killed session leaves a readable trail and a resume can see what already happened. Re-read that file and the checkpoint first: an already-merged PR or an already-published version is reconciliation, not a repeat.
 - Authority: the operator launched `release` with a bump. That is the authorization to dispatch the Release workflow once for that bump; it is not authorization for a different bump, a second dispatch or any manual recovery from docs/publishing.md's partial-failure table — those are `XEZ:ASK`.
@@ -22,12 +31,12 @@ bash .xezar/checks/worktree-preflight.sh --verify-gate-evidence
 
 Red or missing evidence: stop with `XEZ:ASK` (return to gates / abort). The head you verified is the only head you may push.
 
-## b. Changelog PR: open ready, wait for CI, squash-merge
+## b. Changelog PR into `<base>`: open ready, wait for CI, squash-merge
 
 ```sh
 bash .xezar/checks/worktree-git.sh push
 gh pr list --head "$(git branch --show-current)" --state all --json number,state,url   # never open a duplicate
-gh pr create --base main --title "docs: record <version> in the changelog" \
+gh pr create --base <base> --title "docs: record <version> in the changelog" \
   --label documentation --label skip-qa --body "<the kept PR list from release.json, the tag boundary, and 'Part of the <version> release; the Release workflow is dispatched after this merges.'>"
 # Observe current CI within the recorded bounded waiting window.
 gh pr checks <n>
@@ -36,7 +45,7 @@ gh pr checks <n>
 The PR may be ready once author evidence is complete; `skip-qa` applies only to genuinely docs-only scope under SDLC. Before merging, obtain independent semantic review against the exact head/base and record its report and leader acceptance in the existing authority record. GitHub refusing self-approval does not waive that review or any actual hosting requirement. Check active QA comments and unresolved threads, then run:
 
 ```sh
-bash .xezar/checks/integration-preflight.sh --repo qodeca/xezar --pr <n> --base main \
+bash .xezar/checks/integration-preflight.sh --repo qodeca/xezar --pr <n> --base <base> \
   --expected-head <reviewed-head> --authority <existing-authority-record>
 ```
 
@@ -48,11 +57,29 @@ gh pr merge <n> --squash --delete-branch --match-head-commit <reviewed-head> \
 ```
  A moved base/head returns to appropriate evidence refresh/review. On red CI retain the complete attempt identity/log, diagnose, and follow current rerun authority; there is no permanent known-flake allowance. Record merge commit, single parent and matching reviewed content tree, then verify current target CI before dispatch.
 
+## b2. Two-branch only: promote the changelog commit to `main`
+
+The promotion carries exactly what the changelog lists: its source is cut at the changelog merge commit from b, never at `<base>`'s current head. Work merged into `<base>` after that commit waits for the next release, so nothing ships without a changelog line.
+
+```sh
+gh api -X POST "repos/qodeca/xezar/git/refs" -f ref="refs/heads/promote/v<version>" -f sha="<changelog-merge-sha>"
+gh pr create --base main --head "promote/v<version>" --title "release: promote v<version> to main" \
+  --label skip-qa --body "<the changelog PR, its merge SHA and 'Promotes exactly the changelog commit; no other change.'>"
+gh pr checks <n>
+bash .xezar/checks/integration-preflight.sh --repo qodeca/xezar --pr <n> --base main --release \
+  --expected-head <changelog-merge-sha> --authority <existing-authority-record>
+gh pr merge <n> --merge --match-head-commit <changelog-merge-sha> --subject "release: promote v<version> to main (#<n>)"
+git fetch --quiet origin main
+git rev-list --parents -n 1 origin/main      # three SHAs: the merge commit and its two parents
+```
+
+A refusal, a moved `main`, or a merge commit without two parents is `XEZ:ASK`. Delete only the `promote/v<version>` ref after the merge (`gh api -X DELETE "repos/qodeca/xezar/git/refs/heads/promote/v<version>"`).
+
 ## c. Confirm main and the version arithmetic
 
 ```sh
 git fetch --quiet origin main --tags
-git rev-parse origin/main                                   # must equal the merge commit from b.
+git rev-parse origin/main                                   # must equal the merge commit from b (trunk) or b2 (two-branch).
 git show origin/main:package.json | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version'
 npm view @qodeca/xezar versions --json
 ```
@@ -93,14 +120,40 @@ gh api -X POST "repos/qodeca/xezar/actions/runs/<id>/approve"     # the run is h
 gh pr checks <n>
 ```
 
-Before merging, independently review the exact bot diff against the publishing script's expected three manifest changes and target version. Record release-run/package evidence, current PR CI, head/base, hosting rules, active QA and review disposition in the existing authority record. Run the same `integration-preflight.sh --repo qodeca/xezar --pr <n> --base main --expected-head <headRefOid> --authority <existing-authority-record>` immediately before merging. Do not invent a Xezar author-run seal for bot-generated content: its applicable evidence is the reviewed generated diff, successful release/package artifacts and current required PR checks. Missing applicable evidence blocks. Any additional file/change returns for diagnosis rather than automatic adoption. Verify the resulting merge commit/tree and main CI. Failed/ambiguous/partial publication is preserved and reconciled, never a second automatic dispatch.
+Before merging, independently review the exact bot diff against the publishing script's expected three manifest changes and target version. Record release-run/package evidence, current PR CI, head/base, hosting rules, active QA and review disposition in the existing authority record. Run `integration-preflight.sh --repo qodeca/xezar --pr <n> --base main --expected-head <headRefOid> --authority <existing-authority-record>` immediately before merging – with `--release` under the two-branch model. Do not invent a Xezar author-run seal for bot-generated content: its applicable evidence is the reviewed generated diff, successful release/package artifacts and current required PR checks. Missing applicable evidence blocks. Any additional file/change returns for diagnosis rather than automatic adoption. Verify the resulting merge commit/tree and main CI. Failed/ambiguous/partial publication is preserved and reconciled, never a second automatic dispatch.
 
 After the checks above pass:
 
 ```sh
 gh pr merge <n> --squash --delete-branch --match-head-commit <headRefOid> \
-  --subject "chore(release): v<version> (#<n>)"
+  --subject "chore(release): v<version> (#<n>)"            # trunk
+gh pr merge <n> --merge --match-head-commit <headRefOid> \
+  --subject "chore(release): v<version> (#<n>)"            # two-branch: a merge commit, then delete the release/v<version> ref by itself
 ```
+
+## h. Two-branch only: back-merge `main` into `<base>`
+
+Every merge into `main` – promotion, version bump, hotfix – is followed by a back-merge, so `<base>` holds the version bump and the release history and the next promotion is not blocked as out of date. The source is a `backmerge/*` ref cut from `main`; GitHub's merges API then merges the current `<base>` into it, so the PR is up to date without any local commit.
+
+```sh
+gh api -X POST "repos/qodeca/xezar/git/refs" -f ref="refs/heads/backmerge/v<version>" -f sha="$(git rev-parse origin/main)"
+gh api -X POST "repos/qodeca/xezar/merges" -f base="backmerge/v<version>" -f head="<base>" \
+  -f commit_message="chore(release): merge <base> into backmerge/v<version>"   # 409 = a conflict: XEZ:ASK
+gh pr create --base <base> --head "backmerge/v<version>" --title "chore(release): back-merge v<version> into <base>" \
+  --label skip-qa --body "<the promotion, bump and tag SHAs>"
+gh pr checks <n>
+bash .xezar/checks/integration-preflight.sh --repo qodeca/xezar --pr <n> --base <base> --release \
+  --expected-head <headRefOid> --authority <existing-authority-record>
+gh pr merge <n> --merge --match-head-commit <headRefOid> --subject "chore(release): back-merge v<version> into <base> (#<n>)"
+git fetch --quiet origin main <base>
+git rev-list --count origin/<base>..origin/main   # 0: <base> contains everything on main
+```
+
+Delete only the `backmerge/v<version>` ref after the merge. A `<base>` that moved while the PR waited makes it out of date: repeat the merges call and the checks, never "Update branch" on a PR whose source is `main`.
+
+## Hotfix (two-branch only, with the operator's explicit authorization)
+
+A hotfix ships one urgent fix without the unreleased work on `<base>`. It is a separate task, not part of this step: branch `hotfix/<name>` from `origin/main`, carry the fix AND its folded changelog section for the patch version in the same PR, open it into `main`, pass `integration-preflight.sh --release`, merge with `--merge`. Then run this step from c with `bump: patch`, and finish with h. The next regular changelog skips its PR, because its number is already in a dated section. Issues close only through PRs into the default branch, so close the hotfix's issue by hand after h, with the authority record naming it.
 
 
 ## g. Report
@@ -113,9 +166,11 @@ End with a table the operator can act on, then `XEZ:DONE`:
 | Release run | URL, conclusion |
 | npm | `@qodeca/xezar@<version>`, `latest` -> `<version>` |
 | Tag / GitHub Release | `v<version>` SHA, release URL |
+| Promotion PR (two-branch) | #n, merge SHA, two parents |
 | Bump PR | #n, merge SHA |
+| Back-merge PR (two-branch) | #n, merge SHA, `<base>..main` count 0 |
 
-And the two follow-ups the operator still owns, because this workflow never touches the primary checkout: run the `root-sync` workflow (Worktree OFF) with the bump merge commit as the fixed target, and `npm i -g @qodeca/xezar@<version>` on the machine that runs the cockpit. Say plainly which substeps were observed live and which were skipped (dry run, reconciliation).
+And the two follow-ups the operator still owns, because this workflow never touches the primary checkout: run the `root-sync` workflow (Worktree OFF) with the bump merge commit (trunk) or the back-merge merge commit on `<base>` (two-branch) as the fixed target, and `npm i -g @qodeca/xezar@<version>` on the machine that runs the cockpit. Say plainly which substeps were observed live and which were skipped (dry run, reconciliation).
 
 ## Shared contract
 

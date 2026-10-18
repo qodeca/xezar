@@ -10,7 +10,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 
 ## The loop
 
-1. Fork the repository (or branch, if you have write access) and branch off `main`.
+1. Fork the repository (or branch, if you have write access) and branch off `develop`, the default branch.
 2. Install and build: `npm install`, then `npm run build`. You need Node 22+ and `git`.
 3. Make your change, with a test for any change in behaviour.
 4. Run the fast checks locally:
@@ -26,7 +26,8 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
    and 24. The Windows and macOS legs on Node 22 and 24 are required checks; the Linux Node 22 leg
    must pass, and the current-LTS legs are informational canaries.
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
-5. Open a pull request against `main`.
+5. Open a pull request against `develop`. `main` holds released work only and takes release
+   pull requests, never feature work.
 
 ## Local development
 
@@ -195,7 +196,7 @@ own instruction file as a capability is allowed; asking users to adopt Xezar's k
 ## Commits and pull requests
 
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
-`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests are squash-merged, so the title becomes the commit on `main`.
+`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests are squash-merged, so the title becomes the commit on `develop`.
 
 A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a bullet to a file under [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md` (two pull requests editing its `# Unreleased` section conflict on every merge); a maintainer will write it otherwise.
 

@@ -6,8 +6,26 @@ review their work. How the code is organised, and the rules each area keeps, is 
 The rules a reviewer applies are in `CODE_REVIEW.md`; the public surfaces nobody may break are in
 `BACKWARD_COMPATIBILITY.md`.
 
-**The base branch is `main`, and the flow is trunk-based.** Every change is a short-lived branch
-and a pull request into `main`. There is no second long-lived branch. Nothing merges on its own.
+**The base branch is `develop`; `main` holds released work only.** Every change is a short-lived
+branch and a pull request into `develop`, the default branch. A release moves `develop` into `main`.
+Nothing merges on its own.
+
+| Pull request | Source branch | Target | Merge method |
+|---|---|---|---|
+| Feature, fix, docs, changelog | any task branch | `develop` | squash |
+| Promotion | `promote/v<version>`, cut at the changelog merge commit | `main` | merge commit |
+| Version bump | `release/v<version>`, opened by the Release workflow | `main` | merge commit |
+| Hotfix (owner-authorized) | `hotfix/<name>`, from `main` | `main` | merge commit |
+| Back-merge, after every merge into `main` | `backmerge/v<version>`, from `main` | `develop` | merge commit |
+
+- `main` and `develop` are never a pull request's source branch, and never deleted on merge.
+- The `PR source guard` CI check refuses any other source branch into `main`. Release-class pull
+  requests pass `integration-preflight.sh --release`; feature work passes the ordinary preflight.
+- A promotion carries exactly what the changelog lists: work merged into `develop` after the
+  changelog commit waits for the next release.
+- Closing keywords (`Fixes #n`) work only in pull requests into `develop`, the default branch. A
+  hotfix's issue is closed by hand after its back-merge.
+- The release steps, in order, are in `docs/publishing.md` § Cutting a release.
 
 ## The gate
 
@@ -44,7 +62,7 @@ A development task passes through these phases, and each one settles one thing:
 | Gates | the full gate list above, green on the head | — |
 | Review | a verdict on that head | `review`, `changes-requested` |
 | QA | the change works for a user | `needs-qa` → `qa` → `qa-approved` / `qa-self-verified`, or `qa-failed` |
-| Merge | the change lands on `main` | `merge-queue` |
+| Merge | the change lands on `develop` | `merge-queue` |
 
 The label set and its descriptions live in `.xezar/pipeline/labels.json`; § Labels says how
 they are applied.

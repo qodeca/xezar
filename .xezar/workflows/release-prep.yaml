@@ -14,7 +14,7 @@ steps:
     command: ".xezar/checks/worktree-setup.sh"
     resultScope: routine
   # The MCP mutation gate is no longer a step here either, for the reasons written out in the
-  # `release` workflow beside the same removal. It runs nightly against `main` in
+  # `release` workflow beside the same removal. It runs nightly against the default branch in
   # `.github/workflows/mutation.yml` (#377) instead. Unchanged, not softened: same scope, same
   # `thresholds.break` of 80.
   - id: prep

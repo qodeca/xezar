@@ -205,7 +205,7 @@ fi
 # can write.
 if [ "$IS_WORKTREE" -eq 1 ] || [ "$MODE" != "allow-root" ]; then
   case "$BRANCH" in
-    main | master)
+    main | master | "$BASE_BRANCH")
       fail branch.not-integration "HEAD is on \"$BRANCH\" — a task must never commit on the integration or release branch"
       ;;
   esac

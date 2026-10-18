@@ -277,7 +277,8 @@
       "sha256": "5df0d701ab4289b948cc9bbdf5795035d600d11ba566925a18e641e469904860",
       "origin": "copied",
       "kitSource": "checks/integration-preflight.sh",
-      "kitBlob": "e4b37a78dd62c7ca50053fa4622e7c3489bd6f48"
+      "kitBlob": "e4b37a78dd62c7ca50053fa4622e7c3489bd6f48",
+      "patch": "LP-5"
     },
     ".xezar/checks/leader-context.sh": {
       "sha256": "8bf5d7119aee652282552ca9b3c14a457de732f98ef5f29dacc07afe96775023",
@@ -429,7 +430,8 @@
       "sha256": "4f1a9e7a35973e70cf837940a2a184f0436915404813e31bd0b2e28b22302e20",
       "origin": "copied",
       "kitSource": "checks/root-sync-preflight.sh",
-      "kitBlob": "d5a95970dc5075eb29dd0d8590fe9ba08e0c7afa"
+      "kitBlob": "d5a95970dc5075eb29dd0d8590fe9ba08e0c7afa",
+      "patch": "LP-5"
     },
     ".xezar/checks/route.mjs": {
       "sha256": "a22867718cec46f9abc40a11a18a4d049df9f74133a5cece85d34d91307cada1",
@@ -461,13 +463,15 @@
       "sha256": "9bbffccaf43a699aa68fdfa35ed32381087d4199d898ad96506726885befb368",
       "origin": "copied",
       "kitSource": "checks/worktree-git.sh",
-      "kitBlob": "4c5e901c143cf2d1ea07261edbafc47564a4d3aa"
+      "kitBlob": "4c5e901c143cf2d1ea07261edbafc47564a4d3aa",
+      "patch": "LP-5"
     },
     ".xezar/checks/worktree-preflight.sh": {
       "sha256": "4f51336fb64e9eb940d596ac7e97b3f70f98883661469ae0d22adc538c2c3ab6",
       "origin": "copied",
       "kitSource": "checks/worktree-preflight.sh",
-      "kitBlob": "c930e72deabe276df1aa174f2a2707e24f649282"
+      "kitBlob": "c930e72deabe276df1aa174f2a2707e24f649282",
+      "patch": "LP-5"
     },
     ".xezar/checks/worktree-setup.sh": {
       "sha256": "0bbb2d479f35fcec125956f52b8144e61ea5e6a35e011b78c873d7afb5c6b832",
@@ -679,7 +683,8 @@
       "sha256": "b6f1ae5f33d12acf91bf201e0929f5b8fc6eefa8bc155762c77dbdc4bfc0bc28",
       "origin": "copied",
       "kitSource": "skills/xezar-handoff-draft-pr.md",
-      "kitBlob": "3bafd329defb14985432929e77f20f887fd10608"
+      "kitBlob": "3bafd329defb14985432929e77f20f887fd10608",
+      "patch": "LP-5"
     },
     ".xezar/skills/xezar-implementation.md": {
       "sha256": "1065be945e345ab07fec24d73aa6aec839357f6021d8a24eec93b2b4b85e0d01",
@@ -697,7 +702,8 @@
       "sha256": "d410ba1b79c1bb3780ff653d457de5d91192bb815c38d565404fef01e2eb4f95",
       "origin": "copied",
       "kitSource": "skills/xezar-integration.md",
-      "kitBlob": "f046ee64cba1fe264766abc2e55ba2bf5418a61b"
+      "kitBlob": "f046ee64cba1fe264766abc2e55ba2bf5418a61b",
+      "patch": "LP-5"
     },
     ".xezar/skills/xezar-issue-create.md": {
       "sha256": "3f2341d7b6c53986cea7211d17384e68b03deb61d213414cdadb40c12cd4c8d7",
@@ -709,7 +715,8 @@
       "sha256": "2896b43abee0d36e37acf0e450e422ad4750a0d1f27ee216b6c75c262f353cc4",
       "origin": "copied",
       "kitSource": "skills/xezar-issue-triage.md",
-      "kitBlob": "0955163058ffeb5dbe3e934d8fec15915d59fe0c"
+      "kitBlob": "0955163058ffeb5dbe3e934d8fec15915d59fe0c",
+      "patch": "LP-5"
     },
     ".xezar/skills/xezar-localisation.md": {
       "sha256": "c4234fcf774b94fd695a86144202959c3cf1b6e609302ed3dd04469bc2d45899",
@@ -769,7 +776,8 @@
       "sha256": "442ef654881617807bb1352712d9a763d317665eb2b16760343a377e83345888",
       "origin": "copied",
       "kitSource": "skills/xezar-release-changelog.md",
-      "kitBlob": "ed40062f072c8be4f7128d19714bbdbd6c0c970c"
+      "kitBlob": "ed40062f072c8be4f7128d19714bbdbd6c0c970c",
+      "patch": "LP-5"
     },
     ".xezar/skills/xezar-release-prep.md": {
       "sha256": "a48b6bf76ca5194dd561a3dc984dc327f448e1a779dc12dc074ae8ffee2b1dda",
@@ -781,7 +789,8 @@
       "sha256": "8e33a0e91d74de15ce4099b5303dd32be84ff0c145c8648d2f381e470ec78e58",
       "origin": "copied",
       "kitSource": "skills/xezar-release-publish.md",
-      "kitBlob": "7a195590b181697a47344d28cd2f515e80bee5d4"
+      "kitBlob": "7a195590b181697a47344d28cd2f515e80bee5d4",
+      "patch": "LP-5"
     },
     ".xezar/skills/xezar-research.md": {
       "sha256": "f8214fde6d1f6d6a3b91da5d3679b7e814e3b585ad6c75392aba71b9a83f31b1",
@@ -943,7 +952,8 @@
       "sha256": "79c65aad680be2656fcef43dcfb9eb22921fdcfafe6c042e92cbcd4eba05ee9c",
       "origin": "copied",
       "kitSource": "workflows/integration.yaml",
-      "kitBlob": "498f7bf6624e7cb59a98ffe1cb739887c99082ae"
+      "kitBlob": "498f7bf6624e7cb59a98ffe1cb739887c99082ae",
+      "patch": "LP-5"
     },
     ".xezar/workflows/issue-filing.yaml": {
       "sha256": "69d9eb3204ea11ac13340b90e5515a059f523ac02e9753e0f051ba630a9639f9",
@@ -1009,13 +1019,15 @@
       "sha256": "8b4571db20a55ee8b5521b4daac074e0fe8ec6d1059bb8e36e36063868a692fe",
       "origin": "copied",
       "kitSource": "workflows/release-prep.yaml",
-      "kitBlob": "2c0d118c643d2c4f53332fdcd3720e6b10849e04"
+      "kitBlob": "2c0d118c643d2c4f53332fdcd3720e6b10849e04",
+      "patch": "LP-5"
     },
     ".xezar/workflows/release.yaml": {
       "sha256": "7176e1fa351fd55a151ecd0b4eb1824da650f4449c75bd76dbdd6e17b9a7c3d1",
       "origin": "copied",
       "kitSource": "workflows/release.yaml",
-      "kitBlob": "a60417cd626123d536eee96e8b29bd4fca494af8"
+      "kitBlob": "a60417cd626123d536eee96e8b29bd4fca494af8",
+      "patch": "LP-5"
     },
     ".xezar/workflows/research.yaml": {
       "sha256": "a24f70ccd3ac713022dfe3c04c39bf55e6666a9118701a2f49eb392b35eca7e9",
