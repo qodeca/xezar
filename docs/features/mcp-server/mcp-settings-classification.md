@@ -105,12 +105,12 @@ reason and the alternative that was rejected.
 
 ### D-03-1 — Agent config `scope: 'user'` entries → `excluded`
 
-**Decision.** The six catalog entries whose `scope` is `'user'` are excluded from MCP entirely — no
+**Decision.** The catalog entries whose `scope` is `'user'` (five since 0.30.0) are excluded from MCP entirely — no
 read of their content, no write.
 
 **Reason.** M-16 excludes home and global file administration **even behind a project route**, and
-`~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.codex/config.toml`, `~/.codex/AGENTS.md`,
-`~/.config/opencode/opencode.json` and `~/.config/opencode/AGENTS.md` are each shared by every
+`~/.claude/settings.json`, `~/.claude/CLAUDE.md`, `~/.codex/config.toml`, `~/.codex/AGENTS.md`
+and `~/.qwen/settings.json` are each shared by every
 project on the machine. A leader bound to project A editing one of them changes project B, which
 Definition-of-Done clause 5 requires engineering to prove impossible.
 

@@ -143,7 +143,7 @@ describe('grouping new, already seen and known (#377, owner decision 2026-09-15)
 describe('the committed starting list', () => {
   const committed = s.parseSurvivorList(JSON.parse(readFileSync(join(REPO_ROOT, s.BASELINE), 'utf8')));
 
-  it('is the complete run 34999068325 on fe33541, with tags for #338 and #353', () => {
+  it('is the complete run 34999068325 on fe33541, less the three adapter files deleted in 0.30.0, with tags for #338 and #353', () => {
     expect(committed.source).toMatchObject({ run: '34999068325', revision: 'fe335417fe759264bae112baa6c47a7ff4d86a8b' });
     expect(Object.keys(committed.tracked ?? {}).sort()).toEqual(['338', '353']);
     // 1 549 survived + 622 no coverage, from the run's own summary on #443, less the 317 survived +

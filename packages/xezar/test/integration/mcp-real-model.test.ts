@@ -252,7 +252,7 @@ test('the tee reconstructs tool calls with their answers from a frame log', () =
   assert.deepEqual(toolCalls(frames), [{ at: 1, name: 'leader_events', args: { action: 'read' }, answeredAt: 3, structured: { nextCursor: 'c' }, isError: false }]);
 });
 
-const AGENT_VARS = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE|OPENCODE_|PI_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$|VITEST|NODE_OPTIONS$)/;
+const AGENT_VARS = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$|VITEST|NODE_OPTIONS$)/;
 function clientEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(process.env)) if (!AGENT_VARS.test(name)) env[name] = value;

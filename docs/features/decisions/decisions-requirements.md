@@ -33,7 +33,7 @@ Two things make it a gate rather than a page: a **task state the leader cannot m
 
 ## 3. Scope and exclusions
 
-In scope: every project xezar runs, with zero configuration; all four backends; the cockpit, the CLI and the MCP.
+In scope: every project xezar runs, with zero configuration; all three backends (Claude Code, Codex and Qwen Code); the cockpit, the CLI and the MCP.
 
 Out of scope for this version (each is a deliberate non-goal, not a gap):
 
@@ -111,7 +111,7 @@ Out of scope for this version (each is a deliberate non-goal, not a gap):
 
 | ID | Requirement |
 | --- | --- |
-| F-23 | On a decision, the task MUST return to the queue and, when it gets a slot, **resume the agent with the context it had before it asked** (D-4): the backend's session resume (Claude Code `--resume`, the Codex app-server thread) inside the **same workflow step**, with the decision delivered as the next user message (`origin: human`, or `leader` with the owner words). The workflow chain continues after that step as if the turn had never stopped; gates and handoff run. The step timeout restarts at resume. |
+| F-23 | On a decision, the task MUST return to the queue and, when it gets a slot, **resume the agent with the context it had before it asked** (D-4): the backend's session resume (Claude Code `--resume`, the Codex app-server thread, Qwen Code `--resume`) inside the **same workflow step**, with the decision delivered as the next user message (`origin: human`, or `leader` with the owner words). The workflow chain continues after that step as if the turn had never stopped; gates and handoff run. The step timeout restarts at resume. |
 | F-24 | When the context cannot be resumed – a backend that cannot resume a session, an expired or missing session, a model no longer available, a reclaimed worktree – the **same step re-runs with a fresh agent** given the original prompt, the handoff notes and the decision (D-5). The run records which path was taken (`resumedWith: session \| fresh`), so the resume success rate can be measured (D-18). |
 | F-25 | Headless `xezar run` – *proposal*: a case opened in a headless run prints the case (plain text, options) and exits with a distinct non-zero code, the way a failed run does; `review` keeps meaning success. The choice is OD-3 and is a protected CLI surface. |
 
@@ -192,7 +192,7 @@ Invariant, tested: **no state's only on-by-default exit is "a human types someth
 | A-5 | The diff net in report mode: a diff that adds a cockpit route the mandate does not name records `scopeCheck.ran` with one surface and emits `scope.reported`; a docs-only diff records an empty list; a model failure records `unknown` and the run is not blocked; the task page shows all three. |
 | A-6 | While a run is in `decision`: `finish`, `continue`, a message, `POST /runs/:id/pr`, the idle timer, the autonomous nudge, the monitoring wake and auto-resume all do nothing and (for the routes) answer 409 `decision.pending`; `handoff_git ready` and `merge` refuse the run's PR from any run. |
 | A-7 | Restart: a run in `decision` is unchanged after `recover()`; no `continue-N` step exists; the badge count is the same. |
-| A-8 | Deciding in the cockpit re-queues the run; on a Claude Code or Codex run the agent resumes its prior session inside the same step and the chain continues through gates and handoff; on a run whose backend cannot resume a session the same step re-runs fresh with the decision in its prompt; `resumedWith` says which. |
+| A-8 | Deciding in the cockpit re-queues the run; on a Claude Code, Codex or Qwen Code run the agent resumes its prior session inside the same step and the chain continues through gates and handoff; on a run whose backend cannot resume a session the same step re-runs fresh with the decision in its prompt; `resumedWith` says which. |
 | A-9 | `record_decision` without `ownerWords`, without `operationId`, or with a stale case token is refused; with all three it decides the case, shows "passed on by the leader" and the quote, and a retried call with the same `operationId` returns the first receipt. |
 | A-10 | Reopen before `actedOnAt` returns the case to open and the run to `decision`; reopen during a turn is refused with the reason; reopen after `actedOnAt` is refused. |
 | A-11 | Two answers race: the second returns 409 with the first decision; the cockpit shows who answered and keeps the typed comment. |

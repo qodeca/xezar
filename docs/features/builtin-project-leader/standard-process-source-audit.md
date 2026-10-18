@@ -5,7 +5,7 @@
 > **Status update — 2026-09-15:** The audited baseline was adapted for this repository’s own kit; see
 > installation qualification (`installation.md`, removed). Product-wide kit distribution is not
 > implemented. The original three-client qualification recommendation is dated evidence; the separate built-in
-> pi decision remains #336.
+> client decision was later settled in #336 (Claude Code, Codex and Qwen Code).
 
 Status: **completed static source-to-requirements audit; no implementation or runtime certification**. Audit date: **2026-09-09**.
 
