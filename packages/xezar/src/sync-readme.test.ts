@@ -90,7 +90,7 @@ describe('sync-readme: the README npm publishes', () => {
   it('leaves absolute URLs, in-page anchors, footnotes and anything inside code untouched', async () => {
     const { absolutizeReadmeLinks } = await load();
     const input = [
-      '[site](https://opencode.ai) [mail](mailto:a@b.c) [up](#quick-start)',
+      '[site](https://example.com) [mail](mailto:a@b.c) [up](#quick-start)',
       '[^1]: a footnote, not a link',
       'inline `[x](docs/a.md)` stays',
       '```md',

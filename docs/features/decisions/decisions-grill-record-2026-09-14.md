@@ -1,5 +1,7 @@
 # Decisions – requirements interview record (grill-me), 2026-09-14
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 Status: **closed – the read-back was confirmed by the owner.** The 20 decisions below are locked input to [decisions-requirements.md](decisions-requirements.md) – decisions 1 to 19 from the interview, and decision 20 added the same evening while the revised mockup was reviewed (cited below as *D-n*). The design draft under review was `designs/decisions/` at its 2026-09-14 state; the five-reviewer verdict on that draft is in [decisions-design-review-2026-09-14.md](decisions-design-review-2026-09-14.md).
 
 Method: the `erfana:grill-me` interview skill – one question at a time, a 16-dimension coverage map, a decisions ledger, a read-back. Interviewer: the leader session (Claude Code). Interviewee: the owner.

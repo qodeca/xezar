@@ -31,7 +31,7 @@ const providerAuth = () => new ProviderAuthService({
     if (executable === 'claude') return { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 };
     if (executable === 'codex') return { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 0 };
     return {
-      stdout: '┌  Credentials ~/.local/share/opencode/auth.json\n└  1 credential',
+      stdout: 'qwen 0.25.2',
       stderr: '',
       exitCode: 0,
     };

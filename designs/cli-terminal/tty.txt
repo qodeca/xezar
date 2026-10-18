@@ -1,3 +1,5 @@
+History – removed in 0.30.0: the pi and OpenCode backends shown here were removed in 0.30.0 (#1041); this mockup records the design as it was.
+
 # tty.txt – `xez` in an interactive terminal, 80 columns, rich output
 #
 # How to read this file

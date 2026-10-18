@@ -4,9 +4,9 @@
 > shipped MCP dependency covers single ownership (L-F01), operation keys and stale writes (L-F34), event
 > delivery (L-F08/L-F25) and a fixed base role instruction (part of L-F33; no per-project customization). Its
 > current acceptance supersedes the old MCP readiness assessment below; see the [DoD
-> record](../mcp-server/mcp-definition-of-done-record.md). MCP supports four clients; amending this separate
-> built-in requirement to add pi remains the owner decision in
-> [#336](https://github.com/qodeca/xezar/issues/336).
+> record](../mcp-server/mcp-definition-of-done-record.md). The L-D01 client list was settled in
+> [#336](https://github.com/qodeca/xezar/issues/336): the required clients are Claude Code, Codex and
+> Qwen Code, matching MCP requirement F-17.
 
 Status: **requirements draft; built-in UI and distributed kit not implemented; MCP dependency shipped**. Updated: 2026-09-15.
 Audience: product owner, product designer, and engineering team. This document records agreed outcomes, technical implications, proposals, and unresolved implementation decisions. It is not a claim that current backends or browser APIs already meet them.
@@ -19,7 +19,7 @@ Technical evidence: [local MCP client compatibility](../mcp-server/mcp-client-co
 
 ## 1. Product goal and boundaries
 
-A user can work with an AI project leader inside Xezar, while choosing Claude Code, OpenCode, or Codex as the tool that runs the leader and selecting its model. The leader coordinates one project's work through MCP: plans, delegates, observes execution status, answers within its authority, evaluates completed results, and advances the process. Execution agents do the design, implementation, testing, and repair.
+A user can work with an AI project leader inside Xezar, while choosing Claude Code, Codex or Qwen Code as the tool that runs the leader and selecting its model. The leader coordinates one project's work through MCP: plans, delegates, observes execution status, answers within its authority, evaluates completed results, and advances the process. Execution agents do the design, implementation, testing, and repair.
 
 Xezar supplies one consistent conversation UI rather than embedding the original tools' interfaces. Recreating every native-client feature is unnecessary: users can independently connect a native application to the MCP interface. The first release supports text only, without attachments. It works in the browser on desktop and phone; a native mobile application is outside scope.
 
@@ -46,7 +46,7 @@ Not included: a multi-project leader, unrestricted machine administration, new r
 | ID | Requirement |
 | --- | --- |
 | L-F01 | Provide one leader for one project through local-only project-bound MCP. Built-in and native clients compete for the same single logical client ownership; UI remains concurrent. A second client gets an occupied-project error. No manual disconnect UI is added. |
-| L-F02 | At leader startup the user selects its tool (Claude Code, OpenCode, or Codex) and model. Xezar offers a consistent conversation interface, not an embedded copy of the vendor UI. |
+| L-F02 | At leader startup the user selects its tool (Claude Code, Codex or Qwen Code) and model. Xezar offers a consistent conversation interface, not an embedded copy of the vendor UI. |
 | L-F03 | Restrict leader selection to a maintained list intended for models with the strongest reasoning capabilities. Xezar maintains the list and the user can edit it manually. Availability validation and the source/ranking policy remain open. |
 | L-F04 | Provide a side panel that can be maximized, with responsive browser layouts on desktop and phone. Version one accepts text only and has no attachments. |
 | L-F05 | Keep one persistent leader conversation per project, combining human conversation and task coordination. Hiding, maximizing, navigation, and reconnecting do not create another conversation or lose decisions. |
@@ -388,7 +388,7 @@ The built-in leader and process-kit feature is complete only when:
 
 | ID | Decision / research | Boundary that is already agreed |
 | --- | --- | --- |
-| L-D01 | Local MCP adapters, owner binding, event reaction and handover; coordinate MCP D-01–09 | All three clients required, same machine, one logical owner/project, concurrent UI. Native versus built-in handover cannot create two owners; no disconnect UI. |
+| L-D01 | Local MCP adapters, owner binding, event reaction and handover; coordinate MCP D-01–09 | Claude Code, Codex and Qwen Code are the required clients (matching MCP F-17), same machine, one logical owner/project, concurrent UI. Native versus built-in handover cannot create two owners; no disconnect UI. |
 | L-D02 | Leader backend adapters, actual model IDs/capabilities, curated-list maintenance, user edits, authentication and switching behavior | Tool/model selected by user; reasoning-focused leader list is editable; no unverified model/SDK claims. |
 | L-D03 | Onboarding runtime, executor-rule schema, total unavailability and field mapping | Project writes/safe shared reads are settled; no global administration. Executor allowlists are not MCP operation roles. |
 | L-D04 | Durable lifecycle and event delivery, pause acknowledgement/in-flight calls, crash races, executor survival/recovery on server restart, concurrent human edits | No leader auto-resume after restart; manual pause leaves started executors running; reconcile before resumed action. |
@@ -414,7 +414,7 @@ This document is the standalone product contract for the built-in leader and com
 
 **Ready for planning:** yes, for the agreed leader behavior and interfaces. The kit role/process mapping is pinned and audited; candidate implementation evidence is still required. **Ready for bounded implementation/design:** conversation and panel, structured questions, plan modes, pause/reconciliation state machine, user-only instruction editing, immutable kit history scaffolding, and backend adapters can be developed against a project-MCP fixture. All are subject to the final interface and real-backend verification.
 
-**Not ready for whole-scope implementation sign-off or completion:** MCP event-to-model adapters exist for all four MCP clients; the [DoD record](../mcp-server/mcp-definition-of-done-record.md) gives their current acceptance and the OpenCode real-model scope exception; process evidence schemas, resource/hosting-policy enforcement and recovery behavior need engineering design and candidate tests. The source readiness dependency is closed. Complete transfer still requires L-A27 and the new detailed L-A34–47 cases; static source coverage cannot replace them.
+**Not ready for whole-scope implementation sign-off or completion:** MCP event-to-model adapters exist for the supported MCP clients (Claude Code, Codex and Qwen Code); the [DoD record](../mcp-server/mcp-definition-of-done-record.md) and the [MCP leader guide](../../guide/13-mcp-leader.md) give their current acceptance; process evidence schemas, resource/hosting-policy enforcement and recovery behavior need engineering design and candidate tests. The source readiness dependency is closed. Complete transfer still requires L-A27 and the new detailed L-A34–47 cases; static source coverage cannot replace them.
 
 Required dependency contract: project-bound local MCP grants one logical owner, full project operations, safe shared reads, conflict rejection and operation-key idempotency. It acknowledges asynchronous work, pushes significant events and replays outstanding events plus state after reconnect. UI remains concurrent and updates automatically. Built-in and external clients cannot simultaneously own the project; design handover without a manual disconnect control.
 

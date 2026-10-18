@@ -338,17 +338,17 @@ being read no earlier than 0.18.0. The trail now records cockpit, automation and
 too, not only MCP; on a hosted server behind a custom reverse proxy, set `X-Xezar-User` to the
 authenticated user (the bundled nginx site already does).
 
-### Claude Code, pi and OpenCode runs and your own MCP servers
+### Claude Code and Qwen Code runs and your own MCP servers
 
-A task run started with Claude Code, pi or OpenCode no longer loads your own `xezar` MCP entry (#342) –
+A task run started with Claude Code or Qwen Code does not load your own `xezar` MCP entry (#342) –
 the same rule Codex runs have had since #324. This closes a real bug: xezar's bridge took your
 project's one leader slot the moment it connected, so a task running in the project folder itself
 (Worktree off) could hold that slot for its whole lifetime and refuse your own leader session with
 "project occupied". Every other MCP server your project declares still loads, for every backend; your
-config files are never edited. Two narrowings follow: a Claude Code task now sees only the MCP
-servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json`; and for pi and
-OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
-rename an unrelated server of that name.
+config files are never edited. Two narrowings follow: a task sees only the MCP servers your project
+itself declares – `.mcp.json` for Claude Code, `.mcp.json` and `.qwen/settings.json` for Qwen Code –
+not the ones in your personal settings; and a server literally named `xezar` is switched off in
+tasks even when it belongs to you, so rename an unrelated server of that name.
 Migration: [Run each supported client as the project leader](docs/guide/13-mcp-leader.md) § "To keep your leader while tasks run in the same folder".
 
 ### The sidebar is navigation-only now
@@ -384,10 +384,6 @@ unchanged. See
 
 ### A few more things to expect
 
-- A pi task in its own isolated working copy (Git worktree) can no longer use its file tools to
-  write or edit the repository's primary working copy, and a shell command that names that copy is
-  refused (best effort, not containment). A pi task that needs the primary working copy on purpose
-  must be created with Worktree off.
 - A run xezar itself ends for the memory limit now finishes `failed`, not `done` – expect `failed`
   instead of a done run with no deliverable.
 - In an autonomous run, the automatic re-prompt after a Continue on a workflow step still waiting

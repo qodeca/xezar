@@ -1,5 +1,7 @@
 # Codex: waking an existing leader session
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented by #403; the dated spike below is superseded for readiness.
 > A-19/A-23 real-model acceptance is recorded in the [DoD record](mcp-definition-of-done-record.md); a
 > same-revision cross-client run was not done.

@@ -1,5 +1,7 @@
 # CLI terminal – live activity, settings and one cockpit per project
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
+
 Status: **In review** – the PR #798 design review at `b659c16a` (FAIL: B-1, B-2, NB-1 … NB-5) is answered in the round-1 review response, and a re-review of the repaired head is pending (§ 18). Earlier rounds: round 1 (B-1 … B-3, NB-1 … NB-8) and the review at `d4bfacb` (B-1, B-2, NB-1, PR #528 response) addressed. Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
 
 This folder designs a surface that is not a web page: what `xez` prints in a terminal. It also designs the one cockpit change that follows from running one xezar per project (the project switcher). No code changes here.

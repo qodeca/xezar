@@ -1,5 +1,7 @@
 # D-09 – operational limits, retention and packaging
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented; B-row bounds live in `packages/xezar/src/mcp` and
 > `packages/contract/src/mcp-*.ts`. The dated spike is superseded for implementation status, with unresolved
 > measurements recorded below.
