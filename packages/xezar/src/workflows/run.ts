@@ -1487,7 +1487,10 @@ export class RunManager {
     });
     // Persist the full definition so a queued run survives a restart (#367) —
     // ad-hoc "(planned)" chains exist nowhere else to re-resolve from.
-    this.store.updateRun(run.id, { workflowDef: workflow });
+    // The task's own extra system prompt rides along for the same reason: a queued run is rebuilt
+    // from the record (`reviveQueuedRun`), and `execute` echoes the resolved prompt over it later.
+    const systemPrompt = input.systemPrompt?.trim() || undefined;
+    this.store.updateRun(run.id, { workflowDef: workflow, ...(systemPrompt ? { systemPrompt } : {}) });
     // Initial pasted attachments must be visible while the run is still queued (#612),
     // and must survive a restart before a slot opens. Persist them before the job
     // enters `pendingJobs`; `hydrateQueuedInput` reconstructs their content blocks
@@ -1815,6 +1818,9 @@ export class RunManager {
         autonomous: run.autonomous,
         // Preserve an explicit worktree opt-out across a queued restart.
         worktree: run.worktree,
+        // The task's own extra system prompt, saved by `startRun`. Absent means the project
+        // default, which `execute` resolves at start exactly as it would have.
+        systemPrompt: run.systemPrompt,
       }),
     });
     this.queue.push(run.id);
