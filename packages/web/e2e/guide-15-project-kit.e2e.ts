@@ -86,7 +86,7 @@ describe('guide 15 — project kit', () => {
     expect(browser.hasRole('heading', 'Not set up yet')).toBe(false)
     expect(browser.hasRole('button', 'Set up this project')).toBe(false)
     if (browser.hasRole('heading', 'Setup needs an upgrade')) {
-      expect(browser.hasText('This project was set up with setup collection')).toBe(true)
+      expect(browser.hasText('This project’s setup is version')).toBe(true)
       expect(browser.hasRole('link', 'Open the upgrade guide')).toBe(true)
     } else {
       expect(browser.hasRole('heading', 'Set up', { exact: true })).toBe(true)

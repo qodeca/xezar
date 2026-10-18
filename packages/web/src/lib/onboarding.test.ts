@@ -12,6 +12,7 @@ import {
   setupMode,
   HOSTED_SETUP_NOTE,
   SETUP_HERO_SENTENCE,
+  OLDER_SETUP_DISMISSED_NOTE,
   shortDigest,
   showsOlderSetup,
   UPGRADE_GUIDE_LINK_LABEL,
@@ -188,9 +189,9 @@ describe('the older-setup warning (owner-approved exception to the no-“upgrade
   it('the row names both versions, the consequence and the upgrade guide, and offers no re-check', () => {
     const copy = offerCopy(older())!
     expect(copy.lead).toBe('This project’s setup is older than this xezar supports')
-    expect(copy.rest).toBe(
-      ' — it was set up with setup collection 3.0.3, and this xezar needs 3.2.0 or later. Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs. Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.',
-    )
+    expect(copy.rest).toBe(' — it is version 3.0.3, and this xezar needs 3.2.0 or later. Some tasks are refused until it is upgraded.')
+    // The design's measured worst case for one row is 168 characters.
+    expect(copy.rest.length).toBeLessThanOrEqual(168)
     expect(copy.upgradeGuideUrl).toBe(GUIDE)
     expect(copy.linkToSettings).toBe(false)
     expect(UPGRADE_GUIDE_LINK_LABEL).toBe('Open the upgrade guide')
@@ -199,7 +200,7 @@ describe('the older-setup warning (owner-approved exception to the no-“upgrade
   it('the card says it in its own heading and sentence, and keeps Re-check for afterwards', () => {
     expect(setupHeading(older())).toBe('Setup needs an upgrade')
     expect(setupBody(older())).toBe(
-      'This project was set up with setup collection 3.0.3, and this xezar needs 3.2.0 or later. Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs. Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.',
+      'This project’s setup is version 3.0.3, and this xezar needs 3.2.0 or later. Until it is upgraded, some tasks are refused because they ask for agents this xezar no longer supports. Follow the upgrade guide first — a re-check compares files but does not upgrade the setup.',
     )
     expect(setupActionLabel(older())).toBe('Re-check now')
     expect(setupMode(older())).toBe('recheck')
@@ -223,7 +224,17 @@ describe('the older-setup warning (owner-approved exception to the no-“upgrade
 
   it('names no xezar-internal file or process, and no internal word for the collection', () => {
     const copy = offerCopy(older())!
-    const everything = [copy.lead, copy.rest, setupHeading(older()), setupBody(older()), UPGRADE_GUIDE_LINK_LABEL].join('\n')
+    const everything = [
+      copy.lead,
+      copy.rest,
+      setupHeading(older()),
+      setupBody(older()),
+      UPGRADE_GUIDE_LINK_LABEL,
+      OLDER_SETUP_DISMISSED_NOTE.lead,
+      OLDER_SETUP_DISMISSED_NOTE.rest,
+    ].join('\n')
+    // One name for the thing: "setup", never a second noun for it.
+    expect(everything).not.toMatch(/setup collection/i)
     for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i, /\bpi\b/i, /opencode/i]) {
       expect(everything).not.toMatch(forbidden)
     }
@@ -264,6 +275,8 @@ describe('release hygiene (#466)', () => {
       setupHeading(older()),
       setupBody(older()),
       UPGRADE_GUIDE_LINK_LABEL,
+      OLDER_SETUP_DISMISSED_NOTE.lead,
+      OLDER_SETUP_DISMISSED_NOTE.rest,
     ].join('\n')
 
   it('no shipped string names xezar’s own working files or process', () => {

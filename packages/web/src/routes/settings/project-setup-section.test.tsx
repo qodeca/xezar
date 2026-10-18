@@ -161,12 +161,43 @@ describe('Settings → Project setup', () => {
     await waitFor(() => expect(card()).not.toBeNull())
     expect(card()?.getAttribute('data-setup-state')).toBe('set-up')
     expect(screen.getByRole('heading', { name: 'Setup needs an upgrade', level: 3 })).toBeTruthy()
-    expect(card()?.textContent).toContain('set up with setup collection 3.1.0, and this xezar needs 3.2.0 or later')
+    expect(card()?.textContent).toContain('This project’s setup is version 3.1.0, and this xezar needs 3.2.0 or later')
     const link = card()?.querySelector<HTMLAnchorElement>('a[data-action="open-upgrade-guide"]')
-    expect(link?.textContent).toBe('Open the upgrade guide')
+    expect(link?.textContent).toBe('Open the upgrade guide (opens in a new tab)')
     expect(link?.getAttribute('href')).toBe(guide)
     expect(link?.getAttribute('target')).toBe('_blank')
-    expect(card()?.querySelector('[data-action="start-setup"]')?.textContent).toContain('Re-check now')
+    expect(link?.getAttribute('rel')).toBe('noreferrer')
+    // The primary action, above Re-check: a re-check before the upgrade changes nothing.
+    expect(link?.getAttribute('data-variant')).toBe('contrast')
+    const recheck = card()?.querySelector('[data-action="start-setup"]')
+    expect(recheck?.textContent).toContain('Re-check now')
+    expect(link!.compareDocumentPosition(recheck!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // No second, underlined text link under the body.
+    expect(card()?.querySelectorAll('a[data-action="open-upgrade-guide"]').length).toBe(1)
+    expect(card()?.textContent).not.toContain('The notice is hidden, not the problem.')
+  })
+
+  it('after Later on an older setup, says the notice is hidden and the problem is not', async () => {
+    serve(
+      onboarding({
+        state: 'set-up',
+        provenance: 'recorded',
+        offerPending: false,
+        dismissed: true,
+        lastOffered: { ...OBSERVED, at: '2026-10-18T08:02:00.000Z' },
+        olderSetup: {
+          recordedVersion: '3.1.0',
+          minimumVersion: '3.2.0',
+          upgradeGuideUrl: 'https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md',
+        },
+      }),
+    )
+    renderSection()
+    await waitFor(() => expect(card()).not.toBeNull())
+    expect(card()?.textContent).toContain(
+      'The notice is hidden, not the problem. Later hides the notice above the page until xezar changes. Some tasks stay refused until the setup is upgraded.',
+    )
+    expect(card()?.textContent).not.toContain('A re-check is always here.')
   })
 
   it('a current setup shows no upgrade warning', async () => {

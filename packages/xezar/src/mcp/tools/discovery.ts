@@ -405,7 +405,7 @@ function onboardingLine(onboarding: OnboardingStatus): string {
 /** The older-setup warning (`onboarding.olderSetup`), as a fact plus who can act — the cockpit's
  *  notice in the leader's words. A re-check is named as the step AFTER the upgrade, never instead of it. */
 function olderSetupSentence(older: NonNullable<OnboardingStatus['olderSetup']>): string {
-  return `This project was set up with setup collection ${older.recordedVersion}; this xezar needs ${older.minimumVersion} or later and refuses some tasks the older setup sends to agents xezar no longer runs. A person can upgrade the setup collection with its upgrade guide (${older.upgradeGuideUrl}) and then re-check; a re-check alone does not upgrade it.`;
+  return `This project's setup is version ${older.recordedVersion}; this xezar needs ${older.minimumVersion} or later, and until the setup is upgraded some tasks are refused because they ask for agents this xezar no longer supports. A person can follow the upgrade guide (${older.upgradeGuideUrl}) and then re-check; a re-check compares files but does not upgrade the setup.`;
 }
 
 function onboardingStateLine(onboarding: OnboardingStatus): string {

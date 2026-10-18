@@ -14,9 +14,9 @@ import type { OnboardingIdentity, OnboardingStatus } from '@qodeca/xezar-api-cli
  * inspect, not migration authority.
  *
  * One owner-approved exception: the older-setup warning (`status.olderSetup`, the `*OlderSetup*`
- * functions below). A project set up with a setup collection older than this xezar supports has
+ * functions below). A project whose setup is older than this xezar supports has
  * tasks refused, and a re-check cannot fix that, so that warning — and only that warning — tells
- * the person to upgrade the setup collection with its public upgrade guide, then re-check.
+ * the person to upgrade the setup with its public upgrade guide, then re-check (decision D-13).
  */
 
 /** What actually moved between the checked identity and the running one. */
@@ -66,7 +66,7 @@ export interface OfferCopy {
   upgradeGuideUrl: string | null
 }
 
-/** The link to the setup collection's upgrade guide, on the offer row and the Settings card. */
+/** The link to the setup's upgrade guide, on the offer row and the Settings card. */
 export const UPGRADE_GUIDE_LINK_LABEL = 'Open the upgrade guide'
 
 /** Whether the surfaces show the older-setup warning. Only over `set-up`: a running check says
@@ -77,18 +77,19 @@ export function showsOlderSetup(
   return status.state === 'set-up' && status.olderSetup !== null
 }
 
-/** Why it matters, in one sentence the row and the card share so the two cannot drift. */
-const OLDER_SETUP_CONSEQUENCE =
-  'Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs.'
-
-/** The card's fact: which collection the project carries and which one this xezar needs. */
-function olderSetupFact(older: NonNullable<OnboardingStatus['olderSetup']>): string {
-  return `This project was set up with setup collection ${older.recordedVersion}, and this xezar needs ${older.minimumVersion} or later. ${OLDER_SETUP_CONSEQUENCE}`
+/** The card's sentence: which version the setup is, which one this xezar needs, why it matters
+ *  and what to do. One name for the thing — "setup" — and a re-check is the step after the
+ *  upgrade, never instead of it. */
+function olderSetupBody(older: NonNullable<OnboardingStatus['olderSetup']>): string {
+  return `This project’s setup is version ${older.recordedVersion}, and this xezar needs ${older.minimumVersion} or later. Until it is upgraded, some tasks are refused because they ask for agents this xezar no longer supports. Follow the upgrade guide first — a re-check compares files but does not upgrade the setup.`
 }
 
-/** What to do about it. A re-check is the step after the upgrade, never instead of it. */
-const OLDER_SETUP_REMEDY =
-  'Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.'
+/** The Settings note after Later on an older setup: Later hides the notice, never the problem.
+ *  Split so the lead can be bold, like every other card note. */
+export const OLDER_SETUP_DISMISSED_NOTE = {
+  lead: 'The notice is hidden, not the problem.',
+  rest: 'Later hides the notice above the page until xezar changes. Some tasks stay refused until the setup is upgraded.',
+} as const
 
 /**
  * The offer row's sentence for a changed identity.
@@ -102,7 +103,7 @@ export function offerCopy(status: OnboardingStatus): OfferCopy | null {
   if (showsOlderSetup(status)) {
     return {
       lead: 'This project’s setup is older than this xezar supports',
-      rest: ` — it was set up with setup collection ${status.olderSetup.recordedVersion}, and this xezar needs ${status.olderSetup.minimumVersion} or later. ${OLDER_SETUP_CONSEQUENCE} ${OLDER_SETUP_REMEDY}`,
+      rest: ` — it is version ${status.olderSetup.recordedVersion}, and this xezar needs ${status.olderSetup.minimumVersion} or later. Some tasks are refused until it is upgraded.`,
       linkToSettings: false,
       upgradeGuideUrl: status.olderSetup.upgradeGuideUrl,
     }
@@ -158,7 +159,7 @@ export function setupHeading(status: OnboardingStatus): string {
  * nothing that moved.
  */
 export function setupBody(status: OnboardingStatus): string {
-  if (showsOlderSetup(status)) return `${olderSetupFact(status.olderSetup)} ${OLDER_SETUP_REMEDY}`
+  if (showsOlderSetup(status)) return olderSetupBody(status.olderSetup)
   switch (status.state) {
     case 'checking':
       return 'A task is comparing this project’s files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview.'

@@ -1,4 +1,6 @@
 import type { OnboardingStatus } from '@qodeca/xezar-api-client'
+import { ExternalLinkIcon } from 'lucide-react'
+
 import { Link } from '@/lib/project-router'
 import { offerCopy, UPGRADE_GUIDE_LINK_LABEL } from '@/lib/onboarding'
 
@@ -97,7 +99,9 @@ export function OnboardingOfferRow({
               rel="noreferrer"
               data-action="open-upgrade-guide"
             >
+              <ExternalLinkIcon aria-hidden="true" />
               {UPGRADE_GUIDE_LINK_LABEL}
+              <span className="sr-only"> (opens in a new tab)</span>
             </a>
           </Button>
         ) : (
