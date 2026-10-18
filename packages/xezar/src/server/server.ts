@@ -48,6 +48,9 @@ import {
   type GroupVariant,
   type PickVariantResponse,
   type ProjectsResponse,
+  type RegisterProjectResponse,
+  type RemoveProjectResponse,
+  type UpdateProjectResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
 } from '@qodeca/xezar-contract';
@@ -636,33 +639,10 @@ async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
 // `ProjectsResponse` used to be declared here as an interface; it is the contract's
 // `projectsResponseSchema` type now and is re-exported at the top of this file (#467, PR 3).
 
-/** `POST /api/projects` (multi-project spec, step 4.2) — the folder-browser
- *  dialog's commit step. The entry carries the same `status`/`branch` probe
- *  `GET /api/projects` attaches, so the cockpit sees one project shape.
- *  `error` is present ONLY on the 409 (already registered), where `project` is
- *  the EXISTING entry — the dialog navigates to it instead of dead-ending. */
-export interface RegisterProjectResponse {
-  project: ProjectListEntry;
-  error?: string;
-}
-
-/** `DELETE /api/projects/:projectId` (multi-project spec, step 4.4) — the
- *  Projects settings pane's Remove. DEREGISTRATION ONLY: the entry leaves
- *  `~/.xezar/config.json` and nothing under the project root is read, moved or
- *  deleted. `removed` is always true on a 200 (the failure paths are 404/409). */
-export interface RemoveProjectResponse {
-  removed: true;
-  id: string;
-}
-
-/** `PATCH /api/projects/:projectId` (spec 2026-07-22-per-project-concurrency)
- *  — sets or clears a project's per-project `maxParallel`. The entry carries
- *  the same `status`/`branch` probe `GET /api/projects` attaches, so the
- *  cockpit sees one project shape. `null` in the request clears the override
- *  back to "inherit the workspace cap". */
-export interface UpdateProjectResponse {
-  project: ProjectListEntry;
-}
+// `RegisterProjectResponse`, `RemoveProjectResponse` and `UpdateProjectResponse` were
+// hand-written interfaces here; they are the contract's inferred types now, re-exported for the
+// tests that import them from this file (AGENTS.md § The HTTP API).
+export type { RegisterProjectResponse, RemoveProjectResponse, UpdateProjectResponse };
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
  *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
