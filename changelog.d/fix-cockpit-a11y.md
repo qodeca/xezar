@@ -26,3 +26,6 @@
 - 🐛 **Screen readers hear the composer's choices.** The runner, model, variants, base branch and
   project pills now say both the setting and its value ("Model: sonnet"), and the `/` and `@`
   suggestion list is announced as you move through it and when Enter inserts one.
+- 🐛 **On a phone the top bar says which project and which settings you are in.** A quiet line
+  above the page name shows the project, and Global settings is titled as such instead of plain
+  "Settings".

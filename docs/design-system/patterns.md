@@ -160,7 +160,7 @@ Source: `components/app-shell.tsx`.
 - Below `md` the sidebar is a `Sheet side="left"` at `w-[264px] bg-sidebar p-0`, opened by a real `SheetTrigger` in the top bar (`aria-label="Open menu"`, `size-11`) and closed by `aria-label="Close menu"`.
 - It closes on route change and the moment `(min-width: 768px)` matches.
 - It renders the same sidebar content as the desktop column, so it is navigation only: brand row, New task (+ Add project), nav or project groups, footer.
-- The top bar titles itself from `activeNavItem(pathname)`. Its `data-slot="mobile-status"` slot carries the single-project mode badge in that mode (#600), so the mode is legible without opening the drawer, and the phone form of the plan-limits chip (`2/5 can work`, #867) when an agent applies; the title truncates first. The drawer carries no plan-limits band.
+- The top bar titles itself from `activeNavItem(pathname)`, except on Global settings, where it reads "Global settings" ("Workspace settings" in single-project mode) so the two settings areas differ on a phone too. Above the title a quiet context line (`data-slot="mobile-context"`, `text-[11px] text-soft-foreground`, truncating) names the page's project – the same name the document title uses – and is absent on Global settings and while the project is not yet known. Its `data-slot="mobile-status"` slot carries the single-project mode badge in that mode (#600), so the mode is legible without opening the drawer, and the phone form of the plan-limits chip (`2/5 can work`, #867) when an agent applies; the title truncates first. The drawer carries no plan-limits band.
 - Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `md:h-9`. The footer's Tools trigger is `min-h-tap … md:min-h-0`.
 
 ## 10. Live updates

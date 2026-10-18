@@ -221,6 +221,8 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         // The plan-limits chip (#867 S5). Each form renders nothing until an agent applies.
         agentQuota={<AgentQuotaChip variant="band" />}
         agentQuotaCompact={<AgentQuotaChip variant="phone" />}
+        // The same name the document title uses; null on Global settings.
+        projectName={projectName}
         toolsMenu={<ToolsMenu health={health.data} />}
       >
         {children}

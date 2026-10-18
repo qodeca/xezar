@@ -560,6 +560,38 @@ describe('AppShell', () => {
       expect(within(bar).getByText('Skills')).toBeTruthy()
     })
 
+    const topBar = () => document.querySelector('[data-slot="mobile-top-bar"]') as HTMLElement
+    const slotText = (slot: string) => topBar().querySelector(`[data-slot="${slot}"]`)?.textContent ?? null
+
+    it('names the project above the page on a phone, where the sidebar is behind the menu', () => {
+      renderShell('/p/shop/skills', { projectName: 'shop-frontend' })
+      expect(slotText('mobile-context')).toBe('shop-frontend')
+      expect(slotText('mobile-title')).toBe('Skills')
+    })
+
+    it('tells project settings and global settings apart', () => {
+      const first = renderShell('/p/shop/settings/agents', { projectName: 'shop-frontend' })
+      expect(slotText('mobile-context')).toBe('shop-frontend')
+      expect(slotText('mobile-title')).toBe('Settings')
+      first.unmount()
+
+      // Global settings belongs to no project, so the line names the scope instead.
+      renderShell('/settings/global/resources', { projectName: null })
+      expect(slotText('mobile-context')).toBeNull()
+      expect(slotText('mobile-title')).toBe('Global settings')
+    })
+
+    it('says Workspace settings for the global area in single-project mode', () => {
+      renderShell('/settings/global', { singleProjectRoot: true })
+      expect(slotText('mobile-title')).toBe('Workspace settings')
+    })
+
+    it('shows no context line while the project is not yet known', () => {
+      renderShell('/p/shop/git')
+      expect(slotText('mobile-context')).toBeNull()
+      expect(slotText('mobile-title')).toBe('Git')
+    })
+
   })
 
   /** The resizable desktop column (#788, option C). jsdom has no layout engine, so these assert
