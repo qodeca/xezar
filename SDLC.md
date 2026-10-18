@@ -695,6 +695,19 @@ Incident notes: `docs/runbooks/`.
 - Shipped prompts and instructions stay generic: no personal identity, path or account in a
   committed file (`npm run check:generic-instructions`).
 - Never stop a process by command-line pattern (`pkill -f`); stop only a PID you started.
+- **Platform labels.** This project adds a `platform` group – `windows`, `linux`, `macos` – to the
+  label taxonomy (both machine sources carry it). Every issue carries at least one, set at
+  intake; no platform label means intake is unfinished, never "all systems". The labels name
+  every operating system where the problem happens or where the change must work and be
+  verified: a Windows-only CI flake gets `windows`, a fix to the POSIX shutdown path gets `linux`
+  and `macos`, and behaviour that is the same everywhere – most engine, cockpit, MCP and docs
+  work – gets all three. WSL counts as `linux`; add `windows` when the failure depends on the
+  Windows host. The operating system in a bug report's environment block is evidence, not the
+  label. Whoever learns that the set is wrong updates it in the same step. A pull request copies
+  its issue's platform labels unless its diff changes the set, and its verification evidence
+  names the system it ran on; a labelled platform it did not verify is reported as unchecked.
+- **Release labels** (`release-x.y.z`) mark what a release must contain. They come off every open
+  issue once that release ships; an issue that slipped gets the next release's label or none.
 
 ### Guards in this project
 
@@ -731,6 +744,4 @@ None.
   `repo-gates.sh` and `validation.commands`.
 - The PR template's "UI in scope" omits the CLI surface that the design gate covers.
 - The issue templates do not ask for priority or risk (inferred from a search).
-- `.xezar/docs/parallel-tasks.md` and `recovery.md` still describe the removed OpenCode and pi
-  leaders.
 - `docs/architecture/` does not exist yet; it is created with its first record.

@@ -55,7 +55,8 @@
       "risk-low",
       "risk-medium",
       "risk-high"
-    ]
+    ],
+    "platform": ["windows", "linux", "macos"]
   },
   "qaGate": true,
   "ci": {
