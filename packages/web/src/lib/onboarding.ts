@@ -12,6 +12,11 @@ import type { OnboardingIdentity, OnboardingStatus } from '@qodeca/xezar-api-cli
  * **setup templates**, never "kit" (a xezar-internal word, #466 / OQ-5), and the words *update*,
  * *upgrade* and *newer* appear nowhere — a downgrade and a development build are changes to
  * inspect, not migration authority.
+ *
+ * One owner-approved exception: the older-setup warning (`status.olderSetup`, the `*OlderSetup*`
+ * functions below). A project set up with a setup collection older than this xezar supports has
+ * tasks refused, and a re-check cannot fix that, so that warning — and only that warning — tells
+ * the person to upgrade the setup collection with its public upgrade guide, then re-check.
  */
 
 /** What actually moved between the checked identity and the running one. */
@@ -56,7 +61,34 @@ export interface OfferCopy {
   rest: string
   /** `both` needs a link to Settings, where the four identifiers have room. */
   linkToSettings: boolean
+  /** Set for the older-setup offer: the row links this guide INSTEAD of offering Re-check, because
+   *  a re-check before the upgrade changes nothing. `null` for every changed-identity offer. */
+  upgradeGuideUrl: string | null
 }
+
+/** The link to the setup collection's upgrade guide, on the offer row and the Settings card. */
+export const UPGRADE_GUIDE_LINK_LABEL = 'Open the upgrade guide'
+
+/** Whether the surfaces show the older-setup warning. Only over `set-up`: a running check says
+ *  "wait" first, and the server never sends `olderSetup` without an install record. */
+export function showsOlderSetup(
+  status: OnboardingStatus,
+): status is OnboardingStatus & { olderSetup: NonNullable<OnboardingStatus['olderSetup']> } {
+  return status.state === 'set-up' && status.olderSetup !== null
+}
+
+/** Why it matters, in one sentence the row and the card share so the two cannot drift. */
+const OLDER_SETUP_CONSEQUENCE =
+  'Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs.'
+
+/** The card's fact: which collection the project carries and which one this xezar needs. */
+function olderSetupFact(older: NonNullable<OnboardingStatus['olderSetup']>): string {
+  return `This project was set up with setup collection ${older.recordedVersion}, and this xezar needs ${older.minimumVersion} or later. ${OLDER_SETUP_CONSEQUENCE}`
+}
+
+/** What to do about it. A re-check is the step after the upgrade, never instead of it. */
+const OLDER_SETUP_REMEDY =
+  'Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.'
 
 /**
  * The offer row's sentence for a changed identity.
@@ -66,13 +98,23 @@ export interface OfferCopy {
  * already offered, or a check already running.
  */
 export function offerCopy(status: OnboardingStatus): OfferCopy | null {
-  if (!status.offerPending || !status.lastChecked) return null
+  if (!status.offerPending) return null
+  if (showsOlderSetup(status)) {
+    return {
+      lead: 'This project’s setup is older than this xezar supports',
+      rest: ` — it was set up with setup collection ${status.olderSetup.recordedVersion}, and this xezar needs ${status.olderSetup.minimumVersion} or later. ${OLDER_SETUP_CONSEQUENCE} ${OLDER_SETUP_REMEDY}`,
+      linkToSettings: false,
+      upgradeGuideUrl: status.olderSetup.upgradeGuideUrl,
+    }
+  }
+  if (!status.lastChecked) return null
   const change = onboardingChange(status.lastChecked, status.observed)
   if (change === 'engine') {
     return {
       lead: 'xezar changed since this project was last checked',
       rest: ` — ${status.observed.engineVersion} now, ${status.lastChecked.engineVersion} then. ${RECHECK_SENTENCE}`,
       linkToSettings: false,
+      upgradeGuideUrl: null,
     }
   }
   if (change === 'templates') {
@@ -80,17 +122,20 @@ export function offerCopy(status: OnboardingStatus): OfferCopy | null {
       lead: 'The setup templates changed since this project was last checked',
       rest: ` — ${shortDigest(status.observed.kitDigest)} now, ${shortDigest(status.lastChecked.kitDigest)} then. ${RECHECK_SENTENCE}`,
       linkToSettings: false,
+      upgradeGuideUrl: null,
     }
   }
   return {
     lead: 'xezar and the setup templates changed since this project was last checked.',
     rest: ` ${RECHECK_SENTENCE}`,
     linkToSettings: true,
+    upgradeGuideUrl: null,
   }
 }
 
 /** The Settings card's state heading. Never merged with the sentence: both have to stand alone. */
 export function setupHeading(status: OnboardingStatus): string {
+  if (showsOlderSetup(status)) return 'Setup needs an upgrade'
   switch (status.state) {
     case 'checking':
       return 'Re-checking'
@@ -113,6 +158,7 @@ export function setupHeading(status: OnboardingStatus): string {
  * nothing that moved.
  */
 export function setupBody(status: OnboardingStatus): string {
+  if (showsOlderSetup(status)) return `${olderSetupFact(status.olderSetup)} ${OLDER_SETUP_REMEDY}`
   switch (status.state) {
     case 'checking':
       return 'A task is comparing this project’s files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview.'

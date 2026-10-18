@@ -35,6 +35,7 @@ const STATUS: OnboardingStatus = {
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
   issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
+  olderSetup: null,
 }
 
 let creates: number

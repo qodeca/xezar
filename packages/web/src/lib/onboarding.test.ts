@@ -13,6 +13,8 @@ import {
   HOSTED_SETUP_NOTE,
   SETUP_HERO_SENTENCE,
   shortDigest,
+  showsOlderSetup,
+  UPGRADE_GUIDE_LINK_LABEL,
 } from './onboarding'
 
 /**
@@ -37,6 +39,7 @@ const base: OnboardingStatus = {
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
   issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
+  olderSetup: null,
 }
 
 const status = (over: Partial<OnboardingStatus>): OnboardingStatus => ({ ...base, ...over })
@@ -47,6 +50,18 @@ const changed = (checked: { engineVersion: string; kitDigest: string }) =>
     provenance: 'recorded',
     offerPending: true,
     lastChecked: { ...checked, at: '2026-09-02T16:40:00.000Z' },
+  })
+
+const GUIDE = 'https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md'
+
+/** A project whose install record names setup collection 3.0.3, as the server sends it. */
+const older = (over: Partial<OnboardingStatus> = {}) =>
+  status({
+    state: 'set-up',
+    provenance: 'recorded',
+    offerPending: true,
+    olderSetup: { recordedVersion: '3.0.3', minimumVersion: '3.2.0', upgradeGuideUrl: GUIDE },
+    ...over,
   })
 
 describe('identities', () => {
@@ -169,6 +184,52 @@ describe('the Settings card', () => {
   })
 })
 
+describe('the older-setup warning (owner-approved exception to the no-“upgrade” rule)', () => {
+  it('the row names both versions, the consequence and the upgrade guide, and offers no re-check', () => {
+    const copy = offerCopy(older())!
+    expect(copy.lead).toBe('This project’s setup is older than this xezar supports')
+    expect(copy.rest).toBe(
+      ' — it was set up with setup collection 3.0.3, and this xezar needs 3.2.0 or later. Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs. Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.',
+    )
+    expect(copy.upgradeGuideUrl).toBe(GUIDE)
+    expect(copy.linkToSettings).toBe(false)
+    expect(UPGRADE_GUIDE_LINK_LABEL).toBe('Open the upgrade guide')
+  })
+
+  it('the card says it in its own heading and sentence, and keeps Re-check for afterwards', () => {
+    expect(setupHeading(older())).toBe('Setup needs an upgrade')
+    expect(setupBody(older())).toBe(
+      'This project was set up with setup collection 3.0.3, and this xezar needs 3.2.0 or later. Until it is upgraded, xezar refuses some tasks the older setup sends to agents xezar no longer runs. Upgrade the setup collection with its upgrade guide, then re-check — a re-check alone does not upgrade it.',
+    )
+    expect(setupActionLabel(older())).toBe('Re-check now')
+    expect(setupMode(older())).toBe('recheck')
+  })
+
+  it('Later hides the row and the card still warns', () => {
+    const dismissed = older({ offerPending: false, dismissed: true })
+    expect(offerCopy(dismissed)).toBeNull()
+    expect(setupHeading(dismissed)).toBe('Setup needs an upgrade')
+  })
+
+  it('a running check outranks it, and a current setup is unchanged', () => {
+    const checking = older({ state: 'checking', offerPending: false, checkingRunId: 'run-1' })
+    expect(showsOlderSetup(checking)).toBe(false)
+    expect(setupHeading(checking)).toBe('Re-checking')
+    const current = status({ state: 'set-up', provenance: 'recorded' })
+    expect(showsOlderSetup(current)).toBe(false)
+    expect(setupHeading(current)).toBe('Set up')
+    expect(offerCopy(current)).toBeNull()
+  })
+
+  it('names no xezar-internal file or process, and no internal word for the collection', () => {
+    const copy = offerCopy(older())!
+    const everything = [copy.lead, copy.rest, setupHeading(older()), setupBody(older()), UPGRADE_GUIDE_LINK_LABEL].join('\n')
+    for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i, /\bpi\b/i, /opencode/i]) {
+      expect(everything).not.toMatch(forbidden)
+    }
+  })
+})
+
 describe('release hygiene (#466)', () => {
   /**
    * EVERY string this module ships, not a sample of them (review round 1 finding 5): the first
@@ -197,6 +258,12 @@ describe('release hygiene (#466)', () => {
         const copy = offerCopy(changed(checked))
         return copy ? [copy.lead, copy.rest] : []
       }),
+      // The older-setup shapes: the row, the card and the link.
+      offerCopy(older())!.lead,
+      offerCopy(older())!.rest,
+      setupHeading(older()),
+      setupBody(older()),
+      UPGRADE_GUIDE_LINK_LABEL,
     ].join('\n')
 
   it('no shipped string names xezar’s own working files or process', () => {

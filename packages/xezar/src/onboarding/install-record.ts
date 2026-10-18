@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { projectKitDir } from '../project-kit-paths.ts';
 
 /**
- * The committed install record the 3.0.3 onboarding writes: `.xezar/onboarding.json`.
+ * The committed install record the onboarding writes: `.xezar/onboarding.json`.
  *
  * A project set up by running `xez-onboard-opinionated` directly — not through the cockpit's
  * "Set up this project" — has no engine check record under `.local/xezar/`, and without this read
@@ -14,7 +14,9 @@ import { projectKitDir } from '../project-kit-paths.ts';
  * presence is the project's own evidence that setup finished.
  *
  * Only the fields this engine relies on are checked; the rest belongs to the skill and passes
- * through untouched. A missing, unreadable or malformed file reads as absent — never an error, and
+ * through untouched. `version` (the setup collection release that wrote the record) is read but
+ * never required: an absent or non-string value reads as `null` and the record still counts, so
+ * an older record without it keeps reading as a finished setup. A missing, unreadable or malformed file reads as absent — never an error, and
  * never a warning: the file is the project's, and one that is not a setup record simply says
  * nothing about setup.
  */
@@ -33,6 +35,9 @@ export interface InstallRecord {
   skill: string;
   /** When the onboarding wrote the record, as the skill stamped it. */
   date: string;
+  /** The setup collection release that wrote the record, verbatim (for example `3.1.0`), or `null`
+   *  when the record carries no string `version`. `status.ts` decides whether it is too old. */
+  version: string | null;
 }
 
 export function installRecordPath(repoRoot: string): string {
@@ -54,5 +59,11 @@ export async function readInstallRecord(repoRoot: string): Promise<InstallRecord
     return null;
   }
   const result = installRecordSchema.safeParse(parsed);
-  return result.success ? { skill: result.data.skill, date: result.data.date } : null;
+  if (!result.success) return null;
+  const version = (result.data as { version?: unknown }).version;
+  return {
+    skill: result.data.skill,
+    date: result.data.date,
+    version: typeof version === 'string' && version.length > 0 ? version : null,
+  };
 }

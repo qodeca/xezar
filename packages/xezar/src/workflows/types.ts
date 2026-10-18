@@ -320,8 +320,8 @@ export const QUICK_TASK_WORKFLOW: WorkflowDef = {
  * call. Being a catalog entry rather than an inline chain is what lets a project leader dispatch
  * the same thing through `task_create` by name, which is the UI ↔ MCP parity rule.
  *
- * The step names the public `xez-onboard-opinionated` skill (Xezar Skills 3.0.3 – the only setup
- * this engine offers; a finished project carries its install record, `.xezar/onboarding.json`),
+ * The step names the public `xez-onboard-opinionated` skill (Xezar Skills, pinned at 3.2.1 by
+ * `BUNDLED_TEMPLATES_DIGEST` – the only setup this engine offers; a finished project carries its install record, `.xezar/onboarding.json`),
  * and the prompt below is deliberately complete on
  * its own: when the skill cannot be resolved (offline, no team collection) the runner degrades to
  * "running with the plain prompt" (`run.ts`), and the setup still has to work — a machine with no

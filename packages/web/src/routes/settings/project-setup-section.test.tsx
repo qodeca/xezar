@@ -35,6 +35,7 @@ const onboarding = (over: Partial<OnboardingStatus> = {}): OnboardingStatus => (
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
   issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
+  olderSetup: null,
   ...over,
 })
 
@@ -144,6 +145,36 @@ describe('Settings → Project setup', () => {
     expect(rows()[2]?.[1]).toContain('xezar 0.14.0')
     expect(card()?.textContent).toContain('You chose Later')
     expect(card()?.textContent).toContain('A re-check is always here.')
+  })
+
+  it('warns about an older setup collection, links its upgrade guide and keeps Re-check', async () => {
+    const guide = 'https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md'
+    serve(
+      onboarding({
+        state: 'set-up',
+        provenance: 'recorded',
+        offerPending: true,
+        olderSetup: { recordedVersion: '3.1.0', minimumVersion: '3.2.0', upgradeGuideUrl: guide },
+      }),
+    )
+    renderSection()
+    await waitFor(() => expect(card()).not.toBeNull())
+    expect(card()?.getAttribute('data-setup-state')).toBe('set-up')
+    expect(screen.getByRole('heading', { name: 'Setup needs an upgrade', level: 3 })).toBeTruthy()
+    expect(card()?.textContent).toContain('set up with setup collection 3.1.0, and this xezar needs 3.2.0 or later')
+    const link = card()?.querySelector<HTMLAnchorElement>('a[data-action="open-upgrade-guide"]')
+    expect(link?.textContent).toBe('Open the upgrade guide')
+    expect(link?.getAttribute('href')).toBe(guide)
+    expect(link?.getAttribute('target')).toBe('_blank')
+    expect(card()?.querySelector('[data-action="start-setup"]')?.textContent).toContain('Re-check now')
+  })
+
+  it('a current setup shows no upgrade warning', async () => {
+    serve(onboarding({ state: 'set-up', provenance: 'recorded' }))
+    renderSection()
+    await waitFor(() => expect(card()).not.toBeNull())
+    expect(screen.getByRole('heading', { name: 'Set up', level: 3 })).toBeTruthy()
+    expect(card()?.querySelector('[data-action="open-upgrade-guide"]')).toBeNull()
   })
 
   it('disables the action with a readable reason when no agent backend was found', async () => {

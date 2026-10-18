@@ -13,6 +13,8 @@ import {
   setupBody,
   setupHeading,
   setupMode,
+  showsOlderSetup,
+  UPGRADE_GUIDE_LINK_LABEL,
 } from '@/lib/onboarding'
 import type { OnboardingStamp, OnboardingStatus } from '@qodeca/xezar-api-client'
 
@@ -63,6 +65,8 @@ export function ProjectSetupSection() {
  *  the state in words, so it is `aria-hidden` and removing all colour loses nothing. */
 function dotTone(status: OnboardingStatus): StatusDotTone {
   if (status.state === 'checking') return 'violet'
+  // An older setup collection is set up AND needs attention: the same tone as a changed identity.
+  if (showsOlderSetup(status)) return 'pending'
   if (status.state === 'set-up') return 'success'
   return status.state === 'changed' ? 'pending' : 'neutral'
 }
@@ -106,6 +110,19 @@ function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted
               <p className="text-[13px] leading-relaxed text-muted-foreground">
                 {setupBody(status)}
               </p>
+              {showsOlderSetup(status) ? (
+                <p className="text-[13px]">
+                  <a
+                    href={status.olderSetup.upgradeGuideUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-action="open-upgrade-guide"
+                    className="inline-flex min-h-tap items-center font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
+                  >
+                    {UPGRADE_GUIDE_LINK_LABEL}
+                  </a>
+                </p>
+              ) : null}
             </div>
             <div className="shrink-0 max-md:w-full">
               {running ? (

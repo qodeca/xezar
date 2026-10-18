@@ -28,6 +28,7 @@ const base: OnboardingStatus = {
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
   issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
+  olderSetup: null,
 }
 
 function renderRow(
@@ -143,6 +144,40 @@ describe('the offer row', () => {
     // Dismissing never depends on being able to act: a person may always put the notice away.
     fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(onLater).toHaveBeenCalledTimes(1)
+  })
+
+  it('an older setup collection links the upgrade guide instead of offering a re-check', () => {
+    const guide = 'https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md'
+    const { row, onRecheck, onLater } = renderRow({
+      state: 'set-up',
+      lastChecked: null,
+      olderSetup: { recordedVersion: '3.0.3', minimumVersion: '3.2.0', upgradeGuideUrl: guide },
+      // Even with no agent backend: the guide is not an agent task, so it is never disabled.
+      available: false,
+      unavailableReason: 'Setup unavailable — no agent backend was found.',
+    })
+    expect(row()?.getAttribute('data-offer-state')).toBe('older-setup')
+    expect(row()?.getAttribute('role')).toBe('status')
+    expect(row()?.textContent).toContain('This project’s setup is older than this xezar supports')
+    expect(row()?.textContent).toContain('setup collection 3.0.3')
+    const link = screen.getByRole('link', { name: 'Open the upgrade guide' })
+    expect(link.getAttribute('href')).toBe(guide)
+    expect(link.getAttribute('rel')).toBe('noreferrer')
+    expect(screen.queryByRole('button', { name: 'Re-check' })).toBeNull()
+    expect(document.getElementById('onboarding-offer-why')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
+    expect(onLater).toHaveBeenCalledTimes(1)
+    expect(onRecheck).not.toHaveBeenCalled()
+  })
+
+  it('renders nothing for an older setup once Later was chosen for this pair', () => {
+    const { row } = renderRow({
+      state: 'set-up',
+      offerPending: false,
+      dismissed: true,
+      olderSetup: { recordedVersion: '3.0.3', minimumVersion: '3.2.0', upgradeGuideUrl: 'https://example.invalid/' },
+    })
+    expect(row()).toBeNull()
   })
 
   it('names none of xezar’s own working files or process, in any shape (#466)', () => {

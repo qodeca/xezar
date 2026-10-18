@@ -1,6 +1,6 @@
 import type { OnboardingStatus } from '@qodeca/xezar-api-client'
 import { Link } from '@/lib/project-router'
-import { offerCopy } from '@/lib/onboarding'
+import { offerCopy, UPGRADE_GUIDE_LINK_LABEL } from '@/lib/onboarding'
 
 import { Button } from './ui/button'
 
@@ -65,7 +65,7 @@ export function OnboardingOfferRow({
   return (
     <div
       data-slot="onboarding-offer"
-      data-offer-state="pending"
+      data-offer-state={copy.upgradeGuideUrl ? 'older-setup' : 'pending'}
       role="status"
       aria-live="polite"
       className="flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap"
@@ -87,15 +87,30 @@ export function OnboardingOfferRow({
       </span>
       {/* Both actions keep full width at 44 px on a phone; neither ever disappears (§ 12). */}
       <span className="flex shrink-0 items-center gap-row max-md:w-full md:ml-auto">
-        <Button
-          variant="outline"
-          onClick={onRecheck}
-          disabled={pending || !status.available}
-          {...(status.available ? {} : { 'aria-describedby': 'onboarding-offer-why' })}
-          className="max-md:h-11 max-md:flex-1"
-        >
-          {pending ? 'Starting…' : 'Re-check'}
-        </Button>
+        {copy.upgradeGuideUrl ? (
+          // An older setup collection: a re-check before the upgrade changes nothing, so the
+          // primary action opens the upgrade guide. Re-check stays on Settings for afterwards.
+          <Button asChild variant="outline" className="max-md:h-11 max-md:flex-1">
+            <a
+              href={copy.upgradeGuideUrl}
+              target="_blank"
+              rel="noreferrer"
+              data-action="open-upgrade-guide"
+            >
+              {UPGRADE_GUIDE_LINK_LABEL}
+            </a>
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={onRecheck}
+            disabled={pending || !status.available}
+            {...(status.available ? {} : { 'aria-describedby': 'onboarding-offer-why' })}
+            className="max-md:h-11 max-md:flex-1"
+          >
+            {pending ? 'Starting…' : 'Re-check'}
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={onLater}
@@ -105,7 +120,7 @@ export function OnboardingOfferRow({
           Later
         </Button>
       </span>
-      {status.available ? null : (
+      {status.available || copy.upgradeGuideUrl ? null : (
         <span id="onboarding-offer-why" className="sr-only">
           {status.unavailableReason}
         </span>

@@ -19,8 +19,11 @@ import { GuideBrowser } from './guide-browser'
  * the actual `xez-onboard-opinionated` guided-setup skill end to end is manual with a dated record, since it
  * depends on a real team-skills network fetch this dry-run fixture does not perform.
  *
- * The boot project is this repository's own checkout, which the 3.0.3 onboarding set up and whose
- * committed `.xezar/onboarding.json` therefore reads as a finished setup. The "not set up yet" case
+ * The boot project is this repository's own checkout, which the onboarding set up and whose
+ * committed `.xezar/onboarding.json` therefore reads as a finished setup. When that record names a
+ * setup collection older than this xezar supports, the card says so instead ("Setup needs an
+ * upgrade"); both are a finished setup, so the case below accepts either and checks the sentence
+ * that goes with it. The "not set up yet" case
  * runs against a throwaway empty repository registered through `POST /api/v1/projects` (and
  * removed through the real route after, as `project-switching.e2e.ts` does), so it keeps proving
  * what a genuinely unconfigured project sees.
@@ -75,15 +78,20 @@ describe('guide 15 — project kit', () => {
     expect(browser.hasRole('button', 'Set up this project')).toBe(true)
   })
 
-  it('a project the 3.0.3 onboarding finished reads as set up, without offering first-time setup', async () => {
+  it('a project the onboarding finished reads as set up, without offering first-time setup', async () => {
     browser.goto(`${baseUrl}/p/${bootProject}/settings/project-setup`)
     await browser.waitForRole('heading', 'Guided setup')
     await browser.waitForRole('button', 'Re-check now')
 
-    expect(browser.hasRole('heading', 'Set up', { exact: true })).toBe(true)
     expect(browser.hasRole('heading', 'Not set up yet')).toBe(false)
     expect(browser.hasRole('button', 'Set up this project')).toBe(false)
-    expect(browser.hasText('This project records a finished setup in its own files.')).toBe(true)
+    if (browser.hasRole('heading', 'Setup needs an upgrade')) {
+      expect(browser.hasText('This project was set up with setup collection')).toBe(true)
+      expect(browser.hasRole('link', 'Open the upgrade guide')).toBe(true)
+    } else {
+      expect(browser.hasRole('heading', 'Set up', { exact: true })).toBe(true)
+      expect(browser.hasText('This project records a finished setup in its own files.')).toBe(true)
+    }
   })
 
   it('an absent skillsRepos keeps the default team-skills catalog visible on the Agents page', async () => {
