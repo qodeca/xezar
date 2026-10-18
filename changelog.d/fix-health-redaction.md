@@ -6,3 +6,5 @@
   the MCP tools), while a plain SSH account such as `git@` is kept. In hosted mode health's
   `repo.root` is the folder name only, matching `repoRoot`. `GET /api/v1/health` stops sending
   open CORS and private-network headers, which only the retired bookmarklet probe needed.
+  The `health` WebSocket topic is now readable only by the cockpit's own connection, for the
+  same reason.

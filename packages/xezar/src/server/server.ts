@@ -1768,11 +1768,11 @@ export function createApp(deps: ServerDeps) {
         };
       },
     },
-    // health IS the discovery payload, trimmed and credential-free (#431), so it
-    // is the one topic treated as safe for any local page — including a cross-port page admitted by the
-    // loopback fallback on a no-Sec-Fetch browser. Every other (future) topic
-    // keeps the default: trusted connections only.
-    { loopbackReadable: true },
+    // Default trust, like every other topic: the payload carries the absolute
+    // checkout path and the repository identity, and a connection admitted by
+    // the loopback fallback on a no-Sec-Fetch browser may be a foreign local
+    // page. The HTTP twin sends no CORS headers for the same reason. A cockpit
+    // on such a connection keeps reading health over HTTP; it only loses the push.
   );
   // Pre-warm on the live-server path only (startServer injects the hub; a bare
   // app in tests does not, so tests never spawn the probes here): the cache
@@ -6859,8 +6859,8 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
  * `Sec-Fetch-Site`, a page served from ANOTHER loopback port. That is no longer
  * a caveat the caller must remember: the verdict carries a `trusted` flag, and
  * the hub only lets an UNtrusted connection subscribe to topics a publisher
- * marked `loopbackReadable`. `health` is flagged so (the discovery
- * payload, #431); every other topic stays trusted-only by default, so a topic
+ * marked `loopbackReadable`. No topic is flagged so today
+ * (`health` was, until it stopped being safe for any local page); every topic stays trusted-only by default, so a topic
  * carrying run or repo content is mechanically unreachable from a foreign local
  * page without any per-topic vigilance. A connection is `trusted` when it is
  * provably the cockpit itself: a same-authority Origin, a no-Origin native

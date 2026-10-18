@@ -90,9 +90,11 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   bookmarklet port probe, was retired earlier. `repo.remote` (on health and the repository route)
   no longer includes a user name or password embedded in the URL, and in hosted mode `repo.root`
   is the folder name, as `repoRoot` already was. Every field keeps its name and type.
-  *Symptom:* a script running in a browser page on another origin can no longer read health;
-  a native client (`curl`, the MCP bridge) is unaffected. *Way forward:* read health from a
-  native client or from the cockpit's own origin.
+  The `health` WebSocket topic is likewise readable only by a connection proven to be the
+  cockpit itself. *Symptom:* a script running in a browser page on another origin can no longer
+  read health over HTTP or the WebSocket; a native client (`curl`, the MCP bridge) is unaffected.
+  *Way forward:* read health from a native client or from the cockpit's own origin. The owner
+  approved removing the health CORS headers on 2026-10-18.
 - **0.30.0 – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
   backend, provider and leader-client ids `pi` and `opencode` are gone from every schema, with
   `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the

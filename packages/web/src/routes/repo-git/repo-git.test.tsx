@@ -333,6 +333,26 @@ describe('the repo view Branches segment', () => {
     await waitFor(() => expect(client.getQueryData<HealthResponse>(queryKeys.health)?.repo?.branch).toBe('feature'))
   })
 
+  it('Switch updates the health branch at once in hosted mode, where health names the folder only', async () => {
+    const hosted: HealthResponse = {
+      ...HEALTH,
+      repoRoot: 'repo',
+      repo: { ...HEALTH.repo!, root: 'repo' },
+      capabilities: { ...HEALTH.capabilities, localHandoff: false },
+    }
+    stubFetch({
+      'GET /api/v1/health': () => jsonResponse(hosted),
+      'POST /api/v1/repo/branch': () => jsonResponse({ branch: 'feature', created: false }),
+    })
+    const client = renderAt('/git/branches')
+    await waitFor(() => expect(document.querySelector('[data-action="switch-branch"]')).not.toBeNull())
+    await waitFor(() => expect(client.getQueryData<HealthResponse>(queryKeys.health)?.repo?.root).toBe('repo'))
+
+    fireEvent.click(document.querySelector('[data-action="switch-branch"]')!)
+    await waitFor(() => expect(document.body.textContent).toContain('Switched to feature'))
+    await waitFor(() => expect(client.getQueryData<HealthResponse>(queryKeys.health)?.repo?.branch).toBe('feature'))
+  })
+
   it('filters branch rows without narrowing the base-branch picker', async () => {
     stubFetch()
     renderAt('/git/branches')

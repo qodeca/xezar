@@ -34,6 +34,30 @@ function stubHub() {
   return { hub, topics };
 }
 
+describe('health topic trust', () => {
+  it('is readable by trusted connections only — never by a page admitted by the loopback fallback', () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'xez-health-trust-'));
+    const store = RunStore.open(join(repoRoot, '.local/xezar'));
+    try {
+      const options = new Map<string, boolean>();
+      const hub: SocketHub = {
+        registerTopic: (name, _publisher, topicOptions) => {
+          options.set(name, topicOptions?.loopbackReadable ?? false);
+        },
+        attach: () => undefined,
+        close: () => undefined,
+      };
+      createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', socketHub: hub });
+      expect(options.get('health')).toBe(false);
+      // No built-in topic opts out of the trusted-only default.
+      expect([...options.values()].every((readable) => readable === false)).toBe(true);
+    } finally {
+      store.flush();
+      rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    }
+  });
+});
+
 describe('health topic + cache (live-server path)', () => {
   let repoRoot: string;
   let store: RunStore;

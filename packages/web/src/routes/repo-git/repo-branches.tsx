@@ -3,6 +3,7 @@ import { CheckIcon, GitBranchIcon, GitPullRequestIcon, PlusIcon } from 'lucide-r
 import { useState, type FormEvent } from 'react'
 
 import { createRepoBranch, putConfig } from '@/api/client'
+import { useProjectScope } from '@/api/project-scope-context'
 import { queryKeys, useGithub, useHealth } from '@/api/queries'
 import type { GithubItem, HealthResponse, RepoInfo, RepoResponse } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ import { cn, isHttpUrl } from '@/lib/utils'
  */
 export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: RepoInfo }) {
   const health = useHealth()
+  const { projectId } = useProjectScope()
   const queryClient = useQueryClient()
   const onError = (error: Error) => toast(error.message, { tone: 'danger' })
 
@@ -40,9 +42,12 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
       queryClient.setQueryData<RepoResponse>(queryKeys.repo, (current) =>
         current?.info ? { ...current, info: { ...current.info, branch: result.branch } } : current,
       )
-      // Health is workspace-level, so only patch it when it describes this repo.
+      // Health is workspace-level: it describes the boot project, so only patch it when this
+      // view shows that project. Matched by project identity as well as by root, because a
+      // hosted cockpit's health names the folder only, never the absolute root `info` carries.
       queryClient.setQueryData<HealthResponse>(queryKeys.health, (current) =>
-        current?.repo?.root === info.root
+        current?.repo &&
+        (current.repo.root === info.root || projectId === null || projectId === current.bootProject)
           ? { ...current, repo: { ...current.repo, branch: result.branch } }
           : current,
       )
