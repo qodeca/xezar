@@ -298,6 +298,33 @@ if [ -n "$pr_json" ]; then
       *)
         refuse release.head "PR #$PR head \"$pr_head_ref\" is not a release-class branch for \"$BASE\": promote/*, release/v* or hotfix/* into \"$RELEASE_BRANCH\", backmerge/* into \"$configured_base\"." ;;
     esac
+    # A branch NAME is cheap to fake, so the two promises the model rests on are checked on the
+    # history itself: a promotion carries only work already on the base (its head is contained in
+    # the base), and a back-merge carries everything on `main` (`main` is contained in its head).
+    # An unreadable comparison is UNAVAILABLE, never a pass.
+    compare_status() {
+      local answer
+      answer="$("$GH" api "repos/$REPO/compare/$1...$2" 2>/dev/null)" || return 1
+      printf '%s' "$answer" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).status||""))}catch{}})' 2>/dev/null
+    }
+    if [ -n "$actual_head" ]; then
+      case "$BASE:$pr_head_ref" in
+        "$RELEASE_BRANCH":promote/*)
+          st="$(compare_status "$configured_base" "$actual_head")" || st=""
+          case "$st" in
+            behind|identical) observe "promotion head $actual_head is contained in $configured_base ($st)" ;;
+            '') unavail release.history "could not compare $actual_head with $configured_base; a promotion's content is unverified" ;;
+            *) refuse release.history "promotion head $actual_head is not contained in $configured_base (compare: $st); a promotion carries only work already merged there" ;;
+          esac ;;
+        "$configured_base":backmerge/*)
+          st="$(compare_status "$RELEASE_BRANCH" "$actual_head")" || st=""
+          case "$st" in
+            ahead|identical) observe "back-merge head $actual_head contains $RELEASE_BRANCH ($st)" ;;
+            '') unavail release.history "could not compare $RELEASE_BRANCH with $actual_head; a back-merge's content is unverified" ;;
+            *) refuse release.history "back-merge head $actual_head does not contain $RELEASE_BRANCH (compare: $st); cut it from $RELEASE_BRANCH" ;;
+          esac ;;
+      esac
+    fi
   fi
   # THE ANTI-RACE. --expected-head pins the head only; it does NOT atomically pin the base, so a
   # moved base is reported separately below and forces its own compatibility decision.

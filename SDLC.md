@@ -26,6 +26,7 @@ Nothing merges on its own.
 - Closing keywords (`Fixes #n`) work only in pull requests into `develop`, the default branch. A
   hotfix's issue is closed by hand after its back-merge.
 - The release steps, in order, are in `docs/publishing.md` § Cutting a release.
+- Until `develop` exists and the configured `baseBranch` names it, `main` is still the base.
 
 ## The gate
 

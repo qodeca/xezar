@@ -147,8 +147,11 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
   through `integration-preflight.sh --release`, and every merge into `main` is followed by a
   `backmerge/*` pull request into `develop`. The `PR source guard` CI check refuses anything else
   into `main`. The primary checkout follows `develop`; root-sync targets a `develop` commit.
-- After the default branch changes, every checkout runs `git remote set-head origin -a` once:
-  `git fetch` never refreshes `origin/HEAD`, and the config guard and routing compare against it.
+- The cut-over is two changes that land together: the GitHub default branch becomes `develop`,
+  and `.xezar/config.json` and `.xezar/pipeline/config.json` say `"baseBranch": "develop"` (plus
+  the system prompt's base-branch sentence). Then every checkout runs `git remote set-head origin -a`
+  once and moves to `develop`: `git fetch` never refreshes `origin/HEAD`, and the config guard and
+  routing compare `baseBranch` against it. Until that cut-over, `main` is still the base.
 - The gate, in order: `npm ci`, the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`,
   `npm run build`, `npm run test:package`, then the repository checks. One command runs it, in the
   foreground: `bash .xezar/checks/repo-gates.sh`. No lint command exists.

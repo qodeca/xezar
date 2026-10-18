@@ -36,10 +36,11 @@ Sanity rules. The version in `package.json` on `origin/main` may still be one be
 gh pr list --state merged --base <base> --limit 200 \
   --search "merged:>=<tag commit date, YYYY-MM-DD>" \
   --json number,title,body,labels,mergedAt,mergeCommit,files,headRefName
-git log <tag>..origin/<base> --first-parent --no-merges --format='%H %s'
+git log <tag>..origin/<base> --first-parent --format='%H %s'               # trunk (<base> is main)
+git log <tag>..origin/<base> --first-parent --no-merges --format='%H %s'   # two-branch
 ```
 
-Cross-check both lists: every first-parent, non-merge commit on `<base>` since the tag is a squash of one PR (`(#N)` at the end of the subject), and every PR the search returns must have its merge commit in that range. Under the two-branch model the tag sits on `main` and reaches `<base>` through the back-merge, so `<tag>..origin/<base>` is exactly what has not shipped; `--no-merges` drops the back-merge commits, and the PR list drops them by head branch below. A PR in one list and not the other is a finding to report, not a bullet to drop silently. Then exclude:
+Cross-check both lists: every first-parent commit on `<base>` since the tag (non-merge only, under the two-branch model) is a squash of one PR (`(#N)` at the end of the subject), and every PR the search returns must have its merge commit in that range. Under the two-branch model the tag sits on `main` and reaches `<base>` through the back-merge, so `<tag>..origin/<base>` is exactly what has not shipped; `--no-merges` drops the back-merge commits, and the PR list drops them by head branch below. A PR in one list and not the other is a finding to report, not a bullet to drop silently. Then exclude:
 
 - release-class PRs by head branch: `promote/*`, `backmerge/*` and `release/v*` (two-branch);
 

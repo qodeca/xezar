@@ -117,6 +117,11 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    `git rev-list --count origin/develop..origin/main` is 0. Every merge into `main` – promotion,
    bump or hotfix – is followed by one, or the next promotion is out of date.
 
+A **hotfix** ships one urgent fix without the unreleased work on `develop`, and only with the
+owner's explicit authorization: a `hotfix/<name>` branch from `main` carrying the fix and its
+folded changelog section, merged into `main` with a merge commit, then steps 2–5 with
+`bump=patch`. The release skill carries the commands.
+
 ### What a green run means
 
 A green `Release` run means the package **is on the registry**. `scripts/release.mjs` exits
@@ -161,7 +166,7 @@ concluding that nothing published.
 **After a bump release, the manifests keep naming the previous version on purpose.** A
 `patch`/`minor`/`major` run stamps the version during the release run instead of committing it
 beforehand, so the commit the tag points at can still hold the previous number. The version-bump
-pull request brings the repository in line afterwards. Until that lands, "the trunk says 0.17.0 and
+pull request brings the repository in line afterwards. Until that lands, "`main` says 0.17.0 and
 the registry says 0.18.0" is the expected middle state – the 0.18.0 tag is exactly that: its
 `package.json` reads `0.17.0`. A `bump=existing` release has no such window, because the version is
 already committed.

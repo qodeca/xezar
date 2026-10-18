@@ -97,11 +97,11 @@ if [ "$IS_WORKTREE" -ne 1 ]; then
   printf 'worktree-git: %s is not a Xezar worktree — refusing to write.\n' "$TASK_CWD" >&2
   exit 1
 fi
-# The configured base is the integration branch; `main` is the release branch under either model
-# (LP-5: under the two-branch model the base is `develop`, which needs refusing too).
-base_branch="$(xezar_base_branch 2>/dev/null)" || base_branch=main
+# The configured base (`BASE_BRANCH`, exported by resolve_task_paths) is the integration branch;
+# `main` is the release branch under either model (LP-5: under the two-branch model the base is
+# `develop`, which needs refusing too).
 case "$BRANCH" in
-  main | master | HEAD | "$base_branch")
+  main | master | HEAD | "$BASE_BRANCH")
     printf 'worktree-git: HEAD is "%s" — refusing to write to the integration or release branch.\n' "$BRANCH" >&2
     exit 1
     ;;
