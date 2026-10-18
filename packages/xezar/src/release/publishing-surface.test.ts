@@ -133,7 +133,7 @@ describe('publishing surface', () => {
         encoding: 'utf8',
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
-    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];
+    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts', 'stryker.lock.config.mjs', 'vitest.mutation.lock.config.ts'];
     const shipped = packed[0]!.files
       .map((f) => f.path)
       .filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/') || p.startsWith('mutation/'));

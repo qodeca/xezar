@@ -1226,6 +1226,38 @@ was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not
 No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
 coverage command proves a successful nightly mutation run.
 
+### 10.13 A second, hand-run scope: the read-only lock
+
+`npm run test:mutation:lock` – StrykerJS over `packages/xezar/src/core/read-only-lock.ts` (the
+shell-command decision every backend's read-only step uses) and `core/qwen-tool-policy.ts` (Qwen
+Code's tool lists and hook decision), killed by their own suites
+(`packages/xezar/vitest.mutation.lock.config.ts`: `read-only-lock`, `qwen-tool-policy`,
+`qwen-hook-command` and `codex-read-only-hook` tests). Config and its reasons:
+`packages/xezar/stryker.lock.config.mjs`. It spreads the gate's config and changes only the scope,
+the test set, the report folder (`.local/mutation/lock/`) and the sandbox folder.
+
+It is **not** part of the nightly gate and never runs per pull request. It is a separate config
+rather than two more `mutate` globs because `mutation/shards.mjs` and `mutation/aggregate.mjs` read
+the gate's scope and floor out of `stryker.config.mjs`: widening that scope would change the
+nightly's shards, its per-file weights (`mcp-mutation-shard-weights.json`) and the score its floor
+applies to. It has **no `break`**: it records a score. Adopting a floor for it, or moving it into
+the nightly, is a decision for the owner.
+
+**Measured, 2026-10-18, revision `ff70b0e` on an 18-core macOS laptop, concurrency 4.**
+
+| | `read-only-lock.ts` | `qwen-tool-policy.ts` | Both |
+|---|---|---|---|
+| Mutants generated | 882 | 269 | 1 151 |
+| Ignored as static (`ignoreStatic`) | 30 | 42 | 72 |
+| Killed / timed out / survived / no coverage | 613 / 9 / 206 / 24 | 151 / 0 / 69 / 7 | 764 / 9 / 275 / 31 |
+| **Mutation score** (over covered code) | **73.00 %** (75.12 %) | **66.52 %** (68.64 %) | **71.64 %** (73.76 %) |
+| Wall clock | | | 57 s, dry run 1 s (297 tests) |
+
+The survivors are mostly `ConditionalExpression` (100) and `StringLiteral` (75) mutants: a branch
+forced true or false, or a word in a refusal reason or an argument row changed, that no test
+notices. The report (`.local/mutation/lock/index.html`) lists each one. Static mutants – the
+module-level argument tables – are not measured, for the reason 10.8 point 4 gives.
+
 
 ## Hosted mode: mode × transport verification (#547, SM1)
 
