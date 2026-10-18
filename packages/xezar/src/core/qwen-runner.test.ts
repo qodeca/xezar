@@ -15,7 +15,7 @@ import { signalPid } from '../platform/process-table.ts';
 import type { AgentEvent, AgentRunSpec } from './agent-runner.ts';
 import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION, waitForExit } from './qwen-runner.ts';
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
-import { scanQwenProjectEnv } from './qwen-run-config.ts';
+import { qwenWorkspaceLooseningMessage, qwenWorkspaceLoosenings, scanQwenProjectEnv } from './qwen-run-config.ts';
 import { settingsFromObject, type QwenSettings } from './qwen-settings.ts';
 import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
@@ -301,6 +301,41 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
     writeFileSync(join(project, '.qwen', 'settings.json'), JSON.stringify({ model: { name: 'x' }, permissions: { deny: ['run_shell_command(rm)'] } }));
     rmSync(recordFile, { force: true });
     expect((await runOnce({ allowedTools: READ_ONLY })).result).toHaveProperty('value');
+  });
+
+  // One row per clause of `qwenWorkspaceLoosenings`: each key ALONE refuses, so removing any one
+  // clause turns its row green-to-red (the combined test above passes with only one of them).
+  it.each([
+    { name: 'hooks', settings: JSON.stringify({ hooks: { PreToolUse: [{ matcher: '*', hooks: [] }] } }), key: 'hooks' },
+    { name: 'permissions.allow', settings: JSON.stringify({ permissions: { allow: ['run_shell_command'] } }), key: 'permissions.allow' },
+    { name: 'permissions.ask', settings: JSON.stringify({ permissions: { ask: ['edit'] } }), key: 'permissions.ask' },
+    { name: 'tools.allowed', settings: JSON.stringify({ tools: { allowed: ['run_shell_command'] } }), key: 'tools.allowed' },
+    { name: 'malformed JSON', settings: '{ "permissions": { "allow": [', key: '(unreadable)' },
+  ])('refuses a read-only step whose .qwen/settings.json has only $name, naming exactly that key', ({ settings, key }) => {
+    mkdirSync(join(project, '.qwen'));
+    const file = join(project, '.qwen', 'settings.json');
+    writeFileSync(file, settings);
+    expect(qwenWorkspaceLoosenings(project)).toEqual({ file, keys: [key] });
+    const runner = new QwenRunner({ bin: STUB, readSettings: () => SETTINGS });
+    let message = '';
+    try {
+      runner.startSession({ userPrompt: 'x', cwd: project, allowedTools: READ_ONLY, bashAllowlist: ['git status'] });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toBe(qwenWorkspaceLooseningMessage({ file, keys: [key] }));
+    expect(existsSync(recordFile)).toBe(false);
+  });
+
+  it.each([
+    { name: 'empty hooks', settings: { hooks: {} } },
+    { name: 'empty permissions.allow', settings: { permissions: { allow: [] } } },
+    { name: 'empty permissions.ask', settings: { permissions: { ask: [] } } },
+    { name: 'empty tools.allowed', settings: { tools: { allowed: [] } } },
+  ])('does not refuse a read-only step for $name', ({ settings }) => {
+    mkdirSync(join(project, '.qwen'));
+    writeFileSync(join(project, '.qwen', 'settings.json'), JSON.stringify(settings));
+    expect(qwenWorkspaceLoosenings(project)).toBeUndefined();
   });
 
   it('stops the .env walk at the first file and at the home folder, as Qwen Code does', () => {
