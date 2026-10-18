@@ -26,7 +26,7 @@ type TrackingModule = {
   runMarker: (runId: string | number) => string;
   parseNewSurvivors: (value: unknown) => number | null | undefined;
   alreadyPosted: (issue: { body?: string | null }, comments: unknown, runId: string | number) => boolean;
-  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown; newSurvivors?: number | null }) => Decision;
+  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown; newSurvivors?: number | null; trackedRef?: string }) => Decision;
   ghCommands: (decision: Decision, summary: string, runId?: string | number) => string[][];
   syncTrackingIssue: (options: {
     verdict: unknown;
@@ -81,6 +81,16 @@ describe('the tracking issue decision (#377)', () => {
     });
     expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')] }).action).toBe('none');
     expect(t.decide({ verdict: 'green', ref: MAIN, issues: [] }).action).toBe('none');
+  });
+
+  it('follows the tracked ref the workflow passes – the default branch – and keeps main as the fallback', () => {
+    // Named break: a hard-coded main, and the nightly on `develop` never files, comments or closes.
+    const DEVELOP = 'refs/heads/develop';
+    expect(t.decide({ verdict: 'red', ref: DEVELOP, issues: [], trackedRef: DEVELOP }).action).toBe('create');
+    expect(t.decide({ verdict: 'green', ref: DEVELOP, issues: [tracked(501, 'OPEN')], trackedRef: DEVELOP })).toMatchObject({ action: 'close', number: 501 });
+    expect(t.decide({ verdict: 'red', ref: MAIN, issues: [], trackedRef: DEVELOP }).action).toBe('skip');
+    expect(t.decide({ verdict: 'red', ref: DEVELOP, issues: [] }).action).toBe('skip');
+    expect(t.TITLE).not.toMatch(/\bmain\b/);
   });
 
   it('touches nothing for a run on any ref but main', () => {

@@ -27,7 +27,7 @@ type SurvivorsModule = {
   carryTags: (survivors: Survivor[], old: SurvivorList | null, extra?: { issue: number; file: string; line: number; mutator?: string }[]) => Survivor[];
   formatSurvivorList: (list: SurvivorList) => string;
   renderSurvivorMarkdown: (groups: Groups, context?: { missingShards?: number[]; repoUrl?: string; limit?: number }) => string;
-  pickPreviousRun: (answer: unknown, runId: string | number) => number | null;
+  pickPreviousRun: (answer: unknown, runId: string | number, branches?: string[]) => number | null;
 };
 
 const s = (await import(pathToFileURL(join(REPO_ROOT, 'packages/xezar/mutation/survivors.mjs')).href)) as SurvivorsModule;
@@ -124,7 +124,7 @@ describe('grouping new, already seen and known (#377, owner decision 2026-09-15)
     expect(empty.previousAvailable).toBe(true);
     expect(s.renderSurvivorMarkdown(missing)).toMatch(/could not be checked/);
     expect(s.renderSurvivorMarkdown(empty)).not.toMatch(/could not be checked/);
-    expect(s.renderSurvivorMarkdown(missing)).toMatch(/Already seen — in the previous main run \| n\/a/);
+    expect(s.renderSurvivorMarkdown(missing)).toMatch(/Already seen — in the previous run on the default branch \| n\/a/);
   });
 
   it('lists the new survivors, caps a long group, and names missing shards', () => {
@@ -204,6 +204,21 @@ describe('finding the previous main run', () => {
     expect(s.pickPreviousRun(answer, 10)).toBe(7);
     expect(s.pickPreviousRun(answer, '11')).toBe(10);
     expect(s.pickPreviousRun({ artifacts: [] }, 1)).toBeNull();
+  });
+
+  it('prefers the first branch it is given and falls back to the next – the night the default branch moves', () => {
+    // Named break: one hard-coded branch, and the first night on `develop` calls every survivor new.
+    const answer = {
+      artifacts: [
+        artifact(7, 'main', '2026-09-17T03:00:00Z'),
+        artifact(5, 'develop', '2026-09-15T03:00:00Z'),
+        artifact(8, 'xez/feature', '2026-09-18T02:00:00Z'),
+      ],
+    };
+    expect(s.pickPreviousRun(answer, 99, ['develop', 'main'])).toBe(5);
+    expect(s.pickPreviousRun({ artifacts: [answer.artifacts[0]] }, 99, ['develop', 'main'])).toBe(7);
+    expect(s.pickPreviousRun(answer, 99, ['develop'])).toBe(5);
+    expect(s.pickPreviousRun({ artifacts: [answer.artifacts[0]] }, 99, ['develop'])).toBeNull();
   });
 
   it('refuses an unreadable answer instead of reading it as "no previous run"', () => {
