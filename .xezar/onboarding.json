@@ -89,9 +89,7 @@
         "claude/claude-sonnet-4-6",
         "codex/gpt-5.5"
       ],
-      "visionFix": [
-        "pi/mac-m4/qwen38-flash-next-mlx-mixed-4-8bit"
-      ],
+      "visionFix": [],
       "tableEdits": 0
     },
     "paths": {
@@ -263,10 +261,11 @@
       "kitBlob": "2f13ef028e6023798baabb7ed85200ae91352b7c"
     },
     ".xezar/checks/gh-write.sh": {
-      "sha256": "713df33d9243f6175092c8f0a3b24823bda066dcb458a734c354ce0825a90e15",
-      "origin": "copied",
+      "sha256": "a06ededb417880738c49ad506a2264d4013200983d611d7bf1a8a13b4d10b122",
+      "origin": "adapted",
       "kitSource": "checks/gh-write.sh",
-      "kitBlob": "2b07d44572b7cbadce0015ed8409c7304ee1ec67"
+      "kitBlob": "2b07d44572b7cbadce0015ed8409c7304ee1ec67",
+      "patch": "LP-4"
     },
     ".xezar/checks/git-read.sh": {
       "sha256": "c0a024a3365238737736c4b7e9983562dd4b4b3de28e011673805d9193e94252",
@@ -367,10 +366,11 @@
       "kitBlob": "50fbfb487a5c6ab14395874fa7870141e5a72605"
     },
     ".xezar/checks/local-tree.sh": {
-      "sha256": "5869e2efbe3e13ae714165fcb1c6e0b240fbec5a0ac8b881cfcedf4faa6e3228",
-      "origin": "copied",
+      "sha256": "ca6d36cfcb2f5c0513e8beaa7bd7bfdb56057f7c30f2e1a7f1aedc02a2705cb5",
+      "origin": "adapted",
       "kitSource": "checks/local-tree.sh",
-      "kitBlob": "41dcac97ecd75277936a35e1b3e35b6f3f111ca6"
+      "kitBlob": "41dcac97ecd75277936a35e1b3e35b6f3f111ca6",
+      "patch": "LP-4"
     },
     ".xezar/checks/manifest-drift.mjs": {
       "sha256": "759dea38c22836e91e49487827cf266c9bb3262b237b45ae7238e3de542d449b",
@@ -445,10 +445,11 @@
       "kitBlob": "6b1607072cdef1cab80ac0714a5165eb0a7058dc"
     },
     ".xezar/checks/verdict-write.sh": {
-      "sha256": "52f311527b7c9b2eae97c36b0621b5c8e42fe345d809199fe5238c692a26b5ca",
-      "origin": "copied",
+      "sha256": "4d185dc2e6538da821f078dbd5f74db223c1b00b354862e83578608b7a5e3b04",
+      "origin": "adapted",
       "kitSource": "checks/verdict-write.sh",
-      "kitBlob": "363a9878b9cbf3644d1770b78d9e4d35b3573449"
+      "kitBlob": "363a9878b9cbf3644d1770b78d9e4d35b3573449",
+      "patch": "LP-4"
     },
     ".xezar/checks/verify-evidence.sh": {
       "sha256": "a6ac5d3175abc17c69c85ed12db9a3ba432f555f0781077e91d30216455c1940",
@@ -540,10 +541,11 @@
       "kitBlob": "98b2b1958a77d4ebbe54543312a6429bba219390"
     },
     ".xezar/docs/parallel-tasks.md": {
-      "sha256": "71c4f528b8ec4b008409b33eafc20f5d822649fb060d7ce3a12004492a53425f",
-      "origin": "copied",
+      "sha256": "77e619c47bf9f9bff9261b0a0544fd0ed9cf1e18defa9881a3a4af383c266e9b",
+      "origin": "adapted",
       "kitSource": "docs/parallel-tasks.md",
-      "kitBlob": "47baff2387cbe110b4544d09bd28716bc5e755db"
+      "kitBlob": "47baff2387cbe110b4544d09bd28716bc5e755db",
+      "patch": "LP-4"
     },
     ".xezar/docs/phase-record.md": {
       "sha256": "6b58b619cc2d6a9ca3792cb18c342a9b85b34192be1ce5e04a941accd4fdc453",
@@ -552,10 +554,11 @@
       "kitBlob": "5802467f3e4a2297e4d48f07ed461a568f6776d8"
     },
     ".xezar/docs/recovery.md": {
-      "sha256": "a3c7f32351fa1b892d1af96ae55293ea5a1d39e5c7c05113ece2651c84f5c96f",
-      "origin": "copied",
+      "sha256": "f56b034ff7de1c8d482e61f4d788fe3bc4129a3f6baf200be9f99d31fe2bd2f3",
+      "origin": "adapted",
       "kitSource": "docs/recovery.md",
-      "kitBlob": "5957e9cde6588958b4a9223273694cce7e94a783"
+      "kitBlob": "5957e9cde6588958b4a9223273694cce7e94a783",
+      "patch": "LP-4"
     },
     ".xezar/docs/routing.md": {
       "sha256": "40bb10a4df61942429b01622e6b816903cd94d55aaf3a3d791aba1fc5f193ce7",
@@ -565,10 +568,11 @@
       "patch": "LP-3"
     },
     ".xezar/docs/ui-operations.md": {
-      "sha256": "b6c2a2646c1ded120ab2ddb6d84a3a2cf0095826db0f850fc7e031d429f89ef0",
-      "origin": "copied",
+      "sha256": "463db5a947271ff86abc03f0a869ff36c243bf121494a67a4c6f5dc4b1b0c974",
+      "origin": "adapted",
       "kitSource": "docs/ui-operations.md",
-      "kitBlob": "33bd61e8dbcba2e6154fa47358f40b1b9035c8de"
+      "kitBlob": "33bd61e8dbcba2e6154fa47358f40b1b9035c8de",
+      "patch": "LP-4"
     },
     ".xezar/docs/worktrees.md": {
       "sha256": "b6eb5e9b0203003720f688895a2549abe535e43896fc4ddb75618cda8cfe8060",
