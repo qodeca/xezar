@@ -635,6 +635,17 @@ export const openInCliResponseSchema = z.object({
 });
 export type OpenInCliResponse = z.infer<typeof openInCliResponseSchema>;
 
+/**
+ * `GET /runs/:id/resume-command` — the cockpit's "take over interactively" line, built by the
+ * server with the same builder as the terminal launcher and its fallback: `cd` into the task's
+ * folder, the account the session belongs to, then the resume command, quoted for the host's
+ * shell. `null` when there is nothing to offer: the engine still owns the run, no session was
+ * recorded, the session id or account cannot be embedded safely, or – in hosted mode – the
+ * session needs a named account (its folder is on the server). Hosted mode drops the `cd`.
+ */
+export const runResumeCommandResponseSchema = z.object({ command: z.string().nullable() });
+export type RunResumeCommandResponse = z.infer<typeof runResumeCommandResponseSchema>;
+
 /** `POST /runs/:id/remove-worktree` — per-row delete in the worktrees panel (#483). */
 export const removeWorktreeResponseSchema = z.object({ removed: z.literal(true) });
 export type RemoveWorktreeResponse = z.infer<typeof removeWorktreeResponseSchema>;

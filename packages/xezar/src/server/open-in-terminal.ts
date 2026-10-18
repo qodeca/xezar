@@ -2,8 +2,8 @@ import { projectScratchDir } from '../project-data-paths.ts';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { shellQuote, withEnvPrefix } from '../core/shell-env.ts';
-import { cmdPathSafe, cmdTokenSafe } from '../platform/batch-line.ts';
+import { shellQuote, terminalCommandLine, withEnvPrefix } from '../core/shell-env.ts';
+import { cmdTokenSafe } from '../platform/batch-line.ts';
 import { hostDesktop } from '../platform/desktop-open.ts';
 import { launchCmd, launchDetached } from '../platform/process-launch.ts';
 import { isWsl, wslDistroName } from './wsl.ts';
@@ -37,7 +37,9 @@ export async function openInTerminal(
   const desktop = hostDesktop(isWsl);
 
   if (desktop === 'macos') {
-    const script = `cd ${shellQuote(cwd)} && ${prefixed}`;
+    // The same line the copy-paste fallback and the cockpit hint show (`terminalCommandLine`).
+    const script = terminalCommandLine(cwd, command, env, process.platform);
+    if (script === null) return false;
     return runDetached('osascript', [
       '-e',
       'tell application "Terminal" to activate',
@@ -47,10 +49,11 @@ export async function openInTerminal(
   }
 
   if (desktop === 'windows') {
-    // The folder is checked on its own first: inside the composed line a `"` in it could close its
-    // quote and make the rest read as a second, well-formed `set` (SEC-11A-05).
-    if (!cmdPathSafe(cwd)) return false;
-    const inner = `cd /d "${cwd}" && ${prefixed}`;
+    // The folder is checked on its own first (inside `terminalCommandLine`): inside the composed
+    // line a `"` in it could close its quote and make the rest read as a second, well-formed `set`
+    // (SEC-11A-05).
+    const inner = terminalCommandLine(cwd, command, env, process.platform);
+    if (inner === null) return false;
     // Windows Terminal first, classic cmd window as fallback. Both go through `launchCmd`, which
     // refuses a line cmd.exe would reinterpret (#963) – a refusal is a false, like a failed start.
     // A folder with a space or any other character `cmdPathSafe` allows goes to Windows Terminal

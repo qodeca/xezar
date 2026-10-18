@@ -20,6 +20,7 @@ import type {
   removeWorktreeResponseSchema,
   runCommitsResponseSchema,
   runRecordSchema,
+  runResumeCommandResponseSchema,
   runVersionResponseSchema,
 } from '@qodeca/xezar-contract';
 import type { AppType } from './app-type.ts';
@@ -65,6 +66,7 @@ describe('src/contract/runs.ts matches the runs routes exactly', () => {
   type Finish200 = InferResponseType<Run['finish']['$post'], 200>;
   type Continue200 = InferResponseType<Run['continue']['$post'], 200>;
   type OpenInCli200 = InferResponseType<Run['open-in-cli']['$post'], 200>;
+  type ResumeCommand200 = InferResponseType<Run['resume-command']['$get'], 200>;
   type Commits200 = InferResponseType<Run['commits']['$get'], 200>;
   type GitCommit200 = InferResponseType<Run['git']['commit']['$post'], 200>;
   type GitPush200 = InferResponseType<Run['git']['push']['$post'], 200>;
@@ -118,6 +120,7 @@ describe('src/contract/runs.ts matches the runs routes exactly', () => {
     Assert<Exact<z.infer<typeof removeQueuedMessageResponseSchema>, QueuedDelete200>>,
     // artifacts + local handoff
     Assert<Exact<z.infer<typeof openInCliResponseSchema>, OpenInCli200>>,
+    Assert<Exact<z.infer<typeof runResumeCommandResponseSchema>, ResumeCommand200>>,
     Assert<Exact<z.infer<typeof runCommitsResponseSchema>, Commits200>>,
     Assert<Exact<z.infer<typeof gitCommitResponseSchema>, GitCommit200>>,
     Assert<Exact<z.infer<typeof gitPushResponseSchema>, GitPush200>>,

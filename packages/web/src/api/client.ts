@@ -81,6 +81,7 @@ import type {
   RepoBranchResponse,
   RepoCommitPayload,
   RunCommitsResponse,
+  RunResumeCommandResponse,
   RunHistoryContext,
   RunHistoryPage,
   RepoResponse,
@@ -940,6 +941,18 @@ export function getRunDiff(id: string, opts?: ReadOptions): Promise<string> {
  *  the server only 404s for an unknown run, never for a missing file. */
 export function getRunHandoff(id: string, opts?: ReadOptions): Promise<string> {
   return requestText(runPath(id, '/handoff'), { method: 'GET', signal: opts?.signal })
+}
+
+/** The header's "take over interactively" line, built by the server (`GET /runs/:id/resume-command`)
+ *  with the same quoting and account as the terminal launcher; `command: null` when there is none. */
+export async function getRunResumeCommand(id: string, opts?: ReadOptions): Promise<RunResumeCommandResponse> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].runs[':id']['resume-command'].$get(
+      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      init(opts),
+    ),
+    runPath(id, '/resume-command'),
+  )
 }
 
 /** The run's structured working-directory-vs-base diff (R5): per-file status/±/patch + the

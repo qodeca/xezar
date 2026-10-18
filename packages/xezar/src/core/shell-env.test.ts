@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderEnvPrefix, shellQuote, withEnvPrefix } from './shell-env.ts';
+import { renderEnvPrefix, shellQuote, terminalCommandLine, withEnvPrefix } from './shell-env.ts';
 
 /**
  * Rendering an agent account's config dir into a shell command (spec 2026-07-29-agent-profiles).
@@ -84,5 +84,29 @@ describe('shellQuote', () => {
   it('makes every non-control character inert', () => {
     expect(shellQuote("a'b")).toBe("'a'\\''b'");
     expect(shellQuote('a b$c`d')).toBe("'a b$c`d'");
+  });
+});
+
+describe('terminalCommandLine – the one copy-paste takeover line', () => {
+  const account = { CLAUDE_CONFIG_DIR: '/home/p/.claude-work' };
+
+  it('POSIX: single-quotes the folder (also a quote inside it) and keeps the account', () => {
+    expect(terminalCommandLine("/r/it's here", 'claude --resume s1', account, 'linux')).toBe(
+      `cd '/r/it'\\''s here' && export CLAUDE_CONFIG_DIR='/home/p/.claude-work'; claude --resume s1`,
+    );
+    expect(terminalCommandLine('/r/wt', 'codex resume s1', {}, 'darwin')).toBe(`cd '/r/wt' && codex resume s1`);
+  });
+
+  it('Windows: `cd /d` with the folder in double quotes, and the account as `set`', () => {
+    expect(terminalCommandLine('C:\\dev\\my proj', 'claude --resume s1', { CLAUDE_CONFIG_DIR: 'C:\\acc' }, 'win32')).toBe(
+      'cd /d "C:\\dev\\my proj" && set "CLAUDE_CONFIG_DIR=C:\\acc" && claude --resume s1',
+    );
+  });
+
+  it('fails closed: a Windows folder cmd.exe would re-read, or an account it cannot embed, is null', () => {
+    expect(terminalCommandLine('C:\\dev\\a"b', 'claude --resume s1', {}, 'win32')).toBeNull();
+    expect(terminalCommandLine('C:\\dev\\a%PATH%', 'claude --resume s1', {}, 'win32')).toBeNull();
+    expect(terminalCommandLine('C:\\dev', 'claude --resume s1', { CLAUDE_CONFIG_DIR: 'C:\\a%b' }, 'win32')).toBeNull();
+    expect(terminalCommandLine('/r', 'claude --resume s1', { CLAUDE_CONFIG_DIR: '/a\nb' }, 'linux')).toBeNull();
   });
 });

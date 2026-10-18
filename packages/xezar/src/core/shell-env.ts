@@ -1,3 +1,5 @@
+import { cmdPathSafe } from '../platform/batch-line.ts';
+
 /**
  * Rendering environment assignments into a shell command line — the CLI-handoff half of agent
  * profiles (spec 2026-07-29-agent-profiles).
@@ -61,4 +63,26 @@ export function withEnvPrefix(
 ): string | null {
   const prefix = renderEnvPrefix(env, platform);
   return prefix === null ? null : `${prefix}${command}`;
+}
+
+/**
+ * The line a person pastes into a terminal to take a session over: `cd` into `cwd`, then the
+ * account assignments, then `command` – spelled for `platform`'s shell. THE one construction,
+ * shared by the open-in-terminal launcher, the "no terminal found" fallback and the cockpit's
+ * "take over interactively" hint, so the three can never disagree about quoting or the account.
+ *
+ * POSIX single-quotes the folder (`shellQuote`); Windows writes `cd /d "<folder>"`, which needs a
+ * folder cmd.exe reads as plain text (`cmdPathSafe`). `null` when the folder or the env cannot be
+ * embedded safely: callers fail closed, for the reason at the top of this file.
+ */
+export function terminalCommandLine(
+  cwd: string,
+  command: string,
+  env: Record<string, string>,
+  platform: NodeJS.Platform,
+): string | null {
+  const prefixed = withEnvPrefix(command, env, platform);
+  if (prefixed === null) return null;
+  if (platform === 'win32') return cmdPathSafe(cwd) ? `cd /d "${cwd}" && ${prefixed}` : null;
+  return `cd ${shellQuote(cwd)} && ${prefixed}`;
 }

@@ -227,7 +227,7 @@ import { activeStateLayout } from '../state-layout.ts';
 import { globalImportStateAfter, globalImportSummary, importGlobalAccounts } from '../workspace/import-global.ts';
 import { recordGlobalImportState } from '../workspace/project-machine-state.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
-import { withEnvPrefix } from '../core/shell-env.ts';
+import { terminalCommandLine } from '../core/shell-env.ts';
 import {
   allocateProjectSlug,
   findRegistryProject,
@@ -1908,12 +1908,11 @@ export function createApp(deps: ServerDeps) {
     return { env: resolved.env };
   };
 
-  /** The copy-paste fallback shown when no terminal could be opened — same account, spelled for
-   *  this platform's shell. `null` when the dir cannot be embedded safely, which is a refusal. */
-  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null => {
-    const prefixed = withEnvPrefix(command, env, process.platform);
-    return prefixed === null ? null : `cd '${cwd}' && ${prefixed}`;
-  };
+  /** The copy-paste line shown when no terminal could be opened, and as the cockpit's takeover
+   *  hint — same account, spelled for this platform's shell by the one builder the terminal
+   *  launcher uses. `null` when the dir or the account cannot be embedded safely: a refusal. */
+  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null =>
+    terminalCommandLine(cwd, command, env, process.platform);
 
   /** A registered project's realpath'd root, or null when the id is unknown. Layout-aware (#600
    *  review M2): in the project layout the registry is the DERIVED row, so a raw stored-row lookup
@@ -4606,6 +4605,26 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: 'no terminal emulator found', command: fallback }, 409);
       }
       return c.json({ opened: true, command });
+    })
+
+    // The cockpit's copyable "take over interactively" line: the same session, folder and account
+    // as `open-in-cli` above, through the same builder, so the hint and the terminal never differ.
+    .get('/runs/:id/resume-command', async (c) => {
+      const { root: repoRoot, store } = c.get('project');
+      const run = store.getRun(c.req.param('id'));
+      if (!run) return c.json({ error: 'not found' }, 404);
+      const none = { command: null };
+      if (engineOwnsRun(run.status)) return c.json(none);
+      const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
+      const command = sessionStep?.sessionId ? resumeCommand(run.runner, sessionStep.sessionId) : null;
+      if (!command) return c.json(none);
+      const account = await handoffEnv(run.runner ?? 'claude', sessionStep?.profileId);
+      if ('error' in account) return c.json(none);
+      // Hosted mode: the folder and a named account's config dir are paths on the server, so the
+      // hint drops the `cd` and is offered only when no account variable is needed.
+      if (!capabilities().localHandoff) return c.json({ command: Object.keys(account.env).length === 0 ? command : null });
+      const cwd = run.worktreePath && existsSync(run.worktreePath) ? run.worktreePath : repoRoot;
+      return c.json({ command: handoffFallbackCommand(cwd, command, account.env) });
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
