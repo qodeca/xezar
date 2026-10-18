@@ -93,7 +93,7 @@ On a fresh project's Tasks page, xezar offers a guided setup: "New to this proje
 
 The button creates an ordinary task from the built-in `project-setup` workflow. It appears in the task list, and you can open or cancel it like any other task. Nothing starts it except your click or a project leader's request.
 
-**What it runs.** The task runs the `xez-onboard-opinionated` skill from xezar-skills 3.0.3, the default team-skills source. That skill sets up the whole project around xezar: a Claude Code project leader, workflows and role skills, gates, labels and branch protection. The same skill also runs from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
+**What it runs.** The task runs the `xez-onboard-opinionated` skill from xezar-skills (`qodeca/xezar-skills`), the default team-skills source. That skill sets up the whole project around xezar: a Claude Code project leader, workflows and role skills, gates, labels and branch protection. The same skill also runs from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
 **Its limits.** Before it touches anything, it checks three limits: Claude Code only, GitHub only, and clean projects only – it never merges into a setup the project already has. A project outside them gets a stop that writes nothing and names the alternative.
 
@@ -129,9 +129,11 @@ The kit's account-limits table records each runner/login budget as `ok`, `unknow
 reset time; the kit's routing guide tells the leader to read it. Xezar reports that same status
 natively – see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits).
 
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
-still on kit 2.x moves to 3.0.3 first; the kit's
-[upgrade notes](https://github.com/qodeca/xezar-skills/blob/main/UPGRADE_NOTES.md) list the steps.
+xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which needs
+xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to their pi and
+OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt; the kit's
+[upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists the steps. If old pi or OpenCode tasks remain, delete them with the
+xezar you run now, before you install 0.30.0 – see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
 
 ## To upgrade
 

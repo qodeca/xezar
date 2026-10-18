@@ -87,8 +87,11 @@ merge, and labels its output `source=unmerged`. The kit's account-limits table r
 guide, and it will supply xezar's agent-quota status when that
 status ships.
 
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
-still on kit 2.x moves to 3.0.3 first.
+xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which needs
+xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to their pi and
+OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt; the kit's
+[upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists the steps. If old pi or OpenCode tasks remain, delete them with the
+xezar you run now, before you install 0.30.0 – see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
 
 From 0.19.0, `xezar lease gates --probe` is the supported check for gate serialisation: it prints one
 JSON line such as `{"lease":{"gates":true},"slots":1}` and exits 0 when the lease is available.

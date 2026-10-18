@@ -49,8 +49,10 @@ prints a human view. `--file <path>` is for onboarding only, before the first me
 or `out` with its reset time; the leader reads it under the kit's routing guide,
 and it will feed xezar's agent-quota status when that status ships.
 
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
-still on kit 2.x moves to 3.0.3 first.
+xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which needs
+xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to their pi and
+OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt; the kit's
+[upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists the steps.
 
 ## 60-second tour
 
