@@ -1,0 +1,8 @@
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **The Release workflow builds and publishes in separate jobs.** A read-only `build` job
+  installs, tests, builds and packs the release tarball; the `publish` job (environment
+  `production`, the only holder of the npm identity) installs nothing, checks the tarball's
+  SHA-256 and publishes exactly those bytes with provenance. The tag and GitHub Release are now
+  created right after the publish and before the version-bump PR, and the run summary reports
+  each of the three from its own step's outcome.

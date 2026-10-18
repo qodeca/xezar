@@ -20,9 +20,17 @@ package — which names this repository *and this workflow file* by name. Nothin
 exists to expire, leak, or be copied out of CI, and a publish from any other workflow is
 rejected rather than quietly accepted.
 
+The workflow has two jobs, so the publish rights never meet third-party code:
+
+| Job | Permissions | What it runs |
+|---|---|---|
+| `build` | `contents: read` | `npm ci`, the gate, the build, `test:package`, then `node scripts/release.mjs <bump> --pack-destination <dir>`: stamps the manifests and packs the tarball. Uploads the tarball, its `SHA256SUMS` and the four stamped manifests as the `release-package` artifact. |
+| `publish` | environment `production`; `id-token: write`, `contents: write`, `pull-requests: write` | Installs nothing and runs no package script. Downloads `release-package`, re-checks the SHA-256, runs `npm publish <tarball> --provenance`, creates the tag and GitHub Release, then opens the version-bump PR. |
+
 `packages/xezar/src/release/publishing-surface.test.ts` fails the build if `NPM_TOKEN` or
-`NODE_AUTH_TOKEN` reappears in any workflow, or if `id-token: write` is granted anywhere but
-the release job.
+`NODE_AUTH_TOKEN` reappears in any workflow, if `id-token: write` is granted anywhere but
+the release workflow's `publish` job, if that job starts installing or running package code, or if
+a `run:` script interpolates an expression instead of reading it from `env`.
 
 ### One-time setup (repository owner)
 
@@ -101,12 +109,16 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    | `patch` / `minor` / `major` | Increments from the version in `packages/xezar/package.json` |
    | `existing` | The version already committed in `packages/xezar/package.json` |
 
-3. The job then, in order: installs, runs `typecheck` + `npm test` + `test:unit`, builds, runs
-   the packaged-CLI E2E (`test:package` — it packs the real tarball, installs it into an
-   isolated consumer and runs the CLI from it), publishes to npm with `--tag latest` and
-   `--provenance`, and creates the `v<version>` GitHub Release at the released commit.
-4. For `patch`/`minor`/`major` it also opens a `release/v<version>` PR carrying the manifest
-   bump, because `main` is PR-only. Merge it with a merge commit so `main` matches the registry. That PR is opened
+3. The `build` job then, in order: installs, runs `typecheck` + `npm test` + `test:unit`, builds,
+   runs the packaged-CLI E2E (`test:package` — it packs the real tarball, installs it into an
+   isolated consumer and runs the CLI from it), stamps the version and packs the release tarball.
+   The `publish` job (it waits for the `production` approval when reviewers are set) publishes
+   exactly that tarball to npm with `--tag latest` and `--provenance`, and right after that
+   creates the `v<version>` tag and GitHub Release at the released commit. The run summary lists
+   each of the three – npm, tag and Release, bump PR – with what its own step really did.
+4. For `patch`/`minor`/`major` it then opens a `release/v<version>` PR carrying the manifest
+   bump, because `main` is PR-only. The tag already exists at this point, so a failure here
+   leaves only the PR to open by hand. Merge it with a merge commit so `main` matches the registry. That PR is opened
    by the Actions bot, so its CI sits at **action_required** until a maintainer approves the run
    (`gh run list --branch release/v<version>`, then approve it in the Actions tab or with
    `gh api -X POST repos/qodeca/xezar/actions/runs/<id>/approve`). Nothing is wrong; GitHub holds
@@ -124,9 +136,12 @@ folded changelog section, merged into `main` with a merge commit, then steps 2�
 
 ### What a green run means
 
-A green `Release` run means the package **is on the registry**. `scripts/release.mjs` exits
-non-zero when it has no credential rather than degrading to a dry run, so a misconfigured
+A green `Release` run means the package **is on the registry**. The `publish` job runs a plain
+`npm publish` of the packed tarball, which fails when npm rejects the identity, so a misconfigured
 trusted publisher fails the job loudly instead of producing a green run that published nothing.
+Run by hand, `scripts/release.mjs` likewise exits non-zero when it has no credential rather than
+degrading to a dry run; its `--pack-destination` mode (the one the `build` job uses) publishes
+nothing and says so (`published=false`, `packed=true`).
 
 To rehearse locally without publishing, pass the flag explicitly:
 
@@ -196,12 +211,12 @@ Then:
 
 | State | Do this |
 |---|---|
-| Nothing published; the job failed before `Publish release` | Fix the cause and re-dispatch the same bump. Nothing to undo. |
+| Nothing published; the `build` job failed, or `publish` failed before its `Publish release` step | Fix the cause and re-dispatch the same bump. Nothing to undo. |
 | `npm error 404` or an auth error at the publish step | npm rejected the identity — the package is not missing. The trusted publisher is absent, does not match, or lacks the `npm publish` permission. Check owner/repo/**workflow filename**/environment and the **Allowed actions** tick at <https://www.npmjs.com/package/@qodeca/xezar/access>, and that the job still has `id-token: write`. |
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |
-| The version-bump PR was not opened | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — and open the PR yourself. |
+| The version-bump PR was not opened (the tag and Release exist) | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — and open the PR yourself. |
 
 Whatever the state, inspect the registry **before** re-dispatching. The workflow does not check
 whether a version already exists; npm will reject the duplicate with `E403`, but only after the
