@@ -14,3 +14,10 @@
 - 🚀 **The npm package ships only the scripts the CLI runs.** `@qodeca/xezar` now carries the two
   dry-run mocks and the two bundled tool-policy hooks from `scripts/`, not the build, release and
   test helpers beside them (12 files down to 4).
+
+## 🔒 Security
+
+- 🔒 **Dependency updates for published advisories.** `npm audit fix` (no forced majors) moves
+  `smol-toml` to 1.9.1 (runtime dependency of the CLI) and, in the cockpit, `mermaid` to 11.17.2
+  and `dompurify` to 3.4.17. `katex` stays at 0.16.47: the fixed release is outside the range
+  `mermaid` 11 accepts, and needs a `streamdown`/`mermaid` major update of its own.
