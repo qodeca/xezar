@@ -47,6 +47,8 @@ export function PickerPill({
   status,
 }: {
   slot: string
+  /** The setting's name ("Model"). Prefixed to the visible value as hidden text, so the
+   *  accessible name is "Model: sonnet" rather than the bare setting name. */
   ariaLabel: string
   label: ReactNode
   value: string
@@ -61,14 +63,19 @@ export function PickerPill({
   /** Quiet non-selectable catalog state, kept inside the menu's accessible reading order. */
   status?: string
 }) {
+  // The setting's name rides as a visually hidden prefix, never as an `aria-label`: a label would
+  // REPLACE the visible value, so a screen reader heard "Model, button" and never which model
+  // (WCAG 2.5.3 Label in Name wants the visible text inside the name). The pill now reads
+  // "Model: sonnet".
+  const name = <span className="sr-only">{`${ariaLabel}: `}</span>
   if (readOnly) {
     return (
       <span
         data-slot={slot}
-        aria-label={ariaLabel}
         title={disabledHint ?? hint}
         className={`${chipClass} cursor-default hover:bg-card hover:text-muted-foreground`}
       >
+        {name}
         {label}
       </span>
     )
@@ -77,11 +84,11 @@ export function PickerPill({
     <button
       type="button"
       data-slot={slot}
-      aria-label={ariaLabel}
       disabled={disabled}
       title={disabled ? disabledHint : hint}
       className={chipClass}
     >
+      {name}
       {label}
       {chevron}
     </button>

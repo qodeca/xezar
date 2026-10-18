@@ -937,11 +937,12 @@ function ProjectPill({
         <button
           type="button"
           data-slot="project-pill"
-          aria-label="Project"
           title="Which project this task runs in — its skills, workflows, settings and draft"
           className={cn(chipClass, 'border-foreground/60 font-semibold text-foreground')}
         >
           <FolderOpenIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
+          {/* Hidden prefix rather than `aria-label`, which would hide the project's name. */}
+          <span className="sr-only">Project: </span>
           {/* The registry is authoritative for the display name; the raw id is the fallback
               while it is still loading, so the pill never renders an empty label. */}
           <span className="max-w-40 truncate">{selected?.name ?? projectId}</span>

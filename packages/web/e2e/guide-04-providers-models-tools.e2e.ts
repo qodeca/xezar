@@ -71,7 +71,8 @@ describe('guide 04 — agent backends', () => {
     await browser.waitForRole('button', 'Runner')
 
     // Claude is the composer default (guide 04: "Claude Code (`claude`, the default)").
-    expect(browser.textOfRole('button', 'Runner')).toBe('claude')
+    // The pill's text now carries its hidden setting name ("Runner: claude", WCAG 2.5.3).
+    expect(browser.textOfRole('button', 'Runner')).toMatch(/^(Runner:\s*)?claude$/u)
 
     browser.clickRole('button', 'Runner')
     await browser.waitForRole('menuitemradio', 'claude')
@@ -84,7 +85,8 @@ describe('guide 04 — agent backends', () => {
     // own models rather than Claude's — the per-backend model list the guide describes.
     browser.clickRole('menuitemradio', 'codex')
     await browser.waitForRole('button', 'Model')
-    expect(browser.textOfRole('button', 'Runner')).toBe('codex')
+    // The pill's text now carries its hidden setting name ("Runner: codex", WCAG 2.5.3).
+    expect(browser.textOfRole('button', 'Runner')).toMatch(/^(Runner:\s*)?codex$/u)
 
     browser.clickRole('button', 'Model')
     await browser.waitForRole('menuitemradio', 'auto')
@@ -110,7 +112,8 @@ describe('guide 04 — agent backends', () => {
     await browser.waitForRole('menuitemradio', 'claude')
     browser.clickRole('menuitemradio', 'claude')
     await browser.waitForRole('button', 'Runner')
-    expect(browser.textOfRole('button', 'Runner')).toBe('claude')
+    // The pill's text now carries its hidden setting name ("Runner: claude", WCAG 2.5.3).
+    expect(browser.textOfRole('button', 'Runner')).toMatch(/^(Runner:\s*)?claude$/u)
   })
 
   it('every backend the composer offers is also a row the health check actually probed', () => {

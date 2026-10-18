@@ -1155,9 +1155,9 @@ describe('submit', () => {
     expect(modelPill.textContent).not.toContain('opus')
     expect(modelPill.tagName).toBe('SPAN')
     expect(modelPill.querySelector('svg')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Model:/u })).toBeNull()
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Runner:/u }))
     const runnerOptions = await screen.findAllByRole('menuitemradio')
     fireEvent.click(runnerOptions.find((option) => option.textContent?.includes('Codex')) as HTMLElement)
     await waitFor(() => expect(modelPill.textContent).toContain('gpt-5.6-codex'))
@@ -2288,7 +2288,7 @@ describe('the composer runner pill carries the account', () => {
     await pickFrom(runnerPill()!, 'codex')
 
     // Codex has no second login, so the account group goes away and the pill is a runner again…
-    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('codex'))
+    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('Runner: codex'))
     fireEvent.change(textarea(), { target: { value: 'do the thing' } })
     await startTask()
     // …and nothing account-shaped reaches the wire.

@@ -23,3 +23,6 @@
   another file or agent, and leaving the page now confirm first when the open file has unsaved
   edits, and closing the tab asks too. A newer copy fetched in the background no longer replaces
   your draft.
+- 🐛 **Screen readers hear the composer's choices.** The runner, model, variants, base branch and
+  project pills now say both the setting and its value ("Model: sonnet"), and the `/` and `@`
+  suggestion list is announced as you move through it and when Enter inserts one.
