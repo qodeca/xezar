@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { CLAUDE_CODE_PUSH_UNCONFIRMED_FIX, CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE } from './adapters/claude-code.ts';
 import { HEALTH_TOOL } from './bridge.ts';
+import { CLAUDE_CODE_BRIDGE_TOO_OLD, CLAUDE_CODE_NOT_OWNER } from './leader-delivery.ts';
 import { toolListing } from './tool.ts';
 import { COVERAGE_GAPS, TOOL_ACTION_COVERAGE, type ActionCoverage } from './tools/api-coverage.testkit.ts';
 import { tools } from './tools/index.ts';
@@ -302,20 +304,25 @@ describe('#261 — the MCP API reference against the registry and the inventory'
 });
 
 
-it('documents every Channels eligibility condition and recovery remedy on all required surfaces', () => {
+it('documents every Claude Code attach and push blocker, in the exact words the code sends, on all required surfaces', () => {
+  // The strings are imported, not copied: a reworded blocker fails here until every surface says it
+  // the same way, and a phrase the code never sends cannot keep this green.
+  const blockers = [
+    CLAUDE_CODE_NOT_OWNER,
+    CLAUDE_CODE_BRIDGE_TOO_OLD,
+    { code: 'claude-code-push-unconfirmed', message: CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE, fix: CLAUDE_CODE_PUSH_UNCONFIRMED_FIX },
+  ];
   const surfaces = ['README.md', 'CHANGELOG.md', 'packages/web/src/routes/settings/mcp-connection-section.tsx', 'docs/features/mcp-server/mcp-adapter-evidence-claude-code.md'];
   for (const path of surfaces) {
     const source = readFileSync(new URL(path, REPO_ROOT), 'utf8');
-    for (const phrase of ['feature-flag service', 'confirmation screen', 'Team or Enterprise',
-      'custom servers are not on the channel allowlist', 'push messages into your session',
-      'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'Console API-key login',
-      'The MCP session that owns this project is not a Claude Code session',
-      'This Claude Code session is connected through an older xezar MCP bridge that cannot push events',
-      'xezar pushed events to the attached Claude Code session, and they are not acknowledged yet.',
-      'Start Claude Code in this project with --dangerously-load-development-channels server:xezar',
-      'claude-code-not-owner', 'claude-code-bridge-too-old', 'claude-code-push-unconfirmed',
-      'Events are kept in the journal.', 'Restart Claude Code so it starts the current xezar bridge',
-      'Until then, read events with leader_events.', 'fix:']) expect(source, path).toContain(phrase);
+    for (const blocker of blockers) {
+      expect(source, `${path}: ${blocker.code}`).toContain(blocker.code);
+      expect(source, `${path}: ${blocker.code} message`).toContain(blocker.message);
+      // The README states the push-unconfirmed remedy in its own Channels paragraph rather than
+      // verbatim; every other surface carries the fix exactly as the cockpit shows it.
+      if (path === 'README.md' && blocker.code === 'claude-code-push-unconfirmed') continue;
+      expect(source, `${path}: ${blocker.code} fix`).toContain(blocker.fix);
+    }
   }
 });
 

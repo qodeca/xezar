@@ -192,7 +192,7 @@ const NO_LEADER: McpLeaderBlocker = {
  * Attach refused because the MCP session that owns the project is not a Claude Code session, so
  * there is no Claude Code leader to push a channel event to (decision record § 5.6). Verbatim.
  */
-const CLAUDE_CODE_NOT_OWNER: McpLeaderBlocker = {
+export const CLAUDE_CODE_NOT_OWNER: McpLeaderBlocker = {
   code: 'claude-code-not-owner',
   message:
     'The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.',
@@ -204,7 +204,7 @@ const CLAUDE_CODE_NOT_OWNER: McpLeaderBlocker = {
  * channel event — pushing into it would choke a bridge that treats the frame as garbage. Verbatim
  * (decision record § 5.6).
  */
-const CLAUDE_CODE_BRIDGE_TOO_OLD: McpLeaderBlocker = {
+export const CLAUDE_CODE_BRIDGE_TOO_OLD: McpLeaderBlocker = {
   code: 'claude-code-bridge-too-old',
   message:
     'This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
