@@ -183,9 +183,13 @@ describe('waitForExit (#1070)', () => {
     child.kill('SIGTERM');
     await closed;
     expect(child.exitCode).toBeNull();
-    const started = Date.now();
-    expect(await waitForExit(child)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(1_000);
+    // At once means no safety timer is armed at all: only that timer could end this wait, so its
+    // absence is the claim, and a busy machine cannot make it pass or fail.
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    const wait = waitForExit(child);
+    expect(timers).not.toHaveBeenCalled();
+    timers.mockRestore();
+    expect(await wait).toBeNull();
   });
 });
 

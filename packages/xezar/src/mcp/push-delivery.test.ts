@@ -25,6 +25,7 @@ import { fakeCodexAppServer } from './leader-delivery.testkit.ts';
 import { QWEN_MESSAGING_SOCKET_ENV, QWEN_MESSAGING_TOKEN_ENV } from './qwen-messaging.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { countControllerTicks } from './controller-ticks.testkit.ts';
 import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
 
 /**
@@ -65,7 +66,10 @@ const tmp = (prefix: string): string => {
   return dir;
 };
 
+let ticks: ReturnType<typeof countControllerTicks>;
+
 beforeEach(() => {
+  ticks = countControllerTicks();
   process.env.XEZ_HOME = tmp('xzd-');
   process.env.XEZ_DRY_RUN = '1';
   delete process.env.XEZ_REMOTE;
@@ -73,6 +77,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
+  ticks.restore();
   for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [
     ['XEZ_HOME', saved.home],
@@ -464,7 +469,9 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     });
     expect(settled.available && settled.delivery?.deliveredSeq).toBe(journalRows(c.dataDir).at(-1)!.journalSeq);
     const writes = pushedTo(leader).length;
-    await new Promise((r) => setTimeout(r, 2_000));
+    // Counted heartbeats, not a sleep: each tick re-reads the journal, so a loop or a repeat would
+    // push inside them however slowly the machine runs the timers.
+    await ticks.waitFor(3);
     expect(pushedTo(leader)).toHaveLength(writes);
     const all = idsIn(pushedTo(leader));
     expect(new Set(all).size).toBe(all.length);
@@ -598,7 +605,8 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     await second.initialize();
     okResult(await second.call('leader_events', { action: 'read' }));
     await until('session 2’s controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
-    await new Promise((r) => setTimeout(r, 1_500));
+    // Session 2's controller re-reads the journal at every tick: two of them would have pushed row A.
+    await ticks.waitFor(2);
     expect(idsIn(pushedTo(second)), 'an acknowledged row was pushed again').not.toContain(a.eventId);
     expect(await c.status()).toMatchObject({ delivery: { ackedSeq: a.journalSeq } });
 
@@ -1155,9 +1163,9 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
     await until('the channel push', () => leader.channels.find((f) => f.content.includes(change.eventId)));
 
-    // T-14: several heartbeats pass (500 ms each). A row already delivered in this session is never
-    // dispatched again, and the transport receipt did not move the acknowledgement.
-    await new Promise((r) => setTimeout(r, 2_000));
+    // T-14: several heartbeats pass (counted, not slept). A row already delivered in this session is
+    // never dispatched again, and the transport receipt did not move the acknowledgement.
+    await ticks.waitFor(3);
     expect(leader.channels.filter((f) => f.content.includes(change.eventId))).toHaveLength(1);
     expect(okResult(await leader.call('leader_events', { action: 'status' })).structuredContent).toMatchObject({
       delivery: { deliveredSeq: change.journalSeq, ackedSeq: 0 },
