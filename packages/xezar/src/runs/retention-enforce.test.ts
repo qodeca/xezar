@@ -185,7 +185,7 @@ describe('reclaimWorktrees (real git, #483)', () => {
     expect(existsSync(paths[2]!)).toBe(true);
   });
 
-  it('skips a worktree whose run the caller reports active', async () => {
+  it('skips a worktree whose run the caller refuses to reserve', async () => {
     const repo = await fixtureRepo();
     const oldId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
     const newId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
@@ -196,7 +196,9 @@ describe('reclaimWorktrees (real git, #483)', () => {
       finishedRun(newId, newWt.path, '2026-07-09T00:00:00.000Z'),
     ]);
     // A Continue is starting: the record still says `done`, but the manager holds the run.
-    const reclaimed = await reclaimWorktrees(repo, store, 1, { isActive: (id) => id === oldId });
+    const reclaimed = await reclaimWorktrees(repo, store, 1, {
+      reserve: (id) => (id === oldId ? undefined : () => undefined),
+    });
     expect(reclaimed).toEqual([]);
     expect(existsSync(oldWt.path)).toBe(true);
   });

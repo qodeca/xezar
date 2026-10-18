@@ -40,7 +40,7 @@ describe('the worktrees API', () => {
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
-    app = createApp({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, version: '0.0.0-test' });
+    app = createApp({ repoRoot, store, manager: { isActive: () => false, reserveForReclaim: () => () => undefined } as unknown as RunManager, version: '0.0.0-test' });
   });
 
   afterEach(() => {

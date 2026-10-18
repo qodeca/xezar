@@ -5177,7 +5177,7 @@ export function createApp(deps: ServerDeps) {
       // The body is validated (an empty or `{}` one is accepted) but carries nothing this
       // handler reads; retention is best-effort, so 200 always.
       const reclaimed = await reclaimWorktrees(repoRoot, store, await resolveWorktreeRetention(repoRoot), {
-        isActive: (runId) => manager.isActive(runId),
+        reserve: (runId) => manager.reserveForReclaim(runId),
       });
       return c.json({ reclaimed });
     });

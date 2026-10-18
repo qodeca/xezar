@@ -2438,7 +2438,7 @@ export class RunManager {
       if (this.disposed) return;
       await reclaimWorktrees(this.repoRoot, this.store, keep, {
         shouldStop: () => this.disposed,
-        isActive: (runId) => this.isActive(runId),
+        reserve: (runId) => this.reserveForReclaim(runId),
       });
     } catch {
       // retention is best-effort; swallow so terminal transitions never break.
@@ -2614,6 +2614,26 @@ export class RunManager {
 
   isActive(runId: string): boolean {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
+  }
+
+  /** Retention removals in flight, per run (`reserveForReclaim`). A Continue waits on its run's. */
+  private readonly reclaiming = new Map<string, Promise<void>>();
+
+  /**
+   * Reserve `runId` for a worktree removal (`reclaimWorktrees`' `reserve`): refused while the run
+   * is live here, otherwise held until the returned release. A Continue accepted meanwhile is
+   * already `isActive` (so no later sweep picks it) and waits for the release before it
+   * re-materializes the worktree (`runContinuation`), so a removal and a Continue never overlap.
+   */
+  reserveForReclaim(runId: string): (() => void) | undefined {
+    if (this.isActive(runId) || this.reclaiming.has(runId)) return undefined;
+    let settle!: () => void;
+    const removal = new Promise<void>((resolve) => { settle = resolve; });
+    this.reclaiming.set(runId, removal);
+    return () => {
+      if (this.reclaiming.get(runId) === removal) this.reclaiming.delete(runId);
+      settle();
+    };
   }
 
   /** The id set behind `isActive` — `active ∪ starting ∪ queue`. `quiesce()` needs the whole
@@ -3231,6 +3251,10 @@ export class RunManager {
     // the stamp so the session regains its isolated tree and the run is eligible
     // for retention again — otherwise it keeps a dir on disk while staying
     // invisible to the enforcer forever. A failed restoration must not widen isolation.
+    // A retention removal of this worktree that was already under way when this Continue was
+    // accepted finishes first, stamp included, so the step below re-materializes what it removed.
+    const removal = this.reclaiming.get(runId);
+    if (removal) await removal;
     await rematerializeReclaimedWorktree(this.repoRoot, this.store, runId);
     const record = this.store.getRun(runId);
     // A recorded path/branch proves prior isolation; an absent policy alone does not
