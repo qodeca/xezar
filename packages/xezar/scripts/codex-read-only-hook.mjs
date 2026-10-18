@@ -22,7 +22,7 @@ var FIND_ACTIONS = [
   "-fls"
 ];
 var COMMAND_RUNNING_ARGUMENTS = [
-  { program: "git", enforcement: "checked", rule: "command.git-reviewed", argumentShapes: ["-c", "--config-env", "--exec-path", "fetch --upload-pack|--exec", "diff|show|log --output|-o", "checkout ... -- <path>"], reason: "git has reviewed arguments that can execute a command or write a file" },
+  { program: "git", enforcement: "checked", rule: "command.git-reviewed", argumentShapes: ["unlisted subcommand", "unlisted global option (-c, --config-env, --exec-path, -C, --git-dir, --work-tree, ...)", "--output|-o", "--ext-diff|--textconv|--exec|--upload-pack|--receive-pack", "grep -O|--open-files-in-pager", "ls-remote -u", "cat-file --filters", "branch|tag|remote|stash|worktree|reflog|config writing modes", "checkout ... -- <path>"], reason: "git runs only reviewed read-only subcommands; options that execute a command, write a file or change state are refused" },
   { program: "find", enforcement: "checked", rule: "command.find-action", argumentShapes: [...FIND_ACTIONS], reason: "find actions can execute another command, delete a path or write a file" },
   { program: "rg", enforcement: "checked", rule: "command.rg-pre", argumentShapes: ["--pre=<command>", "--pre <command>"], reason: "rg --pre executes a command for every searched file" },
   { program: "npm", enforcement: "checked", rule: "command.npm-prefix", argumentShapes: ["--prefix=<directory>", "--prefix <directory>"], reason: "npm --prefix can select a different project and therefore a different script" },
@@ -201,27 +201,132 @@ function isLongOptionPrefix(argument, option) {
   const name = argument.split("=", 1)[0] ?? "";
   return name.startsWith("--") && name.length > 2 && option.startsWith(name);
 }
-var GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = /* @__PURE__ */ new Set([
-  "-C",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--super-prefix"
+var GIT_GLOBAL_FLAGS = /* @__PURE__ */ new Set([
+  "--no-pager",
+  "-P",
+  "--no-optional-locks",
+  "--literal-pathspecs",
+  "--glob-pathspecs",
+  "--noglob-pathspecs",
+  "--icase-pathspecs",
+  "--no-replace-objects",
+  "--no-advice",
+  "--version"
 ]);
-function gitSubcommandIndex(args) {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE.has(arg)) {
-      i++;
-      continue;
+var GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = /* @__PURE__ */ new Set(["--namespace"]);
+var GIT_READ_SUBCOMMANDS = /* @__PURE__ */ new Set([
+  "status",
+  "diff",
+  "diff-tree",
+  "diff-index",
+  "diff-files",
+  "log",
+  "show",
+  "whatchanged",
+  "shortlog",
+  "range-diff",
+  "grep",
+  "ls-files",
+  "ls-tree",
+  "ls-remote",
+  "rev-parse",
+  "rev-list",
+  "merge-base",
+  "cat-file",
+  "blame",
+  "annotate",
+  "describe",
+  "name-rev",
+  "show-ref",
+  "for-each-ref",
+  "show-branch",
+  "cherry",
+  "count-objects",
+  "check-ignore",
+  "check-attr",
+  "version",
+  "branch",
+  "tag",
+  "remote",
+  "stash",
+  "worktree",
+  "reflog",
+  "config",
+  "fetch",
+  "checkout"
+]);
+var GIT_DIFF_OUTPUT_SUBCOMMANDS = /* @__PURE__ */ new Set(["diff", "diff-tree", "diff-index", "diff-files", "show", "log", "whatchanged", "range-diff", "stash"]);
+var GIT_EXECUTION_LONG_OPTIONS = ["--ext-diff", "--textconv", "--open-files-in-pager", "--upload-pack", "--receive-pack", "--exec"];
+var GIT_EXACT_LONG_OPTIONS = /* @__PURE__ */ new Set(["--text"]);
+function isShortOptionCluster(argument) {
+  return argument.startsWith("-") && !argument.startsWith("--") && argument.length > 1;
+}
+function firstPositional(tail) {
+  return tail.find((argument) => !argument.startsWith("-"));
+}
+function gitModeRefusal(subcommand, tail) {
+  const mode = (explanation) => refuse("command.git-subcommand-mode", `git ${subcommand} ${explanation}`);
+  const hasAny = (options) => tail.some((argument) => options.some((option) => argument === option || argument.startsWith(`${option}=`) || isLongOptionPrefix(argument, option)));
+  const shortHas = (letters) => tail.some((argument) => isShortOptionCluster(argument) && [...argument.slice(1)].some((letter) => letters.includes(letter)));
+  switch (subcommand) {
+    case "branch": {
+      if (shortHas("dDmMcCfut") || hasAny(["--delete", "--move", "--copy", "--force", "--edit-description", "--set-upstream-to", "--unset-upstream", "--track", "--no-track", "--create-reflog", "--recurse-submodules"])) {
+        return mode("with a writing option changes branches");
+      }
+      const listing = hasAny(["--list", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort", "--format", "--show-current"]) || shortHas("l");
+      if (firstPositional(tail) !== void 0 && !listing) return mode("with a name creates a branch; add --list to list");
+      return void 0;
     }
-    if (arg.startsWith("-")) continue;
-    return i;
+    case "tag": {
+      if (shortHas("asufdmFev") || hasAny(["--annotate", "--sign", "--no-sign", "--local-user", "--force", "--delete", "--message", "--file", "--edit", "--cleanup", "--create-reflog", "--verify", "--trailer"])) {
+        return mode("with a writing or verifying option changes or checks tags");
+      }
+      const listing = hasAny(["--list", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort", "--format"]) || shortHas("ln");
+      if (firstPositional(tail) !== void 0 && !listing) return mode("with a name creates a tag; add --list to list");
+      return void 0;
+    }
+    case "remote": {
+      const action = firstPositional(tail);
+      if (action !== void 0 && action !== "show" && action !== "get-url") return mode(`${action} is not a reading mode`);
+      return void 0;
+    }
+    case "stash": {
+      const action = firstPositional(tail);
+      if (action !== "list" && action !== "show") return mode("without list or show changes the working tree");
+      return void 0;
+    }
+    case "worktree": {
+      if (firstPositional(tail) !== "list") return mode("without list changes worktrees");
+      return void 0;
+    }
+    case "reflog": {
+      const action = firstPositional(tail);
+      if (action !== void 0 && action !== "show" && action !== "list" && action !== "exists") return mode(`${action} is not a reading mode; use git reflog show`);
+      return void 0;
+    }
+    case "config": {
+      const readModes = ["--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "--list"];
+      const writes = ["--add", "--unset", "--unset-all", "--replace-all", "--rename-section", "--remove-section", "--edit", "--file", "--blob"];
+      if (hasAny(writes) || shortHas("ef")) return mode("with a writing or editing option changes configuration");
+      const action = firstPositional(tail);
+      const reading = tail.some((argument) => readModes.includes(argument.split("=", 1)[0] ?? "")) || shortHas("l") || action === "get" || action === "list";
+      if (!reading) return mode("without an explicit reading mode (--get, --list, get or list) can write configuration");
+      return void 0;
+    }
+    case "checkout": {
+      const separator = tail.indexOf("--");
+      if (separator >= 0 && separator < tail.length - 1) {
+        return refuse("command.git-checkout-path", "git checkout with paths writes the working tree");
+      }
+      return void 0;
+    }
+    default:
+      return void 0;
   }
-  return -1;
 }
 function gitRefusal(words) {
   const args = words.slice(1).map((word) => word.text);
+  let subcommandIndex = -1;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "-c" || arg.startsWith("-c") && arg.length > 2 || arg === "--config-env" || arg.startsWith("--config-env=")) {
@@ -230,32 +335,38 @@ function gitRefusal(words) {
     if (isLongOptionPrefix(arg, "--exec-path")) {
       return refuse("command.git-exec-path", `${JSON.stringify(arg)} can select executable git subcommands`);
     }
+    if (GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE.has(arg)) {
+      i++;
+      continue;
+    }
+    if (GIT_GLOBAL_FLAGS.has(arg) || arg.startsWith("--namespace=")) continue;
+    if (arg.startsWith("-")) {
+      return refuse("command.git-global-option", `${JSON.stringify(arg)} is not a reviewed git option; it can select another repository, configuration or program`);
+    }
+    subcommandIndex = i;
+    break;
   }
-  const subcommandIndex = gitSubcommandIndex(args);
-  const subcommand = subcommandIndex < 0 ? void 0 : args[subcommandIndex];
-  const tail = subcommandIndex < 0 ? [] : args.slice(subcommandIndex + 1);
-  if (subcommand === "fetch") {
-    for (const argument of tail) {
-      if (isLongOptionPrefix(argument, "--upload-pack") || isLongOptionPrefix(argument, "--exec")) {
-        return refuse("command.git-fetch-upload-pack", `${JSON.stringify(argument)} supplies a command for git fetch to execute`);
-      }
+  if (subcommandIndex < 0) return void 0;
+  const subcommand = args[subcommandIndex];
+  if (!GIT_READ_SUBCOMMANDS.has(subcommand)) {
+    return refuse("command.git-subcommand", `git ${JSON.stringify(subcommand)} is not a reviewed read-only git subcommand`);
+  }
+  const tail = args.slice(subcommandIndex + 1);
+  for (const argument of tail) {
+    if (isLongOptionPrefix(argument, "--output")) {
+      return refuse("command.git-output", `${JSON.stringify(argument)} makes git ${subcommand} write to a file`);
+    }
+    if (GIT_DIFF_OUTPUT_SUBCOMMANDS.has(subcommand) && (argument === "-o" || /^-o.+/.test(argument))) {
+      return refuse("command.git-output", `${JSON.stringify(argument)} makes git ${subcommand} write to a file`);
+    }
+    if (subcommand === "fetch" && (isLongOptionPrefix(argument, "--upload-pack") || isLongOptionPrefix(argument, "--exec"))) {
+      return refuse("command.git-fetch-upload-pack", `${JSON.stringify(argument)} supplies a command for git fetch to execute`);
+    }
+    if (!GIT_EXACT_LONG_OPTIONS.has(argument.split("=", 1)[0] ?? "") && GIT_EXECUTION_LONG_OPTIONS.some((option) => isLongOptionPrefix(argument, option)) || subcommand === "cat-file" && isLongOptionPrefix(argument, "--filters") || subcommand === "grep" && isShortOptionCluster(argument) && argument.includes("O") || subcommand === "ls-remote" && isShortOptionCluster(argument) && argument.includes("u")) {
+      return refuse("command.git-execution-option", `${JSON.stringify(argument)} can make git ${subcommand} run another program`);
     }
   }
-  if (subcommand === "diff" || subcommand === "show" || subcommand === "log") {
-    for (let i = 0; i < tail.length; i++) {
-      const arg = tail[i];
-      if (arg === "--output" || arg.startsWith("--output=") || arg === "-o" || /^-o.+/.test(arg) && arg !== "--") {
-        return refuse("command.git-output", `${JSON.stringify(arg)} makes git ${subcommand} write to a file`);
-      }
-    }
-  }
-  if (subcommand === "checkout") {
-    const separator = tail.indexOf("--");
-    if (separator >= 0 && separator < tail.length - 1) {
-      return refuse("command.git-checkout-path", "git checkout with paths writes the working tree");
-    }
-  }
-  return void 0;
+  return gitModeRefusal(subcommand, tail);
 }
 function findRefusal(words) {
   const action = words.slice(1).map((word) => word.text).find((arg) => FIND_ACTIONS.some((name) => arg === name || arg.startsWith(`${name}=`)));
@@ -305,18 +416,16 @@ function decideReadOnlyCommand(command, entries, dialect = "posix", platform = p
   }
   const parsed = splitReadOnlyCommand(command);
   if ("allowed" in parsed) return parsed;
+  const prefixRefusal = normalized.some((entry) => matchesBashAllowlistEntry(parsed.command, entry)) ? void 0 : refuse(ALLOWLIST_RULE, `${JSON.stringify(parsed.command)} does not match an entry exactly or followed by a literal space`);
   const posixRefusal = wordsRefusal(parsed.words, normalized, platform);
-  if (posixRefusal) return posixRefusal;
+  if (posixRefusal) return posixRefusal.rule === "command.git-subcommand" && prefixRefusal ? prefixRefusal : posixRefusal;
   if (dialect === "powershell") {
     const powershellWords = splitPowerShellWords(command);
     if ("allowed" in powershellWords) return powershellWords;
     const powershellRefusal = wordsRefusal(powershellWords, normalized, platform);
     if (powershellRefusal) return powershellRefusal;
   }
-  if (!normalized.some((entry) => matchesBashAllowlistEntry(parsed.command, entry))) {
-    return refuse(ALLOWLIST_RULE, `${JSON.stringify(parsed.command)} does not match an entry exactly or followed by a literal space`);
-  }
-  return { allowed: true };
+  return prefixRefusal ?? { allowed: true };
 }
 function decideReadOnlyShellCall(call, entries, dialect = "posix", platform = process.platform) {
   if (call.toolName !== "Bash") {

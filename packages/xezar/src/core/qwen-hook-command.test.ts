@@ -65,6 +65,17 @@ describe('the bundled hook program (#1076)', () => {
     expect(JSON.parse(result.stderr)).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } });
   });
 
+  it('refuses a git option that runs another program, so the shipped bundle carries the current git policy', () => {
+    const result = spawnSync(process.execPath, [HOOK], {
+      input: JSON.stringify({ tool_name: 'run_shell_command', tool_input: { command: 'git grep -Ocmd needle' } }),
+      encoding: 'utf8',
+      env: { ...process.env, [QWEN_TOOL_POLICY_ENV]: JSON.stringify(qwenToolPolicy(['Read', 'Bash'], ['git grep'], 'linux')) },
+    });
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stderr)).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } });
+    expect(result.stderr).toContain('command.git-execution-option');
+  });
+
   // Guard that passes both ways: an allowed call stays a silent exit 0.
   it('allows an allowlisted command with exit 0 and no output', () => {
     const result = runHook({ tool_name: 'run_shell_command', tool_input: { command: 'git status' } });

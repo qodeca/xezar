@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  CODEX_READ_ONLY_ALLOWLIST_ENV,
   CODEX_READ_ONLY_RUN_ENV,
   codexHookOutput,
   decideCodexPreToolUse,
@@ -69,6 +70,21 @@ describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () 
     const sharedRules = new Set(READ_ONLY_LOCK_FIXTURES.flatMap((fixture) => fixture.rule ? [fixture.rule] : []));
     const codexRules = new Set(CODEX_READ_ONLY_HOOK_FIXTURES.flatMap((fixture) => fixture.rule ? [fixture.rule] : []));
     expect([...sharedRules].filter((rule) => !codexRules.has(rule))).toEqual([]);
+  });
+
+  it('the shipped bundle carries the current git policy: a git option that runs another program is denied', () => {
+    const run = (command: string) => spawnSync(process.execPath, [hook, '--xezar-read-only-hook'], {
+      input: JSON.stringify({ session_id: 'th_git_policy', cwd: process.cwd(), tool_name: 'Bash', tool_input: { command } }),
+      encoding: 'utf8',
+      env: { [CODEX_READ_ONLY_RUN_ENV]: 'locked', [CODEX_READ_ONLY_ALLOWLIST_ENV]: JSON.stringify(['git']) },
+    });
+    const refused = run('git ls-remote --upload-pack=cmd origin');
+    expect(refused.status).toBe(0);
+    expect(JSON.parse(refused.stdout)).toMatchObject({
+      hookSpecificOutput: { permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('Rule command.git-execution-option') },
+    });
+    // Guard that passes both ways: a reviewed read stays a silent allow.
+    expect(run('git grep -n needle')).toMatchObject({ status: 0, stdout: '', stderr: '' });
   });
 
   it('is inert outside xezar but fails closed when a matching locked run loses its environment', () => {
