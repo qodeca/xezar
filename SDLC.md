@@ -651,7 +651,8 @@ names it, `main` is still the base.
 
 - `main` and `develop` are never a pull request's source branch, and never deleted on merge.
 - The `PR source guard` check refuses any other source branch into `main`. Release-class pull
-  requests pass `integration-preflight.sh --release`, which also checks their history; feature
+  requests pass `integration-preflight.sh --release`, which also checks the history of promotion and
+  back-merge pull requests; feature
   work passes the ordinary preflight.
 - A promotion carries exactly what the changelog lists: work merged into `develop` after the
   changelog commit waits for the next release.
@@ -739,7 +740,7 @@ records the evidence and updates this row.
 
 | Guard | State |
 |---|---|
-| Branch rules block force push and deleting the base and release branches | Partly: `main` and `develop` are protected, but without admin enforcement |
+| Branch rules block force push and deleting the base and release branches | Partly: `main` is protected, but without admin enforcement; `develop` is protected at the cut-over |
 | Hook or permission rule blocks recursive deletes outside the worktree and schema drops | To check |
 | Agents use a short-lived, branch-scoped token, never a full-access login | To check |
 | No deploy, signing, registry or production credentials in agent sessions | To check |
@@ -758,7 +759,10 @@ records the evidence and updates this row.
 
 ### Deviations from the core
 
-None.
+- **Release order.** The core raises the version before the promotion and signs the tag. Here the
+  promotion comes first; the Release workflow then stamps the version while it publishes, tags the
+  promoted commit through the GitHub API (unsigned), and opens the version-bump pull request
+  afterwards (`docs/publishing.md` § Cutting a release).
 
 ### Known gaps to fix outside this file
 
