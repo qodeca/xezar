@@ -90,3 +90,19 @@ describe('the browser provider CI downloads and runs', () => {
     expect(run).toContain('cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${AGENT_BROWSER_VERSION}-chrome-');
   });
 });
+
+describe('dependency update pull requests', () => {
+  const config = parse(readFileSync(join(REPO_ROOT, '.github/dependabot.yml'), 'utf8')) as {
+    updates: { 'package-ecosystem': string; directory: string; 'target-branch'?: string; schedule: { interval: string }; groups?: Record<string, { 'update-types'?: string[] }> }[];
+  };
+
+  it('covers npm and the workflow actions, weekly, grouped minor/patch, into develop — never main', () => {
+    expect(config.updates.map((u) => u['package-ecosystem']).sort()).toEqual(['github-actions', 'npm']);
+    for (const update of config.updates) {
+      expect(update.directory).toBe('/');
+      expect(update['target-branch']).toBe('develop');
+      expect(update.schedule.interval).toBe('weekly');
+      expect(Object.values(update.groups ?? {}).map((g) => g['update-types'])).toEqual([['minor', 'patch']]);
+    }
+  });
+});

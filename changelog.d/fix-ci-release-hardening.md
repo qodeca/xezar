@@ -14,6 +14,9 @@
 - 🚀 **The npm package ships only the scripts the CLI runs.** `@qodeca/xezar` now carries the two
   dry-run mocks and the two bundled tool-policy hooks from `scripts/`, not the build, release and
   test helpers beside them (12 files down to 4).
+- 🚀 **Dependabot proposes weekly dependency updates into `develop`.** npm (all workspaces) and the
+  pinned workflow actions, minor and patch grouped into one pull request per ecosystem, majors
+  on their own, each version at least a week old.
 
 ## 🔒 Security
 
