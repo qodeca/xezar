@@ -24,6 +24,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Named from its own step list. It runs the five documented validation commands plus the
+  # pack check — no browser anywhere. The old name ("Unit, build, E2E, and package") read as
+  # a promise that the cockpit's 35 browser specs were covered here; they were not, and the
+  # `ui-e2e` job below is where they now run. `test:package` is an end-to-end exercise of the
+  # PACKAGED CLI, which is why "package" and not "E2E" is the honest word for it.
   verify:
     name: Typecheck, unit tests, build, and package
     runs-on: ubuntu-latest

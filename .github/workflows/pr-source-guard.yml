@@ -45,7 +45,7 @@ jobs:
             exit 0
           fi
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
-            echo "::error title=PR source guard::a pull request into main must come from a branch of $THIS_REPO, not from $HEAD_REPO."
+            echo "::error title=PR source guard::a pull request into main must come from a branch of $THIS_REPO, not from ${HEAD_REPO:-an unknown or deleted repository}."
             exit 1
           fi
           case "$HEAD_REF" in
