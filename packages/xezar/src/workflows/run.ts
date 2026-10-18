@@ -3457,8 +3457,9 @@ export class RunManager {
           } else if (!autoContinued && !finishedReadOnly) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
-            // `running`/`activity:'monitoring'` (#490). Both share the waiting
-            // lifecycle (free the slot, keep the idle timer); the autonomous
+            // `running`/`activity:'monitoring'` (#490). Both free the slot; `waiting`
+            // keeps the idle timer, while monitoring runs on its wake timer instead
+            // (#661, #810) and gets the idle timer once the wake-ups run out; the autonomous
             // nudge may answer ASK in autonomous mode, but explicit monitoring
             // parks with its bounded wake timer instead of spinning immediately.
             if (ask) emitAskRequested(sink, ask);
@@ -4553,8 +4554,9 @@ export class RunManager {
           // cockpit renders as an ask card (#473) — or the agent declared it is
           // still working on its own downstream work with `XEZ:MONITORING`, which
           // parks as `running`/`activity:'monitoring'`, a non-attention state,
-          // instead of raising "needs you" (#490). Lifecycle is identical: the
-          // run frees its slot and keeps the idle timer.
+          // instead of raising "needs you" (#490). Both free the slot; `waiting`
+          // keeps the idle timer, while monitoring runs on its wake timer instead
+          // (#661, #810) and gets the idle timer once the wake-ups run out.
           if (ask) emitAskRequested(sink, ask);
           if (monitoring) {
             this.store.updateRun(runId, { status: 'running', activity: 'monitoring' });
@@ -5309,13 +5311,7 @@ export class RunManager {
     }
     if ((state.monitoringWakeups ?? 0) >= MAX_AUTO_CONTINUES) {
       this.clearMonitoringWakeTimer(state, runId);
-      if (!this.store.getRun(runId)?.monitoringWakeCapReached) {
-        this.store.updateRun(runId, { monitoringWakeCapReached: true });
-        this.store.appendEvent(runId, {
-          type: 'note',
-          message: `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`,
-        });
-      }
+      this.monitoringWakeCapReached(runId, state);
       return;
     }
     if (state.monitoringWakeTimer && state.monitoringWakeIntervalMinutes === minutes) return;
@@ -5330,11 +5326,7 @@ export class RunManager {
       if (!this.monitoring.has(runId) || !state.session?.open || state.cancelled) return;
       const wakeups = state.monitoringWakeups ?? 0;
       if (wakeups >= MAX_AUTO_CONTINUES) {
-        this.store.updateRun(runId, { monitoringWakeCapReached: true });
-        this.store.appendEvent(runId, {
-          type: 'note',
-          message: `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`,
-        });
+        this.monitoringWakeCapReached(runId, state);
         return;
       }
       state.monitoringWakeups = wakeups + 1;
@@ -5345,6 +5337,27 @@ export class RunManager {
       this.deliverMessage(runId, [{ type: 'text', text: MONITORING_WAKE_NUDGE }], false);
     }, Math.max(0, deadline - Date.now()));
     state.monitoringWakeTimer.unref?.();
+  }
+
+  /**
+   * The wake timer is a monitoring session's only automatic exit (#810) — it has no idle timer
+   * (#661). Once the wake-ups are spent that exit is gone, so the ordinary idle timer takes over:
+   * the session closes after the idle timeout unless someone answers first. Armed once, never
+   * re-armed by a later reconcile, so a pump cannot keep pushing the close back. An operator who
+   * switched the idle close off (`idleTimeoutMinutes: null`) keeps the session parked.
+   */
+  private monitoringWakeCapReached(runId: string, state: ActiveRun): void {
+    if (!this.store.getRun(runId)?.monitoringWakeCapReached) {
+      this.store.updateRun(runId, { monitoringWakeCapReached: true });
+      const minutes = this.semaphore.idleTimeoutMinutes();
+      this.store.appendEvent(runId, {
+        type: 'note',
+        message: minutes === null
+          ? `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`
+          : `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); the session closes after ${minutes}m of inactivity`,
+      });
+    }
+    if (!state.idleTimer && state.session?.open && !state.cancelled) this.armIdleTimer(runId, state);
   }
 
   private clearMonitoringWakeTimer(state: ActiveRun, runId?: string): void {

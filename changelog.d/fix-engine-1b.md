@@ -8,3 +8,6 @@
   (automations set one) was saved only when the task started, so a task still waiting in the queue
   when xezar restarted ran with the project default instead. It is now saved when the task is
   created.
+- 🐛 **A monitoring session no longer stays open forever.** A session that reports it is still
+  watching background work is woken up to 40 times; after the last wake-up nothing could end it
+  except a person typing. It now closes after the usual idle timeout once the wake-ups run out.
