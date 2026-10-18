@@ -149,12 +149,17 @@ try {
 }
 `;
 
+/** A bounded off-thread read whose worker has not answered this long after its bound is ended. */
+const OFF_THREAD_GRACE_MS = 5_000;
+
 function runOffThread(file: string, args: readonly string[], options: TableRunOptions): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
+    let watchdog: NodeJS.Timeout | undefined;
     const settle = (text: string | null): void => {
       if (settled) return;
       settled = true;
+      if (watchdog !== undefined) clearTimeout(watchdog);
       resolve(text);
     };
     try {
@@ -180,6 +185,15 @@ function runOffThread(file: string, args: readonly string[], options: TableRunOp
       });
       worker.once('error', () => settle(null));
       worker.once('exit', () => settle(null));
+      if (options.timeoutMs !== undefined) {
+        // `execFile`'s own timeout stops the program inside the worker; this ends a worker that
+        // still has not answered, so a bounded read always settles.
+        watchdog = setTimeout(() => {
+          settle(null);
+          void worker.terminate();
+        }, options.timeoutMs + OFF_THREAD_GRACE_MS);
+        watchdog.unref?.();
+      }
     } catch {
       settle(null);
     }

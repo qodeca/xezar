@@ -14,7 +14,14 @@
  *    `ps` output (scripts/test-process-usage.mjs).
  */
 
-import { descendantPids, readProcessTable, type ProcessTable } from '../platform/process-table.ts';
+import {
+  SPAWN_CLOCK_SLACK_MS,
+  descendantPids,
+  readProcessTable,
+  type ProcRow,
+  type ProcessTable,
+  type TreeRoot,
+} from '../platform/process-table.ts';
 
 /** One aggregated sample for a run's process tree. */
 export interface ProcessUsage {
@@ -63,18 +70,39 @@ export function parsePsOutput(text: string): ProcStat[] {
  * Aggregate the full descendant tree rooted at `rootPid` from one `ps`
  * snapshot. Null when the root is gone (process exited between register and
  * sample) — callers treat that as "no data", not zero usage.
+ *
+ * Windows, given the moment the root was spawned: the creation-filtered walk. Windows keeps a
+ * process's parent pid after the parent exits, so a long-lived program whose parent died before
+ * the agent got that pid would otherwise count as the agent's child – and toward its memory
+ * limit. A child counts only when it started no earlier than the root (or than `spawnedAt`, when
+ * the root's own start time is unknown). Linux and macOS keep the plain walk by parent pid.
  */
-export function aggregateTreeUsage(procs: ProcStat[], rootPid: number): ProcessUsage | null {
-  const byPid = new Map<number, ProcStat>();
+export function aggregateTreeUsage(
+  procs: readonly ProcRow[],
+  rootPid: number,
+  spawnedAt?: number,
+  platform: NodeJS.Platform = process.platform,
+): ProcessUsage | null {
+  const byPid = new Map<number, ProcRow>();
   for (const p of procs) byPid.set(p.pid, p);
   const root = byPid.get(rootPid);
   if (!root) return null;
+  const walkRoot: TreeRoot =
+    platform === 'win32' && spawnedAt !== undefined
+      ? {
+          pid: rootPid,
+          // The walk allows a direct child `SPAWN_CLOCK_SLACK_MS` before `spawnedAt`; with the
+          // root's own start time known, a child must have started no earlier than the root.
+          spawnedAt: root.startedAt !== undefined ? root.startedAt + SPAWN_CLOCK_SLACK_MS : spawnedAt,
+          stoppedAt: Number.MAX_SAFE_INTEGER,
+        }
+      : { pid: rootPid };
 
   let cpuPct = root.cpuPct;
   let rssKb = root.rssKb;
   let procCount = 1;
   // The walk by parent pid, in the order it always visited (#963 moved it to `platform/`).
-  for (const pid of descendantPids(procs, { pid: rootPid })) {
+  for (const pid of descendantPids(procs, walkRoot)) {
     const p = byPid.get(pid);
     if (!p) continue;
     cpuPct += p.cpuPct;
@@ -87,9 +115,19 @@ export function aggregateTreeUsage(procs: ProcStat[], rootPid: number): ProcessU
 // ---- registry + sampler -----------------------------------------------------
 
 export const SAMPLE_INTERVAL_MS = 2_000;
+/**
+ * One table read may take this long; the reader stops its `ps` or PowerShell then. Unbounded, a
+ * read that never returned left `sampling` set for good: no usage, no memory limit and no
+ * process ledger for the rest of the server's life.
+ */
+export const SAMPLE_READ_TIMEOUT_MS = 10_000;
+/** Past the reader's own bound, the sampler stops waiting on a read that still has not settled. */
+export const SAMPLE_READ_GRACE_MS = 5_000;
 
 interface Entry {
   pid: number;
+  /** When the agent process was spawned, ms since the epoch: the Windows walk's filter. */
+  spawnedAt: number;
   last?: ProcessUsage;
   peakRssBytes: number;
   peakProcCount: number;
@@ -106,9 +144,10 @@ let sampling = false;
 
 /** Start tracking a run's process tree. A re-register (a run's next agent
  *  step) replaces the pid but keeps nothing else — peaks are per session and
- *  the engine maxes them into the run record on unregister. */
-export function registerRunProcess(runId: string, pid: number): void {
-  entries.set(runId, { pid, peakRssBytes: 0, peakProcCount: 0 });
+ *  the engine maxes them into the run record on unregister. `spawnedAt`: when
+ *  the process was spawned, as close as the caller knows it (default: now). */
+export function registerRunProcess(runId: string, pid: number, spawnedAt: number = Date.now()): void {
+  entries.set(runId, { pid, spawnedAt, peakRssBytes: 0, peakProcCount: 0 });
   if (!timer) {
     timer = setInterval(() => void sample(), SAMPLE_INTERVAL_MS);
     timer.unref?.();
@@ -181,8 +220,8 @@ async function sample(): Promise<void> {
   if (sampling || entries.size === 0) return;
   sampling = true;
   try {
-    const table = await readProcessTable();
-    if (table === null) return; // ps unavailable — degrade to no data
+    const table = await readWithin(SAMPLE_READ_TIMEOUT_MS + SAMPLE_READ_GRACE_MS);
+    if (table === null) return; // ps unavailable or too slow — degrade to no data
     for (const listener of tableListeners) {
       try {
         listener(table);
@@ -192,7 +231,7 @@ async function sample(): Promise<void> {
     }
     const procs = table.rows;
     for (const entry of entries.values()) {
-      const usage = aggregateTreeUsage(procs, entry.pid);
+      const usage = aggregateTreeUsage(procs, entry.pid, entry.spawnedAt);
       entry.last = usage ?? undefined;
       if (usage) {
         entry.peakRssBytes = Math.max(entry.peakRssBytes, usage.rssBytes);
@@ -211,5 +250,20 @@ async function sample(): Promise<void> {
     }
   } finally {
     sampling = false;
+  }
+}
+
+/** One bounded read; null when it fails or has not settled by `deadlineMs`. A read that settles
+ *  later is dropped – the reader's own timeout has stopped its program by then. */
+async function readWithin(deadlineMs: number): Promise<ProcessTable | null> {
+  let deadline: NodeJS.Timeout | undefined;
+  const late = new Promise<null>((resolve) => {
+    deadline = setTimeout(() => resolve(null), deadlineMs);
+    deadline.unref?.();
+  });
+  try {
+    return await Promise.race([readProcessTable({ timeoutMs: SAMPLE_READ_TIMEOUT_MS }), late]);
+  } finally {
+    clearTimeout(deadline);
   }
 }
