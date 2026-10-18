@@ -436,3 +436,18 @@ describe('QwenRunner version gate and missing binary (#1044 acceptance 6, 7)', (
     expect(outcome).toMatch(/not found on PATH — Install Qwen Code \(`npm i -g @qwen-code\/qwen-code`\)/);
   });
 });
+
+describe('QwenRunner with an agent that exits before it reads its prompt', () => {
+  it('fails the step with the exit and stderr instead of crashing on the failed stdin write', async () => {
+    const stub = join(HERE, '__fixtures__', 'process', 'exits-before-reading-stdin.mjs');
+    const events: AgentEvent[] = [];
+    const runner = new QwenRunner({ bin: stub, readSettings: () => SETTINGS });
+    // Far larger than any pipe buffer, so the write is still pending when the agent exits.
+    const outcome = await runner
+      .startSession({ userPrompt: 'x'.repeat(2_000_000), cwd: project, sessionId: '11111111-1111-4111-8111-111111111111' }, (e) => events.push(e), { autoEndAfterFirstTurn: true })
+      .result.then(() => 'resolved', (error: Error) => error.message);
+    expect(outcome).toMatch(/exited with code 1/);
+    expect(outcome).toMatch(/exited before reading its input/);
+    expect(events.some((e) => e.type === 'note' && e.message.startsWith('qwen: stdin write failed:'))).toBe(true);
+  }, 15_000);
+});

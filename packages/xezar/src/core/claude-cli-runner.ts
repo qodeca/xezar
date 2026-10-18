@@ -141,6 +141,12 @@ export class ClaudeCliRunner implements AgentRunner {
       child.once('exit', promptFile.cleanup);
       child.once('close', promptFile.cleanup);
     }
+    // An agent that exits before it reads a message larger than the pipe buffer fails the write
+    // with EPIPE as an `error` event on stdin; unhandled, that event would stop the whole server.
+    // The exit code and stderr already report the failure, so this only records it.
+    child.stdin.on('error', (err) => {
+      onEvent?.({ type: 'note', message: `claude: stdin write failed: ${err.message}` });
+    });
 
     let stdinOpen = true;
     let autoEndTimer: NodeJS.Timeout | undefined;
