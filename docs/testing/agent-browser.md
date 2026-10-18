@@ -20,11 +20,12 @@ preinstalled browser, or a cloud-browser account.
   `~/.agent-browser/browsers`. Only `browsers/` is safe to restore from a cache —
   the rest of `~/.agent-browser` is sockets and per-session state, and CI caches
   exactly those two paths for that reason.
-- CI (`ui-e2e` in `.github/workflows/ci.yml`) does not follow `latest`: it pins one
-  release (`AGENT_BROWSER_VERSION`) and the SHA-256 of its linux-x64 asset
-  (`AGENT_BROWSER_SHA256`), runs only a binary that matches it, and keys its cache on
-  that version. Moving the pin means changing both values (the asset's `digest` from
-  `gh release view v<version> --repo vercel-labs/agent-browser --json assets`).
+- Nothing installs `latest`. `scripts/agent-browser-pin.sh` is the one place that
+  names the release (`AGENT_BROWSER_VERSION`) and the SHA-256 of each of its assets;
+  CI (`ui-e2e` in `.github/workflows/ci.yml`), `scripts/test-env-up.sh` and the
+  snippets below all read it, and run only a binary that matches. Its header says how
+  to move the pin. The check uses `sha256sum`, `shasum -a 256` or `openssl`, whichever
+  the machine has, and refuses the binary when it has none.
 
 ## Operations
 
@@ -58,13 +59,17 @@ else
   esac
   case "$ASSET" in *unsupported*) echo "Unsupported agent-browser target: $OS/$ARCH" >&2; exit 1 ;; esac
   AGENT_BROWSER_BIN="$TOOL_DIR/$ASSET"
-  if [ ! -x "$AGENT_BROWSER_BIN" ]; then
-    URL="https://github.com/vercel-labs/agent-browser/releases/latest/download/$ASSET"
+  . scripts/agent-browser-pin.sh   # from the repository root
+  if ! agent_browser_verify "$ASSET" "$AGENT_BROWSER_BIN"; then
+    rm -f "$AGENT_BROWSER_BIN"
+    URL=$(agent_browser_url "$ASSET")
     TMP="$AGENT_BROWSER_BIN.tmp.$$"
     if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 --connect-timeout 30 --max-time 600 -o "$TMP" "$URL"
     elif command -v wget >/dev/null 2>&1; then wget -T 30 -t 3 -O "$TMP" "$URL"
     else echo "No built-in HTTP downloader is available" >&2; exit 1
     fi
+    agent_browser_verify "$ASSET" "$TMP" || {
+      rm -f "$TMP"; echo "SHA-256 check failed for $ASSET $AGENT_BROWSER_VERSION; not run" >&2; exit 1; }
     chmod 755 "$TMP"
     mv "$TMP" "$AGENT_BROWSER_BIN"
   fi
@@ -100,13 +105,21 @@ else {
   $toolDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'agent-tools/agent-browser'
   New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
   $AgentBrowser = Join-Path $toolDir 'agent-browser-win32-x64.exe'
-  if (-not (Test-Path $AgentBrowser)) {
-    $url = 'https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-win32-x64.exe'
+  # The pin lives in scripts/agent-browser-pin.sh (run from the repository root).
+  $pin = Get-Content -Raw 'scripts/agent-browser-pin.sh'
+  $version = [regex]::Match($pin, '(?m)^AGENT_BROWSER_VERSION=(\S+)$').Groups[1].Value
+  $sha256 = [regex]::Match($pin, 'agent-browser-win32-x64\.exe\) echo ([0-9a-f]{64})').Groups[1].Value
+  if (-not $version -or -not $sha256) { throw 'scripts/agent-browser-pin.sh names no pinned win32-x64 release' }
+  $isPinned = { param($f) (Test-Path $f) -and ((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower() -eq $sha256) }
+  if (-not (& $isPinned $AgentBrowser)) {
+    Remove-Item -Force -ErrorAction SilentlyContinue $AgentBrowser
+    $url = "https://github.com/vercel-labs/agent-browser/releases/download/v$version/agent-browser-win32-x64.exe"
     $tmp = "$AgentBrowser.tmp.$PID"
     if ($PSVersionTable.PSVersion.Major -lt 7) {
       [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     }
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -Uri $url -OutFile $tmp
+    if (-not (& $isPinned $tmp)) { Remove-Item -Force $tmp; throw "SHA-256 check failed for agent-browser $version; not run" }
     Move-Item -Force $tmp $AgentBrowser
   }
 }
