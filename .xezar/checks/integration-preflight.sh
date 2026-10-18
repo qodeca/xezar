@@ -79,21 +79,25 @@ usage() {
   cat <<'EOF'
 usage: integration-preflight.sh --repo <owner/name> --pr <number> --base <branch>
                                 --expected-head <full-sha> --authority <path>
-                                [--issue <number>]
+                                [--issue <number>] [--release]
 
 Every target is required and none is guessed. Read-only: this script never writes to git or
 GitHub. It reports whether the preconditions hold; it does not grant permission to act on them.
 
   --repo           owner/name, and it must match this checkout's origin remote
   --pr             the pull request number to integrate
-  --base           the base branch; must equal the configured baseBranch (never `main`)
+  --base           the base branch; must equal the configured baseBranch, except in --release mode
   --expected-head  the 40-character SHA the review and evidence refer to
   --authority      path to the explicit authorization record for THIS merge
   --issue          a single issue whose closure was separately and explicitly authorized
+  --release        a release-class PR in a two-branch model (base branch plus `main` for released
+                   work): promote/*, release/v* or hotfix/* into `main`, or backmerge/* into the
+                   base branch. It is merged with a merge commit (`gh pr merge --merge`), never
+                   squashed, and never with --delete-branch. Refused under the trunk model.
 EOF
 }
 
-REPO="" PR="" BASE="" EXPECTED_HEAD="" AUTHORITY="" ISSUE=""
+REPO="" PR="" BASE="" EXPECTED_HEAD="" AUTHORITY="" ISSUE="" RELEASE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) REPO="${2:-}"; shift 2 ;;
@@ -102,6 +106,7 @@ while [ $# -gt 0 ]; do
     --expected-head) EXPECTED_HEAD="${2:-}"; shift 2 ;;
     --authority) AUTHORITY="${2:-}"; shift 2 ;;
     --issue) ISSUE="${2:-}"; shift 2 ;;
+    --release) RELEASE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'integration-preflight: unknown argument "%s"\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -185,8 +190,20 @@ else
 fi
 
 configured_base="$(xezar_base_branch)" || refuse base.unavailable "cannot resolve configured base"
-if [ "$BASE" != "$configured_base" ]; then
-  refuse base.forbidden "--base is \"$BASE\"; the only integration base here is \"$configured_base\". Release publication uses the manually dispatched Release workflow under existing authority."
+# THE TWO-BRANCH MODEL (LP-5). Feature work integrates into the configured base (`develop`) by
+# squash; `main` holds released work and takes only release-class PRs. Those arrive here with
+# `--release`, and their head branch is checked against the PR's real head ref in section 4. The
+# release branch is always `main`: under the trunk model (`main` IS the base) there is no release
+# class, and `--release` is refused rather than read as permission to skip the base rule.
+RELEASE_BRANCH=main
+if [ "$RELEASE" = 1 ]; then
+  if [ "$configured_base" = "$RELEASE_BRANCH" ]; then
+    refuse release.trunk "--release needs a two-branch model, but the configured base is \"$configured_base\". Under the trunk model every PR integrates normally."
+  elif [ "$BASE" != "$RELEASE_BRANCH" ] && [ "$BASE" != "$configured_base" ]; then
+    refuse base.forbidden "--base is \"$BASE\"; a release-class PR targets \"$RELEASE_BRANCH\" (promotion, version bump, hotfix) or \"$configured_base\" (back-merge)."
+  fi
+elif [ "$BASE" != "$configured_base" ]; then
+  refuse base.forbidden "--base is \"$BASE\"; the only integration base here is \"$configured_base\". A release-class PR into \"$RELEASE_BRANCH\" uses --release; release publication itself uses the manually dispatched Release workflow under existing authority."
 fi
 
 # --- 3. Authority ---------------------------------------------------------------------------
@@ -253,6 +270,7 @@ if [ -n "$pr_json" ]; then
   pr_state="$(field state)"
   pr_merged="$(field merged)"
   pr_base="$(field base.ref)"
+  pr_head_ref="$(field head.ref)"
   pr_draft="$(field draft)"
   mergeable_state="$(field mergeable_state)"
   observe "PR #$PR: state=$pr_state merged=$pr_merged base=$pr_base draft=$pr_draft head=$actual_head"
@@ -269,6 +287,44 @@ if [ -n "$pr_json" ]; then
   fi
   if [ -n "$pr_base" ] && [ "$pr_base" != "$BASE" ]; then
     refuse base.mismatch "PR #$PR targets \"$pr_base\", not the requested \"$BASE\""
+  fi
+  # A release-class PR is recognised by its REAL head ref, never by the caller's word. `main` and
+  # the base branch are never a PR's source: strict up-to-date checks deadlock on them, and the
+  # "Update branch" button would write one into the other.
+  if [ "$RELEASE" = 1 ] && [ "$configured_base" != "$RELEASE_BRANCH" ]; then
+    case "$BASE:$pr_head_ref" in
+      "$RELEASE_BRANCH":promote/*|"$RELEASE_BRANCH":release/v*|"$RELEASE_BRANCH":hotfix/*|"$configured_base":backmerge/*)
+        observe "release-class PR: $pr_head_ref into $BASE — merge with a merge commit (gh pr merge --merge), never --squash, never --delete-branch; afterwards the merged commit must have two parents" ;;
+      *)
+        refuse release.head "PR #$PR head \"$pr_head_ref\" is not a release-class branch for \"$BASE\": promote/*, release/v* or hotfix/* into \"$RELEASE_BRANCH\", backmerge/* into \"$configured_base\"." ;;
+    esac
+    # A branch NAME is cheap to fake, so the two promises the model rests on are checked on the
+    # history itself: a promotion carries only work already on the base (its head is contained in
+    # the base), and a back-merge carries everything on `main` (`main` is contained in its head).
+    # An unreadable comparison is UNAVAILABLE, never a pass.
+    compare_status() {
+      local answer
+      answer="$("$GH" api "repos/$REPO/compare/$1...$2" 2>/dev/null)" || return 1
+      printf '%s' "$answer" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).status||""))}catch{}})' 2>/dev/null
+    }
+    if [ -n "$actual_head" ]; then
+      case "$BASE:$pr_head_ref" in
+        "$RELEASE_BRANCH":promote/*)
+          st="$(compare_status "$configured_base" "$actual_head")" || st=""
+          case "$st" in
+            behind|identical) observe "promotion head $actual_head is contained in $configured_base ($st)" ;;
+            '') unavail release.history "could not compare $actual_head with $configured_base; a promotion's content is unverified" ;;
+            *) refuse release.history "promotion head $actual_head is not contained in $configured_base (compare: $st); a promotion carries only work already merged there" ;;
+          esac ;;
+        "$configured_base":backmerge/*)
+          st="$(compare_status "$RELEASE_BRANCH" "$actual_head")" || st=""
+          case "$st" in
+            ahead|identical) observe "back-merge head $actual_head contains $RELEASE_BRANCH ($st)" ;;
+            '') unavail release.history "could not compare $RELEASE_BRANCH with $actual_head; a back-merge's content is unverified" ;;
+            *) refuse release.history "back-merge head $actual_head does not contain $RELEASE_BRANCH (compare: $st); cut it from $RELEASE_BRANCH" ;;
+          esac ;;
+      esac
+    fi
   fi
   # THE ANTI-RACE. --expected-head pins the head only; it does NOT atomically pin the base, so a
   # moved base is reported separately below and forces its own compatibility decision.
@@ -719,6 +775,7 @@ printf '=== integration preflight ===\n'
 printf '  repo          %s\n' "$REPO"
 printf '  pr            #%s\n' "$PR"
 printf '  base          %s\n' "$BASE"
+[ "$RELEASE" = 1 ] && printf '  mode          release (merge commit)\n'
 printf '  expected head %s\n' "$EXPECTED_HEAD"
 printf '  authority     %s%s\n' "$AUTHORITY" "$([ "$authority_present" = 1 ] && printf ' (present)' || printf ' (ABSENT)')"
 [ -n "$ISSUE" ] && printf '  issue         #%s (closure requested)\n' "$ISSUE"

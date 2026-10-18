@@ -46,7 +46,7 @@ Read-only. Verifies that THIS run is the root-synchronization assignment and tha
 checkout is in a state where a clean fast-forward to a fixed target is the only possible outcome.
 
   --expected-root    the primary checkout this run must be executing in
-  --expected-branch  the branch the root must already be on (normally `main`)
+  --expected-branch  the branch the root must already be on (normally the configured base branch)
   --expected-target  the 40-character SHA to fast-forward TO, fixed in advance
   --authority        the record explicitly authorizing this synchronization
 

@@ -860,7 +860,8 @@ separate work.
 suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
 and its reasons: `packages/xezar/stryker.config.mjs`.
 
-**Read this first: it is scheduled nightly against `main` on GitHub Actions** (`.github/workflows/mutation.yml`,
+**Read this first: it is scheduled nightly against the default branch on GitHub Actions** (`develop`
+since 2026-10-18, `main` before it; GitHub runs a schedule on the default branch) (`.github/workflows/mutation.yml`,
 #433, added 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
 release path. From 2026-09-12 until #433 it ran nowhere automatically. Before that it was a
 **release** gate – the `release` and `release-prep` workflows ran it as their first check step,
@@ -904,12 +905,12 @@ there, on slower cores. A single scheduled job would not finish. So the workflow
   out of `stryker.config.mjs`. It fails closed: a missing or unparsable report, a slice or a run
   that tested no mutant (Stryker scores that `NaN`, and `NaN < 80` is false), a file reported
   twice, outside its slice or never, and a score below the floor all make the run red;
-- **tells somebody.** On `main` it keeps ONE tracking issue in step (label `mutation-nightly`,
+- **tells somebody.** On the default branch it keeps ONE tracking issue in step (label `mutation-nightly`,
   `npm run test:mutation:mcp:issue`): a red night files it, comments on it, or reopens it; the
   next green night comments and closes it. A planner that fails takes the same path;
 - **sorts the survivors** (`npm run test:mutation:mcp:survivors`, `packages/xezar/mutation/survivors.mjs`)
   into three groups, the owner's rule of 2026-09-15: **known** if the starting list below has them,
-  keeping a #338 or #353 tag; **already seen** if the previous complete run on `main` had them;
+  keeping a #338 or #353 tag; **already seen** if the previous complete run on the default branch had them (`main` as the fallback on the night the default moved);
   **new** otherwise. A survivor is a `Survived` or a `NoCoverage` mutant – an untested new function
   produces the second kind, so leaving it out would hide the regression the list exists to show. It
   is matched by file, mutator and the text it mutates, never by line, so an edit above it does not
@@ -925,9 +926,9 @@ there, on slower cores. A single scheduled job would not finish. So the workflow
   the issue's state if it must and never posts a second comment. The survivor steps may fail
   without skipping the issue step: the grouping and the upload are `continue-on-error`.
 
-**"Previous" is the previous COMPLETE main run.** A run where every shard reported uploads its list
+**"Previous" is the previous COMPLETE run on the default branch.** A run where every shard reported uploads its list
 as the `mutation-survivors` artifact (kept 90 days); the next run downloads the newest one from
-another `main` run. A run with a missing shard uploads nothing, so a survivor of that shard is not
+another run on the default branch, or from `main` when the default branch has none yet. A run with a missing shard uploads nothing, so a survivor of that shard is not
 called new the night after. When no list is found – the first run after this change, or a gap
 longer than 90 days – the report says "already seen" could not be checked, and lists every survivor
 outside the starting list as new.
@@ -957,7 +958,7 @@ npm run --silent test:mutation:mcp:survivors -- baseline --reports .local/mutati
 Commit the result in its own pull request, so the diff shows which survivors left and arrived.
 
 **Forcing the red path.** Dispatch the workflow with `force_red: true`
-(`gh workflow run mutation.yml --ref main -f force_red=true`): no shard runs, the report job writes
+(`gh workflow run mutation.yml --ref develop -f force_red=true`, on the default branch – any other ref skips the tracking issue): no shard runs, the report job writes
 a "forced" summary, files, comments on or reopens the tracking issue and fails, all in minutes. The
 next real green night closes the issue again. It proves the path a real failure takes; it measures
 nothing.

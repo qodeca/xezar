@@ -5,7 +5,8 @@ Xezar ships as one public npm package, **`@qodeca/xezar`**, published from
 
 Nothing publishes automatically. There is no preview channel, no `develop` channel and no
 nightly: the only path to the registry is the `Release` workflow, which a maintainer dispatches
-by hand.
+by hand. `develop` is a branch, not a channel: it is the default branch every pull request
+targets, and `main` holds released work only (`SDLC.md`).
 
 ---
 
@@ -71,11 +72,15 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 
 ## Cutting a release
 
-1. Land everything you want in the release on `main`, with a green CI run. **The MCP mutation
+1. Land everything you want in the release on `develop`, with a green CI run. Merge the changelog
+   pull request into `develop`, then promote it: cut `promote/v<version>` at the changelog merge
+   commit and merge it into `main` with a merge commit (never squash). Work merged into `develop`
+   after the changelog commit waits for the next release. The release skill
+   (`.xezar/skills/xezar-release-publish.md`) carries the exact commands. **The MCP mutation
    gate is no longer part of this path, and a release does not wait on it.** It ran as the
    `release` / `release-prep` workflows' first check step until 2026-09-12; that step is gone,
    because a nearly four-hour measurement whose only repair is a stronger test in somebody else's
-   PR must not hold a finished release. **It runs nightly against `main`** instead
+   PR must not hold a finished release. **It runs nightly against the default branch (`develop`)** instead
    (`.github/workflows/mutation.yml`, #377): read the latest run, or the open `mutation-nightly`
    issue, if you want the current score before you cut. A survivor is a weak test to fix in its
    own PR, not a reason to hold a release that passed the full canonical gate and QA. The nightly
@@ -89,7 +94,7 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    on the release candidate; include their results, the candidate SHA and the fresh archive scan
    evidence in the release PR.
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
-   maintenance branch) and the bump:
+   maintenance branch – never `develop`) and the bump:
 
    | Bump | What it publishes |
    |---|---|
@@ -101,12 +106,21 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    isolated consumer and runs the CLI from it), publishes to npm with `--tag latest` and
    `--provenance`, and creates the `v<version>` GitHub Release at the released commit.
 4. For `patch`/`minor`/`major` it also opens a `release/v<version>` PR carrying the manifest
-   bump, because `main` is PR-only. Merge it so the trunk matches the registry. That PR is opened
+   bump, because `main` is PR-only. Merge it with a merge commit so `main` matches the registry. That PR is opened
    by the Actions bot, so its CI sits at **action_required** until a maintainer approves the run
    (`gh run list --branch release/v<version>`, then approve it in the Actions tab or with
    `gh api -X POST repos/qodeca/xezar/actions/runs/<id>/approve`). Nothing is wrong; GitHub holds
-   bot-authored workflow runs by default. Until this PR lands, the trunk still names the previous
+   bot-authored workflow runs by default. Until this PR lands, `main` still names the previous
    version while the registry serves the new one.
+5. Back-merge: cut `backmerge/v<version>` from `main`, merge the current `develop` into it (GitHub's
+   merges API, so no local commit), and merge it into `develop` with a merge commit. Proof:
+   `git rev-list --count origin/develop..origin/main` is 0. Every merge into `main` – promotion,
+   bump or hotfix – is followed by one, or the next promotion is out of date.
+
+A **hotfix** ships one urgent fix without the unreleased work on `develop`, and only with the
+owner's explicit authorization: a `hotfix/<name>` branch from `main` carrying the fix and its
+folded changelog section, merged into `main` with a merge commit, then steps 2–5 with
+`bump=patch`. The release skill carries the commands.
 
 ### What a green run means
 
@@ -152,7 +166,7 @@ concluding that nothing published.
 **After a bump release, the manifests keep naming the previous version on purpose.** A
 `patch`/`minor`/`major` run stamps the version during the release run instead of committing it
 beforehand, so the commit the tag points at can still hold the previous number. The version-bump
-pull request brings the repository in line afterwards. Until that lands, "the trunk says 0.17.0 and
+pull request brings the repository in line afterwards. Until that lands, "`main` says 0.17.0 and
 the registry says 0.18.0" is the expected middle state – the 0.18.0 tag is exactly that: its
 `package.json` reads `0.17.0`. A `bump=existing` release has no such window, because the version is
 already committed.

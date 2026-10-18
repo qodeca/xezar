@@ -636,11 +636,32 @@ The file kinds and their rules are in `.xezar/docs/campaign-notes.md`.
 
 ### Branches
 
-Trunk-based. `main` is the only long-lived branch and the base of every pull request. Agent
-branches are `xez/<id>`; people use `feature/<name>`. There is no promotion step. Direct pushes are
-allowed only for the leader's own record: `.xezar/campaigns/**`, `.xezar/docs/leader-guide.md` and
-`.xezar/unattended.json`. Branch protection has no admin enforcement, so this limit is an
-instruction, not a guard.
+Two long-lived branches (since 2026-10-18). `develop` is the default branch and the base of every
+feature pull request; `main` is the release branch and holds released work only. Agent branches
+are `xez/<id>`; people use `feature/<name>`. Until `develop` exists and the configured `baseBranch`
+names it, `main` is still the base.
+
+| Pull request | Source branch | Target | Merge method |
+|---|---|---|---|
+| Feature, fix, docs, changelog | any task branch | `develop` | squash |
+| Promotion | `promote/v<version>`, cut at the changelog merge commit | `main` | merge commit |
+| Version bump | `release/v<version>`, opened by the Release workflow | `main` | merge commit |
+| Hotfix (owner-authorized) | `hotfix/<name>`, from `main` | `main` | merge commit |
+| Back-merge, after every merge into `main` | `backmerge/v<version>`, from `main` | `develop` | merge commit |
+
+- `main` and `develop` are never a pull request's source branch, and never deleted on merge.
+- The `PR source guard` check refuses any other source branch into `main`. Release-class pull
+  requests pass `integration-preflight.sh --release`, which also checks the history of promotion and
+  back-merge pull requests; feature
+  work passes the ordinary preflight.
+- A promotion carries exactly what the changelog lists: work merged into `develop` after the
+  changelog commit waits for the next release.
+- Closing keywords (`Fixes #n`) work only in pull requests into `develop`, the default branch. A
+  hotfix's issue is closed by hand after its back-merge.
+
+Direct pushes are allowed only for the leader's own record: `.xezar/campaigns/**`,
+`.xezar/docs/leader-guide.md` and `.xezar/unattended.json`. Branch protection has no admin
+enforcement, so this limit is an instruction, not a guard.
 
 ### The gate here
 
@@ -676,16 +697,18 @@ recorded under `docs/architecture/`.
 
 ### Acceptance here
 
-After the merge, on `main`.
+After the merge, on `develop`.
 
 ### Release here
 
-1. CI is green on `main`, and the owner gives the go.
-2. The `release-prep` workflow folds `changelog.d/` and raises the version.
-3. The owner dispatches Actions → Release, which publishes to npm through trusted publishing
-   (OIDC, no token).
-4. Merge the bot's `release/v<version>` pull request.
-5. Verify with `npm view @qodeca/xezar version` and the tag.
+1. CI is green on `develop`, and the owner gives the go.
+2. The `release-prep` workflow folds `changelog.d/` in a pull request into `develop`.
+3. `promote/v<version>`, cut at that merge commit, merges into `main` with a merge commit.
+4. The owner dispatches Actions → Release on `main`, which raises the version and publishes to npm
+   through trusted publishing (OIDC, no token).
+5. Merge the bot's `release/v<version>` pull request with a merge commit.
+6. Back-merge `main` into `develop` through `backmerge/v<version>`.
+7. Verify with `npm view @qodeca/xezar version` and the tag.
 
 Recovery: never unpublish; ship a new patch and move the `dist-tag`. Detail: `docs/publishing.md`.
 Incident notes: `docs/runbooks/`.
@@ -717,7 +740,7 @@ records the evidence and updates this row.
 
 | Guard | State |
 |---|---|
-| Branch rules block force push and deleting the base and release branches | Partly: `main` is protected, but without admin enforcement |
+| Branch rules block force push and deleting the base and release branches | Partly: `main` is protected, but without admin enforcement; `develop` is protected at the cut-over |
 | Hook or permission rule blocks recursive deletes outside the worktree and schema drops | To check |
 | Agents use a short-lived, branch-scoped token, never a full-access login | To check |
 | No deploy, signing, registry or production credentials in agent sessions | To check |
@@ -736,7 +759,10 @@ records the evidence and updates this row.
 
 ### Deviations from the core
 
-None.
+- **Release order.** The core raises the version before the promotion and signs the tag. Here the
+  promotion comes first; the Release workflow then stamps the version while it publishes, tags the
+  promoted commit through the GitHub API (unsigned), and opens the version-bump pull request
+  afterwards (`docs/publishing.md` § Cutting a release).
 
 ### Known gaps to fix outside this file
 

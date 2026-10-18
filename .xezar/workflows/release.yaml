@@ -1,5 +1,5 @@
 # LAUNCH THIS WITH WORKTREE **ON** (the composer default). The changelog is written and committed
-# on this task's own `xez/<id8>` branch and reaches `main` only through a pull request; the
+# on this task's own `xez/<id8>` branch and reaches the base branch only through a pull request (and `main`, under the two-branch model, only through the promotion PR); the
 # primary checkout is never touched. Bringing the primary checkout up to the bump merge commit
 # afterwards is the separate `root-sync` workflow (Worktree OFF), by design — a root write cannot
 # share a run with a worktree write.
@@ -12,7 +12,7 @@
 #
 # `{{task}}` is the operator's one-line brief: `bump: patch` (or `minor` / `major`), optionally
 # `version: 0.11.2` and `dry-run: true`. No changelog brief: the `changelog` step derives the entry
-# from the PRs merged into main since the last release tag (see skills/xezar-release-changelog.md).
+# from the PRs merged into the base branch since the last release tag (see skills/xezar-release-changelog.md).
 name: release
 description: Write the changelog from merged PRs, gate it, merge the changelog PR, dispatch the manually authorized Release workflow and merge the bump PR — one task per release. Worktree ON.
 steps:

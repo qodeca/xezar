@@ -141,7 +141,17 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 
 ## This repository's setup
 
-- Base branch `main`, trunk-based: every change is a short-lived branch and a pull request into `main`. No second long-lived branch.
+- Two branches (since 2026-10-18): `develop` is the default and base branch – every change is a
+  short-lived branch and a pull request into `develop`, squash-merged. `main` holds released work
+  only: it takes `promote/*`, `release/v*` and `hotfix/*` pull requests, merged with a merge commit
+  through `integration-preflight.sh --release`, and every merge into `main` is followed by a
+  `backmerge/*` pull request into `develop`. The `PR source guard` CI check refuses anything else
+  into `main`. The primary checkout follows `develop`; root-sync targets a `develop` commit.
+- The cut-over is two changes that land together: the GitHub default branch becomes `develop`,
+  and `.xezar/config.json` and `.xezar/pipeline/config.json` say `"baseBranch": "develop"` (plus
+  the system prompt's base-branch sentence). Then every checkout runs `git remote set-head origin -a`
+  once and moves to `develop`: `git fetch` never refreshes `origin/HEAD`, and the config guard and
+  routing compare `baseBranch` against it. Until that cut-over, `main` is still the base.
 - The gate, in order: `npm ci`, the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`,
   `npm run build`, `npm run test:package`, then the repository checks. One command runs it, in the
   foreground: `bash .xezar/checks/repo-gates.sh`. No lint command exists.
@@ -181,9 +191,14 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 ## Release runbook
 
 The owner authorises every release; a release go is an owner-only decision. Full steps: `docs/publishing.md`.
-1. Everything for the release is on `main` with a green CI run — proof: the run on that sha.
+1. Everything for the release is on `develop` with a green CI run — proof: the run on that sha.
 2. `release-prep` workflow: changelog and candidate checks — proof: its evidence and the candidate sha.
-3. The owner dispatches **Actions → Release** with the bump — proof: a green `Release` run
+3. The changelog pull request merges into `develop`; `promote/v<version>`, cut at that merge commit,
+   merges into `main` with a merge commit — proof: `main`'s head has two parents.
+4. The owner dispatches **Actions → Release** on `main` with the bump — proof: a green `Release` run
    (green means published; there is no npm token, trusted publishing only).
-4. Merge the `release/v<version>` bump pull request the bot opens — proof: `main` names the new version.
-5. Verify — proof: `npm view @qodeca/xezar version` and the `v<version>` tag at the released commit.
+5. Merge the `release/v<version>` bump pull request the bot opens (merge commit) — proof: `main`
+   names the new version.
+6. Back-merge: `backmerge/v<version>` into `develop` (merge commit) — proof:
+   `git rev-list --count origin/develop..origin/main` is 0.
+7. Verify — proof: `npm view @qodeca/xezar version` and the `v<version>` tag at the released commit.
