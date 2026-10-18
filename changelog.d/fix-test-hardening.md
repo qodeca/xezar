@@ -10,3 +10,10 @@
   suite no longer leaves temporary Qwen Code homes behind. A separate, hand-run mutation run
   (`npm run test:mutation:lock`) now covers the read-only command lock and the Qwen Code tool
   policy without touching the nightly MCP gate.
+
+## 🐛 Fixes
+
+- 🐛 **A Qwen Code leader receives pushed events when the temp folder is deep.** The receipt
+  socket xezar opens for each push lived in the temp folder, and a deep `TMPDIR` made its path
+  longer than a Unix socket allows, so every push failed. It now moves to `/tmp` only when the
+  temp folder is too deep for it; Windows is unchanged.
