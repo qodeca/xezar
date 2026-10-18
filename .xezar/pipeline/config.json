@@ -67,7 +67,7 @@
       "Two-project product harness",
       "Cockpit browser e2e"
     ],
-    "maxWaitMinutes": 40
+    "maxWaitMinutes": 45
   },
   "gates": {
     "requireVerdictHead": true,
@@ -116,6 +116,14 @@
       {
         "pattern": "packages/xezar/src/workspace/**",
         "why": "Per-user state and the project registry."
+      },
+      {
+        "pattern": "scripts/xezar-leader.sh",
+        "why": "Starts the project leader session and lets the engine push events into it."
+      },
+      {
+        "pattern": "scripts/xezar-leader-settings.json",
+        "why": "The leader session's permissions, including its right to merge pull requests."
       }
     ]
   }

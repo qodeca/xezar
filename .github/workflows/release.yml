@@ -36,7 +36,7 @@ jobs:
     name: Release ${{ inputs.bump }} to npm (latest)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Releases from `main` (the stable trunk) or a `release/*` maintenance branch — the latter
+    # Releases from `main` (released work only; `develop` is the base) or a `release/*` maintenance branch — the latter
     # is how a patch line (e.g. `release/0.10.x`) ships fixes without the newer features already
     # merged to `main`. Dispatch from the BRANCH, never a tag: workflow_dispatch reads this file
     # from the ref it runs on, and a tag's copy is frozen, so a tag would still evaluate the old

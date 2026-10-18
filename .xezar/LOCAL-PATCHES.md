@@ -18,7 +18,7 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` �
 
 ## LP-3 – route this project's DeepSeek lanes through Qwen Code
 - Files: .xezar/checks/route.mjs, .xezar/routing.schema.json, .xezar/docs/routing.md, .xezar/docs/leader-guide.md
-- Reason: the engine runs claude, codex and qwen only (#1046), and qwen holds a reading step read-only (#1044); the kit still names the two backends removed in 0.30.0. Since 2026-10-18 leader-guide.md also describes this project's two-branch model (`develop` base, `main` for released work) and its release runbook – see LP-5
+- Reason: the engine runs claude, codex and qwen only (#1046), and qwen holds a reading step read-only (#1044); the kit still names the two backends removed in 0.30.0. Since 2026-10-18 leader-guide.md also describes this project's two-branch model (`develop` base, `main` for released work) and its release runbook – see LP-5; it names the nine CI checks branch protection requires and the `release` workflow's `changelog` step as the place fragments are folded
 - Upstream: local only
 - Since: 2026-10-16
 - Confirmed: yes
@@ -32,7 +32,7 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` �
 
 ## LP-5 – support the two-branch model (develop base, main for released work)
 - Files: .xezar/checks/integration-preflight.sh, .xezar/checks/worktree-git.sh, .xezar/checks/worktree-preflight.sh, .xezar/checks/root-sync-preflight.sh, .xezar/skills/xezar-release-publish.md, .xezar/skills/xezar-release-changelog.md, .xezar/skills/xezar-integration.md, .xezar/skills/xezar-handoff-draft-pr.md, .xezar/skills/xezar-issue-triage.md, .xezar/workflows/release.yaml, .xezar/workflows/release-prep.yaml, .xezar/workflows/integration.yaml
-- Reason: the owner moved this project to `develop` as the default and base branch, with `main` for released work only (2026-10-18). The kit assumes `main` is the base: the worktree guards did not refuse `develop`, the integration preflight refused every pull request into `main` and only squashes, and the release skills opened the changelog pull request into `main` and had no promotion or back-merge. This patch adds `integration-preflight.sh --release` (release-class head branches only, merge commit), refuses commits on the configured base, and writes the release skills for both models; under the trunk model every changed file behaves as before.
+- Reason: the owner moved this project to `develop` as the default and base branch, with `main` for released work only (2026-10-18). The kit assumes `main` is the base: the worktree guards did not refuse `develop`, the integration preflight refused every pull request into `main` and only squashes, and the release skills opened the changelog pull request into `main` and had no promotion or back-merge. This patch adds `integration-preflight.sh --release` (release-class head branches only, merge commit), refuses commits on the configured base, and writes the release skills for both models; under the trunk model every changed file behaves as before. xezar-release-publish.md also counts the four package manifests the Release workflow stamps (the kit text said three).
 - Upstream: qodeca/xezar-skills#248
 - Since: 2026-10-18
 - Confirmed: yes
