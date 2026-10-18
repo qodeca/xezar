@@ -638,8 +638,7 @@ The file kinds and their rules are in `.xezar/docs/campaign-notes.md`.
 
 Two long-lived branches (since 2026-10-18). `develop` is the default branch and the base of every
 feature pull request; `main` is the release branch and holds released work only. Agent branches
-are `xez/<id>`; people use `feature/<name>`. Until `develop` exists and the configured `baseBranch`
-names it, `main` is still the base.
+are `xez/<id>`; people use `feature/<name>`. The configured `baseBranch` is `develop` since #1100.
 
 | Pull request | Source branch | Target | Merge method |
 |---|---|---|---|
@@ -740,7 +739,7 @@ records the evidence and updates this row.
 
 | Guard | State |
 |---|---|
-| Branch rules block force push and deleting the base and release branches | Partly: `main` is protected, but without admin enforcement; `develop` is protected at the cut-over |
+| Branch rules block force push and deleting the base and release branches | Partly: `main` and `develop` are protected, but without admin enforcement; a ruleset on `main` requires a pull request and allows only merge commits |
 | Hook or permission rule blocks recursive deletes outside the worktree and schema drops | To check |
 | Agents use a short-lived, branch-scoped token, never a full-access login | To check |
 | No deploy, signing, registry or production credentials in agent sessions | To check |
