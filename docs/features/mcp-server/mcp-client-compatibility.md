@@ -1,9 +1,11 @@
 # Local MCP client compatibility and event-driven leader integration
 
+> **Status update – 2026-10-17:** Release 0.30.0 removed pi and OpenCode as task runners and leader clients (#1046, merged in #1067). xezar now supports Claude Code, Codex and Qwen Code; a Qwen Code leader gets pushed events on Linux and macOS and reads them with `leader_events` on Windows (#1045, #1086). Everything below about pi or OpenCode is history, not current support.
+
 > **Status update — 2026-09-15:** Historical research, **superseded** for current status by the wake
 > decisions, [client acceptance](mcp-client-acceptance-record.md) and [DoD
 > record](mcp-definition-of-done-record.md). The original material gaps are dated 2026-09-08. pi now has a
-> [reaction extension](pi-leader-extension.md) and passed real-model reaction on 2026-09-13 (#373); Claude
+> [reaction extension](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/pi-leader-extension.md) and passed real-model reaction on 2026-09-13 (#373); Claude
 > Code and Codex passed by owner acceptance on 2026-09-15. OpenCode real-model reaction is out of scope by the
 > owner’s 2026-09-13 decision.
 
@@ -97,7 +99,7 @@ No integration has been certified by this report. The documentation research est
 
 Added by [#330](https://github.com/qodeca/xezar/issues/330) (WP0). The owner approved pi as a fourth required initial client, on the condition that pi can work with MCP servers; the condition was met through a third-party extension. The body above is the 2026-09-08 record for the other three clients and is not revised by this addendum.
 
-**Evidence status differs from the body.** The body is documentation research only. The pi facts below include **runtime** evidence: the real `pi` binary with the extension, run on 2026-09-11 against the real `xezar mcp` bridge of a real `xezar serve` at `5031bf8`, with a scripted model endpoint. The runs, their labels and their limits are in the [pi evidence record](mcp-adapter-evidence-pi.md); #330 holds the earlier probe against a stub. Local versions: pi **0.85.1** (`@earendil-works/pi-coding-agent`), pi-mcp-adapter **2.32.1**, Node **v24.20.0**. These are installed versions, not certified minimums.
+**Evidence status differs from the body.** The body is documentation research only. The pi facts below include **runtime** evidence: the real `pi` binary with the extension, run on 2026-09-11 against the real `xezar mcp` bridge of a real `xezar serve` at `5031bf8`, with a scripted model endpoint. The runs, their labels and their limits are in the [pi evidence record](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/mcp-adapter-evidence-pi.md); #330 holds the earlier probe against a stub. Local versions: pi **0.85.1** (`@earendil-works/pi-coding-agent`), pi-mcp-adapter **2.32.1**, Node **v24.20.0**. These are installed versions, not certified minimums.
 
 | Client | Local transport and project setup | Event-to-model reaction | Leader instruction mechanism |
 | --- | --- | --- | --- |

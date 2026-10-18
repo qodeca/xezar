@@ -43,7 +43,7 @@ candidate, not evidence that terminal injection is necessary.
 | Official programmatic session interface | **Selected:** app-server over its existing Unix control socket, with `thread/resume` and `turn/start`. `queue --thread … --message …` also woke an ordinary TUI, but lacks the qualified observation/recovery path needed for this implementation. |
 | Terminal text, last resort only with proof | Refused. The fixture used its own PTY, supplied the initial prompt as an argv argument, and answered terminal capability queries. It typed no event, approval, or shell command. Nothing touched the user's terminal. |
 
-The [pi extension](pi-leader-extension.md) establishes the relevant pattern: a path
+The [pi extension](https://github.com/qodeca/xezar/blob/v0.30.0/docs/features/mcp-server/pi-leader-extension.md) establishes the relevant pattern: a path
 into the running client plus a separately observed reaction. Codex already exposes
 that path when its shared server exists; it needs no pi-style extension in that case.
 The [older Codex evidence](mcp-adapter-evidence-codex.md) remains dated evidence:

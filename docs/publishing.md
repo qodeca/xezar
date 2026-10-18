@@ -139,6 +139,27 @@ xezar serve                                 # opens the cockpit
 The GitHub Release tag (`v<version>`) must point at the commit the tarball was built from; the
 release body states that commit.
 
+### The tag is there, but `npm` still shows the old version
+
+That is normal, not a failed release, and it has two separate causes worth knowing before you go
+looking for a fault.
+
+**npm can keep serving the previous version for a while.** The tag and the GitHub release appear
+first, and `npm view @qodeca/xezar version` catches up afterwards – from about five minutes (0.30.0)
+to around a quarter of an hour in the cases observed here. Wait a few minutes and ask again before
+concluding that nothing published.
+
+**After a bump release, the manifests keep naming the previous version on purpose.** A
+`patch`/`minor`/`major` run stamps the version during the release run instead of committing it
+beforehand, so the commit the tag points at can still hold the previous number. The version-bump
+pull request brings the repository in line afterwards. Until that lands, "the trunk says 0.17.0 and
+the registry says 0.18.0" is the expected middle state – the 0.18.0 tag is exactly that: its
+`package.json` reads `0.17.0`. A `bump=existing` release has no such window, because the version is
+already committed.
+
+So a green release run and an existing tag are the evidence that it published. Check those first,
+and read the registry and the default branch as things that catch up rather than as the verdict.
+
 ---
 
 ## Recovering from a partial failure
