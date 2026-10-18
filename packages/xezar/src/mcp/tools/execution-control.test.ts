@@ -255,12 +255,10 @@ describe('no tool can terminate an arbitrary process', () => {
     const source = readFileSync(new URL('./execution-control.ts', import.meta.url), 'utf8');
     const imports = [...source.matchAll(/^import\s[^;]*?from\s+'([^']+)';/gms)].map((m) => m[1]).sort();
     expect(imports).toEqual([
-      '../../server/app-type.ts',
       '../service-adapter.ts',
       '../stale-write.ts',
       '../tool.ts',
       '@qodeca/xezar-contract',
-      'hono/client',
       'zod',
     ]);
     expect(source).not.toMatch(/process\.kill|child_process|node:fs|RunStore|new RunManager|\.cancel\(/);

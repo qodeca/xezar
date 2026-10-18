@@ -10,10 +10,16 @@ import {
   engineOwnsRun,
   RUN_STILL_ACTIVE_CODE,
 } from '@qodeca/xezar-contract';
-import { hc } from 'hono/client';
 import { z } from 'zod';
-import type { AppType } from '../../server/app-type.ts';
-import { MCP_ORIGIN, McpServiceAdapter, type GetRunValue, type ServiceDispatch } from '../service-adapter.ts';
+import {
+  inProcessClient,
+  MCP_ORIGIN,
+  McpServiceAdapter,
+  settleServiceAnswer as settle,
+  type GetRunValue,
+  type ServiceAnswer as Answer,
+  type ServiceDispatch,
+} from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
@@ -190,37 +196,8 @@ export type ExecutionControlResult = z.infer<typeof executionControlResultSchema
 
 // ---- the routes the shared adapter does not name yet -------------------------------------------
 
-const IN_PROCESS_BASE = 'http://127.0.0.1';
-const IN_PROCESS_HOST = '127.0.0.1';
-
-/** The same in-process client the adapter builds (`service-adapter.ts`): loopback host, no Origin. */
-const scopedApi = (service: ServiceDispatch) =>
-  hc<AppType>(IN_PROCESS_BASE, {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', IN_PROCESS_HOST);
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  }).api.v1.p[':projectId'];
-
-type Answer<T> = { ok: true; status: number; value: T } | { ok: false; status: number; error: string; body?: unknown };
-
-/** Map a service answer. A success without a JSON body is an error, never an empty value. */
-async function settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<Answer<T>> {
-  const res = await pending;
-  const body: unknown = await res.json().catch(() => undefined);
-  if (success.includes(res.status)) {
-    if (body === undefined) return { ok: false, status: 502, error: `service answered ${res.status} without a body` };
-    return { ok: true, status: res.status, value: body as T };
-  }
-  const error =
-    body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : `service answered ${res.status}`;
-  return { ok: false, status: res.status, error, body };
-}
+/** The shared in-process client (`service-adapter.ts`), scoped to the project routes. */
+const scopedApi = (service: ServiceDispatch) => inProcessClient(service).api.v1.p[':projectId'];
 
 /** The adapter's rule for a path parameter: a valid id that is not a dot segment. */
 const validPathId = (id: string): boolean => id !== '.' && id !== '..' && runIdParamSchema.safeParse({ id }).success;

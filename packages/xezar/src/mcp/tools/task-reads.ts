@@ -25,7 +25,7 @@ import {
   sealCursor,
   type OwnershipScope,
 } from '../resource-ownership.ts';
-import type { ServiceDispatch } from '../service-adapter.ts';
+import { IN_PROCESS_BASE, IN_PROCESS_HOST, type ServiceDispatch } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -335,9 +335,6 @@ const STALE_PART =
 
 // ---- dispatch ------------------------------------------------------------------------------
 
-/** Any absolute origin works: the request never leaves the process. The `host` is what the
- *  request-origin guard (#426) checks, and an in-process call genuinely is this machine. */
-const IN_PROCESS_BASE = 'http://127.0.0.1';
 
 interface Answer {
   readonly status: number;
@@ -394,7 +391,7 @@ class TaskReader {
   }
 
   private async dispatch(path: string, as: 'json' | 'text'): Promise<Answer> {
-    const res = await this.service.request(`${IN_PROCESS_BASE}${path}`, { headers: { host: '127.0.0.1' } });
+    const res = await this.service.request(`${IN_PROCESS_BASE}${path}`, { headers: { host: IN_PROCESS_HOST } });
     if (as === 'text' && res.status === 200) return { status: res.status, body: await res.text() };
     return { status: res.status, body: await res.json().catch(() => undefined) };
   }

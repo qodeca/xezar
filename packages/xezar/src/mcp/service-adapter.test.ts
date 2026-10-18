@@ -16,6 +16,7 @@ import {
   MCP_ORIGIN,
   McpServiceAdapter,
   McpServiceAdapterError,
+  settleServiceAnswer,
   type ServiceDispatch,
   type StartRunRequest,
   type StartRunValue,
@@ -457,5 +458,31 @@ describe('an empty answer never reads as a missing one', () => {
     expect(await answer(null).listRuns()).toMatchObject({ ok: false, status: 502 });
     expect(await answer('not json').listRuns()).toMatchObject({ ok: false, status: 502 });
     expect(await answer('[]').listRuns()).toEqual({ ok: true, origin: MCP_ORIGIN, status: 200, value: [] });
+  });
+});
+
+describe('settleServiceAnswer – the one mapping every MCP tool shares', () => {
+  const respond = (body: string | null, status: number) => Promise.resolve(new Response(body, { status }));
+
+  it('a listed 204 is a success with no value; an unlisted 204 is not a success', async () => {
+    expect(await settleServiceAnswer(respond(null, 204), [204])).toEqual({ ok: true, status: 204, value: undefined });
+    expect(await settleServiceAnswer(respond(null, 204), [200])).toMatchObject({ ok: false, status: 204 });
+  });
+
+  it('any other listed success without a JSON body is a 502, never an empty value', async () => {
+    expect(await settleServiceAnswer(respond(null, 200), [200])).toMatchObject({ ok: false, status: 502 });
+    expect(await settleServiceAnswer(respond(null, 201), [201])).toMatchObject({ ok: false, status: 502 });
+    expect(await settleServiceAnswer(respond('{"run":1}', 201), [201])).toEqual({ ok: true, status: 201, value: { run: 1 } });
+  });
+
+  it('a refusal keeps the service sentence, its status and its body', async () => {
+    const body = { error: 'run is still active', code: 'run_still_active' };
+    expect(await settleServiceAnswer(respond(JSON.stringify(body), 409), [200])).toEqual({
+      ok: false,
+      status: 409,
+      error: 'run is still active',
+      body,
+    });
+    expect(await settleServiceAnswer(respond('<html>', 500), [200])).toMatchObject({ ok: false, status: 500, error: 'service answered 500' });
   });
 });
