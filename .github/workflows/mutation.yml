@@ -1,6 +1,8 @@
 name: MCP mutation gate
 
-# The MCP mutation gate (`npm run test:mutation:mcp`), run nightly against `main` (#377).
+# The MCP mutation gate (`npm run test:mutation:mcp`), run nightly against the default branch (#377):
+# `develop` since the two-branch model, `main` before it. GitHub runs a schedule on the default branch,
+# so nothing here names a branch: every guard below reads `github.event.repository.default_branch`.
 #
 # WHERE IT USED TO BE. `.xezar/workflows/release.yaml` ran it as its first check step until
 # 2026-09-12, so a finished, approved release waited on a nearly four-hour measurement whose only
@@ -41,7 +43,7 @@ name: MCP mutation gate
 # artifact. See `docs/testing/coverage-gaps.md` § 10.8 for the measurement.
 #
 # HOW A RESULT REACHES SOMEBODY. The run goes red; the `report` job writes the score table into the
-# run summary; and on `main` it files, comments on or reopens ONE tracking issue (label
+# run summary; and on the default branch it files, comments on or reopens ONE tracking issue (label
 # `mutation-nightly`), and closes it again on the next green night
 # (`packages/xezar/mutation/tracking-issue.mjs`). A planner failure takes the same path, so a gate
 # that could not even start is not a silent one.
@@ -49,7 +51,8 @@ name: MCP mutation gate
 # NEW, ALREADY SEEN, KNOWN (#377, PR 2). The report also sorts the survivors
 # (`packages/xezar/mutation/survivors.mjs`): KNOWN if the committed starting list
 # `docs/testing/mcp-mutation-survivors.json` has them (with their #338 / #353 tag), ALREADY SEEN if
-# the previous complete `main` run had them, NEW otherwise. A green night with new survivors stays
+# the previous complete run on the default branch had them (`main` as the fallback for the night the
+# default moved), NEW otherwise. A green night with new survivors stays
 # green, and the tracking issue gets one comment listing them. One run posts at most one comment.
 #
 # FORCING THE RED PATH. Dispatch with `force_red: true` and no shard runs: the report job writes a
@@ -224,12 +227,13 @@ jobs:
 
       # Reads only. Absent on the first run after the starting list, and whenever the newest list
       # has expired: the grouping then says it could not compare, rather than calling nothing seen.
-      - name: Find the previous main run's survivor list
+      - name: Find the previous default-branch run's survivor list
         if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npm run --silent test:mutation:mcp:survivors -- previous --out .local/mutation/previous
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npm run --silent test:mutation:mcp:survivors -- previous --branch "$DEFAULT_BRANCH" --branch main --out .local/mutation/previous
 
       # Never changes the verdict: the floor alone decides red or green. A grouping that fails is
       # written into the summary and reaches the tracking issue as `new=unknown`. Allowed to fail,
@@ -239,9 +243,11 @@ jobs:
         id: survivors
         if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
         continue-on-error: true
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -u
-          if ! npm run --silent test:mutation:mcp:survivors -- group --reports .local/mutation/shards \
+          if ! npm run --silent test:mutation:mcp:survivors -- group --branch "$DEFAULT_BRANCH" --reports .local/mutation/shards \
               --previous .local/mutation/previous/survivors.json --out-md .local/mutation/summary.md \
               --out-json .local/mutation/survivors.json --outputs "$GITHUB_OUTPUT" > .local/mutation/survivors.md; then
             printf '\n### Survivors: new, already seen, known\n\nThe grouping failed, so new survivors could not be told apart. See the step log.\n' | tee -a .local/mutation/summary.md > .local/mutation/survivors.md
@@ -267,15 +273,17 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # `main` only: a dispatch on a feature branch measures that branch, and must not comment on,
-      # reopen or close the issue that tracks `main`. The script refuses other refs as well.
+      # The default branch only: a dispatch on any other branch measures that branch, and must not
+      # comment on, reopen or close the issue that tracks the default one. The script refuses other
+      # refs as well.
       - name: File, update or close the tracking issue
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         env:
           GH_TOKEN: ${{ github.token }}
           VERDICT: ${{ steps.aggregate.outputs.verdict }}
           NEW_SURVIVORS: ${{ steps.survivors.outputs.new }}
-        run: npm run --silent test:mutation:mcp:issue -- --verdict "$VERDICT" --summary .local/mutation/summary.md --run-id "$GITHUB_RUN_ID" --new-survivors "$NEW_SURVIVORS"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npm run --silent test:mutation:mcp:issue -- --verdict "$VERDICT" --summary .local/mutation/summary.md --run-id "$GITHUB_RUN_ID" --new-survivors "$NEW_SURVIVORS" --tracked-ref "refs/heads/$DEFAULT_BRANCH"
 
       # The last word on the job's own status, so a red night is a RED scheduled check and not just
       # an issue somebody may or may not see. Anything but an explicit green fails.

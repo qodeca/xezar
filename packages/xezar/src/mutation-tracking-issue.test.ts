@@ -26,7 +26,7 @@ type TrackingModule = {
   runMarker: (runId: string | number) => string;
   parseNewSurvivors: (value: unknown) => number | null | undefined;
   alreadyPosted: (issue: { body?: string | null }, comments: unknown, runId: string | number) => boolean;
-  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown; newSurvivors?: number | null }) => Decision;
+  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown; newSurvivors?: number | null; trackedRef?: string }) => Decision;
   ghCommands: (decision: Decision, summary: string, runId?: string | number) => string[][];
   syncTrackingIssue: (options: {
     verdict: unknown;
@@ -35,6 +35,7 @@ type TrackingModule = {
     gh: (args: string[]) => string;
     runId?: string | number;
     newSurvivors?: number | null;
+    trackedRef?: string;
   }) => Decision;
 };
 
@@ -81,6 +82,16 @@ describe('the tracking issue decision (#377)', () => {
     });
     expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')] }).action).toBe('none');
     expect(t.decide({ verdict: 'green', ref: MAIN, issues: [] }).action).toBe('none');
+  });
+
+  it('follows the tracked ref the workflow passes – the default branch – and keeps main as the fallback', () => {
+    // Named break: a hard-coded main, and the nightly on `develop` never files, comments or closes.
+    const DEVELOP = 'refs/heads/develop';
+    expect(t.decide({ verdict: 'red', ref: DEVELOP, issues: [], trackedRef: DEVELOP }).action).toBe('create');
+    expect(t.decide({ verdict: 'green', ref: DEVELOP, issues: [tracked(501, 'OPEN')], trackedRef: DEVELOP })).toMatchObject({ action: 'close', number: 501 });
+    expect(t.decide({ verdict: 'red', ref: MAIN, issues: [], trackedRef: DEVELOP }).action).toBe('skip');
+    expect(t.decide({ verdict: 'red', ref: DEVELOP, issues: [] }).action).toBe('skip');
+    expect(t.TITLE).not.toMatch(/\bmain\b/);
   });
 
   it('touches nothing for a run on any ref but main', () => {
@@ -155,6 +166,21 @@ describe('carrying the decision out through gh', () => {
       ['issue', 'reopen', '77'],
       ['issue', 'comment', '77', '--body', 'S'],
     ]);
+  });
+
+  it('acts on the tracked ref it is handed, and stays silent on main once develop is tracked', () => {
+    // Named break: `syncTrackingIssue` dropping `trackedRef` on its way to `decide`.
+    const DEVELOP = 'refs/heads/develop';
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      return args[1] === 'list' ? '[]' : '';
+    };
+    expect(t.syncTrackingIssue({ verdict: 'red', ref: DEVELOP, trackedRef: DEVELOP, summary: 'S', gh }).action).toBe('create');
+    expect(calls.at(-1)!.slice(0, 2)).toEqual(['issue', 'create']);
+    calls.length = 0;
+    expect(t.syncTrackingIssue({ verdict: 'red', ref: MAIN, trackedRef: DEVELOP, summary: 'S', gh }).action).toBe('skip');
+    expect(calls).toEqual([]);
   });
 
   it('calls gh not at all off main', () => {

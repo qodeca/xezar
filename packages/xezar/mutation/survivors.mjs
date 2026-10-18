@@ -9,7 +9,8 @@
  *   - KNOWN        — in the STARTING LIST, the survivors of the first complete nightly run on `main`
  *                    (run 34999068325 on `fe33541`), committed at `docs/testing/mcp-mutation-survivors.json`.
  *                    An entry there may carry the issue that tracks it (#338, #353); the tag stays.
- *   - ALREADY SEEN — not in the starting list, but a survivor of the PREVIOUS complete main run too.
+ *   - ALREADY SEEN — not in the starting list, but a survivor of the PREVIOUS complete run on the
+ *                    default branch too.
  *   - NEW          — in neither. These are what the early note on the tracking issue lists.
  *
  * Both halves are the owner's decisions of 2026-09-15, recorded on #377.
@@ -31,7 +32,8 @@
  * hide exactly the regression this list exists to show.
  *
  * WHERE "PREVIOUS" COMES FROM. Each complete run uploads its own list as the `mutation-survivors`
- * artifact; the next run downloads the newest one from another `main` run. Never runtime state in
+ * artifact; the next run downloads the newest one from another run on the default branch (`develop`
+ * since the two-branch model), falling back to `main` for the night the default moved. Never runtime state in
  * the repository, and never an incomplete run's list: a run with a missing shard uploads nothing,
  * so a survivor of that shard is not forgotten by the night after. When no previous list can be
  * found, the report SAYS so — "we could not compare" and "nothing was seen before" are different
@@ -210,24 +212,25 @@ function table(title, survivors, limit) {
 /**
  * The Markdown the `report` job appends to its summary, and so to the tracking issue.
  * @param {ReturnType<typeof groupSurvivors>} groups
- * @param {{ missingShards?: number[], repoUrl?: string, limit?: number }} [context]
+ * @param {{ missingShards?: number[], repoUrl?: string, limit?: number, branch?: string }} [context]
+ *   `branch`: the branch the starting-list link points at; `main` when absent.
  */
 export function renderSurvivorMarkdown(groups, context = {}) {
   const limit = context.limit ?? LIST_LIMIT
-  const baselineLink = context.repoUrl ? `[the starting list](${context.repoUrl}/blob/main/${BASELINE})` : `the starting list (\`${BASELINE}\`)`
+  const baselineLink = context.repoUrl ? `[the starting list](${context.repoUrl}/blob/${context.branch ?? 'main'}/${BASELINE})` : `the starting list (\`${BASELINE}\`)`
   const tracked = groups.known.filter((s) => s.tracked?.length)
   const lines = [
     '### Survivors: new, already seen, known',
     '',
     '| Group | Count |',
     '|---|---:|',
-    `| **New** — in neither ${groups.previousAvailable ? 'the starting list nor the previous main run' : 'the starting list (no previous run to compare)'} | ${groups.new.length} |`,
-    `| Already seen — in the previous main run | ${groups.previousAvailable ? groups.seen.length : 'n/a'} |`,
+    `| **New** — in neither ${groups.previousAvailable ? 'the starting list nor the previous run on the default branch' : 'the starting list (no previous run to compare)'} | ${groups.new.length} |`,
+    `| Already seen — in the previous run on the default branch | ${groups.previousAvailable ? groups.seen.length : 'n/a'} |`,
     `| Known — in ${baselineLink} | ${groups.known.length} |`,
     '',
   ]
   if (!groups.previousAvailable) {
-    lines.push('No survivor list from a previous complete run on `main` was found, so "already seen" could not be checked: every survivor outside the starting list is listed as new.', '')
+    lines.push('No survivor list from a previous complete run on the default branch was found, so "already seen" could not be checked: every survivor outside the starting list is listed as new.', '')
   }
   if (context.missingShards?.length) {
     lines.push(`Shard${context.missingShards.length > 1 ? 's' : ''} ${context.missingShards.join(', ')} reported nothing, so ${context.missingShards.length > 1 ? 'their' : 'its'} survivors are missing from every group, and this run uploads no survivor list.`, '')
@@ -239,19 +242,25 @@ export function renderSurvivorMarkdown(groups, context = {}) {
 }
 
 /**
- * The newest `mutation-survivors` artifact from another `main` run, from the answer of
- * `GET /repos/{repo}/actions/artifacts?name=mutation-survivors` (newest first).
+ * The newest `mutation-survivors` artifact from another run on the first of `branches` that has one,
+ * from the answer of `GET /repos/{repo}/actions/artifacts?name=mutation-survivors` (newest first).
+ * The workflow passes the default branch, then `main`: on the night the default branch moves, the
+ * last `main` list is still the right comparison, and without it every survivor would read as new.
  * @param {unknown} answer
  * @param {string | number} runId this run, which must not pick itself
+ * @param {string[]} [branches] in order of preference; `['main']` when absent
  * @returns {number | null}
  */
-export function pickPreviousRun(answer, runId) {
+export function pickPreviousRun(answer, runId, branches = ['main']) {
   const artifacts = /** @type {{ artifacts?: unknown }} */ (answer ?? {}).artifacts
   if (!Array.isArray(artifacts)) throw new Error('the artifact list is not an array — refusing to read an unreadable answer as "no previous run"')
-  const found = artifacts
-    .filter((a) => a?.name === ARTIFACT && a.expired !== true && a.workflow_run?.head_branch === 'main' && String(a.workflow_run?.id) !== String(runId))
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]
-  return found ? Number(found.workflow_run.id) : null
+  for (const branch of branches) {
+    const found = artifacts
+      .filter((a) => a?.name === ARTIFACT && a.expired !== true && a.workflow_run?.head_branch === branch && String(a.workflow_run?.id) !== String(runId))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]
+    if (found) return Number(found.workflow_run.id)
+  }
+  return null
 }
 
 /**
@@ -301,7 +310,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const previous = previousPath && existsSync(resolve(repoRoot, previousPath)) ? parseSurvivorList(readJson(previousPath)) : null
     const groups = groupSurvivors({ current: survivors, baseline, previous })
     const repoUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}` : undefined
-    const markdown = renderSurvivorMarkdown(groups, { missingShards, repoUrl })
+    const markdown = renderSurvivorMarkdown(groups, { missingShards, repoUrl, branch: arg('--branch') })
     process.stdout.write(`${markdown}\n`)
     const outMd = arg('--out-md')
     if (outMd) appendFileSync(resolve(repoRoot, outMd), `\n${markdown}`)
@@ -314,14 +323,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const outputs = arg('--outputs')
     if (outputs) appendFileSync(outputs, `new=${groups.new.length}\ncomplete=${complete}\n`)
   } else if (command === 'previous') {
-    // Downloads the newest other main run's list into `--out`, or leaves it absent and says why.
+    // Downloads the newest list from another run on the first `--branch` that has one (repeatable,
+    // in order of preference; `main` when none is given) into `--out`, or leaves it absent and says why.
     const runId = arg('--run-id') ?? process.env.GITHUB_RUN_ID ?? ''
     const repo = arg('--repo') ?? process.env.GITHUB_REPOSITORY
     const out = arg('--out') ?? '.local/mutation/previous'
     const gh = (/** @type {string[]} */ ghArgs) => execFileSync('gh', ghArgs, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
-    const previousRun = pickPreviousRun(JSON.parse(gh(['api', `repos/${repo}/actions/artifacts?name=${ARTIFACT}&per_page=100`])), runId)
+    const branches = all('--branch')
+    const previousRun = pickPreviousRun(JSON.parse(gh(['api', `repos/${repo}/actions/artifacts?name=${ARTIFACT}&per_page=100`])), runId, branches.length ? branches : undefined)
     if (previousRun === null) {
-      process.stdout.write('no previous main run uploaded a survivor list\n')
+      process.stdout.write(`no previous run on ${branches.length ? branches.join(' or ') : 'main'} uploaded a survivor list\n`)
     } else {
       mkdirSync(resolve(repoRoot, out), { recursive: true })
       gh(['run', 'download', String(previousRun), '--repo', String(repo), '--name', ARTIFACT, '--dir', resolve(repoRoot, out)])

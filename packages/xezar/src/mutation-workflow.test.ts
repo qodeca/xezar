@@ -94,9 +94,11 @@ describe('the nightly MCP mutation workflow (#377)', () => {
     expect(step('report', /sum the shards/i).run).toMatch(/PLAN_RESULT" != "success"/);
   });
 
-  it('touches the tracking issue only from main, and ends red on anything but green', () => {
+  it('touches the tracking issue only from the default branch, and ends red on anything but green', () => {
     const issue = step('report', /tracking issue/i);
-    expect(issue.if).toBe("github.ref == 'refs/heads/main'");
+    expect(issue.if).toBe("github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
+    expect(issue.env?.DEFAULT_BRANCH).toBe('${{ github.event.repository.default_branch }}');
+    expect(issue.run).toContain('--tracked-ref "refs/heads/$DEFAULT_BRANCH"');
     expect(issue.run).toContain('npm run --silent test:mutation:mcp:issue');
     const last = steps('report').at(-1)!;
     expect(last.if).toContain("steps.aggregate.outputs.verdict != 'green'");
@@ -157,13 +159,17 @@ describe('new survivors and the forced red path (#377, PR 2)', () => {
   it('groups survivors without ever touching the verdict, and uploads only a complete run’s list', () => {
     const group = step('report', /group the survivors/i);
     expect(group.id).toBe('survivors');
-    expect(group.run).toContain('npm run --silent test:mutation:mcp:survivors -- group');
+    expect(group.run).toContain('npm run --silent test:mutation:mcp:survivors -- group --branch "$DEFAULT_BRANCH"');
+    expect(group.env?.DEFAULT_BRANCH).toBe('${{ github.event.repository.default_branch }}');
     expect(group.run).not.toMatch(/verdict/);
     expect(group.if).toContain(`!(${FORCED})`);
     // A failed grouping still reaches the issue, as `unknown`, not as zero.
     expect(group.run).toContain('echo "new=unknown"');
-    const previous = step('report', /previous main run/i);
+    const previous = step('report', /previous default-branch run/i);
     expect(previous['continue-on-error']).toBe(true);
+    // The default branch first; `main` only as the fallback for the night the default moves.
+    expect(previous.env?.DEFAULT_BRANCH).toBe('${{ github.event.repository.default_branch }}');
+    expect(previous.run).toContain('--branch "$DEFAULT_BRANCH" --branch main');
     const upload = step('report', /upload this run/i);
     expect(upload.if).toBe("${{ steps.survivors.outputs.complete == 'true' }}");
     expect(upload.with).toMatchObject({ name: 'mutation-survivors', 'include-hidden-files': true, overwrite: true });
@@ -191,7 +197,7 @@ describe('new survivors and the forced red path (#377, PR 2)', () => {
     const to = all.indexOf(issue);
     const between = all.slice(from + 1, to);
     expect(between.map((s) => s.name)).toEqual([
-      "Find the previous main run's survivor list",
+      "Find the previous default-branch run's survivor list",
       'Group the survivors into new, already seen and known',
       "Upload this run's survivor list",
     ]);
