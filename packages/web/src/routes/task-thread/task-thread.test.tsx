@@ -295,6 +295,35 @@ describe('ThreadView', () => {
     expect(document.querySelector('[data-slot="auto-resume-hint"]')).toBeNull()
   })
 
+  // behaviour.md § 1: Alt+A / Alt+C are the quick replies "on a WAITING thread". A running or
+  // review thread keeps its composer enabled, so the shortcut must not ride on `disabled` alone.
+  it.each(['running', 'review', 'queued', 'done'] as const)(
+    '%s → Alt+A / Alt+C send nothing (quick replies are for a waiting thread only)',
+    async (status) => {
+      renderView(<ThreadView run={run(status)} thread={reduceThread(EVENTS)} />)
+      fireEvent.keyDown(window, { code: 'KeyA', altKey: true })
+      fireEvent.keyDown(window, { code: 'KeyC', altKey: true })
+      // Give a stray mutation the chance to reach fetch before asserting it never did.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const posts = vi
+        .mocked(fetch)
+        .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
+      expect(posts).toEqual([])
+    },
+  )
+
+  it('waiting → Alt+A sends the "Yes, approved." quick reply', async () => {
+    renderView(<ThreadView run={run('waiting')} thread={reduceThread(EVENTS)} />)
+    fireEvent.keyDown(window, { code: 'KeyA', altKey: true })
+    await waitFor(() => {
+      const posts = vi
+        .mocked(fetch)
+        .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
+      expect(posts.length).toBe(1)
+      expect(String((posts[0]![1] as RequestInit).body)).toContain('Yes, approved.')
+    })
+  })
+
   it('running → the composer stays enabled with the "message" placeholder, no paused hint', () => {
     renderView(<ThreadView run={run('running')} thread={reduceThread(EVENTS)} />)
     expect(document.querySelector('[data-slot="paused-hint"]')).toBeNull()
