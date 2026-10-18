@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { CheckIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ApiRun } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,24 @@ function formatAnswer(question: UiAskQuestion, labels: string[]): string {
  * "Other". Once resolved, the card collapses to a compact summary.
  */
 export function AskCard({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
+  // Answering unmounts the option button that held focus, which drops focus to <body> and
+  // leaves a keyboard or screen-reader user at the top of the page. When THIS card turns from
+  // pending to answered while focus is lost, hand it to the summary, which reads the answer
+  // back. A card that loads already answered, or an answer typed in the composer (focus is
+  // still there), moves nothing.
+  const summaryRef = useRef<HTMLDivElement>(null)
+  const wasPending = useRef(!ask.resolved)
+  useEffect(() => {
+    if (!ask.resolved) {
+      wasPending.current = true
+      return
+    }
+    if (!wasPending.current) return
+    wasPending.current = false
+    const active = document.activeElement
+    if (active === null || active === document.body) summaryRef.current?.focus()
+  }, [ask.resolved])
+
   // An answered card is a static summary — split so the delivery hook (two mutations and a
   // provider-status subscription) only mounts for a question that can still be answered.
   // Threads accumulate asks; every resolved one would otherwise carry live machinery for a
@@ -36,9 +55,12 @@ export function AskCard({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
   if (ask.resolved) {
     return (
       <div
+        ref={summaryRef}
+        // Focusable only by script (above), so it never adds a tab stop.
+        tabIndex={-1}
         data-slot="ask-card"
         data-resolved="true"
-        className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-xs text-muted-foreground"
+        className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-xs text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <span className="text-soft-foreground">Answered</span>
         {ask.answer ? (
@@ -82,7 +104,9 @@ function PendingAsk({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
       className="rounded-lg border border-primary/25 bg-primary/[0.04] p-inset"
     >
       <div className="mb-2.5 flex items-center gap-2">
-        <span className="text-xs font-medium text-primary">The agent is asking</span>
+        {/* Ink, not `text-primary`: the brand lime is about 1.3:1 on the light card. The card's
+            lime border, wash and header chip still carry the accent. */}
+        <span className="text-xs font-medium text-foreground">The agent is asking</span>
       </div>
       <div className="flex flex-col gap-list">
         {questions.map((question, index) => (
@@ -192,24 +216,34 @@ function AskQuestionBlock({
               className={cn(
                 'flex min-h-tap w-full flex-col justify-center gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors md:min-h-0',
                 'hover:border-primary/50 hover:bg-primary/[0.06] disabled:pointer-events-none disabled:opacity-50',
-                isSelected ? 'border-primary/60 bg-primary/[0.06]' : 'border-border bg-card',
+                // A lime border alone is about 1.3:1 on the light card (WCAG 1.4.11), so the picked
+                // option also gets an ink border and a check mark: colour is never the only cue.
+                isSelected ? 'border-foreground/60 bg-primary/[0.06]' : 'border-border bg-card',
               )}
             >
               <span className="flex min-w-0 items-start gap-2 text-[13.5px] font-semibold text-foreground">
                 {multiSelect ? (
                   <span
                     aria-hidden
+                    data-slot="ask-option-box"
                     className={cn(
-                      'flex size-4 shrink-0 items-center justify-center rounded border text-[10px]',
+                      'flex size-4 shrink-0 items-center justify-center rounded border',
                       isSelected
-                        ? 'border-primary bg-primary text-primary-foreground'
+                        ? 'border-foreground bg-foreground text-background'
                         : 'border-soft-foreground',
                     )}
                   >
-                    {isSelected ? '✓' : ''}
+                    {isSelected ? <CheckIcon className="size-3" strokeWidth={3} /> : null}
                   </span>
                 ) : null}
                 <span className="min-w-0 break-words">{option.label}</span>
+                {!multiSelect && isSelected ? (
+                  <CheckIcon
+                    aria-hidden="true"
+                    data-slot="ask-option-check"
+                    className="ml-auto size-4 shrink-0 text-foreground"
+                  />
+                ) : null}
               </span>
               {option.description ? (
                 <span className="min-w-0 break-words text-xs text-muted-foreground">

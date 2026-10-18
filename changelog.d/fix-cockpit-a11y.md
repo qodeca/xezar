@@ -16,3 +16,6 @@
 - 🐛 **The Tasks page says when it is loading or could not load.** It used to stay blank until
   the list answered, and blank for good when it failed; a failed "Archive finished" now shows the
   server's message too.
+- 🐛 **The ask card is readable and keyboard-friendly in the light theme.** "The agent is asking"
+  is no longer pale lime on white, a picked option shows a check mark, and after you answer, focus
+  lands on the answer summary instead of the top of the page.
