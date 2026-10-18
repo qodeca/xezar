@@ -46,6 +46,25 @@ const HEALTH: HealthResponse = {
 }
 
 /** One registered project — the degenerate workspace every existing install upgrades into. */
+/** A cross-project runs index (`GET /workspace/runs-index`) answer for `[projectId, status]` rows. */
+function runsIndex(rows: Array<[projectId: string, status: RunRecord['status'], archived?: boolean]>) {
+  return {
+    runs: rows.map(([projectId, status, archived = false], index) => ({
+      projectId,
+      id: `${projectId}-${index}`,
+      title: `Task ${index}`,
+      status,
+      createdAt: '2026-07-14T10:00:00.000Z',
+      archived,
+      workflow: 'default',
+      runner: 'claude',
+    })),
+    referenceStatuses: {},
+    perProjectLimit: 200,
+    truncated: [],
+  }
+}
+
 const PROJECT = {
   id: 'xezar',
   name: 'xezar',
@@ -422,6 +441,7 @@ describe('sidebar wiring', () => {
         },
         '/api/v1/runs': RUNS,
         '/api/v1/p/xezar/runs': RUNS,
+        '/api/v1/workspace/runs-index': runsIndex([['xezar', 'waiting'], ['xezar', 'done'], ['xezar', 'done', true]]),
       })
       renderShell('/p/xezar/')
 
@@ -684,6 +704,59 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
     await waitFor(() => expect(otherRow('shop')).not.toBeNull())
     expect(otherRow('shop')?.querySelector('[data-action="other-project-copy-command"]')).toBeNull()
     expect(otherRow('shop')?.querySelector('[data-slot="other-project-state"]')).toBeNull()
+  })
+})
+
+describe('workspace attention (All tasks badge and tab title)', () => {
+  const TWO_PROJECTS = {
+    projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' }],
+    bootProject: 'xezar',
+    projectsDir: '/home/me/xezar/projects',
+  }
+
+  it('badges All tasks with every project’s waiting and review tasks, collapsed groups included', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([
+        ['xezar', 'waiting'],
+        ['shop', 'review'],
+        ['shop', 'waiting'],
+        ['shop', 'running'],
+      ]),
+    })
+    renderShell('/p/xezar/')
+
+    const badge = await waitFor(() => {
+      const found = document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-attention"]')
+      expect(found?.textContent).toBe('3')
+      return found as HTMLElement
+    })
+    expect(badge.getAttribute('title')).toBe('All projects: 3 tasks need you')
+    // The collapsed group (`shop` — not the project on screen) carries its own share.
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('2')
+    // And the tab title leads with the same total.
+    await waitFor(() => expect(document.title).toBe('(3) xezar — Tasks · xezar'))
+  })
+
+  it('shows no All tasks badge and no title prefix when nothing needs you', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([['shop', 'running'], ['xezar', 'waiting', true]]),
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="project-group"]').length).toBeGreaterThan(0))
+    await waitFor(() => expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/workspace/runs-index'))
+    await waitFor(() => expect(document.title).toBe('xezar — Tasks · xezar'))
+    expect(document.querySelector('[data-slot="all-tasks-attention"]')).toBeNull()
   })
 })
 

@@ -4,7 +4,8 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ProjectListEntry, RunRecord } from '@qodeca/xezar-api-client'
+import { workspaceQueryKeys } from '@/api/queries'
+import type { ProjectListEntry, RunIndexEntry, RunRecord, RunsIndexResponse } from '@qodeca/xezar-api-client'
 import { ProjectGroups } from '@/components/project-groups'
 import { SIDEBAR_COLLAPSED_STORAGE_KEY } from '@/lib/sidebar-collapse'
 
@@ -65,6 +66,28 @@ function run(over: Partial<RunRecord> = {}): RunRecord {
   }
 }
 
+/** One cross-project runs-index row (`GET /workspace/runs-index`) for `projectId`. */
+function indexRow(projectId: string, over: Partial<RunIndexEntry> = {}): RunIndexEntry {
+  seq += 1
+  return {
+    projectId,
+    id: `r${seq}`,
+    title: `Task ${seq}`,
+    status: 'done',
+    createdAt: '2026-07-14T10:00:00.000Z',
+    archived: false,
+    workflow: 'default',
+    runner: 'claude',
+    ...over,
+  }
+}
+
+function runsIndex(runs: RunIndexEntry[]): RunsIndexResponse {
+  return { runs, referenceStatuses: {}, perProjectLimit: 200, truncated: [] }
+}
+
+const INDEX_URL = '/api/v1/workspace/runs-index'
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
@@ -117,10 +140,13 @@ describe('ProjectGroups', () => {
       run({ titleSummary: 'Waiting on you', status: 'waiting' }),
       run({ titleSummary: 'Pinned work', pinned: true }),
     ]
-    serve({ '/api/v1/p/xezar/runs': runs })
+    serve({
+      '/api/v1/p/xezar/runs': runs,
+      [INDEX_URL]: runsIndex(runs.map((r) => indexRow('xezar', { id: r.id, title: r.title, status: r.status }))),
+    })
     renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
 
-    // The badge proves the runs arrived before the absence below is read.
+    // The badge proves the index arrived before the absence below is read.
     await waitFor(() =>
       expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1'),
     )
@@ -137,8 +163,8 @@ describe('ProjectGroups', () => {
     expect(xezar.getAllByRole('button')).toEqual([header('xezar')])
   })
 
-  it('orders groups by lastOpenedAt and only fetches the expanded one', async () => {
-    serve({ '/api/v1/p/xezar/runs': [] })
+  it('orders groups by lastOpenedAt, and no group fetches its own runs — one index request', async () => {
+    serve({ [INDEX_URL]: runsIndex([]) })
     renderGroups([
       project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-18T00:00:00.000Z' }),
       project(),
@@ -150,10 +176,12 @@ describe('ProjectGroups', () => {
         el.getAttribute('data-project'),
       ),
     ).toEqual(['xezar', 'shop'])
-    // The collapsed group costs one registry row, never a runs request.
+    // Collapsed or expanded, a group costs no runs request: every badge reads the one
+    // workspace index.
     expect(header('shop').getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain(INDEX_URL))
     const asked = fetchMock.mock.calls.map((call) => String(call[0]))
-    expect(asked).not.toContain('/api/v1/p/shop/runs')
+    expect(asked.filter((url) => url.endsWith('/runs'))).toEqual([])
   })
 
   it('renders each group’s nav scoped to that project', async () => {
@@ -258,7 +286,13 @@ describe('ProjectGroups', () => {
 
   it('badges a group with its needs-you count', async () => {
     serve({
-      '/api/v1/p/xezar/runs': [run({ status: 'waiting' }), run({ status: 'review' }), run()],
+      [INDEX_URL]: runsIndex([
+        indexRow('xezar', { status: 'waiting' }),
+        indexRow('xezar', { status: 'review' }),
+        indexRow('xezar'),
+        // Archived work is done with, whatever its status says — not counted.
+        indexRow('xezar', { status: 'waiting', archived: true }),
+      ]),
     })
     renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
 
@@ -269,12 +303,27 @@ describe('ProjectGroups', () => {
     expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
   })
 
-  it("the boot group reads the 'default' cache entry — the one the stream patches", async () => {
-    // The boot project mounts UNSCOPED (routes.tsx), so the main view and the SSE patcher both
-    // live under the 'default' scope key. The boot group must share that entry, or its needs-you
-    // badge freezes at whatever the expand-time fetch answered.
+  it('a COLLAPSED group still shows its count', async () => {
+    // The bug: a collapsed group fetched nothing, and the default collapses every project but the
+    // current one — so the projects you are not looking at, the ones a badge exists for, had none.
+    serve({ [INDEX_URL]: runsIndex([indexRow('shop', { status: 'waiting' }), indexRow('shop', { status: 'review' })]) })
+    renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
+
+    expect(header('shop').getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() =>
+      expect(group('shop').querySelector('[data-slot="project-attention"]')?.textContent).toBe('2'),
+    )
+    expect(group('shop').querySelector('[data-slot="project-attention"]')?.getAttribute('title')).toBe(
+      'shop: 2 tasks need you',
+    )
+  })
+
+  it("updates another project's badge the moment its index row changes", async () => {
+    // What the global stream does for ANY project's run event (applyRunToIndex): patch the row
+    // in place. The badge reads that cache, so no refetch is needed for it to move.
     const client = createQueryClient()
-    serve({ '/api/v1/p/xezar/runs': [] })
+    const theirs = indexRow('shop', { status: 'running' })
+    serve({ [INDEX_URL]: runsIndex([theirs]) })
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/p/xezar/']}>
@@ -282,18 +331,22 @@ describe('ProjectGroups', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(header('xezar').getAttribute('aria-expanded')).toBe('true'))
-    expect(group('xezar').querySelector('[data-slot="project-attention"]')).toBeNull()
+    await waitFor(() => expect(client.getQueryData(workspaceQueryKeys.runsIndex)).toBeDefined())
+    expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
 
-    // A live `run` event lands in the cache exactly where global-events writes it: under
-    // ['default', 'runs', 'list'], never under the boot project's own id.
-    client.setQueryData(['default', 'runs', 'list'], [run({ status: 'waiting' })])
+    client.setQueryData(workspaceQueryKeys.runsIndex, runsIndex([{ ...theirs, status: 'waiting' }]))
 
     await waitFor(() =>
-      expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1'),
+      expect(group('shop').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1'),
     )
-    // The non-boot group keeps its own per-project key untouched.
-    expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
+    expect(group('xezar').querySelector('[data-slot="project-attention"]')).toBeNull()
+  })
+
+  it('shows no badge at all while the index is unknown', async () => {
+    serve({})
+    renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
+    await waitFor(() => expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain(INDEX_URL))
+    expect(document.querySelector('[data-slot="project-attention"]')).toBeNull()
   })
 
   it('renders a missing project greyed and inert, with no nav behind it', async () => {

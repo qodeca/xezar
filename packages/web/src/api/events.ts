@@ -1,4 +1,11 @@
-import type { ApiRun, ProcessUsage, RunRecord, TodoItem } from '@qodeca/xezar-api-client'
+import type {
+  ApiRun,
+  ProcessUsage,
+  RunIndexEntry,
+  RunRecord,
+  RunsIndexResponse,
+  TodoItem,
+} from '@qodeca/xezar-api-client'
 
 /**
  * The global stream's data layer: parse one SSE message, and fold it into cached state.
@@ -170,6 +177,92 @@ export function applyRunDeleted(list: ApiRun[] | undefined, id: string): ApiRun[
  */
 export function mergeRun(previous: ApiRun | undefined, run: RunRecord): ApiRun {
   return previous?.usage ? { ...run, usage: previous.usage } : run
+}
+
+// ---- the cross-project runs index ---------------------------------------------------------
+
+/**
+ * The index-row fields a `RunRecord` carries VERBATIM (server: `runIndexEntry` in server.ts) and
+ * that the workspace attention model, the unread rule and the row title read. Only these are
+ * patched from a stream event. The rest of the row is either derived server-side (`runner`,
+ * `runnerInherited`, `stepBackends`), sampled (`usage`) or not needed to answer "does this want a
+ * person", so it waits for the debounced refetch rather than being rebuilt here.
+ */
+const INDEX_PATCH_FIELDS = [
+  'title',
+  'titleSummary',
+  'titleOrigin',
+  'status',
+  'activity',
+  'finishedAt',
+  'seenAt',
+  'archived',
+  'autoResumeAt',
+] as const satisfies ReadonlyArray<keyof RunIndexEntry & keyof RunRecord>
+
+/**
+ * Fold one project's `run` event into the cached cross-project index.
+ *
+ * Patches an EXISTING row in place and nothing else. A run the index does not hold yet (it was
+ * just created) is left to the debounced refetch `global-events.tsx` schedules for every event:
+ * building a whole row from a `RunRecord` would mean re-deriving `runner` and friends client-side,
+ * which is exactly what the slim row exists to avoid. Waiting is a transition of a run that
+ * already exists, so the attention badge and the notification still see it immediately.
+ *
+ * `undefined` in → `undefined` out, and the same reference back when nothing changed, so a token
+ * tick about a run whose attention fields did not move re-renders nothing.
+ *
+ * @param index - The cached `GET /workspace/runs-index` answer, or undefined when unfetched.
+ * @param projectId - The project the event is stamped with.
+ * @param run - The record the event carries. Only `id` is validated on the wire, so a record
+ *   without a string `status` is ignored rather than written into the row.
+ * @returns The patched index, the same index when nothing changed, or undefined.
+ */
+export function applyRunToIndex(
+  index: RunsIndexResponse | undefined,
+  projectId: string,
+  run: RunRecord,
+): RunsIndexResponse | undefined {
+  if (!index) return undefined
+  if (typeof run.status !== 'string') return index
+  const at = index.runs.findIndex((row) => row.projectId === projectId && row.id === run.id)
+  const previous = index.runs[at]
+  if (!previous) return index
+  const next: Record<string, unknown> = { ...previous }
+  let changed = false
+  for (const field of INDEX_PATCH_FIELDS) {
+    const value = run[field]
+    if (previous[field] === value) continue
+    changed = true
+    // Absent on the full record means absent (the server spreads optional keys conditionally),
+    // so a cleared `autoResumeAt` must leave the row too, not linger as the old appointment.
+    if (value === undefined) delete next[field]
+    else next[field] = value
+  }
+  if (!changed) return index
+  const runs = [...index.runs]
+  // Every patched field is copied from the same-named `RunRecord` field, whose type matches the
+  // row's (both come from the contract), so the widened record is still a valid row.
+  runs[at] = next as RunIndexEntry
+  return { ...index, runs }
+}
+
+/**
+ * Drop a deleted run from the cached index. Same reference back when the index does not hold it.
+ *
+ * @param index - The cached index answer, or undefined when unfetched.
+ * @param projectId - The project the `run-deleted` event is stamped with.
+ * @param id - The deleted run's id.
+ * @returns The index without that row, the same index, or undefined.
+ */
+export function applyRunDeletedToIndex(
+  index: RunsIndexResponse | undefined,
+  projectId: string,
+  id: string,
+): RunsIndexResponse | undefined {
+  if (!index) return undefined
+  const runs = index.runs.filter((row) => !(row.projectId === projectId && row.id === id))
+  return runs.length === index.runs.length ? index : { ...index, runs }
 }
 
 // ---- live usage --------------------------------------------------------------------------

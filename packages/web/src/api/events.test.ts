@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  applyRunDeletedToIndex,
+  applyRunToIndex,
   applyRunDeleted,
   applyRunEvent,
   createUsageStore,
@@ -9,7 +11,7 @@ import {
   parseWorkspaceEvent,
   type GlobalEvent,
 } from './events'
-import type { ApiRun, RunRecord } from '@qodeca/xezar-api-client'
+import type { ApiRun, RunIndexEntry, RunRecord, RunsIndexResponse } from '@qodeca/xezar-api-client'
 
 function run(id: string, over: Partial<RunRecord> = {}): RunRecord {
   return {
@@ -209,5 +211,49 @@ describe('createUsageStore', () => {
     store.set({ r3: SAMPLE })
     expect(listener).toHaveBeenCalledTimes(2)
     expect(store.get()).toEqual({ r3: SAMPLE })
+  })
+})
+
+describe('applyRunToIndex / applyRunDeletedToIndex', () => {
+  const entry = (projectId: string, id: string, over: Partial<RunIndexEntry> = {}): RunIndexEntry => ({
+    projectId,
+    id,
+    title: id,
+    status: 'running',
+    createdAt: '2026-07-14T10:00:00.000Z',
+    archived: false,
+    workflow: 'quick-task',
+    runner: 'codex',
+    ...over,
+  })
+  const index = (runs: RunIndexEntry[]): RunsIndexResponse => ({
+    runs,
+    referenceStatuses: {},
+    perProjectLimit: 200,
+    truncated: [],
+  })
+
+  it('returns undefined for an unfetched index — never invents one', () => {
+    expect(applyRunToIndex(undefined, 'p', run('r1'))).toBeUndefined()
+    expect(applyRunDeletedToIndex(undefined, 'p', 'r1')).toBeUndefined()
+  })
+
+  it('hands back the same reference when nothing it tracks changed (a token tick)', () => {
+    const before = index([entry('p', 'r1', { workflow: 'default' })])
+    expect(applyRunToIndex(before, 'p', run('r1', { workflow: 'default', tokensUsed: 99 }))).toBe(before)
+  })
+
+  it('ignores a record without a status rather than writing undefined into the row', () => {
+    const before = index([entry('p', 'r1')])
+    const malformed = { id: 'r1' } as unknown as RunRecord
+    expect(applyRunToIndex(before, 'p', malformed)).toBe(before)
+  })
+
+  it('matches on project AND id', () => {
+    const before = index([entry('a', 'r1'), entry('b', 'r1')])
+    const after = applyRunToIndex(before, 'b', run('r1', { status: 'waiting' }))
+    expect(after?.runs.map((r) => r.status)).toEqual(['running', 'waiting'])
+    expect(applyRunDeletedToIndex(before, 'c', 'r1')).toBe(before)
+    expect(applyRunDeletedToIndex(before, 'a', 'r1')?.runs.map((r) => r.projectId)).toEqual(['b'])
   })
 })

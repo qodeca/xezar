@@ -106,6 +106,10 @@ export type AppShellProps = {
    *  Navigation only (#546): neither shape lists tasks. Tasks live on the Tasks pages, and the
    *  command palette opens from the keyboard (⌘K / Ctrl+K) rather than from a sidebar control. */
   projectGroups?: ReactNode
+  /** The pinned "All tasks" link's badge: tasks that need you across every project, from the
+   *  workspace attention model. Null (the default) while unknown and zero both render no badge.
+   *  Only shown with `projectGroups`, which is the only time the link exists. */
+  allTasksAttentionCount?: number | null
   /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
    *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
@@ -176,6 +180,7 @@ export function AppShell({
   singleProjectRoot = false,
   banner,
   projectGroups,
+  allTasksAttentionCount = null,
   otherProjects,
   agentQuota,
   agentQuotaCompact,
@@ -240,6 +245,7 @@ export function AppShell({
     channel,
     toolsMenu,
     projectGroups,
+    allTasksAttentionCount,
     otherProjects,
     agentQuota,
     singleProject,
@@ -304,6 +310,7 @@ type NavProps = {
   channel: HealthResponse['channel'] | null
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
+  allTasksAttentionCount: number | null
   otherProjects?: ReactNode
   agentQuota?: ReactNode
   singleProject: boolean
@@ -492,6 +499,7 @@ function SidebarContent({
   channel,
   toolsMenu,
   projectGroups,
+  allTasksAttentionCount,
   otherProjects,
   agentQuota,
   singleProject,
@@ -579,7 +587,7 @@ function SidebarContent({
               workspace: with one project the page would be that project's own Tasks table
               wearing a second name. */}
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
-            <AllTasksLink onNavigate={onNavigate} />
+            <AllTasksLink onNavigate={onNavigate} attentionCount={allTasksAttentionCount} />
           </div>
           {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
@@ -681,7 +689,14 @@ function SidebarContent({
  * with the active `/p/<id>`, which is not a route. Its own icon (layers, not the per-project
  * checklist) so the two Tasks surfaces never read as the same button.
  */
-function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
+function AllTasksLink({
+  onNavigate,
+  attentionCount,
+}: {
+  onNavigate?: () => void
+  /** Tasks needing you across every project; null or 0 renders no badge (NavBadge's rule). */
+  attentionCount: number | null
+}) {
   const { pathname } = useLocation()
   const isActive = pathname === '/tasks'
   return (
@@ -704,6 +719,18 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
         aria-hidden="true"
       />
       All tasks
+      {/* The same violet "a person is wanted" count the project group headers carry, summed
+          over every project — the one place a collapsed group's news is visible at a glance. */}
+      <NavBadge
+        data-slot="all-tasks-attention"
+        title={
+          attentionCount
+            ? `All projects: ${attentionCount} task${attentionCount === 1 ? '' : 's'} need${attentionCount === 1 ? 's' : ''} you`
+            : undefined
+        }
+      >
+        {attentionCount}
+      </NavBadge>
     </RouterLink>
   )
 }

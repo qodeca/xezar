@@ -4,7 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
-import type { RunRecord, RunStatus, WorkspaceUiState } from '@qodeca/xezar-api-client'
+import { setApiScope } from '@qodeca/xezar-api-client'
+import type {
+  RunIndexEntry,
+  RunRecord,
+  RunsIndexResponse,
+  RunStatus,
+  WorkspaceUiState,
+} from '@qodeca/xezar-api-client'
 import { RunNotifications } from './run-notifications'
 
 /**
@@ -14,6 +21,10 @@ import { RunNotifications } from './run-notifications'
  * API but never displays anything and Playwright cannot observe a constructed notification, so
  * an e2e assertion would be a stub test with extra steps — the honest pin is here, against the
  * real cache-subscription path (`setQueryData` is exactly what the SSE layer calls).
+ *
+ * The watched cache is the cross-project runs index (the workspace attention model's source):
+ * the SSE layer patches it for EVERY project's run events, so a run waiting in a project other
+ * than the one on screen notifies too.
  */
 
 let clients: QueryClient[] = []
@@ -61,18 +72,45 @@ function hideTab(hidden = true) {
   })
 }
 
-/** Mount the trigger, seed the run list, then apply the same patch the SSE layer would. */
-function mount(uiState: WorkspaceUiState, seed: RunRecord[]) {
+/** A runs-index row for a record — the slim shape `GET /workspace/runs-index` sends. */
+function row(record: RunRecord, projectId = 'boot'): RunIndexEntry {
+  return {
+    projectId,
+    id: record.id,
+    title: record.title,
+    ...(record.titleSummary !== undefined ? { titleSummary: record.titleSummary } : {}),
+    status: record.status,
+    ...(record.autoResumeAt !== undefined ? { autoResumeAt: record.autoResumeAt } : {}),
+    createdAt: record.createdAt,
+    archived: record.archived,
+    workflow: record.workflow,
+    runner: 'claude',
+  }
+}
+
+/** Records (defaulting to the boot project) or ready rows → a complete index answer. */
+function indexOf(rows: Array<RunRecord | RunIndexEntry>): RunsIndexResponse {
+  return {
+    runs: rows.map((r) => ('projectId' in r ? r : row(r))),
+    referenceStatuses: {},
+    perProjectLimit: 200,
+    truncated: [],
+  }
+}
+
+/** Mount the trigger, seed the index, then apply the same patch the SSE layer would. */
+function mount(uiState: WorkspaceUiState, seed: Array<RunRecord | RunIndexEntry>) {
   // Queries would otherwise fire real fetches for ui-state/runs — keep them honestly pending.
   vi.stubGlobal('fetch', vi.fn(() => new Promise<never>(() => {})))
   const client = makeClient(uiState)
-  client.setQueryData(queryKeys.runs.list(), seed)
+  client.setQueryData(workspaceQueryKeys.runsIndex, indexOf(seed))
   render(
     <QueryClientProvider client={client}>
       <RunNotifications />
     </QueryClientProvider>,
   )
-  const patch = (runs: RunRecord[]) => act(() => client.setQueryData(queryKeys.runs.list(), runs))
+  const patch = (rows: Array<RunRecord | RunIndexEntry>) =>
+    act(() => client.setQueryData(workspaceQueryKeys.runsIndex, indexOf(rows)))
   return { client, patch }
 }
 
@@ -84,6 +122,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   // Drop the visibility override so the next test starts from happy-dom's own 'visible'.
   delete (document as unknown as Record<string, unknown>).visibilityState
+  setApiScope(null)
 })
 
 describe('RunNotifications', () => {
@@ -197,12 +236,65 @@ describe('RunNotifications', () => {
     expect(constructed.map((n) => n.options?.body)).toEqual(['Task needs review'])
   })
 
-  it('ignores unrelated cache updates (a detail query moving is not the run list)', () => {
+  it('ignores unrelated cache updates (a detail or list query moving is not the index)', () => {
     const constructed = stubNotification('granted')
     hideTab()
     const { client } = mount({ notifications: { enabled: true } }, [run({ status: 'running' })])
     act(() => client.setQueryData(queryKeys.runs.detail('r1'), run({ status: 'waiting' })))
+    act(() => client.setQueryData(queryKeys.runs.list(), [run({ status: 'waiting' })]))
     expect(constructed).toEqual([])
+  })
+
+  it('notifies for a task waiting in ANOTHER project, not only the one the tab opened in', () => {
+    // The bug: the trigger watched the active project's run list under a key computed once at
+    // mount, so a task in any other registered project could wait for hours without a ding.
+    const constructed = stubNotification('granted')
+    hideTab()
+    const theirs = run({ id: 'x1', title: 'Draft the campaign brief', status: 'running' })
+    const { patch } = mount({ notifications: { enabled: true } }, [row(theirs, 'agency')])
+
+    patch([row({ ...theirs, status: 'waiting' }, 'agency')])
+
+    expect(constructed.map((n) => [n.title, n.options?.body])).toEqual([
+      ['Draft the campaign brief', 'Task needs you'],
+    ])
+  })
+
+  it('keeps notifying after the user switches to another project', () => {
+    const constructed = stubNotification('granted')
+    hideTab()
+    const { patch } = mount({ notifications: { enabled: true } }, [run({ status: 'running' })])
+
+    act(() => setApiScope('agency'))
+    patch([run({ status: 'waiting' })])
+
+    expect(constructed).toHaveLength(1)
+  })
+
+  it('tracks the same run id in two projects separately', () => {
+    const constructed = stubNotification('granted')
+    hideTab()
+    const mine = run({ id: 'same', status: 'running' })
+    const { patch } = mount({ notifications: { enabled: true } }, [row(mine, 'a'), row(mine, 'b')])
+
+    patch([row(mine, 'a'), row({ ...mine, status: 'waiting' }, 'b')])
+
+    expect(constructed).toHaveLength(1)
+  })
+
+  it('an index reset to no data forgets nothing', () => {
+    const constructed = stubNotification('granted')
+    hideTab()
+    const { client, patch } = mount({ notifications: { enabled: true } }, [run({ status: 'running' })])
+
+    // A reset publishes an `updated` event with no data. An observation of "nothing" must not
+    // wipe the memory, or the next answer would be first sight and the real transition would go
+    // unannounced.
+    act(() => void client.resetQueries({ queryKey: workspaceQueryKeys.runsIndex }))
+    expect(client.getQueryData(workspaceQueryKeys.runsIndex)).toBeUndefined()
+    patch([run({ status: 'waiting' })])
+
+    expect(constructed).toHaveLength(1)
   })
 })
 

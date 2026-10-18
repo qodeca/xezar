@@ -1,24 +1,29 @@
 import { hashKey, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { queryKeys, useWorkspaceUiState } from '@/api/queries'
-import type { ApiRun, RunStatus } from '@qodeca/xezar-api-client'
+import { useWorkspaceAttention, useWorkspaceUiState, workspaceQueryKeys } from '@/api/queries'
+import type { RunIndexEntry, RunsIndexResponse, RunStatus } from '@qodeca/xezar-api-client'
 import {
   diffRunTransitions,
   normalizeNotifications,
   notificationSupport,
   shouldNotify,
   describeRunNotification,
+  type NotifiableRun,
 } from '@/lib/notifications'
+import { attentionKey } from '@/lib/workspace-attention'
 
 /**
  * The notification trigger (R6 Step 1.7, spec §"Cross-cutting"): browser `Notification` when a
  * run ENTERS `waiting`/`review`/failed while the tab is hidden.
  *
- * It watches the cached run list rather than opening its own listener on `/api/events`: the
- * global stream (api/global-events.tsx) already folds every `run` event into
- * `queryKeys.runs.list()`, and the reconnect/visibility reconciliation refetches it — so one
- * cache subscription sees BOTH deliveries of the same truth. That second path is not a bonus,
+ * It watches the workspace attention model's source — the cross-project runs index — rather than
+ * opening its own listener on the event stream: the global stream (api/global-events.tsx) folds
+ * EVERY project's `run` event into that index and schedules its refetch, and the
+ * reconnect/visibility reconciliation refetches it — so one cache subscription sees BOTH
+ * deliveries of the same truth, for every registered project, not only the one the tab opened
+ * in. (It used to watch the active project's run list under a key computed once at mount, so a
+ * waiting task in any other project never notified.) That second path is not a bonus,
  * it is the point: a hidden tab is exactly when the stream is most likely to have been frozen
  * (mobile background freeze, laptop lid), and the run that flipped to `waiting` while the socket
  * was dead arrives via the reconciling refetch, not via an event.
@@ -43,12 +48,16 @@ export function RunNotifications() {
   const enabledRef = useRef(enabled)
   enabledRef.current = enabled
   const statusesRef = useRef<ReadonlyMap<string, RunStatus>>(new Map())
+  // Keeps the index observed for the whole session, so the stream's debounced invalidation
+  // refetches it even when no sidebar is mounted (single-project layout, phone without drawer).
+  useWorkspaceAttention()
 
   useEffect(() => {
-    const listHash = hashKey(queryKeys.runs.list())
+    // A workspace key, not a scope-led one: it names the same entry whichever project is open.
+    const indexHash = hashKey(workspaceQueryKeys.runsIndex)
 
-    const observe = (runs: readonly ApiRun[] | undefined): void => {
-      const { entering, statuses } = diffRunTransitions(statusesRef.current, runs)
+    const observe = (runs: readonly RunIndexEntry[] | undefined): void => {
+      const { entering, statuses } = diffRunTransitions(statusesRef.current, runs, attentionKey)
       statusesRef.current = statuses
       if (entering.length === 0) return
       const gate = {
@@ -62,11 +71,16 @@ export function RunNotifications() {
 
     // Seed from whatever the cache already holds: with an empty previous map nothing can
     // "enter", so a mount mid-session records the current statuses and stays silent.
-    observe(queryClient.getQueryData<ApiRun[]>(queryKeys.runs.list()))
+    observe(queryClient.getQueryData<RunsIndexResponse>(workspaceQueryKeys.runsIndex)?.runs)
 
     return queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryHash !== listHash || event.type !== 'updated') return
-      observe(event.query.state.data as ApiRun[] | undefined)
+      if (event.query.queryHash !== indexHash || event.type !== 'updated') return
+      // A failed refetch keeps the last good data and is not an observation; neither is an
+      // index that has not answered yet. Observing `undefined` would forget every status and
+      // turn the next answer into "first sight" — silence for transitions that really happened.
+      const data = event.query.state.data as RunsIndexResponse | undefined
+      if (!data) return
+      observe(data.runs)
     })
   }, [queryClient])
 
@@ -77,7 +91,7 @@ export function RunNotifications() {
  *  modes are real — no constructor at all (tests, old WebViews), and a constructor that THROWS
  *  on page-context construction (Chrome on Android insists on a ServiceWorker). A notification
  *  is a courtesy; it must never take the message loop down with it. */
-function fireRunNotification(run: ApiRun): void {
+function fireRunNotification(run: NotifiableRun): void {
   const N = globalThis.Notification
   if (typeof N !== 'function') return
   const content = describeRunNotification(run)

@@ -1,5 +1,5 @@
 import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
-import { deriveAttention, wantsAttention } from './attention'
+import { deriveAttention, wantsAttention, type AttentionInput } from './attention'
 
 /* Browser notifications (R6 Step 1.7, spec §"Cross-cutting"): the pure half.
  *
@@ -53,11 +53,15 @@ export function notificationSupport(): NotificationSupport {
 
 // ---- transition detection ------------------------------------------------------------------
 
-export interface RunTransitions {
+/** What a notification needs from a run: the attention inputs, the id and the display title.
+ *  Satisfied by a full `RunRecord` and by a cross-project runs-index row alike. */
+export type NotifiableRun = AttentionInput & Pick<RunRecord, 'id' | 'title' | 'titleSummary'>
+
+export interface RunTransitions<T extends NotifiableRun = RunRecord> {
   /** Runs that ENTERED an attention state in this observation — the ones worth a notification. */
-  entering: RunRecord[]
-  /** The statuses to remember for the next observation. Rebuilt each time, so deleted runs
-   *  fall out instead of accumulating forever. */
+  entering: T[]
+  /** The statuses to remember for the next observation, keyed by `keyOf`. Rebuilt each time,
+   *  so deleted runs fall out instead of accumulating forever. */
   statuses: Map<string, RunStatus>
 }
 
@@ -77,15 +81,19 @@ export interface RunTransitions {
  * A CHANGED status that still wants attention does notify (`waiting` → `failed`: the agent gave
  * up while you were away — that is news, not a repeat).
  */
-export function diffRunTransitions(
+export function diffRunTransitions<T extends NotifiableRun>(
   previous: ReadonlyMap<string, RunStatus>,
-  runs: readonly RunRecord[] | undefined,
-): RunTransitions {
+  runs: readonly T[] | undefined,
+  /** The identity a run is tracked under. The run id by default; the cross-project caller adds
+   *  the project, because two projects' stores mint ids independently. */
+  keyOf: (run: T) => string = (run) => run.id,
+): RunTransitions<T> {
   const statuses = new Map<string, RunStatus>()
-  const entering: RunRecord[] = []
+  const entering: T[] = []
   for (const run of runs ?? []) {
-    statuses.set(run.id, run.status)
-    const before = previous.get(run.id)
+    const key = keyOf(run)
+    statuses.set(key, run.status)
+    const before = previous.get(key)
     if (before === undefined || before === run.status) continue
     if (wantsAttention(run)) entering.push(run)
   }
@@ -120,7 +128,7 @@ export interface RunNotificationContent {
 
 /** What the notification says: the run's display title (#389: `titleSummary ?? title`) and the
  *  attention label — the same phrase the dot's tooltip uses, from the same one function. */
-export function describeRunNotification(run: RunRecord): RunNotificationContent {
+export function describeRunNotification(run: NotifiableRun): RunNotificationContent {
   const label = deriveAttention(run).label
   return {
     title: run.titleSummary ?? run.title,

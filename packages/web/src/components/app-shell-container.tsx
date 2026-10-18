@@ -9,6 +9,7 @@ import {
   useRuns,
   useSkillsUpdate,
   useTodos,
+  useWorkspaceAttention,
 } from '@/api/queries'
 import type { HealthResponse, SkillsUpdateState } from '@qodeca/xezar-api-client'
 import { AgentQuotaChip } from '@/components/agent-quota-chip'
@@ -109,7 +110,10 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
     : undefined
   const pageLabel = titleRun ? runTitle(titleRun) : titleContext.pageLabel
 
-  useDocumentTitle({ projectName, pageLabel })
+  // The workspace attention model (lib/workspace-attention.ts): every project's waiting and
+  // review tasks, live for all of them. It leads the tab title and badges "All tasks".
+  const attention = useWorkspaceAttention()
+  useDocumentTitle({ projectName, pageLabel, attentionCount: attention?.total ?? null })
 
   // Multi-project sidebar only from the SECOND project on (multi-project spec, "Sidebar").
   // With one registered project — or with the registry still loading, or unreachable — the
@@ -209,6 +213,8 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
             />
           ) : undefined
         }
+        // `?? null`: no badge while the index is unknown, none at zero.
+        allTasksAttentionCount={attention?.total ?? null}
         otherProjects={otherProjects}
         // The plan-limits chip (#867 S5). Each form renders nothing until an agent applies.
         agentQuota={<AgentQuotaChip variant="band" />}
