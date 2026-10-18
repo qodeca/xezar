@@ -4,7 +4,8 @@
     "category": "1d76db",
     "meta": "5319e7",
     "priority": "d93f0b",
-    "risk": "b60205"
+    "risk": "b60205",
+    "platform": "c5def5"
   },
   "labels": {
     "review": {
@@ -130,6 +131,18 @@
     "skip-design": {
       "group": "meta",
       "description": "Rendered output is unchanged; no design review needed. State why in the PR."
+    },
+    "windows": {
+      "group": "platform",
+      "description": "Happens on Windows, or the change must work there."
+    },
+    "linux": {
+      "group": "platform",
+      "description": "Happens on Linux (WSL included), or the change must work there."
+    },
+    "macos": {
+      "group": "platform",
+      "description": "Happens on macOS, or the change must work there."
     }
   }
 }
