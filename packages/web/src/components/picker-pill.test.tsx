@@ -53,3 +53,30 @@ describe('PickerPill accessible name (WCAG 2.5.3 Label in Name)', () => {
     expect(screen.getByRole('button', { name: /^Model:\s?sonnet$/u })).not.toBeNull()
   })
 })
+
+describe('PickerPill disabled reason (visible, not a title only)', () => {
+  const props = {
+    slot: 'variants-pill',
+    ariaLabel: 'Parallel variants',
+    label: '×1',
+    value: '1',
+    onPick: () => {},
+    options: [{ value: '1', label: '×1' }],
+    disabledHint: 'Parallel variants need a git repository — each variant runs in its own worktree.',
+    disabledNote: 'Needs a git repository',
+  }
+
+  it('a disabled pill shows its short reason beside it and is described by it', () => {
+    render(<PickerPill {...props} disabled />)
+    const pill = screen.getByRole('button', { name: /^Parallel variants:/u })
+    const note = document.querySelector('[data-slot="variants-pill-note"]') as HTMLElement
+    expect(note.textContent).toBe('Needs a git repository')
+    expect(pill.getAttribute('aria-describedby')).toBe(note.id)
+  })
+
+  it('an enabled pill shows no reason', () => {
+    render(<PickerPill {...props} />)
+    expect(document.querySelector('[data-slot="variants-pill-note"]')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Parallel variants:/u }).getAttribute('aria-describedby')).toBeNull()
+  })
+})

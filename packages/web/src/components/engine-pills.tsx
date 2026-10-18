@@ -210,6 +210,7 @@ export function EnginePills({
         disabled={unavailable}
         readOnly={modelsLocked === true}
         disabledHint={modelsLocked ? 'Model selection is locked to native coding-agent settings.' : undefined}
+        disabledNote={modelsLocked ? 'Locked to native settings' : undefined}
         onPick={(next) => onChange({ ...pick, model: next })}
         options={models.map((m) => ({ value: m.id, label: m.label, desc: m.desc }))}
         status={modelCatalogStatus(runner, catalog.data, catalog.isError)}

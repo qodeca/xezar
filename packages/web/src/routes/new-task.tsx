@@ -11,7 +11,7 @@ import {
   WorkflowIcon,
   XIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
@@ -658,6 +658,7 @@ export function NewTaskRoute() {
                     ? 'Model selection is locked to native coding-agent settings.'
                     : undefined
                 }
+                disabledNote={modelsLocked ? 'Locked to native settings' : undefined}
                 onPick={(next) => update({ model: next })}
                 options={models.map((m) => ({ value: m.id, label: m.label, desc: m.desc }))}
                 status={modelCatalogStatus(displayRunner, catalog.data, catalog.isError)}
@@ -671,6 +672,7 @@ export function NewTaskRoute() {
                 disabled={!hasGit}
                 hint="How many times to run this task in parallel — each variant gets its own worktree, and you pick the diff you keep. ×1 runs it once."
                 disabledHint="Parallel variants need a git repository — each variant runs in its own worktree."
+                disabledNote="Needs a git repository"
                 options={[
                   { value: '1', label: '×1', desc: 'One run' },
                   { value: '2', label: '×2 variants', desc: 'Two competing runs — pick the diff you keep' },
@@ -682,6 +684,7 @@ export function NewTaskRoute() {
                   on={worktreeOn}
                   disabled={worktreeForced}
                   disabledReason="Parallel variants always use isolated worktrees"
+                  disabledNote="Always isolated with variants"
                   onChange={(on) => update({ worktree: on })}
                 />
               ) : null}
@@ -764,37 +767,55 @@ function WorktreeToggle({
   on,
   disabled,
   disabledReason,
+  disabledNote,
   onChange,
 }: {
   on: boolean
   disabled?: boolean
   disabledReason?: string
+  /** Short visible reason while disabled; `disabledReason` stays the longer hover text. */
+  disabledNote?: string
   onChange: (on: boolean) => void
 }) {
+  const noteId = useId()
+  const showNote = disabled === true && disabledNote !== undefined
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      disabled={disabled}
-      data-slot="worktree-toggle"
-      onClick={() => onChange(!on)}
-      title={
-        disabled
-          ? disabledReason
-          : on
-          ? 'Runs in an isolated worktree — uncheck to run in the repo working tree'
-          : 'Runs in the repo working tree — check to isolate in a worktree'
-      }
-      className={cn(chipClass, on && 'border-primary/60 text-foreground')}
-    >
-      {on ? (
-        <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
-      ) : (
-        <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
-      )}
-      Worktree
-    </button>
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <button
+        aria-describedby={showNote ? noteId : undefined}
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        disabled={disabled}
+        data-slot="worktree-toggle"
+        onClick={() => onChange(!on)}
+        title={
+          disabled
+            ? disabledReason
+            : on
+            ? 'Runs in an isolated worktree — uncheck to run in the repo working tree'
+            : 'Runs in the repo working tree — check to isolate in a worktree'
+        }
+        className={cn(chipClass, on && 'border-primary/60 text-foreground')}
+      >
+        {on ? (
+          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+        ) : (
+          <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
+        )}
+        Worktree
+      </button>
+      {showNote ? <ToggleNote id={noteId}>{disabledNote}</ToggleNote> : null}
+    </span>
+  )
+}
+
+/** The short visible reason beside a disabled composer toggle (see PickerPill `disabledNote`). */
+function ToggleNote({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <span id={id} data-slot="toggle-note" className="text-[11px] text-soft-foreground">
+      {children}
+    </span>
   )
 }
 
@@ -809,30 +830,35 @@ function AutonomousToggle({
   disabled?: boolean
   onChange: (on: boolean) => void
 }) {
+  const noteId = useId()
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      disabled={disabled}
-      data-slot="autonomous-toggle"
-      onClick={() => onChange(!on)}
-      title={
-        disabled
-          ? 'Plan-first runs are interactive — autonomous is unavailable'
-          : on
-            ? 'Autonomous — the agent runs to completion without pausing for you'
-            : 'Runs interactively — check to let the agent finish without pausing for you'
-      }
-      className={cn(chipClass, on && !disabled && 'border-primary/60 text-foreground')}
-    >
-      {on ? (
-        <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
-      ) : (
-        <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
-      )}
-      Autonomous
-    </button>
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        disabled={disabled}
+        aria-describedby={disabled ? noteId : undefined}
+        data-slot="autonomous-toggle"
+        onClick={() => onChange(!on)}
+        title={
+          disabled
+            ? 'Plan-first runs are interactive — autonomous is unavailable'
+            : on
+              ? 'Autonomous — the agent runs to completion without pausing for you'
+              : 'Runs interactively — check to let the agent finish without pausing for you'
+        }
+        className={cn(chipClass, on && !disabled && 'border-primary/60 text-foreground')}
+      >
+        {on ? (
+          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+        ) : (
+          <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
+        )}
+        Autonomous
+      </button>
+      {disabled ? <ToggleNote id={noteId}>Unavailable with Plan first</ToggleNote> : null}
+    </span>
   )
 }
 

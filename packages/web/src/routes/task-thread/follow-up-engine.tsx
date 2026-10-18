@@ -160,6 +160,7 @@ export function useContinueAction(run: ApiRun): ContinueAction {
           value={model}
           readOnly={modelsLocked}
           disabledHint="Model selection is locked to native coding-agent settings."
+          disabledNote="Locked to native settings"
           onPick={(next) => setPickedModel(next)}
           options={models.map((m) => ({ value: m.id, label: m.label, desc: m.desc }))}
           status={modelCatalogStatus(runner, catalog.data, catalog.isError)}

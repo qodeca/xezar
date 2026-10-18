@@ -29,3 +29,6 @@
 - 🐛 **On a phone the top bar says which project and which settings you are in.** A quiet line
   above the page name shows the project, and Global settings is titled as such instead of plain
   "Settings".
+- 🐛 **A greyed-out composer control says why on screen.** The model, variants, Worktree and
+  Autonomous controls used to explain a disabled state only in a hover tooltip, which a phone or a
+  keyboard never shows; a short reason now sits beside them.

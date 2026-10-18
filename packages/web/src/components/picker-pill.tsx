@@ -1,5 +1,5 @@
 import { ChevronDownIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 
 import { DEFAULT_AGENT_ACCOUNT_ID, type Runner } from '@qodeca/xezar-api-client'
 import {
@@ -44,6 +44,7 @@ export function PickerPill({
   readOnly = false,
   hint,
   disabledHint,
+  disabledNote,
   status,
 }: {
   slot: string
@@ -60,24 +61,45 @@ export function PickerPill({
   /** Hover explanation for the enabled pill — what the setting does (e.g. the ×1 variants pill). */
   hint?: string
   disabledHint?: string
+  /** The short reason a disabled or read-only pill cannot be changed, shown as visible text
+   *  beside it and tied to it with `aria-describedby`. A `title` alone never reaches a touch
+   *  screen or a keyboard user (components.md, Tooltip), so a REASON must not live only there;
+   *  `disabledHint` stays as the longer hover text. */
+  disabledNote?: string
   /** Quiet non-selectable catalog state, kept inside the menu's accessible reading order. */
   status?: string
 }) {
+  const noteId = useId()
   // The setting's name rides as a visually hidden prefix, never as an `aria-label`: a label would
   // REPLACE the visible value, so a screen reader heard "Model, button" and never which model
   // (WCAG 2.5.3 Label in Name wants the visible text inside the name). The pill now reads
   // "Model: sonnet".
   const name = <span className="sr-only">{`${ariaLabel}: `}</span>
+  const showNote = (readOnly || disabled) && disabledNote !== undefined
+  const note = showNote ? (
+    <span id={noteId} data-slot={`${slot}-note`} className="text-[11px] text-soft-foreground">
+      {disabledNote}
+    </span>
+  ) : null
   if (readOnly) {
-    return (
+    const pill = (
       <span
         data-slot={slot}
         title={disabledHint ?? hint}
+        aria-describedby={showNote ? noteId : undefined}
         className={`${chipClass} cursor-default hover:bg-card hover:text-muted-foreground`}
       >
         {name}
         {label}
       </span>
+    )
+    return note ? (
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        {pill}
+        {note}
+      </span>
+    ) : (
+      pill
     )
   }
   const trigger = (
@@ -86,6 +108,7 @@ export function PickerPill({
       data-slot={slot}
       disabled={disabled}
       title={disabled ? disabledHint : hint}
+      aria-describedby={disabled && showNote ? noteId : undefined}
       className={chipClass}
     >
       {name}
@@ -98,8 +121,9 @@ export function PickerPill({
   // that still receives hover.
   if (disabled) {
     return (
-      <span title={disabledHint} className="inline-flex">
+      <span title={disabledHint} className="inline-flex flex-wrap items-center gap-1.5">
         {trigger}
+        {note}
       </span>
     )
   }
