@@ -6,46 +6,60 @@ import { parse } from 'yaml';
 
 // The two-branch model: `develop` is the default branch and takes every feature PR; `main` holds
 // released work only and takes release-class PRs (promotion, version bump, hotfix). Branch
-// protection checks results, not where a PR comes from, so `ci.yml` carries a job that does. It
-// must keep working under the trunk model too: while `main` IS the default branch it checks
-// nothing, so the change can land before `develop` exists.
+// protection checks results, not where a PR comes from, so `pr-source-guard.yml` does. It must
+// keep working under the trunk model too: while `main` IS the default branch it checks nothing, so
+// the change can land before `develop` exists.
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
-const text = readFileSync(join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
-
-type Step = { name?: string; run?: string; env?: Record<string, string> };
-type Job = { name?: string; if?: string; steps: Step[] };
-const wf = parse(text) as { on: Record<string, { branches?: string[] } | null>; jobs: Record<string, Job> };
+const read = (name: string) => parse(readFileSync(join(REPO_ROOT, '.github/workflows', name), 'utf8')) as {
+  on: Record<string, { branches?: string[]; types?: string[] } | null>;
+  permissions?: Record<string, string>;
+  jobs: Record<string, { name?: string; if?: string; steps: { run?: string; env?: Record<string, string>; uses?: string }[] }>;
+};
 
 describe('CI under the develop/main model', () => {
-  it('runs for pull requests and pushes on both branches', () => {
-    expect(wf.on.pull_request?.branches).toEqual(['main', 'develop']);
-    expect(wf.on.push?.branches).toEqual(['main', 'develop']);
+  it('runs CI for pull requests and pushes on both branches', () => {
+    const ci = read('ci.yml');
+    expect(ci.on.pull_request?.branches).toEqual(['main', 'develop']);
+    expect(ci.on.push?.branches).toEqual(['main', 'develop']);
+  });
+});
+
+describe('the PR source guard', () => {
+  const wf = read('pr-source-guard.yml');
+  const job = wf.jobs['pr-source-guard']!;
+  const step = job.steps[0]!;
+
+  it('reruns when a PR is retargeted, so a green check cannot follow a feature PR into main', () => {
+    // Named break: drop `edited`, and a PR retargeted from develop to main keeps its green check.
+    expect(wf.on.pull_request?.types).toEqual(['opened', 'synchronize', 'reopened', 'edited']);
+    expect(wf.on.pull_request?.branches).toBeUndefined();
   });
 
-  it('has a PR source guard job that always reports, so it can be a required check', () => {
-    const job = wf.jobs['pr-source-guard'];
-    expect(job, 'ci.yml has a pr-source-guard job').toBeDefined();
-    expect(job!.name).toBe('PR source guard');
+  it('always reports under its required-check name, with read-only permissions and no checkout', () => {
+    expect(job.name).toBe('PR source guard');
     // A job-level `if` would skip it, and the check would read as passed for the wrong reason.
-    expect(job!.if).toBeUndefined();
+    expect(job.if).toBeUndefined();
+    expect(wf.permissions).toEqual({ contents: 'read' });
+    expect(job.steps.some((s) => s.uses)).toBe(false);
   });
 
   it('reads every ref through env, never by interpolating it into the script', () => {
-    const [guard] = wf.jobs['pr-source-guard']!.steps;
-    expect(guard!.env).toMatchObject({
-      EVENT: '${{ github.event_name }}',
+    expect(step.env).toMatchObject({
       BASE_REF: '${{ github.base_ref }}',
       HEAD_REF: '${{ github.head_ref }}',
+      HEAD_REPO: '${{ github.event.pull_request.head.repo.full_name }}',
+      THIS_REPO: '${{ github.repository }}',
       DEFAULT_BRANCH: '${{ github.event.repository.default_branch }}',
     });
-    expect(guard!.run).not.toMatch(/\$\{\{/);
+    expect(step.run).not.toMatch(/\$\{\{/);
   });
 
-  it('checks only PRs into main while main is not the default branch, and allows only release-class heads', () => {
-    const run = wf.jobs['pr-source-guard']!.steps[0]!.run!;
-    expect(run).toContain('[ "$EVENT" != pull_request ] || [ "$BASE_REF" != main ] || [ "$DEFAULT_BRANCH" = main ]');
+  it('checks only PRs into main while main is not the default branch, from this repository, release-class heads only', () => {
+    const run = step.run!;
+    expect(run).toContain('[ "$BASE_REF" != main ] || [ "$DEFAULT_BRANCH" = main ]');
+    expect(run).toContain('[ "$HEAD_REPO" != "$THIS_REPO" ]');
     expect(run).toMatch(/promote\/\*\|release\/v\*\|hotfix\/\*\)/);
-    expect(run).toContain('exit 1');
+    expect(run.match(/exit 1/g)).toHaveLength(2);
   });
 });

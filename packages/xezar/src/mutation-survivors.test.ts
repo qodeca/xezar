@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 // `packages/xezar/mutation/survivors.mjs` answers the question the nightly MCP mutation gate's score
 // cannot (#377, PR 2): is tonight's survivor one the starting list already knows, one the previous
-// main run already had, or new? The owner's rule (2026-09-15): KNOWN if the starting list has it,
-// ALREADY SEEN if only the previous main run had it, NEW otherwise, and #338 / #353 tags stay.
+// run on the default branch already had, or new? The owner's rule (2026-09-15): KNOWN if the starting list has it,
+// ALREADY SEEN if only the previous default-branch run had it, NEW otherwise, and #338 / #353 tags stay.
 //
 // Two ways this goes wrong quietly, both pinned here: a key that moves with its line number turns
 // every survivor below an edit into a "new" one, and a missing previous list that reads like an
@@ -182,7 +182,7 @@ describe('the committed starting list', () => {
   });
 });
 
-describe('finding the previous main run', () => {
+describe('finding the previous default-branch run', () => {
   const artifact = (id: number, branch: string, created: string, extra: Record<string, unknown> = {}) => ({
     name: s.ARTIFACT,
     expired: false,
@@ -191,7 +191,7 @@ describe('finding the previous main run', () => {
     ...extra,
   });
 
-  it('picks the newest unexpired list from another main run', () => {
+  it('picks the newest unexpired list from another run on the branch', () => {
     const answer = {
       artifacts: [
         artifact(7, 'main', '2026-09-17T03:00:00Z'),

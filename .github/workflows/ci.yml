@@ -24,41 +24,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Branch protection checks results, not where a PR comes from. While `main` is not the default
-  # branch, a PR into it is a release step, so its source must be a release-class branch:
-  # `promote/*` (develop at the changelog commit), `release/v*` (the Release workflow's version
-  # bump) or `hotfix/*`. Everything else goes to the default branch. While `main` IS the default
-  # (the trunk model), the job checks nothing. It has no job-level `if`, so it always reports and
-  # can be a required check. Refs reach the script through env, never interpolated.
-  pr-source-guard:
-    name: PR source guard
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Allow only release-class branches into main
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          if [ "$EVENT" != pull_request ] || [ "$BASE_REF" != main ] || [ "$DEFAULT_BRANCH" = main ]; then
-            echo "Not a pull request into main while another branch is the default: nothing to check."
-            exit 0
-          fi
-          case "$HEAD_REF" in
-            promote/*|release/v*|hotfix/*)
-              echo "$HEAD_REF is a release-class branch and may target main." ;;
-            *)
-              echo "::error title=PR source guard::$HEAD_REF may not target main. Feature work goes to $DEFAULT_BRANCH; main takes only promote/*, release/v* and hotfix/* branches."
-              exit 1 ;;
-          esac
-
-  # Named from its own step list. It runs the five documented validation commands plus the
-  # pack check — no browser anywhere. The old name ("Unit, build, E2E, and package") read as
-  # a promise that the cockpit's 35 browser specs were covered here; they were not, and the
-  # `ui-e2e` job below is where they now run. `test:package` is an end-to-end exercise of the
-  # PACKAGED CLI, which is why "package" and not "E2E" is the honest word for it.
   verify:
     name: Typecheck, unit tests, build, and package
     runs-on: ubuntu-latest

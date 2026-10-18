@@ -35,6 +35,7 @@ type TrackingModule = {
     gh: (args: string[]) => string;
     runId?: string | number;
     newSurvivors?: number | null;
+    trackedRef?: string;
   }) => Decision;
 };
 
@@ -165,6 +166,21 @@ describe('carrying the decision out through gh', () => {
       ['issue', 'reopen', '77'],
       ['issue', 'comment', '77', '--body', 'S'],
     ]);
+  });
+
+  it('acts on the tracked ref it is handed, and stays silent on main once develop is tracked', () => {
+    // Named break: `syncTrackingIssue` dropping `trackedRef` on its way to `decide`.
+    const DEVELOP = 'refs/heads/develop';
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      return args[1] === 'list' ? '[]' : '';
+    };
+    expect(t.syncTrackingIssue({ verdict: 'red', ref: DEVELOP, trackedRef: DEVELOP, summary: 'S', gh }).action).toBe('create');
+    expect(calls.at(-1)!.slice(0, 2)).toEqual(['issue', 'create']);
+    calls.length = 0;
+    expect(t.syncTrackingIssue({ verdict: 'red', ref: MAIN, trackedRef: DEVELOP, summary: 'S', gh }).action).toBe('skip');
+    expect(calls).toEqual([]);
   });
 
   it('calls gh not at all off main', () => {

@@ -243,9 +243,11 @@ jobs:
         id: survivors
         if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
         continue-on-error: true
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -u
-          if ! npm run --silent test:mutation:mcp:survivors -- group --reports .local/mutation/shards \
+          if ! npm run --silent test:mutation:mcp:survivors -- group --branch "$DEFAULT_BRANCH" --reports .local/mutation/shards \
               --previous .local/mutation/previous/survivors.json --out-md .local/mutation/summary.md \
               --out-json .local/mutation/survivors.json --outputs "$GITHUB_OUTPUT" > .local/mutation/survivors.md; then
             printf '\n### Survivors: new, already seen, known\n\nThe grouping failed, so new survivors could not be told apart. See the step log.\n' | tee -a .local/mutation/summary.md > .local/mutation/survivors.md

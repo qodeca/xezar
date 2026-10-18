@@ -159,7 +159,8 @@ describe('new survivors and the forced red path (#377, PR 2)', () => {
   it('groups survivors without ever touching the verdict, and uploads only a complete run’s list', () => {
     const group = step('report', /group the survivors/i);
     expect(group.id).toBe('survivors');
-    expect(group.run).toContain('npm run --silent test:mutation:mcp:survivors -- group');
+    expect(group.run).toContain('npm run --silent test:mutation:mcp:survivors -- group --branch "$DEFAULT_BRANCH"');
+    expect(group.env?.DEFAULT_BRANCH).toBe('${{ github.event.repository.default_branch }}');
     expect(group.run).not.toMatch(/verdict/);
     expect(group.if).toContain(`!(${FORCED})`);
     // A failed grouping still reaches the issue, as `unknown`, not as zero.
