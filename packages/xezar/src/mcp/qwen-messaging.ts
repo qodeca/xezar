@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createConnection, createServer, type Server } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { socketTempRoot } from '../platform/socket-dir.ts';
 
 /**
  * Push into a Qwen Code leader session (#1045). The research note
@@ -64,6 +64,9 @@ export function qwenInboxFrom(env: NodeJS.ProcessEnv): QwenInbox | undefined {
  * Where the receipt listener binds. A Unix socket in a private temp folder on Linux and macOS; a
  * named pipe on Windows, where Qwen Code's own inbox is one too.
  */
+/** What the receipt listener adds below the temp folder: `/xez-qwen-XXXXXX/r.sock`. */
+const RECEIPT_SOCKET_BELOW_BYTES = '/xez-qwen-XXXXXX/r.sock'.length;
+
 export function receiptAddress(dir: string, id: string, platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? `\\\\.\\pipe\\xezar-qwen-receipt-${id}` : join(dir, 'r.sock');
 }
@@ -182,7 +185,8 @@ export class QwenMessenger {
 
   async #receiptListener(): Promise<string> {
     if (this.#listener) return this.#listener.address;
-    const dir = mkdtempSync(join(tmpdir(), 'xez-qwen-'));
+    // `<dir>/r.sock` must fit a Unix socket path; a deep TMPDIR moves it to a short temp folder.
+    const dir = mkdtempSync(join(socketTempRoot(RECEIPT_SOCKET_BELOW_BYTES), 'xez-qwen-'));
     const address = receiptAddress(dir, randomUUID());
     const server = createServer((socket) => {
       let buffer = '';
