@@ -27,3 +27,5 @@
   (runtime dependency of the CLI), and the cockpit's `streamdown` moves to 2.7.0 (same major),
   which no longer depends on `mermaid`; the cockpit never rendered diagrams, and with it go
   `katex`, `dompurify` and 106 other packages. `npm audit --omit=dev` now reports nothing.
+- 🔒 **vitest and `@vitest/coverage-v8` move to 4.1.11** (same major), the first release with the
+  fix for a file-read advisory in `@vitest/mocker`. Development only; `npm audit` now reports nothing.
