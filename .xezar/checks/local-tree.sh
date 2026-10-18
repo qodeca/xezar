@@ -53,7 +53,8 @@ ALLOWED="runtime tasks worktrees scratch cache qa"
 # THE SIX ADDED ON 2026-09-22 SHOW HOW THIS LIST GOES STALE, and it is not by the engine changing.
 # A measured listing of engine 0.18.0 covered every name already here — the list was CORRECT for
 # everything that exercise produced. The gap was in the names it could not produce: `pi-leader.json`
-# needs a pi leader attached, and the five `automation*` entries need an opt-in flag nobody had
+# needed a pi leader attached (engines before 0.30.0, which runs no pi; it stays accepted because an
+# older engine may have left it), and the five `automation*` entries need an opt-in flag nobody had
 # turned on. So they were missing for as long as this check has existed, at every engine version,
 # and no amount of watching releases would have surfaced them — the first project to switch on
 # automations would have found them instead, as a gate failing on every run. All six are

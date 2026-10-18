@@ -18,7 +18,7 @@
 #   verdict-write.sh                   any of the three, as one JSON request on stdin:
 #     {"kind":"packet","packet":{…}}   {"kind":"blocked","text":"…"}   {"kind":"evidence","name":"notes.md","text":"…"}
 #
-# Use the last form from a pipe: the engine's shared read-only lock (pi, Codex) allows one pipe
+# Use the last form from a pipe: the engine's shared read-only lock (Codex, Qwen Code) allows one pipe
 # only into an argument-free `bash <script>`, so `jq -n '{kind:"packet",packet:{…}}' | bash
 # .xezar/checks/verdict-write.sh` passes on every runner and `… | verdict-write.sh packet` does not.
 #
