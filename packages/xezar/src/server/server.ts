@@ -4,6 +4,7 @@ import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { resolveNextStartCli } from '../cli-settings.ts';
 import { createUiAuditDoor } from './audit-ui.ts';
+import { allowsHost } from './hosted-hosts.ts';
 import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -1407,12 +1408,12 @@ export function createApp(deps: ServerDeps) {
   // Two zero-config checks close both holes on every /api route EXCEPT
   // /api/v1/health (the intentional cross-origin discovery endpoint, spec 011 —
   // it exposes nothing sensitive, see #431):
-  //   1. Host allowlist (loopback deployments only) — a request whose Host is
-  //      not a loopback name did not really originate from this machine. A
-  //      rebound `evil.com` still sends `Host: evil.com`, so this kills DNS
-  //      rebinding for reads AND writes. Skipped in hosted mode (XEZ_REMOTE /
-  //      non-loopback bind), where the reverse proxy forwards the real public
-  //      Host and TLS+auth own the perimeter.
+  //   1. Host allowlist — a request whose Host is not a loopback name did not
+  //      really originate from this machine. A rebound `evil.com` still sends
+  //      `Host: evil.com`, so this kills DNS rebinding for reads AND writes.
+  //      In hosted mode (XEZ_REMOTE / non-loopback bind) the proxy forwards the
+  //      real public Host, so the allowlist also admits the public names the
+  //      install recorded and IP literals (`hosted-hosts.ts`).
   //      The match runs through `isLoopbackHostHeader`, whose 127.0.0.0/8 test
   //      is *anchored* and whose missing-Host answer is "untrusted". Both are
   //      load-bearing: a `startsWith('127.')` prefix would accept the
@@ -1433,12 +1434,43 @@ export function createApp(deps: ServerDeps) {
   // what check 1 stops.
   const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   const isHostedMode = () => !resolveCapabilities(process.env, bindHost).localHandoff;
+  // Hosted mode used to skip check 1 outright, but the installers keep the
+  // listener on loopback behind a local proxy, so a browser on the same machine
+  // can still reach it under a foreign name. A hosted cockpit therefore serves a
+  // non-loopback Host only when it is one of the public names this host's
+  // install records (`hosted-hosts.ts`) or an IP literal. Each refused name is
+  // logged once; a host that records no public name keeps the old behaviour and
+  // says so once, since there is nothing to compare against.
+  const loggedHostDecisions = new Set<string>();
+  const logHostDecisionOnce = (key: string, line: string) => {
+    if (loggedHostDecisions.has(key) || loggedHostDecisions.size >= 64) return;
+    loggedHostDecisions.add(key);
+    console.warn(line);
+  };
+  const hostedModeAllowsHost = (hostName: string): boolean => {
+    if (!isHostedMode()) return false;
+    const verdict = allowsHost(hostName);
+    if (verdict === undefined) {
+      logHostDecisionOnce(
+        'unrecorded',
+        '[xezar] hosted mode: no public hostname is recorded for this machine, so requests under any name are served — run `xezar server-install` with a domain to restrict them',
+      );
+      return true;
+    }
+    if (!verdict) {
+      logHostDecisionOnce(
+        `host:${hostName}`,
+        `[xezar] hosted mode: refused a request for Host "${hostName.slice(0, 120)}" — it is not a public name recorded by \`xezar server-install\` for this machine`,
+      );
+    }
+    return verdict;
+  };
   app.use('/api/*', async (c, next) => {
     const hostName = hostnameOfHost(c.req.header('host'));
     // Strict twin of `isLoopbackHost`: a *missing* Host is untrusted here (an
     // absent header is not the "we defaulted to the loopback bind" case), and
     // the loopback match is anchored so `127.0.0.1.evil.com` does not pass.
-    if (!isHostedMode() && !isLoopbackHostHeader(hostName)) {
+    if (!isLoopbackHostHeader(hostName) && !hostedModeAllowsHost(hostName)) {
       return c.json(
         {
           error: 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',

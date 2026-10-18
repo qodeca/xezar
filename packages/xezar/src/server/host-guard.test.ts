@@ -6,6 +6,8 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { saveServerState } from '../server-install/state.ts';
+import { freshServerState, type ServerState } from '../server-install/types.ts';
 
 /**
  * DNS-rebinding guard: in local mode (loopback bind, no `XEZ_REMOTE`) every
@@ -15,10 +17,13 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
  * requests are same-origin to the attacker's page, and the Host header is the
  * one tell left. The guard turns those into a 403 before any route runs.
  *
- * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) is exempt: the operator
- * deliberately exposed the server behind a hostname or proxy this code cannot
- * enumerate. A missing Host header fails closed in local mode; real HTTP/1.1
- * clients always send one, while the in-process test harness must add it.
+ * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) also serves the public
+ * names the server install recorded on this machine and IP literals, and
+ * refuses every other name — the installers keep the listener on loopback
+ * behind a local proxy, so a browser on the same machine can still reach it.
+ * With no recorded name there is nothing to compare against and every name is
+ * served, as before. A missing Host header fails closed in local mode; real
+ * HTTP/1.1 clients always send one, while the in-process test harness must add it.
  */
 describe('host-header guard (DNS rebinding)', () => {
   const savedHome = process.env.XEZ_HOME;
@@ -86,14 +91,88 @@ describe('host-header guard (DNS rebinding)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('is exempt in hosted mode (XEZ_REMOTE=1) — the operator fronts it with their own hostname', async () => {
-    process.env.XEZ_REMOTE = '1';
-    const res = await request('cockpit.example.com');
-    expect(res.status).toBe(200);
-  });
+  describe('hosted mode', () => {
+    const record = (state: Partial<ServerState>, instance = 'default') =>
+      saveServerState({ ...freshServerState(), installed: true, ...state }, instance);
 
-  it('is exempt for a non-loopback bind host — deliberately exposed', async () => {
-    const res = await request('cockpit.example.com', '/api/v1/health', { bindHost: '0.0.0.0' });
-    expect(res.status).toBe(200);
+    it('serves the public domain an install recorded, under any case and with a port', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      for (const host of ['cockpit.example.com', 'Cockpit.Example.COM', 'cockpit.example.com:443']) {
+        const res = await request(host, '/api/v1/projects');
+        expect(res.status).toBe(200);
+      }
+    });
+
+    it('serves the host named by a recorded public URL and a named instance', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', publicUrl: 'https://tunnel.example.org' });
+      record({ platform: 'ubuntu-vps', domain: 'second.example.net' }, 'second-example-net');
+      expect((await request('tunnel.example.org', '/api/v1/projects')).status).toBe(200);
+      expect((await request('second.example.net', '/api/v1/projects')).status).toBe(200);
+    });
+
+    it('refuses a name the install did not record, on reads and writes', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', domain: 'tunnel.example.org', publicUrl: 'https://tunnel.example.org' });
+      for (const host of ['other.example', 'tunnel.example.org.other.example', 'other.example:4321']) {
+        for (const path of ['/api/v1/health', '/api/v1/projects', '/api/v1/runs']) {
+          const res = await request(host, path);
+          expect(res.status).toBe(403);
+        }
+      }
+      const post = await makeApp().request('/api/v1/projects', {
+        method: 'POST',
+        headers: { host: 'other.example', origin: 'http://other.example', 'content-type': 'application/json' },
+        body: JSON.stringify({ root: repoRoot }),
+      });
+      expect(post.status).toBe(403);
+    });
+
+    it('serves an ngrok-assigned hostname when an ngrok install recorded no domain', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', ephemeral: true });
+      expect((await request('abc-123.ngrok-free.app', '/api/v1/projects')).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects')).status).toBe(403);
+      expect((await request('ngrok-free.app.other.example', '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('does not widen ngrok zones for an install on another platform', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('abc-123.ngrok-free.app', '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('still serves loopback and IP-literal hosts when names are recorded', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      for (const host of ['127.0.0.1:4321', 'localhost', '[::1]:4321', '203.0.113.7', '[2001:db8::1]:443']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+    });
+
+    it('refuses an unrecorded name for a non-loopback bind once a name is recorded', async () => {
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com', bindHost: '172.17.0.1', externalProxy: true });
+      expect((await request('cockpit.example.com', '/api/v1/projects', { bindHost: '0.0.0.0' })).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects', { bindHost: '0.0.0.0' })).status).toBe(403);
+    });
+
+    it('keeps serving any name when no install records a public name (nothing to compare against)', async () => {
+      process.env.XEZ_REMOTE = '1';
+      expect((await request('cockpit.example.com')).status).toBe(200);
+      expect((await request('cockpit.example.com', '/api/v1/health', { bindHost: '0.0.0.0' })).status).toBe(200);
+    });
+
+    it('ignores a dry-run record and a record without a platform', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com', dryRun: true });
+      record({ domain: 'stale.example.com' }, 'stale-example-com');
+      expect((await request('other.example')).status).toBe(200);
+    });
+
+    it('keeps local mode strict even when a public name is recorded', async () => {
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('cockpit.example.com')).status).toBe(403);
+    });
   });
 });

@@ -29,6 +29,7 @@ Your proxy is expected to challenge anonymous and wrong credentials before the r
 The server's request-origin guard provides additional browser protections:
 
 - In local mode, `/api/*` requests need a loopback `Host` header, including health requests. This protects against DNS rebinding.
+- In hosted mode, `/api/*` requests also pass with an IP-address `Host` or with a public name that `xezar server-install` recorded on this machine: the domain you entered, or an ngrok-assigned name for an ngrok install without one. Other names are refused and logged once. If the installer recorded no public name (for example, you set `XEZ_REMOTE=1` yourself), every name is served and the server logs that once; record your domain with `xezar server-install` to restrict it.
 - Mutating requests with an `Origin` header must pass the host-and-port comparison, with a specific exception for the local development proxy. Explicit cross-site requests are rejected.
 - No route sends CORS headers, so a page on another site cannot read any answer, `/api/v1/health` included. Requests without an `Origin` header can still reach the API; these guards are not authentication.
 - Remote URLs the cockpit shows or sends never include a user name and password or token embedded in them, and in hosted mode health names the project folder only, never its full path.
