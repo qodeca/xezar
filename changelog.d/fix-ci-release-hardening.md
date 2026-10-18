@@ -23,7 +23,7 @@
 
 ## 🔒 Security
 
-- 🔒 **Dependency updates for published advisories.** `npm audit fix` (no forced majors) moves
-  `smol-toml` to 1.9.1 (runtime dependency of the CLI) and, in the cockpit, `mermaid` to 11.17.2
-  and `dompurify` to 3.4.17. `katex` stays at 0.16.47: the fixed release is outside the range
-  `mermaid` 11 accepts, and needs a `streamdown`/`mermaid` major update of its own.
+- 🔒 **Dependency updates for published advisories.** `npm audit fix` moves `smol-toml` to 1.9.1
+  (runtime dependency of the CLI), and the cockpit's `streamdown` moves to 2.7.0 (same major),
+  which no longer depends on `mermaid`; the cockpit never rendered diagrams, and with it go
+  `katex`, `dompurify` and 106 other packages. `npm audit --omit=dev` now reports nothing.
