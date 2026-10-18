@@ -39,6 +39,7 @@ import { acquireFileLock, queueByLockPath } from './file-lock.ts';
 import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
 import { formatSize, MAX_NDJSON_LINE_CHARS, NdjsonLineTooLongError, readNdjson } from './ndjson.ts';
+import { StderrTail } from './stderr-tail.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import { codexTurnLimit, isCodexModelBucket, mergeCodexSnapshot } from './codex-usage-limit.ts';
 import {
@@ -341,6 +342,9 @@ class CodexSession implements AgentSession {
   private threadId: string | undefined;
   private activeTurnId: string | undefined;
   private pendingUserInput: PendingUserInput | undefined;
+  // Never filled: no caller reads a result's tool calls, and keeping every call's full input
+  // (a whole written file, a long command) grew with the session. Tool calls reach consumers as
+  // `tool-call` events.
   private readonly toolCalls: AgentToolCallRecord[] = [];
   private readonly textChunks: string[] = [];
   /** Streamed agentMessage deltas buffered per item — v1 `text` is emitted
@@ -438,9 +442,9 @@ class CodexSession implements AgentSession {
       this.outputReleaseTimer = setTimeout(() => this.releaseOutput(), KILL_GRACE_MS);
       this.outputReleaseTimer.unref?.();
     });
-    const stderrChunks: string[] = [];
+    const stderrTail = new StderrTail();
     this.child.stderr.setEncoding('utf8');
-    this.child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    this.child.stderr.on('data', (chunk: string) => stderrTail.push(chunk));
 
     // Optional wall-clock kill switch (disabled for interactive sessions).
     const limitMs = spec.timeoutMs ?? timeoutMs;
@@ -527,7 +531,7 @@ class CodexSession implements AgentSession {
       if (this.outputReleaseTimer) clearTimeout(this.outputReleaseTimer);
       this.rpc.rejectPending();
       const stderrDetail = () => {
-        const stderr = stderrChunks.join('').trim();
+        const stderr = stderrTail.text().trim();
         return stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
       };
 
@@ -1028,7 +1032,6 @@ class CodexSession implements AgentSession {
         // Only tool-like items become tool events; message/reasoning stream as text.
         if (type && !NON_TOOL_ITEMS.has(type)) {
           const id = stringField(item, 'id') ?? `item-${this.rpc.allocateId()}`;
-          this.toolCalls.push({ id, name: type, input: item });
           this.emit({ type: 'tool-call', id, tool: type, input: item });
         }
         break;

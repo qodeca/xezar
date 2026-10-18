@@ -629,6 +629,30 @@ describe('a signal xezar did not send', () => {
     });
   }, 15_000);
 
+  /** Bounded memory: a tool call streams as an event, and the result keeps no copy of its input. */
+  it('keeps no copy of tool-call inputs in the result', async () => {
+    const { fake, events, session } = startWithFakeChild();
+    const input = { file_path: 'notes.txt', content: 'x'.repeat(100_000) };
+    (fake.child.stdout as PassThrough).write(
+      `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Write', input }] } })}\n`,
+    );
+    fake.exit(0);
+
+    const result = await session.result;
+    expect(events).toContainEqual({ type: 'tool-call', id: 't1', tool: 'Write', input });
+    expect(result.toolCalls).toEqual([]);
+  }, 15_000);
+
+  /** GUARD — a bounded stderr still quotes the last three lines after a long, noisy session. */
+  it('quotes the last stderr lines after megabytes of earlier output', async () => {
+    const { fake, session } = startWithFakeChild();
+    for (let i = 0; i < 400; i++) (fake.child.stderr as PassThrough).write(`${'noise '.repeat(500)}\n`);
+    (fake.child.stderr as PassThrough).write('first\nsecond\nfatal: third\n');
+    fake.exit(2);
+
+    await expect(session.result).rejects.toThrow(/^claude CLI exited with code 2 — first \| second \| fatal: third$/);
+  }, 15_000);
+
   /** GUARD — exit 1 is an ordinary failure on Windows when xezar sent nothing. */
   it('still fails an exit 1 on Windows that xezar did not cause', async () => {
     await withPlatform('win32', async () => {
