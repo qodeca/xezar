@@ -3396,6 +3396,28 @@ export function createApp(deps: ServerDeps) {
         agentDefaults,
         cli,
       } = parsed.data;
+      // Hosted mode: the keys that decide what this machine exposes stay a local-machine
+      // choice, like agent config. `browseRoot` bounds which host folders a remote viewer can
+      // list and register, `projectsDir` is where checkouts are written, `agentEnvPassthrough`
+      // names host variables handed to every agent, and `cli.instance` decides which
+      // registered projects this process serves. Display and resource settings stay writable.
+      // Refused before any probe or write, so a refused body changes nothing.
+      if (!capabilities().localHandoff) {
+        const machineKeys = [
+          browseRoot !== undefined && 'browseRoot',
+          projectsDir !== undefined && 'projectsDir',
+          agentEnvPassthrough !== undefined && 'agentEnvPassthrough',
+          cli?.instance !== undefined && 'cli.instance',
+        ].filter((key): key is string => typeof key === 'string');
+        if (machineKeys.length > 0) {
+          return c.json(
+            {
+              error: `changing ${machineKeys.join(', ')} is disabled in hosted mode (XEZ_REMOTE) — change it from the machine that owns the checkout`,
+            },
+            409,
+          );
+        }
+      }
       for (const [configuredRoot, create] of [
         [browseRoot, false],
         [projectsDir, true],
@@ -3564,7 +3586,10 @@ export function createApp(deps: ServerDeps) {
         const result = await browseDirectory({
           root,
           path: query.path,
-          showHidden: query.showHidden === '1',
+          // Hosted mode never lists hidden entries: dot-folders hold credentials and agent
+          // configuration, and a remote viewer only needs project folders. The flag is ignored
+          // there rather than refused, so the picker keeps working.
+          showHidden: query.showHidden === '1' && capabilities().localHandoff,
         });
         if (!result.ok) return c.json({ error: result.error }, result.status);
         return c.json(result.body);
