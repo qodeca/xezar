@@ -9,3 +9,5 @@
   that still reads is kept, the unreadable original is copied to
   `.local/xezar/backups/runs.json.bak` before the next save, a warning names what was dropped, and
   that start skips the task-folder cleanup entirely.
+  The cross-project task search reads each project's `runs.json` the same way, record by record,
+  so one bad row no longer hides that project's tasks.
