@@ -38,7 +38,7 @@ A development task passes through these phases, and each one settles one thing:
 
 | Phase | Settles | Label |
 |---|---|---|
-| Intake and triage | what the change is, how urgent, how risky | one category, one `priority-*`, one `risk-*`; `needs-design` when UI is in scope |
+| Intake and triage | what the change is, how urgent, how risky, which systems | one category, one `priority-*`, one `risk-*`, at least one platform label; `needs-design` when UI is in scope |
 | Design (flagged work only) | the flow and its states, before any code | `design` → `design-approved` or `design-failed` |
 | Implementation | the change and its tests, in the task's own worktree | `in-progress` while an agent holds the claim |
 | Gates | the full gate list above, green on the head | — |
@@ -65,7 +65,7 @@ the ones automation owns, such as `mutation-nightly`.
 | Priority | exactly one, set at triage | `priority-low`, `priority-medium`, `priority-high`, `priority-extreme` |
 | Risk | exactly one, set at triage | `risk-low`, `risk-medium`, `risk-high` |
 | Platform | at least one | `windows`, `linux`, `macos` |
-| Pipeline and meta | as § Task phases says | the phase labels |
+| Pipeline and meta | as § Task phases, § The QA gate and § The design gate say | the phase labels and the meta labels |
 
 **Platform labels** name every operating system where the problem happens or where the change
 must work and be verified.
@@ -89,8 +89,10 @@ not verify is reported as unchecked, as § Acceptance requires.
 **Release labels** (`release-x.y.z`) mark what a release must contain. They come off every open
 issue once that release ships; an issue that slipped gets the next release's label or none.
 
-`in-progress` belongs to an active claim only. A claim with no activity for a week is stale:
-remove the label and say so in a comment.
+`in-progress` belongs to an active claim only. When a claim is stale, and when another agent may take
+the work over, is decided by the claim protocol of the skills that set the label, not here. A label
+that outlived its claim (no agent working, no open run) is removed by whoever finds it, with a
+comment that says so.
 
 ## Security before the quality verdict
 
