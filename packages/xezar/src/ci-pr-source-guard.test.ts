@@ -18,10 +18,10 @@ const read = (name: string) => parse(readFileSync(join(REPO_ROOT, '.github/workf
 };
 
 describe('CI under the develop/main model', () => {
-  it('runs CI for pull requests and pushes on both branches', () => {
+  it('runs CI for pull requests and pushes on both branches and the release maintenance lines', () => {
     const ci = read('ci.yml');
-    expect(ci.on.pull_request?.branches).toEqual(['main', 'develop']);
-    expect(ci.on.push?.branches).toEqual(['main', 'develop']);
+    expect(ci.on.pull_request?.branches).toEqual(['main', 'develop', 'release/**']);
+    expect(ci.on.push?.branches).toEqual(['main', 'develop', 'release/**']);
   });
 });
 
