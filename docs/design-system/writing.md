@@ -209,4 +209,4 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   project" when none does (`routes/settings/agents-section.tsx`, #809).
 - Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
   clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
-- Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.
+- Browser notification body: "{project} — task needs you: “{title}”" (also "task needs review", "task failed"); title is the run title. The project leads because a notification can come from any registered project.

@@ -6387,6 +6387,12 @@ export function createApp(deps: ServerDeps) {
     return undefined;
   };
 
+  /** "This task wants a person": `waiting` or `review`, not archived. The SAME rule as the
+   *  cockpit's `needsYou` (`web/src/lib/workspace-attention.ts`) — duplicated on purpose, because
+   *  the count spans runs the index does not ship as rows; keep the two identical. */
+  const runNeedsPerson = (run: Pick<RunRecord, 'status' | 'archived'>): boolean =>
+    !run.archived && (run.status === 'waiting' || run.status === 'review');
+
   const runIndexEntry = (
     projectId: string,
     run: RunRecord,
@@ -6475,6 +6481,7 @@ export function createApp(deps: ServerDeps) {
       // never touches `gh` and never slows the index down; anything cold stays absent and the
       // lazy `/github/ref-status` route fills it in.
       const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
+      const attention: RunsIndexResponse['attention'] = {};
       for (const project of projects) {
         // No folder, no runs to read. `not-git` still has an `.local/xezar` worth indexing.
         if (project.status === 'missing') continue;
@@ -6490,6 +6497,19 @@ export function createApp(deps: ServerDeps) {
           owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
+        // Over EVERY run, not the capped rows (see the schema): a task waiting for a person must
+        // be counted however many newer tasks the project has. One pass over a list this loop
+        // already holds — no extra read.
+        let attentionTotal = 0;
+        let attentionBeyondLimit = 0;
+        recent.forEach((run, position) => {
+          if (!runNeedsPerson(run)) return;
+          attentionTotal += 1;
+          if (position >= RUNS_INDEX_PER_PROJECT) attentionBeyondLimit += 1;
+        });
+        if (attentionTotal > 0) {
+          attention[project.id] = { total: attentionTotal, beyondLimit: attentionBeyondLimit };
+        }
         // LAZY, and at most once per project. This route is polled every 15s and invalidated on a
         // 400ms debounce during a run, so a config read per project per request would be dozens of
         // file reads a second on a large registry. Almost every row answers for itself — a started
@@ -6531,6 +6551,7 @@ export function createApp(deps: ServerDeps) {
         perProjectLimit: RUNS_INDEX_PER_PROJECT,
         truncated,
         referenceStatuses,
+        attention,
       };
       return c.json(body);
     });

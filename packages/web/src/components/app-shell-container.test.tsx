@@ -62,6 +62,7 @@ function runsIndex(rows: Array<[projectId: string, status: RunRecord['status'], 
     referenceStatuses: {},
     perProjectLimit: 200,
     truncated: [],
+    attention: {},
   }
 }
 
@@ -619,11 +620,16 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
       '/api/v1/runs': [],
       '/api/v1/p/shop/runs': [],
       '/api/v1/p/blog/runs': [],
+      // A healthy, empty task index: the default sidebar, not the failed-index one.
+      '/api/v1/workspace/runs-index': runsIndex([]),
     })
     renderShell('/p/xezar/')
 
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(3),
+    )
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/workspace/runs-index'),
     )
     expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
     expect(sidebar().outerHTML).toMatchSnapshot()
@@ -741,6 +747,29 @@ describe('workspace attention (All tasks badge and tab title)', () => {
     ).toBe('2')
     // And the tab title leads with the same total.
     await waitFor(() => expect(document.title).toBe('(3) xezar — Tasks · xezar'))
+  })
+
+  it('when the index cannot be read: the active project still counts, and All tasks says stale', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      // The active project's own list — what the Tasks page holds — has one waiting task.
+      '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+      // No '/api/v1/workspace/runs-index' route: the request fails.
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-link"] [data-slot="attention-stale"]')?.textContent).toBe('stale'),
+    )
+    // A lower bound, not a zero: the one count we can still vouch for.
+    expect(document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-attention"]')?.textContent).toBe('1')
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="attention-stale"]')).not.toBeNull()
+    await waitFor(() => expect(document.title).toBe('(1) xezar — Tasks · xezar'))
   })
 
   it('shows no All tasks badge and no title prefix when nothing needs you', async () => {

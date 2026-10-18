@@ -18,9 +18,12 @@ import type { RunIndexEntry, RunsIndexResponse } from '@qodeca/xezar-api-client'
  *
  * Pure and React-free so the counting rule is table-testable; the hook lives in `api/queries.ts`.
  *
- * Known limit: the index carries each project's newest 200 runs (`perProjectLimit`). A task
- * older than that which is still waiting is not counted. That needs a project with more than 200
- * newer tasks than it, so the model accepts it rather than fetching every full run list.
+ * Complete beyond the row cap: the index carries only each project's newest `perProjectLimit`
+ * rows, so the server also sends `attention[project].beyondLimit` — the tasks that need you among
+ * the runs it did NOT ship as rows. The count is the live rows plus that tail.
+ *
+ * When the index cannot be read, `resolveAttentionCounts` falls back to the active project's own
+ * run list for that project and marks every other count stale rather than showing a zero.
  */
 
 /** The fields of an index row this model reads. `Pick`ed so a test (or a future source) can
@@ -68,9 +71,18 @@ export function needsYou(row: Pick<AttentionRow, 'status' | 'archived'>): boolea
  * attention.byProject.get('web-app') // 2
  * ```
  */
-export function summarizeAttention(rows: readonly AttentionRow[]): WorkspaceAttention {
+export function summarizeAttention(
+  rows: readonly AttentionRow[],
+  /** Per project, tasks that need you among runs NOT in `rows` (the index's `beyondLimit`). */
+  beyondLimit: Readonly<Record<string, { beyondLimit: number }>> = {},
+): WorkspaceAttention {
   const byProject = new Map<string, number>()
   let total = 0
+  for (const [projectId, { beyondLimit: extra }] of Object.entries(beyondLimit)) {
+    if (extra <= 0) continue
+    total += extra
+    byProject.set(projectId, extra)
+  }
   for (const row of rows) {
     if (!needsYou(row)) continue
     total += 1
@@ -89,7 +101,57 @@ export function summarizeAttention(rows: readonly AttentionRow[]): WorkspaceAtte
  * @returns The workspace attention counts for that answer.
  */
 export function selectWorkspaceAttention(index: RunsIndexResponse): WorkspaceAttention {
-  return summarizeAttention(index.runs)
+  // `?? {}`: tolerate a cached answer from before the field existed (a long-lived tab across a
+  // server upgrade) — it then counts the rows alone, as it always did.
+  return summarizeAttention(index.runs, index.attention ?? {})
+}
+
+/** What the badges and the tab title render, after the failed-index fallback. */
+export interface AttentionCounts {
+  /** Tasks that need you in one project; null when unknown (render no number). */
+  countFor(projectId: string): number | null
+  /** Tasks that need you across the workspace; null when unknown. When `stale`, a lower bound. */
+  total: number | null
+  /** The workspace index could not be refreshed: every count except the active project's is the
+   *  last known answer (or unknown). The UI shows the "stale" marker instead of a silent zero. */
+  stale: boolean
+  /** The project whose count comes from its own live run list while the index is stale. */
+  activeProjectId: string | null
+}
+
+/**
+ * Combine the workspace index with the active project's own run list.
+ *
+ * - Index answered and current: every count comes from it (`stale: false`).
+ * - Index failed (its latest fetch errored): the active project's count comes from its own run
+ *   list — fetched separately and patched by the stream, so it is still the truth — and every
+ *   other count keeps its last known value, or is unknown when there never was one. `stale`
+ *   tells the UI to say so.
+ * - Index still loading: unknown everywhere, not stale.
+ *
+ * @param input.index - The index's attention counts, or undefined when it never answered.
+ * @param input.indexFailed - True when the index's latest fetch failed.
+ * @param input.activeProjectId - The project the scope-led run list belongs to.
+ * @param input.activeCount - That project's needs-you count from its own list, or undefined.
+ * @returns The counts to render.
+ */
+export function resolveAttentionCounts(input: {
+  index: WorkspaceAttention | undefined
+  indexFailed: boolean
+  activeProjectId: string | null
+  activeCount: number | undefined
+}): AttentionCounts {
+  const { index, indexFailed, activeProjectId, activeCount } = input
+  const fallback = indexFailed && activeProjectId !== null && activeCount !== undefined
+  const countFor = (projectId: string): number | null => {
+    if (fallback && projectId === activeProjectId) return activeCount ?? null
+    return index ? (index.byProject.get(projectId) ?? 0) : null
+  }
+  let total: number | null = index ? index.total : null
+  if (fallback && activeProjectId !== null) {
+    total = (total ?? 0) - (index?.byProject.get(activeProjectId) ?? 0) + (activeCount ?? 0)
+  }
+  return { countFor, total, stale: indexFailed, activeProjectId }
 }
 
 /**

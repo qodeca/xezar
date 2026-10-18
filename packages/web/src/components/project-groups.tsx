@@ -2,9 +2,15 @@ import { ChevronDownIcon } from 'lucide-react'
 import * as React from 'react'
 import { useLocation } from 'react-router'
 
-import { useWorkspaceAttention } from '@/api/queries'
+import { useAttentionCounts } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
-import { MissingProjectBadge, NavBadge, SkillsUpdateMarker, useSidebarNavigate } from '@/components/app-shell'
+import {
+  AttentionStaleMarker,
+  MissingProjectBadge,
+  NavBadge,
+  SkillsUpdateMarker,
+  useSidebarNavigate,
+} from '@/components/app-shell'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
 import { Link, pathnameProjectId, scopeTo, stripProjectPrefix } from '@/lib/project-router'
 import { isProjectCollapsed, readStoredCollapsed, writeStoredCollapsed } from '@/lib/sidebar-collapse'
@@ -90,7 +96,9 @@ export function ProjectGroups({
   // Every group's badge, collapsed or not, from the one workspace attention model — kept live
   // for every project by the global stream (api/global-events.tsx), so a group never needs its
   // own runs request to stay honest.
-  const attention = useWorkspaceAttention()
+  // If that index cannot be read, the anchor project (the one whose run list the scope holds)
+  // falls back to its own list and the others say "stale" rather than zero.
+  const attention = useAttentionCounts(collapseAnchorId)
 
   const activeTo = activeNavPath(stripProjectPrefix(pathname))
 
@@ -108,7 +116,8 @@ export function ProjectGroups({
           key={project.id}
           project={project}
           // Unknown (null) until the index answers: no badge rather than a guessed 0.
-          attentionCount={attention ? (attention.byProject.get(project.id) ?? 0) : null}
+          attentionCount={attention.countFor(project.id)}
+          attentionStale={attention.stale && project.id !== attention.activeProjectId}
           active={project.id === scopedProjectId}
           collapsed={isProjectCollapsed(collapsed, project.id, collapseAnchorId)}
           onToggle={toggle}
@@ -126,6 +135,7 @@ export function ProjectGroups({
 function ProjectGroup({
   project,
   attentionCount,
+  attentionStale,
   active,
   collapsed,
   onToggle,
@@ -139,6 +149,8 @@ function ProjectGroup({
   /** Tasks in this project that need you (waiting or review), from the workspace attention
    *  model; null while that model is unknown. */
   attentionCount: number | null
+  /** The count is the last known one (or unknown) because the index could not be refreshed. */
+  attentionStale: boolean
   active: boolean
   collapsed: boolean
   onToggle: (projectId: string) => void
@@ -214,6 +226,7 @@ function ProjectGroup({
         />
         <span className="truncate">{project.name}</span>
         <NavBadge data-slot="project-attention" title={`${project.name}: ${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{attentionCount}</NavBadge>
+        <AttentionStaleMarker stale={attentionStale} />
         {project.branch ? (
           <span
             data-slot="project-branch"

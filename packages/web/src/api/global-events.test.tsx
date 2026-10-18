@@ -922,6 +922,7 @@ function seedIndex(runs: RunIndexEntry[]): void {
     referenceStatuses: {},
     perProjectLimit: 200,
     truncated: [],
+    attention: {},
   })
 }
 

@@ -11,7 +11,13 @@ import type {
 } from '@qodeca/xezar-api-client'
 import { agentQuotaResponseSchema, healthResponseSchema } from '@qodeca/xezar-api-client'
 import { QUOTA_HOSTED_REFETCH_MS } from '@/lib/agent-quota'
-import { selectWorkspaceAttention, type WorkspaceAttention } from '@/lib/workspace-attention'
+import {
+  resolveAttentionCounts,
+  selectWorkspaceAttention,
+  type AttentionCounts,
+  type WorkspaceAttention,
+} from '@/lib/workspace-attention'
+import { listCounts } from '@/lib/task-groups'
 
 import {
   ApiError,
@@ -1038,6 +1044,10 @@ export function useRunsIndex(enabled = true, refetchIntervalMs?: number) {
  * ```
  */
 export function useWorkspaceAttention(): WorkspaceAttention | undefined {
+  return useWorkspaceAttentionQuery().data
+}
+
+function useWorkspaceAttentionQuery() {
   return useQuery({
     queryKey: workspaceQueryKeys.runsIndex,
     queryFn: ({ signal }) => getRunsIndex({ signal }),
@@ -1045,7 +1055,41 @@ export function useWorkspaceAttention(): WorkspaceAttention | undefined {
     // remount within half a minute must not re-ask the whole workspace.
     staleTime: 30_000,
     select: selectWorkspaceAttention,
-  }).data
+  })
+}
+
+/**
+ * The counts the badges and the tab title render: the workspace attention model, with the
+ * failed-index fallback applied (`resolveAttentionCounts`).
+ *
+ * When the index cannot be read, the active project's badge still comes from its own run list
+ * (the scope-led `useRuns()` entry the Tasks page and the stream already keep warm — no extra
+ * request) and `stale` is set, so the other counts say "stale" instead of going quietly to zero.
+ *
+ * @param activeProjectId - The project the scope-led run list belongs to: the URL's project, or
+ *   the boot project on a page that names none.
+ * @returns The resolved counts.
+ *
+ * @example
+ * ```tsx
+ * const counts = useAttentionCounts(projectId ?? bootProjectId)
+ * <NavBadge>{counts.countFor(project.id)}</NavBadge>
+ * ```
+ */
+export function useAttentionCounts(activeProjectId: string | null): AttentionCounts {
+  const index = useWorkspaceAttentionQuery()
+  const runs = useRuns()
+  const activeCount = runs.data ? listCounts(runs.data).waiting : undefined
+  return useMemo(
+    () =>
+      resolveAttentionCounts({
+        index: index.data,
+        indexFailed: index.isError,
+        activeProjectId,
+        activeCount,
+      }),
+    [index.data, index.isError, activeProjectId, activeCount],
+  )
 }
 
 /**

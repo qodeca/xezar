@@ -231,6 +231,7 @@ describe('applyRunToIndex / applyRunDeletedToIndex', () => {
     referenceStatuses: {},
     perProjectLimit: 200,
     truncated: [],
+    attention: {},
   })
 
   it('returns undefined for an unfetched index — never invents one', () => {
@@ -247,6 +248,13 @@ describe('applyRunToIndex / applyRunDeletedToIndex', () => {
     const before = index([entry('p', 'r1')])
     const malformed = { id: 'r1' } as unknown as RunRecord
     expect(applyRunToIndex(before, 'p', malformed)).toBe(before)
+  })
+
+  it('keeps the server’s beyond-the-cap counts when it patches a row', () => {
+    const before = { ...index([entry('p', 'r1')]), attention: { p: { total: 3, beyondLimit: 3 } } }
+    expect(applyRunToIndex(before, 'p', run('r1', { status: 'waiting' }))?.attention).toEqual({
+      p: { total: 3, beyondLimit: 3 },
+    })
   })
 
   it('matches on project AND id', () => {

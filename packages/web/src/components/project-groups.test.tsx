@@ -83,7 +83,7 @@ function indexRow(projectId: string, over: Partial<RunIndexEntry> = {}): RunInde
 }
 
 function runsIndex(runs: RunIndexEntry[]): RunsIndexResponse {
-  return { runs, referenceStatuses: {}, perProjectLimit: 200, truncated: [] }
+  return { runs, referenceStatuses: {}, perProjectLimit: 200, truncated: [], attention: {} }
 }
 
 const INDEX_URL = '/api/v1/workspace/runs-index'
@@ -180,8 +180,10 @@ describe('ProjectGroups', () => {
     // workspace index.
     expect(header('shop').getAttribute('aria-expanded')).toBe('false')
     await waitFor(() => expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain(INDEX_URL))
+    // (The scope's own `/runs` list — the one the Tasks page holds — is the failed-index fallback
+    // and is shared with that page; what must never happen is a request per group.)
     const asked = fetchMock.mock.calls.map((call) => String(call[0]))
-    expect(asked.filter((url) => url.endsWith('/runs'))).toEqual([])
+    expect(asked.filter((url) => /\/p\/[^/]+\/runs$/.test(url))).toEqual([])
   })
 
   it('renders each group’s nav scoped to that project', async () => {
@@ -316,6 +318,43 @@ describe('ProjectGroups', () => {
     expect(group('shop').querySelector('[data-slot="project-attention"]')?.getAttribute('title')).toBe(
       'shop: 2 tasks need you',
     )
+  })
+
+  it('counts a collapsed project’s tasks that are older than its newest rows', async () => {
+    // The server counts over ALL runs; `beyondLimit` is the share no row carries.
+    serve({ [INDEX_URL]: { ...runsIndex([indexRow('shop', { status: 'review' })]), attention: { shop: { total: 3, beyondLimit: 2 } } } })
+    renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
+
+    await waitFor(() =>
+      expect(group('shop').querySelector('[data-slot="project-attention"]')?.textContent).toBe('3'),
+    )
+  })
+
+  it('when the index cannot be read: the anchor project counts from its own list, the others say stale', async () => {
+    // Not a silent zero: every badge disappearing reads as "nothing needs you", which is the
+    // one thing nobody may conclude from a failed request.
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === INDEX_URL) return json({ error: 'workspace unreadable' }, 500)
+      if (url === '/api/v1/runs') return json([run({ status: 'waiting' }), run({ status: 'review' })])
+      return json({ error: 'not found' }, 404)
+    })
+    renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
+
+    // The query client retries a 5xx once, so the failure lands after its retry delay.
+    await waitFor(
+      () => expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('2'),
+      { timeout: 5_000 },
+    )
+    await waitFor(
+      () => expect(group('shop').querySelector('[data-slot="attention-stale"]')?.textContent).toBe('stale'),
+      { timeout: 5_000 },
+    )
+    expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
+    // The live one is not stale.
+    expect(group('xezar').querySelector('[data-slot="attention-stale"]')).toBeNull()
+    // The marker joins the header button's accessible name.
+    expect(header('shop').textContent).toContain('stale')
   })
 
   it("updates another project's badge the moment its index row changes", async () => {

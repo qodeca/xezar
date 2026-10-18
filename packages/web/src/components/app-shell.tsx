@@ -110,6 +110,9 @@ export type AppShellProps = {
    *  workspace attention model. Null (the default) while unknown and zero both render no badge.
    *  Only shown with `projectGroups`, which is the only time the link exists. */
   allTasksAttentionCount?: number | null
+  /** The workspace task index could not be refreshed, so the All tasks count may be partial or
+   *  old; renders the `stale` marker beside it. Defaults off. */
+  allTasksAttentionStale?: boolean
   /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
    *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
@@ -181,6 +184,7 @@ export function AppShell({
   banner,
   projectGroups,
   allTasksAttentionCount = null,
+  allTasksAttentionStale = false,
   otherProjects,
   agentQuota,
   agentQuotaCompact,
@@ -246,6 +250,7 @@ export function AppShell({
     toolsMenu,
     projectGroups,
     allTasksAttentionCount,
+    allTasksAttentionStale,
     otherProjects,
     agentQuota,
     singleProject,
@@ -311,6 +316,7 @@ type NavProps = {
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
   allTasksAttentionCount: number | null
+  allTasksAttentionStale: boolean
   otherProjects?: ReactNode
   agentQuota?: ReactNode
   singleProject: boolean
@@ -500,6 +506,7 @@ function SidebarContent({
   toolsMenu,
   projectGroups,
   allTasksAttentionCount,
+  allTasksAttentionStale,
   otherProjects,
   agentQuota,
   singleProject,
@@ -587,7 +594,11 @@ function SidebarContent({
               workspace: with one project the page would be that project's own Tasks table
               wearing a second name. */}
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
-            <AllTasksLink onNavigate={onNavigate} attentionCount={allTasksAttentionCount} />
+            <AllTasksLink
+              onNavigate={onNavigate}
+              attentionCount={allTasksAttentionCount}
+              attentionStale={allTasksAttentionStale}
+            />
           </div>
           {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
@@ -692,10 +703,13 @@ function SidebarContent({
 function AllTasksLink({
   onNavigate,
   attentionCount,
+  attentionStale,
 }: {
   onNavigate?: () => void
   /** Tasks needing you across every project; null or 0 renders no badge (NavBadge's rule). */
   attentionCount: number | null
+  /** The count could not be refreshed; shows the `stale` marker. */
+  attentionStale: boolean
 }) {
   const { pathname } = useLocation()
   const isActive = pathname === '/tasks'
@@ -731,6 +745,9 @@ function AllTasksLink({
       >
         {attentionCount}
       </NavBadge>
+      {/* After the badge (which carries `ml-auto`) so both sit at the right edge; alone, the
+          marker takes the auto margin itself. */}
+      <AttentionStaleMarker stale={attentionStale} className={attentionCount ? undefined : 'ml-auto'} />
     </RouterLink>
   )
 }
@@ -959,6 +976,30 @@ function MobileTopBar({
  * role=status is implicitly polite. Avoid redundant aria-live: Radix exempts that
  * attribute from modal background hiding, exposing the sidebar behind dialogs.
  */
+/**
+ * The "this count may be out of date" marker beside a needs-you badge, shown while the workspace
+ * task index cannot be refreshed. The same muted lower-case `stale` word the plan-limits chip
+ * uses (components.md AgentQuotaChip), so one state reads one way across the sidebar.
+ *
+ * Visible text rather than an icon so it joins the accessible name of the link or button it sits
+ * in ("shop stale"), and a tooltip with the full sentence for pointer users.
+ *
+ * @param props.className - Extra classes (spacing at the call site).
+ * @returns The marker, or nothing when `stale` is false.
+ */
+export function AttentionStaleMarker({ stale, className }: { stale: boolean; className?: string }) {
+  if (!stale) return null
+  return (
+    <span
+      data-slot="attention-stale"
+      title="Task counts could not be refreshed — the number shown may be out of date."
+      className={cn('shrink-0 text-[10.5px] font-medium text-muted-foreground', className)}
+    >
+      stale
+    </span>
+  )
+}
+
 export function NavBadge({ className, children, title, ...props }: React.ComponentProps<'span'>) {
   const visible = Boolean(children)
   return (

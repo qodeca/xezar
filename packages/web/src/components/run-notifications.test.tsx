@@ -95,6 +95,7 @@ function indexOf(rows: Array<RunRecord | RunIndexEntry>): RunsIndexResponse {
     referenceStatuses: {},
     perProjectLimit: 200,
     truncated: [],
+    attention: {},
   }
 }
 
@@ -136,7 +137,7 @@ describe('RunNotifications', () => {
     expect(constructed).toEqual([
       {
         title: 'Normalize the agent-event protocol',
-        options: { body: 'Task needs you', tag: 'xezar-run-r1' },
+        options: { body: 'boot — task needs you: “Normalize the agent-event protocol”', tag: 'xezar-run-r1' },
       },
     ])
   })
@@ -152,8 +153,8 @@ describe('RunNotifications', () => {
     patch([run({ id: 'a', status: 'review' }), run({ id: 'b', status: 'failed' })])
 
     expect(constructed.map((n) => [n.options?.tag, n.options?.body])).toEqual([
-      ['xezar-run-a', 'Task needs review'],
-      ['xezar-run-b', 'Task failed'],
+      ['xezar-run-a', 'boot — task needs review: “Normalize the agent-event protocol”'],
+      ['xezar-run-b', 'boot — task failed: “Normalize the agent-event protocol”'],
     ])
   })
 
@@ -233,7 +234,7 @@ describe('RunNotifications', () => {
     // A REAL new transition after enabling does notify.
     patch([run({ status: 'running', tokensUsed: 50 })])
     patch([run({ status: 'review', tokensUsed: 51 })])
-    expect(constructed.map((n) => n.options?.body)).toEqual(['Task needs review'])
+    expect(constructed.map((n) => n.options?.body)).toEqual(['boot — task needs review: “Normalize the agent-event protocol”'])
   })
 
   it('ignores unrelated cache updates (a detail or list query moving is not the index)', () => {
@@ -255,8 +256,31 @@ describe('RunNotifications', () => {
 
     patch([row({ ...theirs, status: 'waiting' }, 'agency')])
 
+    // Unknown to the registry (it has not answered): the body names the project by its id.
     expect(constructed.map((n) => [n.title, n.options?.body])).toEqual([
-      ['Draft the campaign brief', 'Task needs you'],
+      ['Draft the campaign brief', 'agency — task needs you: “Draft the campaign brief”'],
+    ])
+  })
+
+  it('names the project by its registry display name', async () => {
+    const constructed = stubNotification('granted')
+    hideTab()
+    const theirs = run({ id: 'x1', title: 'Revise the methods section', status: 'running' })
+    const { client, patch } = mount({ notifications: { enabled: true } }, [row(theirs, 'lab')])
+    act(() =>
+      client.setQueryData(workspaceQueryKeys.projects, {
+        projects: [{ id: 'lab', name: 'Field study', root: '/r', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' }],
+        bootProject: 'lab',
+        projectsDir: '/p',
+      }),
+    )
+    // Let the query observer's deferred notification re-render the trigger with the names.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+
+    patch([row({ ...theirs, status: 'waiting' }, 'lab')])
+
+    expect(constructed.map((n) => n.options?.body)).toEqual([
+      'Field study — task needs you: “Revise the methods section”',
     ])
   })
 
