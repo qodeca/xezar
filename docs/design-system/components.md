@@ -3,7 +3,7 @@
 Every primitive in `packages/web/src/components/ui/` and every shared module in
 `packages/web/src/components/` (including `composer/` and `diff/`). One entry per file, in a fixed order:
 purpose · source · variants and props that matter · states · rules · accessibility · where used.
-"Where used" counts importing files outside tests. Button, Collapsible, Input, Label and StatusDot counts read on 2026-09-18; other importer counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
+"Where used" counts importing files outside tests. Primitive counts read on 2026-10-18 and the StatusDot count on 2026-09-18; other shared-component counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
 
 Definitions the drift test uses:
 
@@ -29,7 +29,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: hover (brightness or background), focus-visible ring, disabled (50% opacity, no pointer events), pending (caller swaps the label to `Verb-ing…` and disables), unavailable but focusable (`aria-disabled`, for an action whose reason must stay reachable by keyboard and screen reader – `outline` and `ghost` only): the caller adds `aria-disabled:cursor-not-allowed aria-disabled:text-soft-foreground aria-disabled:hover:bg-transparent aria-disabled:hover:text-soft-foreground` and points `aria-describedby` at the reason on screen. Never an opacity there: the label is still text the contrast gate measures, and `opacity-55` put it at 2.45:1 (#889); `--soft-foreground` clears 4.5:1 on every surface it prints on (foundations.md). First used by the plan-limits Refresh (`routes/settings/account-limits.tsx`, `HELD_BUTTON`).
 - **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger` for a solid destructive confirm, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a destructive confirm – use `variant="danger"`; every confirm does since #453 (G-10 retired; on 2026-09-18 the pair appears only inside `components/ui`, in the `danger` variant and the toaster's error tone). DO NOT add a `secondary` variant.
 - **Accessibility**: an icon-only button MUST carry `aria-label`. Every size meets the 44 px phone target at every density through `min-h-tap` / `min-w-tap`; a caller no longer adds `size-11` for that.
-- **Where used**: 47 files (most-imported primitive).
+- **Where used**: 53 files (most-imported primitive).
 
 ### Badge
 
@@ -39,7 +39,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: hover only when rendered as a link (`[a&]:hover:…`); focus-visible ring; `aria-invalid` styling.
 - **Rules**: DO use `outline` and `ghost` (the two variants the cockpit uses). DO NOT use Badge for run status; that is `Pill` + `StatusDot`.
 - **Accessibility**: plain span; no role.
-- **Where used**: 4 files (`add-project-dialog.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/skills-section.tsx` — the skill catalog's state word, `variant="outline"`, which is a label and not a run status).
+- **Where used**: 6 files (`add-project-dialog.tsx`, `app-shell.tsx`, `settings/account-limits.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/skills-section.tsx` — the skill catalog's state word, `variant="outline"`, which is a label and not a run status).
 
 ### Collapsible
 
@@ -67,7 +67,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: open/closed animations on `data-[state]`, all `motion-safe:`; close button `opacity-70 hover:opacity-100` with the shared `focus-visible:ring-[3px] focus-visible:ring-ring/50` ring and a centred `before:size-tap` overlay that gives the 16 px glyph a 44 px phone target without moving it.
 - **Rules**: DO put the cancel button first in DOM order and the confirm last (the footer reverses on phone so the confirm sits on top). DO use `AlertDialog` instead when the action is destructive. DO NOT nest a scroller taller than `max-h-[80dvh]` (skill preview) without `overflow-y-auto`.
 - **Accessibility**: always render `DialogTitle` (`sr-only` if visually elsewhere) and a `DialogDescription`, or pass `aria-describedby={undefined}` deliberately.
-- **Where used**: 9 files.
+- **Where used**: 12 files.
 
 ### AlertDialog
 
@@ -105,7 +105,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: `w-72 rounded-md border bg-popover p-4 shadow-md` with slide/zoom animations.
 - **Rules**: DO prevent `onOpenAutoFocus` when the popover opens from hover or from typing (the reference chip, the composer menu). DO clamp lists to `--radix-popover-content-available-height`.
 - **Accessibility**: `PopoverTitle` renders the `h2` it is typed as, so the panel's name is in the heading outline.
-- **Where used**: 10 files.
+- **Where used**: 11 files.
 
 ### Tooltip
 
@@ -122,7 +122,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11, kept with a reason, folded into G-20's 2026-09-17 disposition since `Select` still has zero importers). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. New search fields use `Input` with a leading icon; G-12 is fixed (every search route does), and the remaining hand-spelled wrapper duplication across four routes is tracked as G-42, filed as #598.
-- **Where used**: 18 files.
+- **Where used**: 19 files.
 
 ### Textarea
 
@@ -130,13 +130,13 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/textarea.tsx`. Exports `Textarea`.
 - **Look**: `field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base shadow-xs … md:text-sm`; same focus and invalid rings as Input; disabled has no `pointer-events-none` (G-07). No `min-h-tap`: `min-h-16` is 64 px at comfortable and still 48 px at the tightest density, so it is above the phone floor already.
 - **Rules**: DO submit with ⌘↵ / Ctrl+↵ (`isSubmitShortcut`) and keep plain Enter as a newline in dialogs. DO save on an explicit button for long text; never PUT on every keystroke.
-- **Where used**: 8 files.
+- **Where used**: 9 files.
 
 ### Label
 
 - **Purpose**: form label (Radix).
 - **Source**: `packages/web/src/components/ui/label.tsx`. Class `flex items-center gap-2 text-sm leading-none font-medium select-none`; dims with a disabled `peer` or `group`.
-- **Where used**: 3 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`, `routes/settings/mcp-leader-control.tsx`).
+- **Where used**: 2 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`).
 
 ### Switch
 
@@ -171,7 +171,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: outlet `fixed top-[calc(61px+env(safe-area-inset-top))] right-[calc(16px+env(safe-area-inset-right))] z-[60] … md:top-[calc(16px+env(safe-area-inset-top))]`; toast `max-w-[min(360px,calc(100vw-32px))] rounded-md px-3.5 py-2.5 text-[13px] font-medium shadow-modal`, `bg-contrast text-contrast-foreground` or `bg-danger text-danger-foreground`; `motion-safe:` slide from the right.
 - **Rules**: DO call `toast(error.message, { tone: 'danger' })` in every mutation `onError` (the repo-wide error doctrine: the server's words, verbatim). DO keep success toasts to one short sentence. DO NOT call `toast.success` or `toast.error`; they do not exist.
 - **Accessibility**: each toast is `role="status"`.
-- **Where used**: 41 files import `toast`; one (`app.tsx`) mounts `Toaster`.
+- **Where used**: 45 files import `toast`; one (`app.tsx`) mounts `Toaster`.
 
 ## 2. Shared components (`src/components/`)
 

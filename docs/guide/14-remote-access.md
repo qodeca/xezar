@@ -87,4 +87,4 @@ You do not need this section to set a host up. Two statements above are not edit
 
 Next: [Project kit](15-project-kit.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

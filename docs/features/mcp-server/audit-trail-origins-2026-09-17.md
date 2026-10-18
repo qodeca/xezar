@@ -1,5 +1,7 @@
 # Audit-trail origins — technical specification (2026-09-17)
 
+> **Status update – 2026-10-18:** Implemented in four parts (#564, #568, #575, #586; issue #306 closed 2026-09-18) and shipped in 0.16.0; the four doors are pinned by `packages/xezar/src/mcp/audit-four-doors.test.ts`. The plan below is kept as written; where it says the four writers do not exist yet, that was true on 2026-09-17. `bc-route-inventory.test.ts`, cited in § 6, was removed later with the old process documents (#949).
+
 Status: **Accepted implementation plan for GitHub issue #306**. Target: 0.16.0.
 
 This record turns the local audit trail into one ordered history for changes entering through the cockpit HTTP door (`ui`), MCP (`mcp`), the automation runner (`automation`), and a headless command (`cli`). It is an implementation specification, not a claim that those four writers exist yet.

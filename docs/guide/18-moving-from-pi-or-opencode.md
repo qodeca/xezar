@@ -56,8 +56,8 @@ when it lists models.
 ## 4. Change xezar's stored values
 
 xezar does not start while a saved setting or task record still names `pi` or `opencode`. This
-holds for every command that saves settings (`serve`, `run`, `init`, `projects`, `accounts`,
-`providers`), and the cockpit does not open a project added later that still has such a value.
+holds for every command that can save settings or records – every command except `mcp`,
+`lease` and `state-names` – and the cockpit does not open a project added later that still has such a value.
 The message lists every file and field. Change each value to `qwen` (or `claude` or `codex`), or
 remove it:
 

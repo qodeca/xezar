@@ -13,7 +13,7 @@
 
 ## Design
 
-<!-- UI in scope = any non-test .tsx under packages/web/src/routes or packages/web/src/components, index.css, cockpit.css, or anything under designs/. -->
+<!-- UI in scope = any non-test .tsx under packages/web/src/routes or packages/web/src/components, index.css, cockpit.css, anything under designs/, or the CLI's visible surface: command names, flags, help text, output shapes and exit codes. -->
 - [ ] Not UI in scope
 - [ ] UI in scope – `needs-design` applied (outside contributors: a maintainer applies it). Design: `designs/<feature>/` or "fix-sized"
 - [ ] `skip-design`, because: <rendered output unchanged – say why>

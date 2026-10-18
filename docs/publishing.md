@@ -172,7 +172,8 @@ the registry says 0.18.0" is the expected middle state – the 0.18.0 tag is exa
 already committed.
 
 So a green release run and an existing tag are the evidence that it published. Check those first,
-and read the registry and the default branch as things that catch up rather than as the verdict.
+and read the registry, `main` and (after the back-merge) `develop` as things that catch up rather
+than as the verdict.
 
 ---
 

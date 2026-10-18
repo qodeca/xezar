@@ -1,7 +1,7 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-17.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-18.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
@@ -40,8 +40,9 @@ exception.
 [#677](https://github.com/qodeca/xezar/issues/677) closed after wave 1; the remaining schemas have
 no issue yet.
 
-Most request schemas have not moved yet: roughly forty are still declared in
-`packages/xezar/src/server/server.ts`. The two settings routes moved first (wave 1):
+About half have moved: roughly twenty routes in `packages/xezar/src/server/server.ts` validate
+with a contract schema, while about thirty schemas (some named, some written inline in the
+validator) are still declared there. The two settings routes moved first (wave 1):
 `PUT /config` and `PUT /workspace/config` validate with the contract's `setConfigInputSchema` /
 `setWorkspaceConfigInputSchema`, their `server.ts` copies are gone, and
 `contract-parity.requests.test.ts` pins each route against its schema in both directions.

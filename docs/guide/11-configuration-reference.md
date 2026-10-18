@@ -82,7 +82,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `cli` | Optional terminal defaults for `xezar serve`: `output`, `color`, `logLevel` and `instance`. Each is absent until you choose it, and absence is a real third state — a stored value beats the matching environment variable (`XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL`, `XEZ_INSTANCE`), while an absent key follows it. A command-line flag beats both. Set them in global **Settings → Terminal**; a stored value xezar cannot make sense of degrades to absent with one warning naming the key. |
 | `composerDefaults` | Optional booleans `autonomous` and `worktree`, for New Task defaults. Each absent key inherits its exact `0`/`1` env seed; without one, Autonomous depends on the task source (skills default on, other sources off) and Worktree defaults on. Plan first, interactive skills and explicit task choices can alter those defaults. |
 | `disabledProviders` | Array of provider IDs (`claude`, `codex`, `qwen`), default `[]`. Machine-wide provider preferences; installation and sign-in status are separate. |
-| `agentDefaults` | Optional `runner` and `models` object (the four backend keys, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
+| `agentDefaults` | Optional `runner` and `models` object (`claude`, `codex` and `qwen`, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
 | `projects` | Registry array, default `[]`. Each row has `id`, absolute `root`, display `name`, `addedAt`, `lastOpenedAt`, `source` (`local` or `checkout`), optional `maxParallel` (1–16), optional `tags`, and its own optional `cli.port` — the port you pinned for that project with `xezar projects port`, which outranks `XEZ_PORT` and is never written by a start or by `--port`. A start may also record where that project's cockpit last listened; that is a hint for the next start, not a claim that anything is running. Invalid rows are dropped independently. |
 
 | `resources` key | Default and accepted values |
@@ -115,7 +115,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_REMOTE=1` | Hosted-mode capabilities; hides local-machine handoffs. |
 | `XEZ_BROWSE_ROOT`, `XEZ_PROJECTS_DIR` | Seeds for the two stored folder settings above. |
 | `XEZ_HOME` | Global state directory; empty means `~/.xezar`. Not consulted for settings in the single-project layout. |
-| `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. Without `-p/--port` and without this variable the start port is the one pinned for this project (`xezar projects port <id> <port>`), then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
+| `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. The start port is `-p/--port`, then the port pinned for this project (`xezar projects port <id> <port>`), then this variable, then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
 | `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto` (the default), `lines` or `rich`. A saved `cli.output` overrides this variable; `--output` overrides both. |
 | `XEZ_COLOR=auto` | Colour: `auto` (the default), `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
 | `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
@@ -169,4 +169,4 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 
 Next: [CLI reference](12-cli-reference.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

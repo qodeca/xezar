@@ -666,9 +666,10 @@ enforcement, so this limit is an instruction, not a guard.
 
 `bash .xezar/checks/repo-gates.sh` runs the install, the security stage, the application commands
 in `validation.commands`, and `.xezar/checks/repository-checks.sh`. There is no lint step. The
-required CI checks are the five in `ci.requiredChecks`; the cross-platform matrix legs that
-`CONTRIBUTING.md` names are also required by branch protection, and the LTS legs are
-informational.
+required CI checks are the five in `ci.requiredChecks`. Branch protection on `develop` and `main`
+also requires the four Windows and macOS legs on Node 22 and 24 of the cross-platform matrix, and
+`main` also requires `PR source guard`. The Linux Node 22 leg runs on every pull request without
+being required, and the LTS legs are informational.
 
 ### Gates in this project
 
@@ -701,7 +702,8 @@ After the merge, on `develop`.
 ### Release here
 
 1. CI is green on `develop`, and the owner gives the go.
-2. The `release-prep` workflow folds `changelog.d/` in a pull request into `develop`.
+2. The `release` workflow's `changelog` step folds `changelog.d/` into `CHANGELOG.md` in a pull
+   request into `develop` (`release-prep` is the brief-driven fallback).
 3. `promote/v<version>`, cut at that merge commit, merges into `main` with a merge commit.
 4. The owner dispatches Actions → Release on `main`, which raises the version and publishes to npm
    through trusted publishing (OIDC, no token).
@@ -714,8 +716,9 @@ Incident notes: `docs/runbooks/`.
 
 ### Extra project rules
 
-- Shipped prompts and instructions stay generic: no personal identity, path or account in a
-  committed file (`npm run check:generic-instructions`).
+- Shipped prompts and instructions stay generic (`AGENTS.md` § Generic instructions), guarded by
+  `packages/xezar/src/release/generic-instructions.test.ts` and the `check:pack` archive scan. No
+  personal identity, path or account in a committed kit file (`.xezar/CLAUDE.md`).
 - Never stop a process by command-line pattern (`pkill -f`); stop only a PID you started.
 - **Platform labels.** This project adds a `platform` group – `windows`, `linux`, `macos` – to the
   label taxonomy (both machine sources carry it). Every issue carries at least one, set at
@@ -752,7 +755,7 @@ records the evidence and updates this row.
 | CI workflow rules (read-only token, pinned actions, no `pull_request_target` checkout) | To check |
 | Script that flags changes to tests, fixtures, gate scripts and CI workflows | To check |
 | Minimum package age; install scripts off | Not set; the owner sets the minimum age |
-| Mutation tool, property-test library, clone detector | Not named yet |
+| Mutation tool, property-test library, clone detector | Partly: Stryker covers the MCP server only, nightly on the default branch (`.github/workflows/mutation.yml`), not per `risk-high` change; no property-test library or clone detector named yet |
 | No agent attribution in commits and pull requests | Yes: the owner's Claude Code setting adds no co-author line |
 | Setup and smoke-check command | Not named yet |
 
@@ -765,8 +768,5 @@ records the evidence and updates this row.
 
 ### Known gaps to fix outside this file
 
-- `CONTRIBUTING.md` says the canonical gate list is in `AGENTS.md` § Validation; it is in
-  `repo-gates.sh` and `validation.commands`.
-- The PR template's "UI in scope" omits the CLI surface that the design gate covers.
-- The issue templates do not ask for priority or risk (inferred from a search).
-- `docs/architecture/` does not exist yet; it is created with its first record.
+- The issue templates do not ask for priority or risk.
+- `docs/architecture/` and `docs/runbooks/` do not exist yet; each is created with its first record.

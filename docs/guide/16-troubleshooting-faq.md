@@ -18,7 +18,7 @@ A folder name or link contains a character the Windows command processor would a
 
 ### The port is busy
 
-A normal launch starts from the port this project used last time (or the one you pinned), else `4321`, and then tries higher ports when the address is in use. Use the URL actually printed in the terminal. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) lists the full order. If the whole search range is occupied, the error is `no free port in … on …; free one or pass --port <port>`.
+A normal launch starts from the port you pinned for the project, else `XEZ_PORT`, else the port this project used last time, else `4321`, and then tries higher ports when the address is in use. Use the URL actually printed in the terminal. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) lists the full order. If the whole search range is occupied, the error is `no free port in … on …; free one or pass --port <port>`.
 
 Choose another starting port for one launch, or pin one for the project, for example:
 
@@ -108,4 +108,4 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 
 Next: [User guide index](README.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

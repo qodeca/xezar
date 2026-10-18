@@ -124,7 +124,7 @@ HTTP API.
 | origin/host guard (middleware, before every `/api/*` route bar health) | server unit | `origin-guard.test.ts:67,74,88,95`, `host-guard.test.ts:61,79` | C |
 | WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts` (hub, local upgrade controls, hosted real-socket refusal); authenticated proxy composition in `test:server-mode` — see mode × transport matrix | C |
 | Agent quota read side (`GET /workspace/agent-quota`, MCP `read_quota`, WS topic, SSE hint) | server unit + contract/type checks | `server/agent-quota-api.test.ts`, `workspace/agent-quota.test.ts`, `mcp/tools/project-config.test.ts`, `contract-parity.workspace.test.ts`, `typed-bodies.test.ts` | C for deterministic fixtures; **P** for a live dry-run-stream failure mark and an installed-host MCP bridge read |
-| Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108`; `bc-route-inventory.test.ts:119` | C |
+| Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108` (the `BACKWARD_COMPATIBILITY.md` §2 inventory guard `bc-route-inventory.test.ts` was removed with the route inventory in #949) | C |
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
 | MCP leader (`mcpLeaderRoutes`) | server unit | `server/mcp-leader-topic.test.ts`, `mcp/push-delivery.test.ts` | C |
@@ -478,7 +478,8 @@ closed, leaving only the unknown-command exit path (section 3.1).
 
 **A blind spot the drift guard itself declares.** `bc-route-inventory.test.ts:36-40` records that it
 cannot see `/api/v1/ws`, because the WebSocket upgrade is not a Hono route. That entry is maintained
-by hand in `BACKWARD_COMPATIBILITY.md` §2 and nothing can catch it drifting.
+by hand in `BACKWARD_COMPATIBILITY.md` §2 and nothing can catch it drifting. (Since #949 the guard
+itself is gone: it was removed together with the §2 route inventory it checked.)
 
 ---
 
@@ -944,7 +945,7 @@ Stryker left no survivor on that line at `fe33541`, so nothing there is tagged; 
 `:466` and `:467` mutate the acknowledged-position read, not the comparison #353 names. Where an issue
 names the mutator, only that mutator is tagged. **To refresh
 it** – after a batch of survivors is fixed, or to adopt a later run as the new start – download a
-complete main run's shard reports and rebuild the file; tags carry over by identity:
+complete default-branch run's shard reports and rebuild the file; tags carry over by identity:
 
 ```sh
 gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards

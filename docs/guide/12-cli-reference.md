@@ -84,7 +84,7 @@ A flag beats a saved value in `~/.xezar/config.json` (`cli.output`, `cli.color`,
 xezar --single-project
 ```
 
-The folder you start in (its repository root, inside Git) owns its xezar setup: settings, agent accounts and the project registry live in `.xezar/`, working files in `.local/xezar/`, and `~/.xezar` is not opened. You need the flag only the first time; afterwards the folder decides, because `.xezar/workspace.json` exists, and every command started there is in the mode. A linked Git worktree, a folder under `.local/xezar/worktrees/` and your home directory are never a project root. Every command except `mcp` prints one line at start:
+The folder you start in (its repository root, inside Git) owns its xezar setup: settings, agent accounts and the project registry live in `.xezar/`, working files in `.local/xezar/`, and `~/.xezar` is not opened. You need the flag only the first time; afterwards the folder decides, because `.xezar/workspace.json` exists, and every command started there is in the mode. A linked Git worktree, a folder under `.local/xezar/worktrees/` and your home directory are never a project root. Every command except `mcp`, `lease` and `state-names` prints one line at start:
 
 ```text
   single-project mode — settings in <project>/.xezar, working files in <project>/.local/xezar
@@ -98,7 +98,7 @@ On the first run in a folder without `.xezar/workspace.json`, xezar asks once, i
 
 Two flags answer that question without being asked, so a script, a CI job or an IDE task can answer it too: `--import-global` imports, `--no-import-global` imports nothing. With either flag nothing is read from standard input, giving both refuses the start with exit code 1 and changes nothing, and giving neither keeps the question. A folder that is already set up is not imported into by a flag — a bootstrap script may therefore pass `--import-global` on every start: once there is nothing left to import the flag succeeds in silence, with the start's exit code unchanged. The copy is verbatim apart from a `defaults` entry naming no account: each account's `label` and `configDir` are written as they are into `<project>/.xezar/agent-accounts.json`, which the repository may commit, so a bootstrap shared by a team should not pass `--import-global` when that file is committed. A default account naming an account that does not exist is skipped rather than copied, and one line names the handle: `! skipped a default naming <handle>, which no account matches`. What this machine did is remembered in `<project>/.local/xezar/machine-state.json`, which Git ignores.
 
-`xezar mcp` never asks. A folder that already holds `.xezar/workspace.json`, such as a clone, is never asked. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error and exit code 1. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode) for what the mode changes and how it differs from `XEZ_SINGLE_PROJECT=1`.
+`xezar mcp` and `xezar lease` never ask: they have nobody to ask, so they import nothing. A folder that already holds `.xezar/workspace.json`, such as a clone, is never asked. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error and exit code 1. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode) for what the mode changes and how it differs from `XEZ_SINGLE_PROJECT=1`.
 
 ### To ask for the global layout: `--global-layout`
 
@@ -287,4 +287,4 @@ Flags are parsed globally, but only the command consumers listed above use them.
 
 Next: [MCP project leader](13-mcp-leader.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

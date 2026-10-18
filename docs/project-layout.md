@@ -5,7 +5,9 @@ The maintained project kit lives in **`.xezar/`** at the repository root, beside
 skills, checks, documentation, guidance and the pipeline files (`pipeline/config.json`, `pipeline/trackers/`)
 belong here and can be committed.
 Local execution data belongs in **`.local/xezar/`**. The separate per-user
-`~/.xezar/` workspace registry, preferences and accounts do not move.
+`~/.xezar/` workspace registry, preferences and accounts do not move (in
+single-project mode they live in `<project>/.xezar` instead, resolved by
+`state-layout.ts`).
 
 Each is exactly one directory. There is no discovery step, no per-file overlay
 and no fallback location.
@@ -28,12 +30,15 @@ of `.local/xezar/` against the names the engine writes today (`runs.json`,
 `machine-state.json`, `audit.ndjson` and the rest), and fails a gate when an
 unexpected name appears there. Those names are a shape to match, not a set to
 enumerate. During ordinary operation, with no feature turned on, any of them may
-also appear with a `.lock` suffix, a `.tmp` or `.<pid>.<hex>.tmp` suffix (an atomic
-write in flight) or with a rotation number `.1`–`.4` (`audit.ndjson`), so a check against
+also appear with a `.lock` suffix, a `.lock.takeover` suffix (the guard a lock release
+takes), a `.tmp` or `.<pid>.<hex>.tmp` suffix (an atomic write in flight) or with a rotation number `.1`–`.4` (`audit.ndjson`), so a check against
 exact names fails at random. By that consumer's own report,
-a new subdirectory is safe and a new top-level file is a break. This layout is not
-a promise we have made, but a consumer depends on it: put new engine state in a
-subdirectory, and announce any new top-level file in the changelog.
+a new subdirectory is safe and a new top-level file is a break. The allowed names
+are published as data (`STATE_NAME_ENTRIES` in `local-xezar-top-level-names.ts`)
+and printed by `xezar state-names --json`; `local-xezar-top-level-scan.test.ts`
+fails when shipped code builds a name the list lacks. Put new engine state in a
+subdirectory, list any new top-level name in the same change, and announce a new
+top-level file in the changelog.
 
 One exception exists, and it is a safety guard rather than a fallback: when xezar
 is launched in the user's home directory, `<repo>/.xezar` **is** the global

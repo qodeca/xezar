@@ -44,7 +44,7 @@ Add or edit labeled snippets, optionally assign them to skills with **apply with
 
 ### To connect a project leader — MCP connection
 
-Read **Bound project** and follow the card for your client under **One-time setup**; all four client cards are shown. **Connection status** reports the project's leader and available attach controls. One client can own the project's leader connection at a time. The MCP client and xezar must be on the same machine.
+Read **Bound project** and follow the card for your client under **One-time setup**; all three client cards (Claude Code, Qwen Code and Codex) are shown. **Connection status** reports the project's leader and available attach controls. One client can own the project's leader connection at a time. The MCP client and xezar must be on the same machine.
 
 ### To read tool capabilities — MCP API
 
@@ -135,7 +135,7 @@ Below it, use **Update xezar-skills automatically** to save an on/off workspace 
 
 ### To manage logins and fallback models — Agent accounts
 
-All four agents are shown at once, one group each rather than one tab at a time. A group's heading is the facts about the tool — installed or not, its version, how many logins it holds — and its rows are the logins, with the one your tasks run under marked **In use** (or **Default**, for the machine-wide choice). The login an agent finds by itself is **Built-in login**. **Connect** signs a login in, **Check again** re-probes it now instead of waiting for the cached answer, and **Show details** opens identity, config files, **Rename** and **Remove**. Use **Add account** where a second login is supported, with a label and its own configuration folder. **Defaults for new projects** supplies the agent, account and models when a project has not chosen its own. Account records live separately in `~/.xezar/agent-accounts.json`; see [Agent backends](04-agent-backends.md).
+All three agents are shown at once, one group each rather than one tab at a time. A group's heading is the facts about the tool — installed or not, its version, how many logins it holds — and its rows are the logins, with the one your tasks run under marked **In use** (or **Default**, for the machine-wide choice). The login an agent finds by itself is **Built-in login**. **Connect** signs a login in, **Check again** re-probes it now instead of waiting for the cached answer, and **Show details** opens identity, config files, **Rename** and **Remove**. Use **Add account** where a second login is supported, with a label and its own configuration folder. **Defaults for new projects** supplies the agent, account and models when a project has not chosen its own. Account records live separately in `~/.xezar/agent-accounts.json`; see [Agent backends](04-agent-backends.md).
 
 #### To read and refresh plan limits
 
@@ -181,4 +181,4 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 Next: [Configuration reference](11-configuration-reference.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

@@ -222,10 +222,10 @@ to `AGENT_HOME_FINGERPRINT`, so an instance booted without the pin is not reused
 expects it.
 
 **A repository that runs in single-project mode is booted in the pinned global layout anyway.**
-Once `.xezar/workspace.json` is committed, a plain clone of this repository is a single-project
-root — the folder decides, with no flag — and the mode never opens `XEZ_HOME`
+A checkout whose root holds `.xezar/workspace.json` is a single-project root — the folder decides,
+with no flag (in this repository the file is machine-local and ignored by Git since #949) — and the mode never opens `XEZ_HOME`
 (`docs/guide/11-configuration-reference.md`). The shared suite is written against the global layout:
-the multi-project shell, the shipped defaults rather than the repository's own committed
+the multi-project shell, the shipped defaults rather than the checkout's own
 `workspace.json`, and state a test run is allowed to rewrite. So `scripts/test-env-up.sh` starts the
 app with the explicit `--global-layout` input (`#657`), which outranks the marker: the app is TOLD
 which layout to resolve instead of the marker being moved out from under it, so the launcher renames,

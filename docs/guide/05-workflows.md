@@ -43,9 +43,9 @@ Those skill names are examples: create or choose matching [skills](06-skills.md)
 
 ## To choose agent versus check steps
 
-An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex` or `qwen`), `model`, `allowedTools`, `bashAllowlist` and, on Claude Code, [`claudeSettings`](#to-load-repository-hooks-on-a-claude-code-step). Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
+An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex` or `qwen`), `model`, `allowedTools`, `bashAllowlist`, `timeout`, `verdictRole` and, on Claude Code, [`claudeSettings`](#to-load-repository-hooks-on-a-claude-code-step). `verdictRole` names the reviewer role whose verdict this step may record (`code-review`, `design-review`, `qa`, `architecture-review`, `security-review` or `acceptance-verification`); a step without it records no verdict. Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
 
-A **check step** has `command`. Exit code zero passes; a non-zero exit fails or enters its configured repair loop. Do not combine `command` with `prompt` or `skill` in the same step. Checks execute shell commands, so use commands suitable for the project and machine running xezar. They run in Bash: `bash -lc` on Linux and macOS, and Git for Windows' Git Bash (`bash -c`) on Windows.
+A **check step** has `command`. Exit code zero passes; a non-zero exit fails or enters its configured repair loop. Do not combine `command` with `prompt` or `skill` in the same step. Checks execute shell commands, so use commands suitable for the project and machine running xezar. They run in Bash: `bash -lc` on Linux and macOS, and Git for Windows' Git Bash (`bash -c`) on Windows. A check step may also set `resultScope` to `routine` or `stage`: a passing `routine` check is still recorded but does not wake an attached project leader, while a failure is always reported. `timeout`, `verdictRole` and `claudeSettings` are rejected on check steps.
 
 ## To retry a failed check with onFail.retry
 
@@ -104,4 +104,4 @@ Use **Import** to paste YAML into the builder. Parsing happens on the server; fi
 
 Next: [Skills](06-skills.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

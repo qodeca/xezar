@@ -28,7 +28,7 @@ Open a project with a **github.com** remote. GitHub Enterprise hosts do not enab
 3. Add the result you want to the instructions box, which starts with the item reference; xezar re-attaches that reference if you delete it. You can insert a [prompt template](08-inbox-notifications-templates.md#to-reuse-prompt-templates).
 4. Choose **Run agent on this issue** or **Run agent on this PR**, or press **⌘Enter / Ctrl+Enter**. Enter alone adds a line to the instructions.
 
-A selected workflow determines the steps; without one, selected skills become one step each, capped at eight, or xezar uses `quick-task` if none are selected. If the provider is unavailable, follow **Configure providers** before starting. See [Tasks and runs](02-tasks-and-runs.md) and [Workflows](05-workflows.md).
+A selected workflow determines the steps; without one, selected skills become one step each, capped at twelve, or xezar uses `quick-task` if none are selected. If the provider is unavailable, follow **Configure providers** before starting. See [Tasks and runs](02-tasks-and-runs.md) and [Workflows](05-workflows.md).
 
 Open the task's **Changes** view and choose **Create PR**. If the optional review gate is on and the task is at `review`, its review panel instead offers **Draft PR**. Both save the final changes, push the branch to `origin`, and create a draft targeting the task's base branch. **Create PR** is disabled while the task is active or GitHub is unavailable; publication requires a worktree and branch, so a task run with Worktree off is refused. Success marks the task **done**. Resolve any reported commit, push, or authentication error before trying again. Creating a draft does not merge it.
 
@@ -85,9 +85,9 @@ Choose **View log** on the automation. Each record shows its result and time, an
 - **Settings → Agents**: providers, default agent/models, team skills, and base branch.
 - **Settings → Bookmarklets / Prompt templates**: launchers and reusable instructions.
 - `GITHUB_TOKEN`: optional token authentication for GitHub actions through `gh`.
-- `XEZ_AUTOMATIONS=1`: enables automations at server startup; there is no Automations switch in Resources.
+- `XEZ_AUTOMATIONS=1`: enables automations; it is read live from the environment of the running server, and there is no Automations switch in Resources.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
 Next: [Inbox, notifications, and prompt templates](08-inbox-notifications-templates.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

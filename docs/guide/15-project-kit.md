@@ -123,4 +123,4 @@ xezar supports projects onboarded with xezar-skills 3.2.0 or later (current rele
 
 Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

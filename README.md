@@ -435,8 +435,9 @@ agent home still works.
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome – [CONTRIBUTING.md](CONTRIBUTING.md) is the path from a
-change to a merged pull request, including local development. Report security problems privately, as
+Bug reports and ideas are welcome as issues. Pull requests from outside the maintainer team are not
+accepted for now – open an issue instead. [CONTRIBUTING.md](CONTRIBUTING.md) is the path from a change to
+a merged pull request, including local development. Report security problems privately, as
 described in [SECURITY.md](SECURITY.md).
 
 ## License

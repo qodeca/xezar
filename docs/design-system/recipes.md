@@ -133,8 +133,8 @@ thread/dock spacing is superseded as described below.
 summary within the existing settings navigation.
 
 **Compose:** `SETTINGS_SECTIONS`, `SettingsField`, `Input`, `Textarea`, `Switch`,
-`Button` and the existing native select/number controls where they ship. Do not
-adopt the unused `Select` just because it exists (G-11/G-20). Use `gap-section`
+`Button` and the existing native select/number controls where they ship. There is no
+`Select` primitive (#453 B1 deleted the unused one); do not add one just to replace a native control (G-11). Use `gap-section`
 between fields and `gap-stack` within a field; keep `bg-muted` active desktop
 navigation and `bg-contrast text-contrast-foreground` active phone pills.
 See [settings and forms](patterns.md#8-settings-and-forms).

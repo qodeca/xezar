@@ -68,7 +68,7 @@ Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `lib/task-column
 - Phone targets: every control in a card, a row and the phone toolbar is 44 px at every density (`min-h-tap … md:min-h-0`). A 24 px reference chip sits on a 44 px line (`CHIP_SLOT`) and carries a 44 px `::before` hit area, so neighbouring chips never overlap. The card title link grows to 44 px with a negative top margin, so the card does not grow.
 - Phone toolbar: below `md` the header is hidden, so both Tasks pages render its controls at the top of the body – the Active/Archived tabs (`ListViewTabs`), the page actions or the count, and the search (`SearchField`).
 - Unread finished rows are `font-semibold text-foreground` with a trailing violet dot (`aria-label="unread"`, `title="Unread — not opened since it finished"`); read-done rows are `font-medium text-muted-foreground`.
-- Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-inset` inside, `gap-list` between cards) is the spelling. The footer strip under a table sits `mt-list` below it. The `Card` primitive is unused (G-02).
+- Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-inset` inside, `gap-list` between cards) is the spelling. The footer strip under a table sits `mt-list` below it. There is no `Card` primitive: the unused one was deleted in #453 B1.
 - Group headings on `/tasks`: `text-[12px] font-semibold tracking-[0.04em] uppercase text-soft-foreground` with a mono count.
 - Absent values print `—`; never a fabricated `0` or `$0.00`.
 
