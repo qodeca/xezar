@@ -8,7 +8,8 @@
 - 🐛 **The memory limit on Windows no longer counts programs that are not the task's.** Windows
   keeps a process's parent id after the parent exits, so a long-running program whose parent had
   died before the agent got the same id was counted as the agent's child – and toward its memory
-  limit. The live usage now counts only processes that started after the agent did.
+  limit. The live usage now counts only processes that started after the agent did, and counts
+  nothing once the agent's own id names a different, later program.
 - 🐛 **One stuck process-table read no longer switches off usage sampling for good.** A `ps` or
   PowerShell read that never returned left the sampler busy for the rest of the server's life,
   which also stopped the memory limit. Each read is now bounded at 10 seconds, and the next

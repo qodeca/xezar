@@ -150,9 +150,26 @@ try {
 `;
 
 /** A bounded off-thread read whose worker has not answered this long after its bound is ended. */
-const OFF_THREAD_GRACE_MS = 5_000;
+export const OFF_THREAD_GRACE_MS = 5_000;
 
-function runOffThread(file: string, args: readonly string[], options: TableRunOptions): Promise<string | null> {
+/** What `runOffThread` needs of a worker thread. */
+export interface OffThreadWorker {
+  once(event: 'message' | 'error' | 'exit', listener: (value: unknown) => void): unknown;
+  terminate(): Promise<number>;
+}
+
+/** Test seam: how `runOffThread` starts its worker. Production passes none. */
+export interface OffThreadDeps {
+  createWorker?: (source: string, options: ConstructorParameters<typeof Worker>[1]) => OffThreadWorker;
+}
+
+/** Exported for its tests; production reaches it only through `defaultTableRunner`. */
+export function runOffThread(
+  file: string,
+  args: readonly string[],
+  options: TableRunOptions,
+  deps: OffThreadDeps = {},
+): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
     let watchdog: NodeJS.Timeout | undefined;
@@ -163,7 +180,8 @@ function runOffThread(file: string, args: readonly string[], options: TableRunOp
       resolve(text);
     };
     try {
-      const worker = new Worker(OFF_THREAD_RUNNER, {
+      const createWorker = deps.createWorker ?? ((source, workerOptions) => new Worker(source, workerOptions));
+      const worker = createWorker(OFF_THREAD_RUNNER, {
         eval: true,
         // Plain CommonJS: a loader the parent was started with (tsx, a test runner) must not
         // reinterpret these few lines.

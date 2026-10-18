@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { withPlatform } from '../../test/helpers/platform.ts';
 import { readProcessTable, type ProcRow, type ProcessTable } from '../platform/process-table.ts';
+import { ROOT_PIN_WINDOW_MS } from '../runs/run-process-ledger.ts';
 import {
   SAMPLE_INTERVAL_MS,
   SAMPLE_READ_GRACE_MS,
@@ -205,6 +206,15 @@ describe('aggregateTreeUsage after pid reuse on Windows', () => {
 
   it('counts only the processes that started under the agent', () => {
     expect(aggregateTreeUsage(rows, 500, T, 'win32')).toEqual({ cpuPct: 0, rssBytes: 155 * 1024, procCount: 3 });
+  });
+
+  it("counts nothing when the root's own pid now names a process started well after the spawn", () => {
+    const reused = rows.map((r) => (r.pid === 500 ? { ...r, startedAt: T + ROOT_PIN_WINDOW_MS + 1 } : r));
+    expect(aggregateTreeUsage(reused, 500, T, 'win32')).toBeNull();
+    // Within the window it is still the agent (GUARD), and Linux keeps counting as before.
+    const late = rows.map((r) => (r.pid === 500 ? { ...r, startedAt: T + ROOT_PIN_WINDOW_MS } : r));
+    expect(aggregateTreeUsage(late, 500, T, 'win32')?.procCount).toBeGreaterThan(0);
+    expect(aggregateTreeUsage(reused, 500, T, 'linux')?.procCount).toBe(5);
   });
 
   it('keeps the plain walk on Linux and macOS, and without a spawn time', () => {

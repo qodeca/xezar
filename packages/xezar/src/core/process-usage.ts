@@ -22,6 +22,7 @@ import {
   type ProcessTable,
   type TreeRoot,
 } from '../platform/process-table.ts';
+import { ROOT_PIN_WINDOW_MS } from '../runs/run-process-ledger.ts';
 
 /** One aggregated sample for a run's process tree. */
 export interface ProcessUsage {
@@ -87,6 +88,16 @@ export function aggregateTreeUsage(
   for (const p of procs) byPid.set(p.pid, p);
   const root = byPid.get(rootPid);
   if (!root) return null;
+  // Windows: a root whose start is further from the spawn than the ledger's pin window is another
+  // process that got the pid after the agent exited – it is not the run's, so nothing counts.
+  if (
+    platform === 'win32' &&
+    spawnedAt !== undefined &&
+    root.startedAt !== undefined &&
+    Math.abs(root.startedAt - spawnedAt) > ROOT_PIN_WINDOW_MS
+  ) {
+    return null;
+  }
   const walkRoot: TreeRoot =
     platform === 'win32' && spawnedAt !== undefined
       ? {
