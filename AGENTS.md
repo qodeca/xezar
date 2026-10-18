@@ -196,6 +196,10 @@ This repository is run by a project leader on the xezar engine. The process is i
 review rules in `CODE_REVIEW.md`, protected public surfaces in `BACKWARD_COMPATIBILITY.md`, and
 the kit itself (workflows, checks, role skills, routing) in `.xezar/`.
 
+- **Branches:** `develop` is the default and base branch – branch off it and open every feature PR
+  against it. `main` holds released work and takes only `promote/*`, `release/v*` and `hotfix/*`
+  PRs (`.github/workflows/pr-source-guard.yml` enforces it); the release path is in `SDLC.md` and
+  `docs/publishing.md`.
 - **The gate** is one command, run in the foreground: `bash .xezar/checks/repo-gates.sh`.
 - **Changing a mechanism that already works** is the rule of that name above; it applies to the
   kit's own checks and workflows exactly as it applies to the product.

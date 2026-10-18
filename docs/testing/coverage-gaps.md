@@ -1292,7 +1292,7 @@ every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own
 every pull request. A PR on the MCP scope must also show each new test failing against a named break.
 Neither half passes alone. Its slower counterpart is
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
-`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
+`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against the default branch** (`develop` since 2026-10-18, `main` before it) in
 `.github/workflows/mutation.yml` (#377), split across nine jobs, balanced on measured per-file cost
 rather than byte size (#443), whose counts are summed before the one floor is applied, and a red
 night files or updates a `mutation-nightly` issue, which also gets a
