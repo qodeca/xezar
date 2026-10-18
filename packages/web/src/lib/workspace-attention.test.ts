@@ -137,3 +137,21 @@ describe('resolveAttentionCounts', () => {
     expect(counts.stale).toBe(true)
   })
 })
+
+describe('resolveAttentionCounts — never an old count presented as live', () => {
+  const index = summarizeAttention([row('web', 'waiting')])
+
+  it('names no live project while the index is current', () => {
+    expect(resolveAttentionCounts({ index, indexFailed: false, activeProjectId: 'web', activeCount: 1 }).activeProjectId).toBeNull()
+  })
+
+  it('names no live project when the active list is unavailable, and keeps the index’s number', () => {
+    const counts = resolveAttentionCounts({ index, indexFailed: true, activeProjectId: 'web', activeCount: undefined })
+    expect(counts.activeProjectId).toBeNull()
+    expect(counts.countFor('web')).toBe(1)
+  })
+
+  it('names the live project only while its own list is the source', () => {
+    expect(resolveAttentionCounts({ index, indexFailed: true, activeProjectId: 'web', activeCount: 3 }).activeProjectId).toBe('web')
+  })
+})

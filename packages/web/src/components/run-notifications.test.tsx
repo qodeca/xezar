@@ -137,7 +137,7 @@ describe('RunNotifications', () => {
     expect(constructed).toEqual([
       {
         title: 'Normalize the agent-event protocol',
-        options: { body: 'boot — task needs you: “Normalize the agent-event protocol”', tag: 'xezar-run-r1' },
+        options: { body: 'boot — task needs you', tag: 'xezar-run-r1' },
       },
     ])
   })
@@ -153,8 +153,8 @@ describe('RunNotifications', () => {
     patch([run({ id: 'a', status: 'review' }), run({ id: 'b', status: 'failed' })])
 
     expect(constructed.map((n) => [n.options?.tag, n.options?.body])).toEqual([
-      ['xezar-run-a', 'boot — task needs review: “Normalize the agent-event protocol”'],
-      ['xezar-run-b', 'boot — task failed: “Normalize the agent-event protocol”'],
+      ['xezar-run-a', 'boot — task needs review'],
+      ['xezar-run-b', 'boot — task failed'],
     ])
   })
 
@@ -234,7 +234,7 @@ describe('RunNotifications', () => {
     // A REAL new transition after enabling does notify.
     patch([run({ status: 'running', tokensUsed: 50 })])
     patch([run({ status: 'review', tokensUsed: 51 })])
-    expect(constructed.map((n) => n.options?.body)).toEqual(['boot — task needs review: “Normalize the agent-event protocol”'])
+    expect(constructed.map((n) => n.options?.body)).toEqual(['boot — task needs review'])
   })
 
   it('ignores unrelated cache updates (a detail or list query moving is not the index)', () => {
@@ -258,7 +258,7 @@ describe('RunNotifications', () => {
 
     // Unknown to the registry (it has not answered): the body names the project by its id.
     expect(constructed.map((n) => [n.title, n.options?.body])).toEqual([
-      ['Draft the campaign brief', 'agency — task needs you: “Draft the campaign brief”'],
+      ['Draft the campaign brief', 'agency — task needs you'],
     ])
   })
 
@@ -280,7 +280,7 @@ describe('RunNotifications', () => {
     patch([row({ ...theirs, status: 'waiting' }, 'lab')])
 
     expect(constructed.map((n) => n.options?.body)).toEqual([
-      'Field study — task needs you: “Revise the methods section”',
+      'Field study — task needs you',
     ])
   })
 

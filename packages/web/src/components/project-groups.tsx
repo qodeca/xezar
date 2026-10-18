@@ -5,10 +5,10 @@ import { useLocation } from 'react-router'
 import { useAttentionCounts } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
 import {
-  AttentionStaleMarker,
   MissingProjectBadge,
   NavBadge,
   SkillsUpdateMarker,
+  tasksNeedYou,
   useSidebarNavigate,
 } from '@/components/app-shell'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
@@ -97,7 +97,8 @@ export function ProjectGroups({
   // for every project by the global stream (api/global-events.tsx), so a group never needs its
   // own runs request to stay honest.
   // If that index cannot be read, the anchor project (the one whose run list the scope holds)
-  // falls back to its own list and the others say "stale" rather than zero.
+  // falls back to its own list; the others keep their last known counts, and the one line under
+  // All tasks (app-shell.tsx, AttentionStaleNote) says they may be out of date.
   const attention = useAttentionCounts(collapseAnchorId)
 
   const activeTo = activeNavPath(stripProjectPrefix(pathname))
@@ -117,7 +118,6 @@ export function ProjectGroups({
           project={project}
           // Unknown (null) until the index answers: no badge rather than a guessed 0.
           attentionCount={attention.countFor(project.id)}
-          attentionStale={attention.stale && project.id !== attention.activeProjectId}
           active={project.id === scopedProjectId}
           collapsed={isProjectCollapsed(collapsed, project.id, collapseAnchorId)}
           onToggle={toggle}
@@ -135,7 +135,6 @@ export function ProjectGroups({
 function ProjectGroup({
   project,
   attentionCount,
-  attentionStale,
   active,
   collapsed,
   onToggle,
@@ -149,8 +148,6 @@ function ProjectGroup({
   /** Tasks in this project that need you (waiting or review), from the workspace attention
    *  model; null while that model is unknown. */
   attentionCount: number | null
-  /** The count is the last known one (or unknown) because the index could not be refreshed. */
-  attentionStale: boolean
   active: boolean
   collapsed: boolean
   onToggle: (projectId: string) => void
@@ -225,8 +222,9 @@ function ProjectGroup({
           aria-hidden="true"
         />
         <span className="truncate">{project.name}</span>
-        <NavBadge data-slot="project-attention" title={`${project.name}: ${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{attentionCount}</NavBadge>
-        <AttentionStaleMarker stale={attentionStale} />
+        {/* Not a live region: one change moves this badge AND All tasks, and the shell owns the
+            single announcement (app-shell.tsx). The words still join the header's name. */}
+        <NavBadge data-slot="project-attention" live={false} title={tasksNeedYou(waiting)} className="ml-0">{attentionCount}</NavBadge>
         {project.branch ? (
           <span
             data-slot="project-branch"

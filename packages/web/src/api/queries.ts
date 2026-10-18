@@ -1079,7 +1079,9 @@ function useWorkspaceAttentionQuery() {
 export function useAttentionCounts(activeProjectId: string | null): AttentionCounts {
   const index = useWorkspaceAttentionQuery()
   const runs = useRuns()
-  const activeCount = runs.data ? listCounts(runs.data).waiting : undefined
+  // A list whose own refresh failed is not live either: then there is no fallback, and the
+  // active project's count is the index's last known one like everyone else's.
+  const activeCount = runs.data && !runs.isError ? listCounts(runs.data).waiting : undefined
   return useMemo(
     () =>
       resolveAttentionCounts({

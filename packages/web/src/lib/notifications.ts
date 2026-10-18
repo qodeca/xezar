@@ -132,9 +132,9 @@ export interface RunNotificationContent {
  * The title is the run's display title (#389: `titleSummary ?? title`). The body names the
  * project first, because a notification can come from any registered project — not only the one
  * the tab shows — and "Task needs you" alone does not say where to go. Then the attention label
- * (the same phrase the dot's tooltip uses, from the same one function) and the task title in
- * curly quotes, so the body still reads whole where a platform shows it without the title. Em
- * dash and quotes per the cockpit's writing rules (docs/design-system/writing.md).
+ * (the same phrase the dot's tooltip uses, from the same one function). The task title is the
+ * notification's title and is not repeated. Em dash per the cockpit's writing rules
+ * (docs/design-system/writing.md).
  *
  * @param run - The run that entered an attention state.
  * @param projectName - The registry's display name for the run's project (callers fall back to
@@ -143,7 +143,7 @@ export interface RunNotificationContent {
  *
  * @example
  * ```ts
- * describeRunNotification(run, 'Storefront').body // "Storefront — task needs you: “Fix the checkout”"
+ * describeRunNotification(run, 'Storefront').body // "Storefront — task needs you"
  * ```
  */
 export function describeRunNotification(run: NotifiableRun, projectName: string): RunNotificationContent {
@@ -151,7 +151,7 @@ export function describeRunNotification(run: NotifiableRun, projectName: string)
   const title = run.titleSummary ?? run.title
   return {
     title,
-    body: `${projectName} — task ${label}: “${title}”`,
+    body: `${projectName} — task ${label}`,
     tag: `xezar-run-${run.id}`,
   }
 }

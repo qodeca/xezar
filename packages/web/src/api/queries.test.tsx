@@ -13,6 +13,7 @@ import {
   useReferenceProjectId,
   useProjectRepoBase,
   queryKeys,
+  useAttentionCounts,
   useProviderStatus,
   useRefreshProviderStatus,
   useRetryProviderAuth,
@@ -1118,4 +1119,28 @@ describe('refStatusRecheckAfter', () => {
     // that keeps the query from going silent forever.
     expect(refStatusRecheckAfter(undefined)).toBeGreaterThan(0)
   })
+})
+
+describe('useAttentionCounts', () => {
+  it('does not use the active list as the fallback when its own latest refresh failed', async () => {
+    // Index and run list both fail; the run list still holds an answer from earlier. That
+    // earlier count must not be shown as the live one.
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: 'down' }), { status: 500 }))
+    const client = createQueryClient()
+    client.setQueryData(queryKeys.runs.list(), [
+      { id: 'w', title: 'w', workflow: 'default', task: 't', status: 'waiting', createdAt: '', tokensUsed: 0, archived: false, steps: [] },
+    ])
+    const scopedWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useAttentionCounts('default'), { wrapper: scopedWrapper })
+    // What a reconnect's reconcile does: ask the run list again — and this time it fails.
+    void client.invalidateQueries({ queryKey: queryKeys.runs.list() })
+
+    await waitFor(() => expect(result.current.stale).toBe(true), { timeout: 5_000 })
+    await waitFor(() => expect(client.getQueryState(queryKeys.runs.list())?.status).toBe('error'), { timeout: 5_000 })
+    expect(result.current.countFor('default')).toBeNull()
+    expect(result.current.activeProjectId).toBeNull()
+    expect(result.current.total).toBeNull()
+  }, 15_000)
 })

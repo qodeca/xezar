@@ -174,6 +174,8 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/app-shell-container.tsx` | AppShellContainer | components.md §2 AppShellContainer | Documented |
 | `packages/web/src/components/app-shell.tsx` | AppShell | components.md §2 AppShell | Documented with known gap (G-14) |
 | `packages/web/src/components/app-shell.tsx` | BrandTile development-build badge (private, #442) | components.md §2 AppShell, Brand tile and development-build badge; decisions.md D-08 | Documented |
+| `packages/web/src/components/app-shell.tsx` | All tasks needs-you badge, phone menu-button badge and the one `attention-live` region (#attention) | components.md §2 AppShell, Badges; patterns.md §2; writing.md | Documented |
+| `packages/web/src/components/app-shell.tsx` | AttentionStaleNote, the index-stale line under All tasks (private) | components.md §2 AppShell, Badges; patterns.md §2; writing.md | Documented |
 | `packages/web/src/components/app-shell.tsx` | ModeBadge single-project mode badge (private, #600) | components.md §2 AppShell, Single-project mode badge; `designs/single-project-mode/` §7 | Documented |
 | `packages/web/src/components/appearance-provider.tsx` | AppearanceProvider | components.md §2 AppearanceProvider | Not applicable – context only, no markup (components.md §2 AppearanceProvider). |
 | `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented (G-05 retired) |

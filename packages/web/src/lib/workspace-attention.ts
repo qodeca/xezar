@@ -113,9 +113,11 @@ export interface AttentionCounts {
   /** Tasks that need you across the workspace; null when unknown. When `stale`, a lower bound. */
   total: number | null
   /** The workspace index could not be refreshed: every count except the active project's is the
-   *  last known answer (or unknown). The UI shows the "stale" marker instead of a silent zero. */
+   *  last known answer (or unknown). The UI shows the stale line instead of a silent zero. */
   stale: boolean
-  /** The project whose count comes from its own live run list while the index is stale. */
+  /** The project whose count comes from its own live run list while the index is stale; null
+   *  whenever no such fallback is in effect (index current, or that list not loaded / failed), so
+   *  nothing presents an old count as live. */
   activeProjectId: string | null
 }
 
@@ -151,7 +153,7 @@ export function resolveAttentionCounts(input: {
   if (fallback && activeProjectId !== null) {
     total = (total ?? 0) - (index?.byProject.get(activeProjectId) ?? 0) + (activeCount ?? 0)
   }
-  return { countFor, total, stale: indexFailed, activeProjectId }
+  return { countFor, total, stale: indexFailed, activeProjectId: fallback ? activeProjectId : null }
 }
 
 /**

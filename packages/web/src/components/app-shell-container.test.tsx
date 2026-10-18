@@ -46,6 +46,19 @@ const HEALTH: HealthResponse = {
 }
 
 /** One registered project — the degenerate workspace every existing install upgrades into. */
+/** The text an accessible name is computed from: every node except `aria-hidden` subtrees, with
+ *  whitespace collapsed. Enough for these controls, which carry no aria-label of their own. */
+function accessibleText(element: Element): string {
+  const parts: string[] = []
+  const walk = (node: Node): void => {
+    if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') return
+    if (node.nodeType === Node.TEXT_NODE) parts.push(node.textContent ?? '')
+    for (const child of Array.from(node.childNodes)) walk(child)
+  }
+  walk(element)
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
+}
+
 /** A cross-project runs index (`GET /workspace/runs-index`) answer for `[projectId, status]` rows. */
 function runsIndex(rows: Array<[projectId: string, status: RunRecord['status'], archived?: boolean]>) {
   return {
@@ -451,7 +464,7 @@ describe('sidebar wiring', () => {
         expect(found).not.toBeNull()
         return found as HTMLElement
       })
-      expect(attention.getAttribute('title')).toBe('xezar: 1 task needs you')
+      expect(attention.getAttribute('title')).toBe('1 task needs you')
       expectNoTaskPanel()
       expect(screen.getByRole('navigation', { name: 'xezar navigation' })).toBeTruthy()
     })
@@ -740,7 +753,7 @@ describe('workspace attention (All tasks badge and tab title)', () => {
       expect(found?.textContent).toBe('3')
       return found as HTMLElement
     })
-    expect(badge.getAttribute('title')).toBe('All projects: 3 tasks need you')
+    expect(badge.getAttribute('title')).toBe('3 tasks need you across all projects')
     // The collapsed group (`shop` — not the project on screen) carries its own share.
     expect(
       document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')?.textContent,
@@ -749,7 +762,7 @@ describe('workspace attention (All tasks badge and tab title)', () => {
     await waitFor(() => expect(document.title).toBe('(3) xezar — Tasks · xezar'))
   })
 
-  it('when the index cannot be read: the active project still counts, and All tasks says stale', async () => {
+  it('when the index cannot be read: the active project still counts, and ONE line says the rest may be old', async () => {
     serve({
       '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
       '/api/v1/todos': [],
@@ -760,16 +773,73 @@ describe('workspace attention (All tasks badge and tab title)', () => {
     })
     renderShell('/p/xezar/')
 
-    await waitFor(() =>
-      expect(document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-link"] [data-slot="attention-stale"]')?.textContent).toBe('stale'),
-    )
+    const note = await waitFor(() => {
+      const found = document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    expect(note.getAttribute('role')).toBe('status')
+    expect(note.textContent).toBe('Other projects’ counts could not be refreshed — they may be out of date.')
+    // Exactly one, under All tasks — not one per group.
+    expect(document.querySelectorAll('[data-slot="sidebar"] [data-slot="attention-stale"]')).toHaveLength(1)
     // A lower bound, not a zero: the one count we can still vouch for.
     expect(document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-attention"]')?.textContent).toBe('1')
     expect(
       document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
     ).toBe('1')
-    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="attention-stale"]')).not.toBeNull()
     await waitFor(() => expect(document.title).toBe('(1) xezar — Tasks · xezar'))
+  })
+
+  it('shows no number at all when BOTH the index and the active list fail — never an old count as live', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      // Neither '/api/v1/runs' nor the index answers.
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')).not.toBeNull(),
+    )
+    expect(document.querySelector('[data-slot="project-attention"]')).toBeNull()
+    expect(document.querySelector('[data-slot="all-tasks-attention"]')).toBeNull()
+    expect(document.title).toBe('xezar — Tasks · xezar')
+  })
+
+  it('announces a change ONCE, and names every attention control in words', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([['xezar', 'waiting'], ['shop', 'review']]),
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="attention-live"]')?.textContent).toBe(
+        '2 tasks need you across all projects',
+      ),
+    )
+    // One polite region carries the attention news; no badge holds a second one.
+    const regions = Array.from(document.querySelectorAll('[role="status"]')).filter((el) =>
+      /need/.test(el.textContent ?? ''),
+    )
+    expect(regions).toEqual([document.querySelector('[data-slot="attention-live"]')])
+
+    // Accessible names (the text a screen reader reads for each control).
+    const allTasks = document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-link"]') as HTMLElement
+    expect(accessibleText(allTasks)).toBe('All tasks 2 tasks need you across all projects')
+    const shopHeader = document.querySelector(
+      '[data-slot="sidebar"] [data-project="shop"] [data-slot="project-group-header"]',
+    ) as HTMLElement
+    expect(accessibleText(shopHeader)).toBe('shop 1 task needs you main')
+    // The phone menu button: count in its name, a 44 px target.
+    const menu = screen.getByRole('button', { name: 'Open menu — 2 tasks need you' })
+    expect(menu.className).toContain('h-11')
+    expect(menu.className).toContain('min-w-11')
+    expect(menu.querySelector('[data-slot="menu-attention"]')?.textContent).toBe('2')
   })
 
   it('shows no All tasks badge and no title prefix when nothing needs you', async () => {

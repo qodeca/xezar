@@ -209,4 +209,5 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   project" when none does (`routes/settings/agents-section.tsx`, #809).
 - Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
   clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
-- Browser notification body: "{project} — task needs you: “{title}”" (also "task needs review", "task failed"); title is the run title. The project leads because a notification can come from any registered project.
+- Browser notification body: "{project} — task needs you" (also "task needs review", "task failed"); title is the run title, not repeated in the body. The project leads because a notification can come from any registered project.
+- Attention counts (`components/app-shell.tsx`, `tasksNeedYou`): a group badge's name "1 task needs you" / "2 tasks need you" (no project prefix — the header already names it); All tasks "{n} tasks need you across all projects", which is also the shell's one live announcement; the phone menu button "Open menu — {n} tasks need you". When the task index cannot be refreshed: "Other projects’ counts could not be refreshed — they may be out of date." (one line under All tasks).

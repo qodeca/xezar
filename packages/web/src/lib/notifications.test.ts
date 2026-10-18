@@ -161,17 +161,17 @@ describe('notificationSupport', () => {
 })
 
 describe('describeRunNotification', () => {
-  it('titles with the display title (#389: titleSummary ?? title) and names the project in the body', () => {
+  it('titles with the display title (#389: titleSummary ?? title); the body names the project and does not repeat the title', () => {
     expect(describeRunNotification(run({ status: 'waiting' }), 'Storefront')).toEqual({
       title: 'Normalize the agent-event protocol',
-      body: 'Storefront — task needs you: “Normalize the agent-event protocol”',
+      body: 'Storefront — task needs you',
       tag: 'xezar-run-r1',
     })
     const review = describeRunNotification(run({ status: 'review', titleSummary: 'Protocol cleanup' }), 'Paper')
     expect(review.title).toBe('Protocol cleanup')
-    expect(review.body).toBe('Paper — task needs review: “Protocol cleanup”')
+    expect(review.body).toBe('Paper — task needs review')
     expect(describeRunNotification(run({ status: 'failed' }), 'Brief').body).toBe(
-      'Brief — task failed: “Normalize the agent-event protocol”',
+      'Brief — task failed',
     )
   })
 

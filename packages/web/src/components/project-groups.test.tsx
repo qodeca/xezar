@@ -316,8 +316,12 @@ describe('ProjectGroups', () => {
       expect(group('shop').querySelector('[data-slot="project-attention"]')?.textContent).toBe('2'),
     )
     expect(group('shop').querySelector('[data-slot="project-attention"]')?.getAttribute('title')).toBe(
-      'shop: 2 tasks need you',
+      '2 tasks need you',
     )
+    // The header's accessible name reads cleanly: name, count sentence, branch — and the badge
+    // is no live region of its own (the shell owns the one announcement).
+    expect(header('shop').textContent?.replace(/\s+/g, ' ').trim()).toBe('shop 2 tasks need you2main')
+    expect(within(header('shop')).getByText('2 tasks need you').closest('[role="status"]')).toBeNull()
   })
 
   it('counts a collapsed project’s tasks that are older than its newest rows', async () => {
@@ -330,7 +334,7 @@ describe('ProjectGroups', () => {
     )
   })
 
-  it('when the index cannot be read: the anchor project counts from its own list, the others say stale', async () => {
+  it('when the index cannot be read: the anchor project counts from its own list, the others show no number', async () => {
     // Not a silent zero: every badge disappearing reads as "nothing needs you", which is the
     // one thing nobody may conclude from a failed request.
     fetchMock.mockImplementation(async (input) => {
@@ -346,15 +350,11 @@ describe('ProjectGroups', () => {
       () => expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('2'),
       { timeout: 5_000 },
     )
-    await waitFor(
-      () => expect(group('shop').querySelector('[data-slot="attention-stale"]')?.textContent).toBe('stale'),
-      { timeout: 5_000 },
-    )
     expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
-    // The live one is not stale.
-    expect(group('xezar').querySelector('[data-slot="attention-stale"]')).toBeNull()
-    // The marker joins the header button's accessible name.
-    expect(header('shop').textContent).toContain('stale')
+    // No per-row word: the one stale line lives under All tasks (app-shell), never in a header,
+    // where it read as part of the branch name.
+    expect(document.querySelector('[data-slot="attention-stale"]')).toBeNull()
+    expect(header('shop').textContent).not.toContain('stale')
   })
 
   it("updates another project's badge the moment its index row changes", async () => {

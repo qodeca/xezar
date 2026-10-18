@@ -33,7 +33,7 @@ Choose **Dismiss** to remove a runnable suggestion without starting it. Informat
 
 Notifications are off by default. With notifications enabled and permission granted, a task changing into waiting, review, or failure can notify you while the tab is hidden or its window is minimised. A visible window behind another app does not count. Usage-limit failures with an auto-resume scheduled do not notify. Loading a task that already needs attention does not replay an old notification, and repeated updates with the same status do not notify again.
 
-Notifications cover every project in the workspace, not only the one on screen, and keep working after you switch projects. Each one names its project, then the task: for example "Storefront — task needs you: “Fix the checkout”".
+Notifications cover every project in the workspace, not only the one on screen, and keep working after you switch projects. Each one shows the task title and names its project: for example "Storefront — task needs you".
 
 The preference is shared through workspace UI state, but browser permission is separate. If the browser does not support notifications, the toggle is unavailable. Delivery can also be unavailable in browsers that cannot create these page notifications; use the cockpit's attention indicators to check tasks there.
 

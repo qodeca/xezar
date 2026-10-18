@@ -7,9 +7,10 @@
   read one workspace-wide count that the live event stream keeps current for every project. The
   count also includes tasks older than a project's newest 200, which the cross-project task index
   now counts on the server (`GET /api/v1/workspace/runs-index` gains an additive `attention` map).
-  If that index cannot be read, the current project still counts from its own task list and the
-  other counts say "stale" instead of dropping to zero. Notifications now name the project:
-  "Storefront — task needs you: “Fix the checkout”". The live connection also recovers on its own
+  If that index cannot be read, the current project still counts from its own task list and one
+  line under "All tasks" says the other counts may be out of date, instead of them dropping to
+  zero. On a phone the menu button carries the same count. Notifications now name the project:
+  "Storefront — task needs you". The live connection also recovers on its own
   when it goes silent, refreshes the cross-project task list after activity settles (at least
   every two seconds while it does not), and ignores a malformed status update instead of caching
   it.
