@@ -84,6 +84,15 @@ were removed in one release, without a deprecation release, once Qwen Code passe
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
+- **Unreleased – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
+  narrowed** (§2). Health no longer sends `access-control-allow-origin: *` or answers the CORS
+  preflight with `access-control-allow-private-network`; its only cross-origin reader, the old
+  bookmarklet port probe, was retired earlier. `repo.remote` (on health and the repository route)
+  no longer includes a user name or password embedded in the URL, and in hosted mode `repo.root`
+  is the folder name, as `repoRoot` already was. Every field keeps its name and type.
+  *Symptom:* a script running in a browser page on another origin can no longer read health;
+  a native client (`curl`, the MCP bridge) is unaffected. *Way forward:* read health from a
+  native client or from the cockpit's own origin.
 - **0.30.0 – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
   backend, provider and leader-client ids `pi` and `opencode` are gone from every schema, with
   `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the

@@ -382,8 +382,9 @@ try {
   console.log('PASS A-SSE-01..02 all stream families, authenticated reconnect and abort');
   for (const method of ['GET', 'OPTIONS']) {
     const response = await request('/api/v1/health', { method, headers: { origin: 'https://evil.invalid', cookie: 'fixture=1' } });
-    assert.equal(response.status, method === 'GET' ? 200 : 204);
-    assert.equal(response.headers['access-control-allow-origin'], '*', 'A-CORS-01');
+    if (method === 'GET') assert.equal(response.status, 200);
+    assert.equal(response.headers['access-control-allow-origin'], undefined, 'A-CORS-01');
+    assert.equal(response.headers['access-control-allow-private-network'], undefined, 'A-CORS-01');
     assert.notEqual(response.headers['access-control-allow-credentials'], 'true');
   }
   // Exhaustiveness belongs to local-handoff-routes.test.ts, not a second list here.

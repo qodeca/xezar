@@ -172,7 +172,7 @@ export function refusedByInstanceMode(
  *
  *  Naming the folder is not a new disclosure: this sentence rides a SAME-ORIGIN route, and
  *  `GET /api/v1/projects` already answers every registered project's absolute `root` there. The
- *  shape that must never carry a path is the CORS-open `/api/v1/health`, which carries id+name
+ *  shape that must never carry a path is the discovery route `/api/v1/health`, which carries id+name
  *  pairs only (#431) and is untouched by this. */
 export function otherInstanceRefusalText(
   projectId: string,

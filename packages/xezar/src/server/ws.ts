@@ -61,7 +61,7 @@ export interface TopicOptions {
    *  topic-safety invariant mechanical: a topic carrying run/repo/PR content is
    *  legible only to the cockpit itself unless a publisher explicitly opts in.
    *  Set `true` only for data already safe for any local page (e.g. `health`,
-   *  the CORS-open discovery payload). */
+   *  the discovery payload). */
   loopbackReadable?: boolean;
 }
 

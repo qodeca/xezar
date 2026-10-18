@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -162,6 +162,44 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     expect(body.forge).toEqual({ kind: 'github', available: true });
   });
 
+  it('redacts credentials in the remote URL and keeps the forge detection', async () => {
+    initRepo('https://fixture-user:fixture-secret@github.com/acme/demo.git');
+    const body = await health();
+    expect((body.repo as { remote?: string }).remote).toBe('https://github.com/acme/demo.git');
+    expect(JSON.stringify(body)).not.toContain('fixture-secret');
+    expect(JSON.stringify(body)).not.toContain('fixture-user');
+    expect(body.forge).toEqual({ kind: 'github', available: true });
+  });
+
+  it('local mode keeps the absolute repo.root the cockpit compares against', async () => {
+    initRepo('git@github.com:acme/demo.git');
+    const body = await health();
+    expect((body.repo as { root: string }).root).toBe(realpathSync(repoRoot));
+  });
+
+  it('hosted mode trims repo.root to a basename too — no absolute path anywhere (#431)', async () => {
+    initRepo('git@github.com:acme/demo.git');
+    process.env.XEZ_REMOTE = '1';
+    const body = await health();
+    const repo = body.repo as { root: string; branch: string; remote?: string };
+    expect(repo.root).toBe(basename(realpathSync(repoRoot)));
+    expect(repo.remote).toBe('git@github.com:acme/demo.git');
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain(repoRoot);
+    expect(raw).not.toContain(realpathSync(repoRoot));
+  });
+
+  it('sends no CORS headers — health is read same-origin only', async () => {
+    for (const method of ['GET', 'OPTIONS']) {
+      const res = await apiRequest(makeApp(), '/api/v1/health', {
+        method,
+        headers: { origin: 'https://other.invalid', 'access-control-request-private-network': 'true' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+      expect(res.headers.get('access-control-allow-private-network')).toBeNull();
+    }
+  });
+
   it('reports forge:null for a non-GitHub remote', async () => {
     initRepo('git@gitlab.com:acme/demo.git');
     const body = await health();
@@ -186,7 +224,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     process.env.XEZ_REMOTE = '1';
     const body = await health();
     // The absolute checkout path (with the developer's username) must not be exposed to a
-    // site/host that reads the CORS-open health endpoint in hosted mode.
+    // host that reads the health endpoint in hosted mode.
     expect(body.repoRoot).toBe(basename(repoRoot));
     expect(body.repoRoot).not.toContain(sep);
     expect(body.repoRoot).not.toBe(repoRoot);

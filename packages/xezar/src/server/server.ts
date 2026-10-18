@@ -1447,8 +1447,9 @@ export function createApp(deps: ServerDeps) {
       );
     }
 
-    // /api/v1/health stays CORS-open for cross-origin discovery, but its Host is
-    // still checked above: cross-origin is legitimate, DNS rebinding is not. The
+    // /api/v1/health skips the Origin gate below (it is read-only, and it sends no
+    // CORS headers, so a foreign page cannot read the answer), but its Host is
+    // still checked above: DNS rebinding is refused. The
     // path is spelled through V1_PREFIX rather than inline — an unversioned
     // literal here silently stopped matching when the API moved and left health
     // relying on the mutating-methods gate below to let its GETs through.
@@ -1610,23 +1611,12 @@ export function createApp(deps: ServerDeps) {
   app.get('/xezar.svg', staticFile('xezar.svg', 'image/svg+xml'));
 
   // ---- meta ----------------------------------------------------------------
-  // CORS — deliberately for /api/health ONLY (spec 011): the bookmarklets
-  // fetch it cross-origin from github.com to discover which local ports run a
-  // cockpit and which repo each serves. Health exposes no secrets beyond the
-  // repo path/remote; every other endpoint stays same-origin.
-  const healthCors = async (c: Context, next: Next): Promise<Response | void> => {
-    c.header('access-control-allow-origin', '*');
-    if (c.req.method === 'OPTIONS') {
-      // Preflight (e.g. Chrome Private Network Access) — allow the plain GET.
-      c.header('access-control-allow-methods', 'GET');
-      c.header('access-control-allow-private-network', 'true');
-      return c.body(null, 204);
-    }
-    await next();
-  };
-  app.use(`${V1_PREFIX}/health`, healthCors);
-  // One builder for both transports: `GET /api/health` (the authoritative,
-  // CORS-open discovery endpoint) and the `health` topic on `/api/v1/ws` below
+  // No CORS on health (or anywhere): the cockpit reads it same-origin, and the MCP bridge and
+  // other native clients are not subject to CORS. The one cross-origin reader it once had, the
+  // spec 011 bookmarklet port probe, was retired (see packages/web/src/lib/bookmarklet.ts), so a
+  // page on another site has no reason to read this project's repository facts.
+  // One builder for both transports: `GET /api/health` (the authoritative
+  // discovery endpoint) and the `health` topic on `/api/v1/ws` below
   // push the byte-identical shape, so the two can never drift.
   // Deliberately UNANNOTATED: this literal is the source of the `/health` shape. Annotating it
   // with the api-client's `HealthResponse` made the contract circular — the DTO was declared by
@@ -1656,16 +1646,19 @@ export function createApp(deps: ServerDeps) {
       // says `.optional()`, and contract-parity.test.ts holds the two together.
       ...(update?.latest !== undefined ? { latestVersion: update.latest } : {}),
       channel,
-      // Health is CORS-open and, in hosted mode, reachable off the loopback —
-      // so any site/host that reads it would learn the developer's absolute
-      // checkout path and username (#431). Local mode keeps the full path (the
-      // protected bookmarklet shape); hosted/remote mode trims it to a basename.
+      // Health is, in hosted mode, reachable off the loopback — so any host that
+      // reads it would learn the developer's absolute checkout path and username
+      // (#431). Local mode keeps the full path (the protected shape); hosted/remote
+      // mode trims it to a basename.
       // NB this narrows the VALUE of a field named in the backward-compatibility promise
       // §2: the field is always present and a string, but under XEZ_REMOTE it is
       // no longer an absolute path. Deliberate — a hosted cockpit's paths are on
       // a machine the reader does not have anyway. See §2's `repoRoot` note.
       repoRoot: caps.localHandoff ? bootRoot : basename(bootRoot),
-      repo,
+      // The same trim for `repo.root`, which carries the same absolute path: without it the
+      // hosted `repoRoot` basename above protected nothing. The remote arrives already
+      // credential-free from getRepoInfo.
+      repo: repo && !caps.localHandoff ? { ...repo, root: basename(repo.root) } : repo,
       checks,
       defaultRunner: config.defaultRunner,
       // Non-blocking: cached availability or null-until-warm — health must never pay a `gh`
@@ -1673,9 +1666,9 @@ export function createApp(deps: ServerDeps) {
       forge: forge ? { kind: forge.kind, ...(forge.detectCached() ?? {}) } : null,
       capabilities: caps,
       // Workspace enumeration (multi-project spec) — additive, id+name ONLY.
-      // NEVER `projects[].root` here: health is the one CORS-open route, and
-      // the repoRoot trim above exists precisely to keep absolute paths and
-      // usernames away from cross-origin readers (#431) — per-project roots
+      // NEVER `projects[].root` here: health is the workspace discovery route,
+      // and the repoRoot trim above exists precisely to keep absolute paths and
+      // usernames away from readers that do not need them (#431) — per-project roots
       // would reintroduce that leak once per registered project. Absolute
       // roots live on the same-origin GET /api/projects instead. An
       // unreadable workspace degrades to `projects: []`.
@@ -1775,8 +1768,8 @@ export function createApp(deps: ServerDeps) {
         };
       },
     },
-    // health IS the CORS-open discovery payload (#431), so it is the one topic
-    // safe for any local page — including a cross-port page admitted by the
+    // health IS the discovery payload, trimmed and credential-free (#431), so it
+    // is the one topic treated as safe for any local page — including a cross-port page admitted by the
     // loopback fallback on a no-Sec-Fetch browser. Every other (future) topic
     // keeps the default: trusted connections only.
     { loopbackReadable: true },
@@ -6505,7 +6498,7 @@ export function createApp(deps: ServerDeps) {
   // Workspace families mount LAST and that is load-bearing: mounting the project table also
   // mounts its `use('*')` scope resolver over the whole prefix, and Hono runs matched middleware
   // in registration order. `/health` in particular answers for the workspace, has no project to
-  // resolve, and is the CORS-open discovery route — it must not sit behind the resolver.
+  // resolve, and is the discovery route — it must not sit behind the resolver.
   const routed = app
     .route(V1_SCOPED_PREFIX, v1)
     .route(V1_PREFIX, v1)
@@ -6602,7 +6595,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   deps.onApp?.(app);
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
-  // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
+  // same-origin-trusted (no route sends CORS headers); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate
   // hosted/VPS deployment (which also flips XEZ_REMOTE to gate the local-handoff endpoints).
   // src/index.ts DOES pass it: the CLI resolves `--bind-host` once at its boundary and hands it in
@@ -6866,7 +6859,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
  * `Sec-Fetch-Site`, a page served from ANOTHER loopback port. That is no longer
  * a caveat the caller must remember: the verdict carries a `trusted` flag, and
  * the hub only lets an UNtrusted connection subscribe to topics a publisher
- * marked `loopbackReadable`. `health` is flagged so (the CORS-open discovery
+ * marked `loopbackReadable`. `health` is flagged so (the discovery
  * payload, #431); every other topic stays trusted-only by default, so a topic
  * carrying run or repo content is mechanically unreachable from a foreign local
  * page without any per-topic vigilance. A connection is `trusted` when it is

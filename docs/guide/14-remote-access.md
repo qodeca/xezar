@@ -30,7 +30,8 @@ The server's request-origin guard provides additional browser protections:
 
 - In local mode, `/api/*` requests need a loopback `Host` header, including health requests. This protects against DNS rebinding.
 - Mutating requests with an `Origin` header must pass the host-and-port comparison, with a specific exception for the local development proxy. Explicit cross-site requests are rejected.
-- `/api/v1/health` is the CORS-open discovery endpoint. Requests without an `Origin` header can still reach the API; these guards are not authentication.
+- No route sends CORS headers, so a page on another site cannot read any answer, `/api/v1/health` included. Requests without an `Origin` header can still reach the API; these guards are not authentication.
+- Remote URLs the cockpit shows or sends never include a user name and password or token embedded in them, and in hosted mode health names the project folder only, never its full path.
 
 Read the [security policy](../../SECURITY.md) before exposing a host that can run coding agents.
 
