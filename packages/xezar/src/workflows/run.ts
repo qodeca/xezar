@@ -3336,6 +3336,18 @@ export class RunManager {
     /** The session's resolved tools, assigned with `toolsStep` below (#933 reads them at turn end). */
     let continueTools: readonly string[] = DEFAULT_ALLOWED_TOOLS;
     let stepCost = 0;
+    /**
+     * What the resumed thread had already spent before this continuation, on a backend that
+     * reports the thread's cumulative total (`BACKENDS_WITH_CUMULATIVE_TOKENS`): every earlier step
+     * that ran on this session. The run total sums its steps, so recording Codex's raw figure here
+     * billed all of them twice. Every other backend counts from zero per session object.
+     */
+    const resumedTokens =
+      sessionId !== undefined && BACKENDS_WITH_CUMULATIVE_TOKENS[backend]
+        ? (record?.steps ?? [])
+          .filter((s) => s.id !== stepId && s.sessionId === sessionId)
+          .reduce((sum, s) => sum + s.tokensUsed, 0)
+        : 0;
     let turnText = '';
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, stepId);
@@ -3364,7 +3376,7 @@ export class RunManager {
         this.store.updateStep(runId, stepId, { sessionId: event.sessionId, backend });
       }
       if (event.type === 'token-usage') {
-        this.store.updateStep(runId, stepId, { tokensUsed: event.tokensUsed });
+        this.store.updateStep(runId, stepId, { tokensUsed: Math.max(0, event.tokensUsed - resumedTokens) });
       }
       if (event.type === 'cost') {
         stepCost += event.usd;
