@@ -1815,7 +1815,8 @@ export class RunManager {
    *  - `queued`  → back into the queue (FIFO by createdAt), from the persisted
    *    workflowDef (or the catalog by name for older records);
    *  - `waiting` → the turn was over and the ball was in the user's court —
-   *    settle exactly like a closed session (review/done, Continue still works);
+   *    settle exactly like a closed session (review/done, Continue still works) — and a
+   *    Continue parked mid-workflow fails, as its live close does (#520);
    *  - `running` → mark interrupted, then immediately resume the last agent
    *    session via the Continue path, pointing the agent at its handoff file.
    * Call once, before the server starts taking requests.
@@ -1837,6 +1838,32 @@ export class RunManager {
         continue;
       }
       if (run.status === 'waiting') {
+        // A Continue parked mid-workflow hands the remaining steps over only after its turn's
+        // `XEZ:DONE` (#520). Closing it live fails the task with that reason, so a restart must
+        // too: settling it as a success ended the task `done`/`review` with its later checks
+        // and reviews never run. The failed task stays Continue-able, as after a live close.
+        const parked = run.steps.find((s) => s.status === 'waiting' || s.status === 'running');
+        if (parked?.id.startsWith('continue-')) {
+          const workflow = await this.reviveWorkflow(run);
+          const reason = unfinishedContinuationReason(continuationTail(run, workflow, parked.id), workflow);
+          if (reason) {
+            const finishedAt = new Date().toISOString();
+            this.store.updateStep(run.id, parked.id, { status: 'failed', error: reason, finishedAt });
+            this.store.updateRun(run.id, {
+              status: 'failed',
+              error: `continue failed: ${reason}`,
+              finishedAt,
+              currentStepId: undefined,
+              activity: undefined,
+            });
+            appendHandoffHeartbeat(this.dataDir, run.id, `step "${parked.id}" complete — status=failed`);
+            this.store.appendEvent(run.id, {
+              type: 'lifecycle',
+              message: `xezar restarted — the open session was closed; continue failed — ${reason}`,
+            });
+            continue;
+          }
+        }
         for (const step of run.steps) {
           if (step.status === 'waiting' || step.status === 'running') {
             this.store.updateStep(run.id, step.id, { status: 'done', finishedAt: new Date().toISOString() });
@@ -3297,10 +3324,8 @@ export class RunManager {
     if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) this.armResumeProofPump();
 
     const workflow = record ? await this.reviveWorkflow(record) : null;
-    const resumeIndex = workflow?.steps.findIndex(step =>
-      record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
-    const hasUnfinishedSteps = record?.steps.some(step =>
-      step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done');
+    const tail = continuationTail(record, workflow, stepId);
+    const { resumeIndex } = tail;
     // The workflow tail runs only after this turn's DONE (#520), so an autonomous nudge loop here
     // stands in for a step the workflow path never nudges (#317) — give it the small budget (#613).
     if (resumeIndex >= 0) state.autoContinueCap = MAX_GATED_CONTINUE_NUDGES;
@@ -3635,13 +3660,14 @@ export class RunManager {
         this.store.appendEvent(runId, { type: 'lifecycle', message: 'run cancelled' });
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=cancelled`);
       } else {
-        if (hasUnfinishedSteps && !workflow) {
-          throw new Error('workflow definition not recoverable; remaining steps cannot be completed');
+        if (tail.hasUnfinishedSteps && !workflow) {
+          throw new Error(unfinishedContinuationReason(tail, workflow) ?? 'workflow definition not recoverable');
         }
-        if (resumeIndex >= 0 && !completedTurn) {
+        const unfinished = completedTurn ? null : unfinishedContinuationReason(tail, workflow);
+        if (unfinished) {
           // The prefix is unchanged; a bound that closed the turn is named after it (#613).
           const bound = state.autoContinueStop ? ` — ${state.autoContinueStop}` : '';
-          throw new Error(`remaining workflow requires XEZ:DONE from the continued turn${bound}`);
+          throw new Error(`${unfinished}${bound}`);
         }
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
@@ -5508,6 +5534,37 @@ function continuationModel(
   const stepDef = defSteps.find((candidate) => candidate.id === owner?.id && stepKind(candidate) === 'agent')
     ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent' && candidate.runner === backend);
   return stepDef?.model ?? record.model;
+}
+
+/**
+ * What a Continue still owes the workflow it continues (#520): `resumeIndex` is the first
+ * workflow step the record has not finished (-1 when none), and `hasUnfinishedSteps` says the
+ * record itself holds an unfinished workflow step. `runContinuation` reads it when the turn
+ * starts, and restart recovery reads it for a continuation parked at `waiting`, so a parked
+ * continuation settles on the same rule whichever way its session closes.
+ */
+function continuationTail(
+  record: RunRecord | undefined,
+  workflow: WorkflowDef | null,
+  stepId: string,
+): { resumeIndex: number; hasUnfinishedSteps: boolean } {
+  const resumeIndex = workflow?.steps.findIndex(step =>
+    record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
+  const hasUnfinishedSteps = record?.steps.some(step =>
+    step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done') ?? false;
+  return { resumeIndex, hasUnfinishedSteps };
+}
+
+/** Why a continuation that closed without `XEZ:DONE` cannot settle as a success, or null. */
+function unfinishedContinuationReason(
+  tail: { resumeIndex: number; hasUnfinishedSteps: boolean },
+  workflow: WorkflowDef | null,
+): string | null {
+  if (tail.hasUnfinishedSteps && !workflow) {
+    return 'workflow definition not recoverable; remaining steps cannot be completed';
+  }
+  if (tail.resumeIndex >= 0) return 'remaining workflow requires XEZ:DONE from the continued turn';
+  return null;
 }
 
 function findLastAgentStepIndex(workflow: WorkflowDef): number {
