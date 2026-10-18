@@ -1240,8 +1240,10 @@ It is **not** part of the nightly gate and never runs per pull request. It is a 
 rather than two more `mutate` globs because `mutation/shards.mjs` and `mutation/aggregate.mjs` read
 the gate's scope and floor out of `stryker.config.mjs`: widening that scope would change the
 nightly's shards, its per-file weights (`mcp-mutation-shard-weights.json`) and the score its floor
-applies to. It has **no `break`**: it records a score. Adopting a floor for it, or moving it into
-the nightly, is a decision for the owner.
+applies to. It has **no `break`**: it records a score. A floor follows once the rewrite of
+`read-only-lock.ts`'s Git handling (branch `fix/read-only-lock-git`) lands, because that rewrite
+changes the file this score measures; the run is re-measured then and the floor set from that run.
+Moving it into the nightly is a separate decision for the owner.
 
 **Measured, 2026-10-18, revision `ff70b0e` on an 18-core macOS laptop, concurrency 4.**
 
