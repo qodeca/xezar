@@ -1,3 +1,5 @@
+History – removed in 0.30.0: the pi and OpenCode backends shown here were removed in 0.30.0 (#1041); this mockup records the design as it was.
+
 # non-tty.txt – `xez` with stdout and stderr redirected, in CI, or TERM=dumb
 #
 # Lines that start with `#` are notes. xezar never prints them.

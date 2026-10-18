@@ -3,8 +3,8 @@ import type { UiToolItem } from '@qodeca/xezar-api-client'
 import type { ThreadEntry } from './thread-state'
 
 /**
- * Pure display grouping over one turn's reduced entries (spec §"Task thread"; the opencode
- * `groupParts()` consensus). A pre-filter (plan-kind tools are the plan dock's, never the
+ * Pure display grouping over one turn's reduced entries (spec §"Task thread"; the
+ * `groupParts()` consensus from the research). A pre-filter (plan-kind tools are the plan dock's, never the
  * thread's — #382), then three passes, in this order:
  *
  *  1. **Sub-agent nesting** — entries whose `parentItemId` names a tool item in the same turn

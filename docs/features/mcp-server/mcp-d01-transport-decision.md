@@ -1,5 +1,7 @@
 # D-01 — local MCP transport and bridge architecture
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented by #86 (bridge) and #99 (owner). The dated spike below is
 > superseded for current setup by [D-04 § 3](mcp-d04-connection-file-decision.md); source anchors refer to
 > `9fdcf0e`. It measured three clients; pi was added as a fourth by #330. Windows named pipes were built by

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" style="font-family: ui-sans-serif, system-ui, sans-serif">
 <title id="title">How xezar works</title>
-<desc id="desc">The browser sends tasks to the local service and receives events. The service drives agent CLIs, which edit git worktrees and push branches. The service accesses GitHub issues and PRs via gh. A project leader (MCP) can use Claude Code, Codex, OpenCode or pi to exchange tools and events with the service.</desc>
+<desc id="desc">The browser sends tasks to the local service and receives events. The service drives agent CLIs, which edit git worktrees and push branches. The service accesses GitHub issues and PRs via gh. A project leader (MCP) can use Claude Code, Codex or Qwen Code to exchange tools and events with the service.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#a3a3a3" stroke-width="1.5"/></marker><marker id="back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#a3a3a3" stroke-width="1.5"/></marker></defs>
 <rect x="0" y="0" width="1200" height="640" rx="0" fill="#0d0d0d" stroke="#0d0d0d"/>
 <text x="40" y="58" font-size="34" font-weight="600" fill="#ffffff">One local cockpit. Your tools around it.</text>
@@ -14,8 +14,8 @@
 <text x="470" y="224" font-size="22" font-weight="400" fill="#a3a3a3">.local/xezar/</text>
 <rect x="868" y="118" width="312" height="142" rx="12" fill="#171717" stroke="#262626"/>
 <text x="890" y="156" font-size="28" font-weight="600" fill="#ffffff">Agent CLIs</text>
-<text x="890" y="194" font-size="22" font-weight="400" fill="#a3a3a3">Claude Code · Codex · pi</text>
-<text x="890" y="224" font-size="22" font-weight="400" fill="#a3a3a3">OpenCode experimental</text>
+<text x="890" y="194" font-size="22" font-weight="400" fill="#a3a3a3">Claude Code · Codex</text>
+<text x="890" y="224" font-size="22" font-weight="400" fill="#a3a3a3">Qwen Code</text>
 <path d="M340 183H448" fill="none" stroke="#a3a3a3" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
 <text x="351" y="151" font-size="24" font-weight="400" fill="#a3a3a3">Task</text>
 <text x="348" y="223" font-size="24" font-weight="400" fill="#a3a3a3">Events</text>
@@ -24,7 +24,7 @@
 <text x="768" y="223" font-size="24" font-weight="400" fill="#a3a3a3">Events</text>
 <rect x="40" y="426" width="450" height="142" rx="12" fill="#171717" stroke="#262626"/>
 <text x="62" y="464" font-size="28" font-weight="600" fill="#ffffff">Project leader (MCP)</text>
-<text x="62" y="502" font-size="22" font-weight="400" fill="#a3a3a3">Claude Code, Codex, OpenCode or pi</text>
+<text x="62" y="502" font-size="22" font-weight="400" fill="#a3a3a3">Claude Code, Codex or Qwen Code</text>
 <text x="62" y="532" font-size="22" font-weight="400" fill="#a3a3a3">Attached over MCP</text>
 <rect x="550" y="426" width="250" height="142" rx="12" fill="#171717" stroke="#262626"/>
 <text x="572" y="464" font-size="28" font-weight="600" fill="#ffffff">GitHub</text>

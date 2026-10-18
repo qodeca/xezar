@@ -1,5 +1,7 @@
 # Decisions – five-reviewer verdict on the first design draft, 2026-09-14
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 Status: **record of a review that happened before the requirements were written.** The draft reviewed is `designs/decisions/` at its 2026-09-14 state (uncommitted on `feature/decisions-design`, base `0c4fbde`). The grill-me interview that followed ([decisions-grill-record-2026-09-14.md](decisions-grill-record-2026-09-14.md)) resolved most of the blocking findings by decision; the column "Status" says how each finding stands against [decisions-requirements.md](decisions-requirements.md).
 
 Five read-only reviewers ran in parallel, each with its own brief:

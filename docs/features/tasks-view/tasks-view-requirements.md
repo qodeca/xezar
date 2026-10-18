@@ -85,7 +85,7 @@ Clicking the card opens task details. A valid HTTP(S) reference opens GitHub in 
 
 ### Execution tools and models
 
-Show readable tool and model names on every card, for example Claude Code, Codex, or OpenCode. Preserve each tool–model association. These describe execution, not the naming model; no account/profile display is required.
+Show readable tool and model names on every card, for example Claude Code, Codex, or Qwen Code. Preserve each tool–model association. These describe execution, not the naming model; no account/profile display is required.
 
 Show all pairs actually used across steps and continuations, retaining earlier pairs after changes and completion. Normalize repeated identical pairs without purposeless duplicates. Do not guess missing identities/history or claim incomplete data is a complete history.
 

@@ -1,5 +1,7 @@
 # Qwen Code parity proof – live checklist and dogfood
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 Date: 2026-10-16. Issue: #1042 (part of #1041). Qwen Code versions seen: **0.25.2** on every run;
 **0.22.3** once, refused by the version gate (accounts item, below).
 

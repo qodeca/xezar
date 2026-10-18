@@ -696,7 +696,7 @@ describe('attaching Codex (#374)', () => {
     expect(journal.latestSeq).toBe(2);
   });
 
-  // Ported from the OpenCode case of the same name (#1046): an attached leader that stops answering
+  // Ported from a removed adapter's case of the same name (#1046): an attached leader that stops answering
   // AFTER it was attached is reported with the adapter's own reason, and nothing counts as delivered.
   it('an attached leader that does not answer at all is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
     const thread = codexThread();

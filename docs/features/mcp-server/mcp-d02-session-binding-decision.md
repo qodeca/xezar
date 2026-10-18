@@ -1,5 +1,7 @@
 # D-02 — session binding, liveness, occupancy and handover
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented by #99 in `packages/xezar/src/workspace/project-owner.ts` and
 > tested in `project-owner.test.ts` and `mcp/session-ownership.test.ts`. Pre-implementation observations below
 > are superseded; their anchors remain at `9fdcf0e`.

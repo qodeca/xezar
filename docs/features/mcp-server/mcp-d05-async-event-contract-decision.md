@@ -1,5 +1,7 @@
 # D-05 — the async event and tool contract
 
+> **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
+
 > **Status update — 2026-09-15:** Implemented in Phase 5 (#72). The original spike is superseded where noted:
 > retention is independent of acknowledgement (D-09 B-19), and the task acceptance result carries neither
 > `journalSeq` nor `expectedVersion`. Original anchors remain at `9fdcf0e`.
