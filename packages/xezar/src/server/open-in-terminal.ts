@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { shellQuote, withEnvPrefix } from '../core/shell-env.ts';
 import { cmdPathSafe, cmdTokenSafe } from '../platform/batch-line.ts';
+import { hostDesktop } from '../platform/desktop-open.ts';
 import { launchCmd, launchDetached } from '../platform/process-launch.ts';
 import { isWsl, wslDistroName } from './wsl.ts';
 
@@ -33,8 +34,9 @@ export async function openInTerminal(
 ): Promise<boolean> {
   const prefixed = withEnvPrefix(command, env, process.platform);
   if (prefixed === null) return false;
+  const desktop = hostDesktop(isWsl);
 
-  if (process.platform === 'darwin') {
+  if (desktop === 'macos') {
     const script = `cd ${shellQuote(cwd)} && ${prefixed}`;
     return runDetached('osascript', [
       '-e',
@@ -44,7 +46,7 @@ export async function openInTerminal(
     ]);
   }
 
-  if (process.platform === 'win32') {
+  if (desktop === 'windows') {
     // The folder is checked on its own first: inside the composed line a `"` in it could close its
     // quote and make the rest read as a second, well-formed `set` (SEC-11A-05).
     if (!cmdPathSafe(cwd)) return false;
@@ -67,7 +69,7 @@ export async function openInTerminal(
   // itself afterwards (#785) — see `createLaunchScript`.
   const scriptPath = createLaunchScript(cwd, prefixed);
 
-  if (isWsl()) {
+  if (desktop === 'wsl') {
     // No Linux GUI here — go through interop to a Windows terminal, which re-enters this same
     // distro (`wsl.exe -d <distro>`) to run the script we just wrote. `scriptPath`/`cwd` stay
     // POSIX: `wsl.exe` interprets its command line inside the distro, not on the Windows side.

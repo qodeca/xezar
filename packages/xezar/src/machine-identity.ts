@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readlinkSync } from 'node:fs';
-import { launchFileSync } from './platform/process-launch.ts';
-import { system32Program } from './platform/system-programs.ts';
+import { readlinkSync } from 'node:fs';
+import { readPlatformMachineId } from './platform/machine-id.ts';
 
 /**
  * "Is a PID written into a file here comparable to a PID here?" is the one question the
@@ -54,8 +53,6 @@ import { system32Program } from './platform/system-programs.ts';
  */
 export type MachineRelation = 'same' | 'different' | 'unknown';
 
-const PROBE_TIMEOUT_MS = 2000;
-
 /** Memoized for the process: one `ioreg` spawn at most, and a failed probe is never retried. */
 let cached: string | null | undefined;
 
@@ -66,7 +63,7 @@ let cached: string | null | undefined;
 export function localMachineId(): string | null {
   // Synchronous, and on the boot path (`openStore` → `ownProjectData` → here), so on macOS this
   // blocks the event loop for one `ioreg` spawn — measured at ~21 ms, capped at
-  // `PROBE_TIMEOUT_MS`, and memoized to at most one spawn per process. That is a deliberate
+  // `PROBE_TIMEOUT_MS` (platform/machine-id.ts), and memoized to at most one spawn per process. That is a deliberate
   // trade against AGENTS.md's never-block-the-boot rule rather than an oversight: the answer is
   // needed BEFORE the first claim is written, an async probe would mean either an unclaimed
   // window or an awaited boot, and every other outcome here is a plain file read. If the cap ever
@@ -103,40 +100,8 @@ export function __clearMachineIdCacheForTests(): void {
   cached = undefined;
 }
 
-function readPlatformMachineId(): string | null {
-  if (process.platform === 'darwin') {
-    // `"IOPlatformUUID" = "..."`, stable across reboots and OS upgrades, tied to the hardware.
-    const uuid = /"IOPlatformUUID"\s*=\s*"([^"]+)"/.exec(probe('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice']) ?? '');
-    return uuid?.[1] ?? null;
-  }
-  if (process.platform === 'win32') {
-    // reg.exe from System32, never whichever `reg` the PATH offers first (#963).
-    const reg = system32Program('reg.exe') ?? 'reg';
-    const guid = /MachineGuid\s+REG_SZ\s+(\S+)/i.exec(probe(reg, ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid']) ?? '');
-    return guid?.[1] ?? null;
-  }
-  // Linux and the BSDs: systemd's id first, then the older D-Bus one it usually symlinks to.
-  // Both are absent on minimal images, and `/etc/machine-id` is EMPTY on a systemd first boot.
-  for (const path of ['/etc/machine-id', '/var/lib/dbus/machine-id']) {
-    try {
-      const value = readFileSync(path, 'utf8').trim();
-      if (value) return value;
-    } catch { /* try the next one; absence is normal here, not an error */ }
-  }
-  return null;
-}
-
 /** `pid:[4026531836]`, or `null` off Linux and wherever `/proc` is not readable. */
 function readPidNamespace(): string | null {
   try { return readlinkSync('/proc/self/ns/pid').trim() || null; }
   catch { return null; }
-}
-
-/** A fixed argument vector, no shell, bounded time, stderr discarded, or `null`. */
-function probe(command: string, args: readonly string[]): string | null {
-  try {
-    return launchFileSync(command, [...args], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return null;
-  }
 }

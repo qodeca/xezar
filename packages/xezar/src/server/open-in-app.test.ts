@@ -8,7 +8,19 @@ import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 // `vi.hoisted` so `spawnMock` is initialized before the (hoisted) vi.mock factory runs — the
 // factory sets its default implementation, so a bare `const` would be read before init.
 const spawnMock = vi.hoisted(() => vi.fn());
+// WSL detection is pinned off for the whole file, so a run inside real WSL answers like any other
+// Linux host (#1068); the WSL cases switch it on and get the pure path translation.
+const isWslMock = vi.hoisted(() => vi.fn(() => false));
 useEmptyPath();
+
+vi.mock('./wsl.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./wsl.ts')>();
+  return {
+    ...actual,
+    isWsl: () => isWslMock(),
+    translateToWindowsPath: (posixPath: string) => actual.toWindowsPath(posixPath, 'Ubuntu'),
+  };
+});
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -41,6 +53,7 @@ afterAll(() => {
 
 import {
   agentCliRunner,
+  defaultAppLaunch,
   detectOpenTargets,
   fileManagerLaunch,
   launchPathFor,
@@ -198,6 +211,20 @@ describe('openFileInDefaultApp — the OS launcher argument surface', () => {
     }
   });
 
+  it('under WSL opens the file through interop with Explorer, on its Windows path, like a folder', async () => {
+    setPlatform('linux');
+    isWslMock.mockReturnValue(true);
+    try {
+      await openFileInDefaultApp(`/home/pat/repo/${HOSTILE}`);
+    } finally {
+      isWslMock.mockReturnValue(false);
+    }
+    const [bin, args] = spawnMock.mock.calls[0] as [string, string[]];
+    // `xdg-open` has no desktop to open on inside WSL; the folder opener already went to Explorer.
+    expect(bin).toBe('explorer.exe');
+    expect(args).toEqual([`\\\\wsl$\\Ubuntu\\home\\pat\\repo\\${HOSTILE}`]);
+  });
+
   it('spawns without a shell, so no metacharacter is ever interpreted', async () => {
     setPlatform('linux');
     await openFileInDefaultApp('/repo/x.png');
@@ -288,6 +315,25 @@ describe('fileManagerLaunch (#361 WSL support)', () => {
   it('translates a WSL /mnt/<drive> path to its native Windows drive letter', () => {
     const result = fileManagerLaunch('/mnt/c/Users/pat/project', 'linux', true, pureWslPath);
     expect(result.args).toEqual(['C:\\Users\\pat\\project']);
+  });
+});
+
+describe('defaultAppLaunch – one opener with fileManagerLaunch', () => {
+  it('answers exactly what the folder opener answers, on every desktop', () => {
+    const cases: Array<[string, NodeJS.Platform, boolean]> = [
+      ['/repo/a.png', 'darwin', false],
+      ['C:\\repo\\a.png', 'win32', false],
+      ['/home/pat/a.png', 'linux', false],
+      ['/home/pat/a.png', 'linux', true],
+      ['/mnt/c/Users/pat/a.png', 'linux', true],
+    ];
+    for (const [path, platform, wsl] of cases) {
+      expect(defaultAppLaunch(path, platform, wsl, pureWslPath)).toEqual(fileManagerLaunch(path, platform, wsl, pureWslPath));
+    }
+    expect(defaultAppLaunch('/home/pat/a.png', 'linux', true, pureWslPath)).toEqual({
+      bin: 'explorer.exe',
+      args: ['\\\\wsl$\\Ubuntu\\home\\pat\\a.png'],
+    });
   });
 });
 

@@ -60,6 +60,7 @@ import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { startLongPathNotice } from './platform/long-paths.ts';
 import { pathWithLoginShell } from './platform/login-shell-path.ts';
+import { browserLaunch } from './platform/desktop-open.ts';
 import { launchCmd, launchDetached } from './platform/process-launch.ts';
 import { portTaken } from './platform/port-taken.ts';
 import { exitAfterStoppingTrees, onShutdownSignals } from './platform/shutdown-signals.ts';
@@ -1841,13 +1842,14 @@ function openUrl(url: string): void {
     // listen for it and answer false, so it can never hard-crash the process while
     // the cockpit is already serving. The URL is printed above, so a browser-less
     // host just doesn't auto-open.
-    if (process.platform === 'win32') {
+    const launch = browserLaunch(url);
+    if (launch.via === 'cmd') {
       // cmd.exe only through `launchCmd`, which refuses a URL the command processor
       // would reinterpret (#963).
-      void launchCmd(['/c', 'start', '', url]);
+      void launchCmd(launch.args);
       return;
     }
-    void launchDetached(process.platform === 'darwin' ? 'open' : 'xdg-open', [url]);
+    void launchDetached(launch.bin, launch.args);
   } catch {
     // the printed URL is enough
   }

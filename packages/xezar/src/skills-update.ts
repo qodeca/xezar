@@ -3,6 +3,7 @@ import { access, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { xezCacheDir } from './paths.ts';
+import { npmLauncherName } from './platform/desktop-open.ts';
 import { launchFileAsync } from './platform/process-launch.ts';
 
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
@@ -141,7 +142,7 @@ function reasonFor(error: unknown): string {
 }
 
 async function defaultResolveNpx(): Promise<string | null> {
-  const name = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const name = npmLauncherName('npx');
   const adjacent = join(dirname(process.execPath), name);
   try { await access(adjacent, constants.X_OK); return adjacent; } catch { return name; }
 }
