@@ -17,17 +17,18 @@ import { freshServerState, type ServerState } from '../server-install/types.ts';
  * requests are same-origin to the attacker's page, and the Host header is the
  * one tell left. The guard turns those into a 403 before any route runs.
  *
- * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) also serves the public
- * names the server install recorded on this machine and IP literals, and
- * refuses every other name — the installers keep the listener on loopback
- * behind a local proxy, so a browser on the same machine can still reach it.
- * With no recorded name there is nothing to compare against and every name is
- * served, as before. A missing Host header fails closed in local mode; real
- * HTTP/1.1 clients always send one, while the in-process test harness must add it.
+ * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) also serves IP literals,
+ * the public names the server install recorded on this machine and the names
+ * in `XEZ_ALLOWED_HOSTS`, and refuses every other name, recorded or not — the
+ * installers keep the listener on loopback behind a local proxy, so a browser
+ * on the same machine can still reach it. A missing Host header fails closed;
+ * real HTTP/1.1 clients always send one, while the in-process test harness
+ * must add it.
  */
 describe('host-header guard (DNS rebinding)', () => {
   const savedHome = process.env.XEZ_HOME;
   const savedRemote = process.env.XEZ_REMOTE;
+  const savedAllowed = process.env.XEZ_ALLOWED_HOSTS;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -37,6 +38,7 @@ describe('host-header guard (DNS rebinding)', () => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-hostguard-repo-'));
     process.env.XEZ_HOME = home;
     delete process.env.XEZ_REMOTE;
+    delete process.env.XEZ_ALLOWED_HOSTS;
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
@@ -48,6 +50,8 @@ describe('host-header guard (DNS rebinding)', () => {
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
+    if (savedAllowed === undefined) delete process.env.XEZ_ALLOWED_HOSTS;
+    else process.env.XEZ_ALLOWED_HOSTS = savedAllowed;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -157,17 +161,58 @@ describe('host-header guard (DNS rebinding)', () => {
       expect((await request('other.example', '/api/v1/projects', { bindHost: '0.0.0.0' })).status).toBe(403);
     });
 
-    it('keeps serving any name when no install records a public name (nothing to compare against)', async () => {
+    it('refuses an unknown name when no install records a public name, and says how to allow it', async () => {
       process.env.XEZ_REMOTE = '1';
-      expect((await request('cockpit.example.com')).status).toBe(200);
-      expect((await request('cockpit.example.com', '/api/v1/health', { bindHost: '0.0.0.0' })).status).toBe(200);
+      for (const over of [{}, { bindHost: '0.0.0.0' }]) {
+        const res = await request('cockpit.example.com', '/api/v1/projects', over);
+        expect(res.status).toBe(403);
+        expect(((await res.json()) as { error: string }).error).toContain('XEZ_ALLOWED_HOSTS');
+      }
+    });
+
+    it('refuses a missing Host in hosted mode', async () => {
+      process.env.XEZ_REMOTE = '1';
+      expect((await request(null, '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('serves loopback and IP-literal hosts when no install records a public name', async () => {
+      process.env.XEZ_REMOTE = '1';
+      for (const host of ['127.0.0.1:4321', 'localhost', '203.0.113.7:443', '[2001:db8::1]']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+    });
+
+    it('serves names listed in XEZ_ALLOWED_HOSTS — exact, case-insensitive, port ignored', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = ' Cockpit.Example.com , other.example:8443,,';
+      for (const host of ['cockpit.example.com', 'COCKPIT.example.com:443', 'other.example']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+      for (const host of ['sub.cockpit.example.com', 'cockpit.example.com.other.example', 'example.com']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(403);
+      }
+    });
+
+    it('serves an allowlisted second name next to a recorded one', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = 'alias.example.net';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('cockpit.example.com', '/api/v1/projects')).status).toBe(200);
+      expect((await request('alias.example.net', '/api/v1/projects')).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects')).status).toBe(403);
     });
 
     it('ignores a dry-run record and a record without a platform', async () => {
       process.env.XEZ_REMOTE = '1';
       record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com', dryRun: true });
       record({ domain: 'stale.example.com' }, 'stale-example-com');
-      expect((await request('other.example')).status).toBe(200);
+      expect((await request('cockpit.example.com')).status).toBe(403);
+      expect((await request('stale.example.com')).status).toBe(403);
+    });
+
+    it('keeps XEZ_ALLOWED_HOSTS out of local mode', async () => {
+      process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.com';
+      expect((await request('cockpit.example.com')).status).toBe(403);
     });
 
     it('keeps local mode strict even when a public name is recorded', async () => {

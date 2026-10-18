@@ -19,10 +19,12 @@ import { normalizeHostname } from './capabilities.ts';
  * reserved domain gets a fresh hostname on every restart; those always sit
  * under ngrok's own zones, whose DNS no third party controls.
  *
- * When nothing on this host records a public name (a hand-run `XEZ_REMOTE=1`,
- * an install whose domain was never entered), there is nothing to compare
- * against, so the check stays open there — `allowsHost` answers `undefined`
- * and the caller logs that once.
+ * A setup the installer did not record (a hand-set `XEZ_REMOTE=1`, an install
+ * whose domain was never entered, an external proxy without `--domain`) names
+ * its public hosts in `XEZ_ALLOWED_HOSTS` — comma-separated, exact match,
+ * case-insensitive, port ignored. Those names pass in addition to the recorded
+ * ones. Without either, only loopback and IP literals pass: refusing is the
+ * safe default, and the caller's 403 and log line say how to allow a name.
  */
 
 /** ngrok-owned base domains (https://ngrok.com/docs/domains, 2026-10-18). */
@@ -38,15 +40,23 @@ export function isIpLiteralHostname(hostname: string): boolean {
 }
 
 export interface HostedHostPolicy {
-  /** Exact public names recorded by the installer. */
+  /** Exact public names recorded by the installer or listed in `XEZ_ALLOWED_HOSTS`. */
   names: Set<string>;
   /** An ngrok install is recorded: names under ngrok's zones are its tunnel. */
   ngrok: boolean;
 }
 
-/** Read the public names every recorded install on this host answers on. Never throws. */
-export function hostedHostPolicy(): HostedHostPolicy {
-  const names = new Set<string>();
+/** The names listed in `XEZ_ALLOWED_HOSTS`, canonicalized; unparseable entries drop out. */
+export function allowedHostsFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.XEZ_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((entry) => normalizeHostname(entry.trim()))
+    .filter((name) => name.length > 0);
+}
+
+/** The public names this host answers on: every recorded install plus `XEZ_ALLOWED_HOSTS`. Never throws. */
+export function hostedHostPolicy(env: NodeJS.ProcessEnv = process.env): HostedHostPolicy {
+  const names = new Set<string>(allowedHostsFromEnv(env));
   let ngrok = false;
   let instances: ReturnType<typeof listServerInstances> = [];
   try {
@@ -73,13 +83,11 @@ export function hostedHostPolicy(): HostedHostPolicy {
 
 /**
  * Whether a hosted cockpit should serve a request whose canonical, non-loopback
- * `Host` hostname is `hostname`. `true` / `false` when the host records what it
- * answers on; `undefined` when it records nothing (the check cannot decide).
+ * `Host` hostname is `hostname`. A missing or unparseable host is refused.
  */
-export function allowsHost(hostname: string, policy: HostedHostPolicy = hostedHostPolicy()): boolean | undefined {
-  if (!hostname) return policy.names.size > 0 || policy.ngrok ? false : undefined;
+export function allowsHost(hostname: string, policy: HostedHostPolicy = hostedHostPolicy()): boolean {
+  if (!hostname) return false;
   if (isIpLiteralHostname(hostname)) return true;
-  if (policy.names.size === 0 && !policy.ngrok) return undefined;
   if (policy.names.has(hostname)) return true;
   return policy.ngrok && NGROK_ZONES.some((zone) => hostname.endsWith(`.${zone}`));
 }

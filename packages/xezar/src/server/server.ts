@@ -1412,8 +1412,8 @@ export function createApp(deps: ServerDeps) {
   //      really originate from this machine. A rebound `evil.com` still sends
   //      `Host: evil.com`, so this kills DNS rebinding for reads AND writes.
   //      In hosted mode (XEZ_REMOTE / non-loopback bind) the proxy forwards the
-  //      real public Host, so the allowlist also admits the public names the
-  //      install recorded and IP literals (`hosted-hosts.ts`).
+  //      real public Host, so the allowlist also admits IP literals, the public
+  //      names the install recorded and XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`).
   //      The match runs through `isLoopbackHostHeader`, whose 127.0.0.0/8 test
   //      is *anchored* and whose missing-Host answer is "untrusted". Both are
   //      load-bearing: a `startsWith('127.')` prefix would accept the
@@ -1437,33 +1437,22 @@ export function createApp(deps: ServerDeps) {
   // Hosted mode used to skip check 1 outright, but the installers keep the
   // listener on loopback behind a local proxy, so a browser on the same machine
   // can still reach it under a foreign name. A hosted cockpit therefore serves a
-  // non-loopback Host only when it is one of the public names this host's
-  // install records (`hosted-hosts.ts`) or an IP literal. Each refused name is
-  // logged once; a host that records no public name keeps the old behaviour and
-  // says so once, since there is nothing to compare against.
-  const loggedHostDecisions = new Set<string>();
-  const logHostDecisionOnce = (key: string, line: string) => {
-    if (loggedHostDecisions.has(key) || loggedHostDecisions.size >= 64) return;
-    loggedHostDecisions.add(key);
-    console.warn(line);
-  };
+  // non-loopback Host only when it is an IP literal, a public name this host's
+  // install records, or a name in XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`). Each
+  // refused name is logged once (bounded), with how to allow it.
+  const loggedRefusedHosts = new Set<string>();
   const hostedModeAllowsHost = (hostName: string): boolean => {
     if (!isHostedMode()) return false;
-    const verdict = allowsHost(hostName);
-    if (verdict === undefined) {
-      logHostDecisionOnce(
-        'unrecorded',
-        '[xezar] hosted mode: no public hostname is recorded for this machine, so requests under any name are served — run `xezar server-install` with a domain to restrict them',
-      );
-      return true;
-    }
-    if (!verdict) {
-      logHostDecisionOnce(
-        `host:${hostName}`,
-        `[xezar] hosted mode: refused a request for Host "${hostName.slice(0, 120)}" — it is not a public name recorded by \`xezar server-install\` for this machine`,
+    if (allowsHost(hostName)) return true;
+    if (!loggedRefusedHosts.has(hostName) && loggedRefusedHosts.size < 64) {
+      loggedRefusedHosts.add(hostName);
+      console.warn(
+        `[xezar] hosted mode: refused a request for Host "${hostName.slice(0, 120) || '(none)'}". ` +
+          `${HOSTED_HOST_HINT} To serve this name, add it to XEZ_ALLOWED_HOSTS (comma-separated) and restart, ` +
+          'or record it with `xezar server-install --domain <name>`.',
       );
     }
-    return verdict;
+    return false;
   };
   app.use('/api/*', async (c, next) => {
     const hostName = hostnameOfHost(c.req.header('host'));
@@ -1473,7 +1462,9 @@ export function createApp(deps: ServerDeps) {
     if (!isLoopbackHostHeader(hostName) && !hostedModeAllowsHost(hostName)) {
       return c.json(
         {
-          error: 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
+          error: isHostedMode()
+            ? `forbidden: unexpected Host header — ${HOSTED_HOST_HINT} To allow a name, list it in XEZ_ALLOWED_HOSTS (comma-separated) and restart (see #426)`
+            : 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
         },
         403,
       );
@@ -6933,6 +6924,10 @@ export function verifyWsUpgrade(req: IncomingMessage, bindHost?: string): WsUpgr
 
 /** The bare hostname of a `Host` header — see `normalizeHostname`. `''` when the
  *  header is absent, which no allowlist matches. */
+/** Shared by the hosted-mode 403 body and its log line, so the two cannot drift. */
+const HOSTED_HOST_HINT =
+  'this hosted cockpit serves only loopback, IP addresses, public names recorded by `xezar server-install` and names listed in XEZ_ALLOWED_HOSTS.';
+
 function hostnameOfHost(host: string | undefined): string {
   return host ? normalizeHostname(host) : '';
 }
