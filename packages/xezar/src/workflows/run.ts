@@ -37,6 +37,8 @@ import {
   isImageAttachmentName,
   isImageMediaType,
   engineOwnsRun,
+  RUN_STILL_ACTIVE_CODE,
+  type ApiErrorCode,
 } from '@qodeca/xezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import {
@@ -3059,7 +3061,7 @@ export class RunManager {
     /** Restart recovery may discover several interrupted tasks at once. Those
      *  continuations are queued; an explicit user Continue remains immediate. */
     deferForCapacity = false,
-  ): { ok: boolean; error?: string } {
+  ): { ok: boolean; error?: string; code?: ApiErrorCode } {
     if (agentModelsLocked(this.repoRoot) && opts.model?.trim()) {
       return { ok: false, error: AGENT_MODELS_LOCKED_ERROR };
     }
@@ -3070,7 +3072,8 @@ export class RunManager {
     // cancellation already delivered to it and leaving one body driving a session the registry
     // no longer points at. Two spellings of "is this run live" is the drift `activeRunIds()`
     // was introduced to end (#200).
-    if (this.isActive(runId)) return { ok: false, error: 'run is still active' };
+    // The one refusal a client retries, so it carries a stable code (clients match the code).
+    if (this.isActive(runId)) return { ok: false, error: 'run is still active', code: RUN_STILL_ACTIVE_CODE };
     const run = this.store.getRun(runId);
     if (!run) return { ok: false, error: 'not found' };
     // `review` is continuable too — that's the "Send back" path (spec 009).

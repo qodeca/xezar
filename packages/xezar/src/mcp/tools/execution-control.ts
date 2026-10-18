@@ -6,7 +6,9 @@ import {
   staleVersionRejectionSchema,
   type RunHistoryPage,
   type StaleVersionRejection,
+  apiErrorCode,
   engineOwnsRun,
+  RUN_STILL_ACTIVE_CODE,
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
@@ -69,9 +71,9 @@ export type ExecutionControlAction = (typeof EXECUTION_CONTROL_ACTIONS)[number];
 
 /** The cockpit's own schedule (`ask-answer.ts`): the idle timer closes the backend before the
  *  RunManager has released the run, so a resume can arrive a few milliseconds early. Only that
- *  exact refusal is retried; every other 409 is an answer. */
+ *  refusal – the contract's `run_still_active` code, never its wording – is retried; every other
+ *  409 is an answer. */
 export const IDLE_TEARDOWN_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1_000, 1_000, 1_000, 1_000] as const;
-const IDLE_TEARDOWN_REFUSAL = 'run is still active';
 
 /** The review panel's Send back prefix (`review-panel.tsx`). */
 const REVIEW_FEEDBACK_PREFIX = 'Review feedback:\n';
@@ -407,7 +409,7 @@ async function continueAfterIdleTeardown(s: Services, runId: string, text: strin
   for (let retries = 0; ; retries += 1) {
     const answer = await postContinue(s, runId, text, undefined, expectedVersion);
     const delay = IDLE_TEARDOWN_RETRY_DELAYS_MS[retries];
-    if (answer.ok || answer.status !== 409 || answer.error !== IDLE_TEARDOWN_REFUSAL || delay === undefined) return answer;
+    if (answer.ok || answer.status !== 409 || apiErrorCode(answer.body) !== RUN_STILL_ACTIVE_CODE || delay === undefined) return answer;
     await s.wait(delay);
   }
 }

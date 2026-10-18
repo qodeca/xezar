@@ -121,10 +121,11 @@ import {
   getApiScope,
   queryScope,
   agentQuotaResponseSchema,
+  apiErrorCode,
   runHistoryContextSchema,
   runHistoryPageSchema,
 } from '@qodeca/xezar-api-client'
-import type { Ok, OkJson } from '@qodeca/xezar-api-client'
+import type { ApiErrorCode, Ok, OkJson } from '@qodeca/xezar-api-client'
 import type { ClientResponse } from 'hono/client'
 import type { ResponseFormat } from 'hono/types'
 import type { AppType } from '@qodeca/xezar/app-type'
@@ -170,11 +171,13 @@ export class ApiError extends Error {
   readonly command?: string
   /** `POST /api/workflows`: the file is already there — the caller may retry with `overwrite`. */
   readonly exists?: boolean
+  /** The contract's stable machine code for a refusal a client acts on (`API_ERROR_CODES`). */
+  readonly code?: ApiErrorCode
 
   constructor(
     status: number,
     message: string,
-    extras: { manual?: string; command?: string; exists?: boolean; cause?: unknown } = {},
+    extras: { manual?: string; command?: string; exists?: boolean; code?: ApiErrorCode; cause?: unknown } = {},
   ) {
     super(message, extras.cause !== undefined ? { cause: extras.cause } : undefined)
     this.name = 'ApiError'
@@ -182,6 +185,7 @@ export class ApiError extends Error {
     this.manual = extras.manual
     this.command = extras.command
     this.exists = extras.exists
+    this.code = extras.code
   }
 }
 
@@ -219,6 +223,7 @@ function errorFor(status: number, statusText: string, body: string): ApiError {
     manual: str(json.manual),
     command: str(json.command),
     exists: typeof json.exists === 'boolean' ? json.exists : undefined,
+    code: apiErrorCode(json),
   })
 }
 

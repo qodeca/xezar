@@ -633,8 +633,8 @@ describe('an answer on the resume seam retries only the idle-teardown refusal', 
   it('retries "run is still active" on the cockpit schedule, then delivers', async () => {
     const { service, calls } = fakeService({ status: 'done', sessionId: 's1' }, {
       'POST /continue': [
-        { status: 409, body: { error: 'run is still active' } },
-        { status: 409, body: { error: 'run is still active' } },
+        { status: 409, body: { error: 'run is still active', code: 'run_still_active' } },
+        { status: 409, body: { error: 'run is still active', code: 'run_still_active' } },
         { status: 200, body: { continued: true } },
       ],
     });
@@ -646,8 +646,39 @@ describe('an answer on the resume seam retries only the idle-teardown refusal', 
     expect(calls.filter((c) => c === 'POST /continue')).toHaveLength(3);
   });
 
+  it('matches the code, not the sentence', async () => {
+    const reworded = fakeService({ status: 'done', sessionId: 's1' }, {
+      'POST /continue': [
+        { status: 409, body: { error: 'the engine has not let go of this task yet', code: 'run_still_active' } },
+        { status: 200, body: { continued: true } },
+      ],
+    });
+    const retried: number[] = [];
+    const delivered = await invoke(
+      { app: reworded.service },
+      'proj-a',
+      { action: 'answer_question', runId: 'r1', questionId: 'q1', text: 'A' },
+      createExecutionControlTool(async (ms) => void retried.push(ms)),
+    );
+    expect(delivered.value).toMatchObject({ accepted: true, delivery: 'resumed' });
+    expect(retried).toEqual(IDLE_TEARDOWN_RETRY_DELAYS_MS.slice(0, 1));
+
+    const uncoded = fakeService({ status: 'done', sessionId: 's1' }, {
+      'POST /continue': [{ status: 409, body: { error: 'run is still active' } }],
+    });
+    const never: number[] = [];
+    const refused = await invoke(
+      { app: uncoded.service },
+      'proj-a',
+      { action: 'answer_question', runId: 'r1', questionId: 'q1', text: 'A' },
+      createExecutionControlTool(async (ms) => void never.push(ms)),
+    );
+    expect(refused.value).toMatchObject({ accepted: false, status: 'conflict' });
+    expect(never).toEqual([]);
+  });
+
   it('gives up after the schedule, and never retries any other refusal', async () => {
-    const endless = Array.from({ length: 20 }, () => ({ status: 409, body: { error: 'run is still active' } }));
+    const endless = Array.from({ length: 20 }, () => ({ status: 409, body: { error: 'run is still active', code: 'run_still_active' } }));
     const exhausted = fakeService({ status: 'done', sessionId: 's1' }, { 'POST /continue': endless });
     const waits: number[] = [];
     const tool = createExecutionControlTool(async (ms) => void waits.push(ms));

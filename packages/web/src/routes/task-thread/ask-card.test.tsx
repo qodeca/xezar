@@ -262,7 +262,7 @@ describe('AskCard — answering after the session has ended', () => {
       resolveContinuation = resolve
     })
     continueAsync
-      .mockRejectedValueOnce(new ApiError(409, 'run is still active'))
+      .mockRejectedValueOnce(new ApiError(409, 'run is still active', { code: 'run_still_active' }))
       .mockReturnValueOnce(continuation)
     renderAsk(singleAsk, { ...activeRun, steps: [step({ sessionId: 'sess-1' })] })
 

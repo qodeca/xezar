@@ -4561,7 +4561,7 @@ export function createApp(deps: ServerDeps) {
         // step's own agent instead (#984).
         keepRunAgent: true,
       });
-      if (!result.ok) return c.json({ error: result.error }, 409);
+      if (!result.ok) return c.json({ error: result.error, ...(result.code ? { code: result.code } : {}) }, 409);
       return c.json({ continued: true });
     })
 
