@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { CLAUDE_CODE_PUSH_UNCONFIRMED_FIX, CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE } from './adapters/claude-code.ts';
+import { CLAUDE_CODE_CHANNEL_REQUIREMENTS, CLAUDE_CODE_PUSH_UNCONFIRMED_FIX, CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE } from './adapters/claude-code.ts';
 import { HEALTH_TOOL } from './bridge.ts';
 import { CLAUDE_CODE_BRIDGE_TOO_OLD, CLAUDE_CODE_NOT_OWNER } from './leader-delivery.ts';
 import { toolListing } from './tool.ts';
@@ -304,7 +304,7 @@ describe('#261 — the MCP API reference against the registry and the inventory'
 });
 
 
-it('documents every Claude Code attach and push blocker, in the exact words the code sends, on all required surfaces', () => {
+it('documents every Claude Code attach and push blocker and every Channels requirement, in the words the code uses, on all required surfaces', () => {
   // The strings are imported, not copied: a reworded blocker fails here until every surface says it
   // the same way, and a phrase the code never sends cannot keep this green.
   const blockers = [
@@ -323,7 +323,19 @@ it('documents every Claude Code attach and push blocker, in the exact words the 
       if (path === 'README.md' && blocker.code === 'claude-code-push-unconfirmed') continue;
       expect(source, `${path}: ${blocker.code} fix`).toContain(blocker.fix);
     }
+    // Every Channels requirement, in the words the code names it by.
+    for (const { requirement, words } of CLAUDE_CODE_CHANNEL_REQUIREMENTS) expect(source, `${path}: ${requirement}`).toContain(words);
   }
+});
+
+it('names the Channels requirements the push-unconfirmed remedy relies on in the same words as the docs', () => {
+  const inFix = CLAUDE_CODE_CHANNEL_REQUIREMENTS.filter((entry) => entry.inFix);
+  expect(inFix.length).toBeGreaterThan(0);
+  for (const { requirement, words } of inFix) expect(CLAUDE_CODE_PUSH_UNCONFIRMED_FIX, requirement).toContain(words);
+  // And the list is not empty or duplicated, so the surface check above cannot pass vacuously.
+  const words = CLAUDE_CODE_CHANNEL_REQUIREMENTS.map((entry) => entry.words);
+  expect(words.length).toBeGreaterThanOrEqual(10);
+  expect(new Set(words).size).toBe(words.length);
 });
 
 it('documents the claude-code-push-not-seen recovery and the debug-file check on the maintained doc surfaces (#886)', () => {

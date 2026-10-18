@@ -103,6 +103,27 @@ export interface ClaudeCodeChannelBlocker {
 }
 
 /**
+ * What a person needs before Claude Code Channels can carry xezar's pushes, one entry per
+ * requirement, with the exact words every user-facing surface uses for it (the README, the
+ * changelog, the cockpit's MCP connection section and the Claude Code evidence page). The surfaces
+ * explain each in their own sentences; these words are what they must all contain, so a
+ * requirement cannot drop out of one of them unnoticed (`mcp-api-doc.test.ts`). `inFix` marks the
+ * ones the push-unconfirmed remedy below names too.
+ */
+export const CLAUDE_CODE_CHANNEL_REQUIREMENTS: ReadonlyArray<{ readonly requirement: string; readonly words: string; readonly inFix: boolean }> = [
+  { requirement: 'the per-launch opt-in flag', words: '--dangerously-load-development-channels server:xezar', inFix: true },
+  { requirement: 'the warning Claude Code shows at every launch', words: 'confirmation screen', inFix: false },
+  { requirement: 'the choice that accepts it', words: 'I am using this for local development', inFix: false },
+  { requirement: 'what the flag allows', words: 'push messages into your session', inFix: false },
+  { requirement: 'why the flag is needed', words: 'custom servers are not on the channel allowlist', inFix: false },
+  { requirement: 'the research-preview switch', words: 'feature-flag service', inFix: false },
+  { requirement: 'the organisation policy', words: 'Team or Enterprise', inFix: true },
+  { requirement: 'the login kind', words: 'Console API-key login', inFix: true },
+  { requirement: 'the providers that cannot use Channels', words: 'Bedrock, Vertex or Foundry', inFix: true },
+  { requirement: 'the variable that turns Channels off', words: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', inFix: true },
+];
+
+/**
  * The recoverable blocker for "delivered, but nothing confirms the model took it" (decision record
  * § 5.6). It fires on the fact `deliveredSeq > ackedSeq` for longer than one heartbeat, and it names
  * both what to check and that nothing is lost — it never diagnoses which channel condition failed,
