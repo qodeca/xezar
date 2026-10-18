@@ -13,3 +13,9 @@
   PowerShell read that never returned left the sampler busy for the rest of the server's life,
   which also stopped the memory limit. Each read is now bounded at 10 seconds, and the next
   sample runs as usual.
+- 🐛 **A long task's process record no longer fills up and stops recording.** The record xezar
+  keeps of a task's programs on Windows and macOS, to stop them at a cancel or a pause, held at
+  most 2,048 entries and never dropped programs that had exited, so a long task that ran
+  thousands of short commands stopped recording new ones. A full record now forgets programs no
+  read has shown alive for a minute – never the task's own agent process – and keeps proof for
+  any live program one of them started.

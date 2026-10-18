@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProcRow, ProcessTable } from '../platform/process-table.ts';
-import { LEDGER_MAX_ENTRIES, ROOT_PIN_WINDOW_MS, RunProcessLedger } from './run-process-ledger.ts';
+import { LEDGER_MAX_ENTRIES, LEDGER_STALE_MS, ROOT_PIN_WINDOW_MS, RunProcessLedger } from './run-process-ledger.ts';
 
 const T0 = 1_800_000_000_000;
 const ROOT = 100;
@@ -82,6 +82,56 @@ describe('RunProcessLedger – the root pin (SEC-2)', () => {
     const ledger = pinnedLedger(...children);
     const recorded = children.filter((child) => ledger.has(child.pid)).length;
     expect(recorded).toBe(LEDGER_MAX_ENTRIES - 1); // the root is one of them
+  });
+});
+
+/**
+ * A full ledger used to refuse every new process for the rest of the run, though most of what it
+ * held had long exited. It now forgets processes no read has shown alive for LEDGER_STALE_MS.
+ */
+describe('RunProcessLedger – a full ledger forgets exited processes', () => {
+  const READ_1 = T0 + 2_000;
+  /** Full: the root and LEDGER_MAX_ENTRIES − 1 short-lived children, all seen by READ_1. */
+  function fullLedger(...extra: ProcRow[]): RunProcessLedger {
+    const children = Array.from({ length: LEDGER_MAX_ENTRIES - 1 }, (_, index) => row(1_000 + index, ROOT, T0 + 1));
+    const ledger = pinnedLedger(...children, ...extra);
+    expect(ledger.has(1_000 + LEDGER_MAX_ENTRIES - 2)).toBe(true);
+    return ledger;
+  }
+
+  it('records a new process once the exited ones have not been seen for the stale window', () => {
+    const ledger = fullLedger();
+    const later = READ_1 + LEDGER_STALE_MS + 1;
+    ledger.record(table(later, row(ROOT, XEZAR, T0 - 5), row(9_000, ROOT, later - 500)));
+    expect(ledger.has(9_000)).toBe(true);
+    expect(ledger.has(1_000)).toBe(false);
+    expect(ledger.has(ROOT)).toBe(true);
+  });
+
+  it('keeps refusing while what it holds was seen within the window (GUARD)', () => {
+    const ledger = fullLedger();
+    const later = READ_1 + LEDGER_STALE_MS - 1;
+    ledger.record(table(later, row(ROOT, XEZAR, T0 - 5), row(9_000, ROOT, later - 500)));
+    expect(ledger.has(9_000)).toBe(false);
+    expect(ledger.has(1_000)).toBe(true);
+  });
+
+  it('never forgets the root pin, even when no read has shown it for the window', () => {
+    const ledger = fullLedger();
+    ledger.record(table(READ_1 + LEDGER_STALE_MS + 1));
+    expect(ledger.has(ROOT)).toBe(true);
+    expect(ledger.has(1_000)).toBe(false);
+  });
+
+  it('records a live program that started under a forgotten process, so a stop still proves it', () => {
+    const ledger = fullLedger();
+    // 1 000 exited after READ_1; its child 300 started while 1 000 held the pid and no read recorded it.
+    const orphan = row(300, 1_000, T0 + 1_500);
+    expect(ledger.targets([orphan], none)).toEqual([{ pid: 300, startedAt: T0 + 1_500 }]);
+    ledger.record(table(READ_1 + LEDGER_STALE_MS + 1, row(ROOT, XEZAR, T0 - 5), orphan));
+    expect(ledger.has(1_000)).toBe(false);
+    expect(ledger.has(300)).toBe(true);
+    expect(ledger.targets([orphan], none)).toEqual([{ pid: 300, startedAt: T0 + 1_500 }]);
   });
 });
 
