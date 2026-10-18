@@ -1482,7 +1482,10 @@ async function runCommand(
     }
   }
 
-  const store = openStore(repoRoot);
+  // `keepLive`: every other queued, running or waiting run stays as it is on disk, for the next
+  // `serve` to recover. Without it this store marked them all failed and its first save wrote
+  // that, and `serve` then dropped their saved process lists without stopping what they left.
+  const store = openStore(repoRoot, { keepLive: true });
   // Headless tasks still appear in the cockpit later, so persist the same
   // task-local recovery event when a credential expires after the preflight.
   const providerRuntimeAuth = new ProviderRuntimeAuthObserver(providerAuth, () => {});
@@ -1491,7 +1494,7 @@ async function runCommand(
   // 2.5) — one refreshed semaphore, even with just one manager in play.
   const semaphore = new WorkspaceSemaphore();
   await semaphore.refresh();
-  const manager = new RunManager(store, repoRoot, { semaphore });
+  const manager = new RunManager(store, repoRoot, { semaphore, ownRunsOnly: true });
 
   // The stdout transcript is the DEFAULT and is unchanged (the backward-compatibility promise).
   // `--quiet` — a flag that did not exist before this release, so nothing that works today

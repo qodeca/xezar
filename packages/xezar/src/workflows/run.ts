@@ -894,6 +894,9 @@ export class RunManager {
   /** Stops what a paused, cancelled or timed-out run started (#943). */
   private readonly runProcesses: RunProcessSweeper;
 
+  /** See the `ownRunsOnly` constructor option; `startedHere` is the set of runs it may act on. */
+  private readonly ownRunsOnly: boolean;
+  private readonly startedHere = new Set<string>();
   /** The stalled-queue watchdog (see `rescueStalledQueue`). */
   private readonly queueWatchdog: ReturnType<typeof setInterval>;
 
@@ -1010,8 +1013,16 @@ export class RunManager {
       agentQuotaStore?: AgentQuotaStore;
       /** Test seam: builds the run-process sweeper around this manager's hooks. */
       runProcesses?: (hooks: RunProcessSweeperOptions) => RunProcessSweeper;
+      /**
+       * Headless `xezar run`: this manager acts only on the runs it starts itself. The store
+       * still holds every other project run as it was (`keepLive`), and those belong to the next
+       * `serve`'s `recover()` — so the queue watchdog never re-adopts them here and no usage-limit
+       * resume is re-armed for them.
+       */
+      ownRunsOnly?: boolean;
     } = {},
   ) {
+    this.ownRunsOnly = options.ownRunsOnly === true;
     this.autoResumeTimer = options.autoResumeTimer ?? {
       schedule: (callback, delay) => setTimeout(callback, delay),
       cancel: timer => clearTimeout(timer),
@@ -1505,6 +1516,7 @@ export class RunManager {
     this.pendingJobs.set(run.id, { workflow, input: effectiveInput });
     this.queue.push(run.id);
     void this.pump();
+    this.startedHere.add(run.id);
     return run;
   }
 
@@ -2097,6 +2109,11 @@ export class RunManager {
    *
    * Cheap: an in-memory scan, and arming is skipped for every run already held.
    */
+  /** Whether this manager may act on a stored run it did not hand a job to (`ownRunsOnly`). */
+  private mayAdopt(runId: string): boolean {
+    return !this.ownRunsOnly || this.startedHere.has(runId);
+  }
+
   private reconcileAutoResumes(): void {
     if (!this.semaphore.autoResumeOnUsageLimit()) {
       // Sweep the RECORDS, not the timer map. A record promising a resume that no timer is
@@ -2111,7 +2128,7 @@ export class RunManager {
       const pending = new Set([
         ...this.autoResumeTimers.keys(),
         ...this.store.listRuns().filter((run) => run.autoResumeAt !== undefined).map((run) => run.id),
-      ]);
+      ].filter((runId) => this.mayAdopt(runId)));
       for (const runId of pending) {
         this.clearAutoResume(runId);
         this.store.appendEvent(runId, {
@@ -2123,6 +2140,7 @@ export class RunManager {
     }
     for (const run of this.store.listRuns()) {
       if (run.status !== 'failed' || !run.autoResumeAt) continue;
+      if (!this.mayAdopt(run.id)) continue;
       if (this.autoResumeTimers.has(run.id)) continue;
       const deadline = Date.parse(run.autoResumeAt);
       // A deadline that is unreadable, belongs to a run that has spent its cap, or belongs to a
@@ -2242,6 +2260,7 @@ export class RunManager {
     for (const run of this.store.listRuns()) {
       if (this.disposed) return;
       if (run.status !== 'queued') continue;
+      if (!this.mayAdopt(run.id)) continue;
       if (this.active.has(run.id) || this.starting.has(run.id)) continue;
       if (this.pendingJobs.has(run.id) || this.pendingContinuations.has(run.id)) continue;
       if (this.queue.includes(run.id)) continue;
