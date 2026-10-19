@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // The two-branch model: `develop` is the default branch and takes every feature PR; `main` holds
 // released work only and takes release-class PRs (promotion, version bump, hotfix). Branch
@@ -147,7 +148,7 @@ describe('the browser provider CI and the local setup download and run', () => {
       expect(run(any, 'agent_browser_verify agent-browser-unknown "$2"').status).not.toBe(0);
       expect(run(any, 'agent_browser_verify agent-browser-linux-x64 "$2.missing"').status).not.toBe(0);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });
