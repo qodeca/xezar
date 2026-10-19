@@ -96,8 +96,9 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   *Way forward:* read health from a native client or from the cockpit's own origin. The owner
   approved removing the health CORS headers on 2026-10-18.
 - **Unreleased – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
-  mode (`XEZ_REMOTE=1` or a non-loopback bind) three things that used to succeed are refused, as a
-  security hardening decided by the owner, without a §8 deprecation notice. A `Host` name that is
+  mode (`XEZ_REMOTE=1` or a non-loopback bind) three things that used to succeed are refused. The
+  owner approved shipping this without a §8 deprecation notice (2026-10-18), because the changes
+  fix security holes. A `Host` name that is
   not loopback, an IP address, a public name `xezar server-install` recorded or a name in the new
   `XEZ_ALLOWED_HOSTS` gets `403`. `PUT /api/v1/workspace/config` answers `409` and saves nothing
   when the body names `browseRoot`, `projectsDir`, `agentEnvPassthrough` or `cli.instance`.

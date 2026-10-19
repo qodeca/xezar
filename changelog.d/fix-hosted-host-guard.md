@@ -13,3 +13,8 @@
   passed to agents, or the instance mode is refused with a `409` and nothing is saved, as editing
   agent configuration already was. Display and resource settings stay editable. The folder picker
   no longer lists hidden folders in hosted mode.
+- 🔒 **Hosted settings screens show the locked settings read-only.** In hosted mode, Global
+  settings → Projects (browse and checkout folders), Resources (extra variables agents receive)
+  and Terminal (instance mode) show the current value in a read-only field with the reason on
+  screen, instead of an editable field the server would refuse. The MCP `set_workspace_config`
+  description says the same keys are refused in hosted mode.

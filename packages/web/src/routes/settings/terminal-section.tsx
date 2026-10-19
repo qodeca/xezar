@@ -10,6 +10,7 @@ import { nativeFieldClass } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
+import { HostedLockedValue, useHostedSettingsLocked } from './hosted-locked'
 
 /**
  * Global settings → Terminal: what xezar does when a person starts it in a terminal (#467, PR 5).
@@ -125,6 +126,7 @@ function TerminalForm({ cli }: { cli: Cli }) {
       },
     )
 
+  const locked = useHostedSettingsLocked()
   /** "Saved. " once this visit stored the key, and nothing before it did. */
   const savedPrefix = (key: CliKey) => (saved === key ? 'Saved. ' : '')
   /** " (from XEZ_…)" only when that variable is what decides the next start. */
@@ -150,6 +152,14 @@ function TerminalForm({ cli }: { cli: Cli }) {
           <p data-slot="terminal-instance-owned" className={consequenceClass}>
             This project has its own settings, so this cockpit always serves one project.
           </p>
+        ) : locked ? (
+          // Hosted mode: the server refuses this key, so the mode is shown, not offered for editing.
+          <HostedLockedValue
+            label="Instance mode"
+            value={cli.instance === null ? NOT_SET_LABEL : INSTANCE_LABELS[cli.instance]}
+            slot="terminal-instance-locked"
+            mono={false}
+          />
         ) : (
           <>
             <select

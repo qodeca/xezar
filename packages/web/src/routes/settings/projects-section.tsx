@@ -23,6 +23,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
 import { allProjectTags, suggestTags } from '@/lib/project-tags'
 import { cn } from '@/lib/utils'
+import { HostedLockedValue, useHostedSettingsLocked } from './hosted-locked'
 import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
 import { SettingsField } from './settings-field'
 
@@ -189,6 +190,16 @@ function WorkspaceRootField({
   // because paraphrasing "permission denied on /opt/checkouts" as "invalid path" throws away
   // the only sentence that tells the user what to fix.
   const serverError = save.isError ? save.error.message : null
+  const locked = useHostedSettingsLocked()
+
+  if (locked) {
+    // Hosted mode: the server refuses this key, so the value is shown, not offered for editing.
+    return (
+      <SettingsField title={title} hint={hint}>
+        <HostedLockedValue label={title} value={configuredValue} slot={`projects-${slot}-root-locked`} />
+      </SettingsField>
+    )
+  }
 
   return (
     <SettingsField

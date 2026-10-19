@@ -88,12 +88,14 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
 
 /** Seeds the step-3.2 route gates so the shell renders immediately. The global settings area is
  *  unscoped, but the gates still answer for the chrome rendered around it. */
-function gateSeededClient(singleProjectRoot = false) {
+function gateSeededClient(singleProjectRoot = false, hosted = false) {
   const client = createQueryClient()
-  client.setQueryData(
-    queryKeys.health,
-    singleProjectRoot ? { bootProject: 'boot', capabilities: { singleProjectRoot: true } } : { bootProject: 'boot' },
-  )
+  client.setQueryData(queryKeys.health, {
+    bootProject: 'boot',
+    ...(singleProjectRoot || hosted
+      ? { capabilities: { ...(singleProjectRoot ? { singleProjectRoot: true } : {}), ...(hosted ? { localHandoff: false } : {}) } }
+      : {}),
+  })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
@@ -102,9 +104,12 @@ function gateSeededClient(singleProjectRoot = false) {
   return client
 }
 
-function renderResources({ singleProjectRoot = false }: { singleProjectRoot?: boolean } = {}) {
+function renderResources({
+  singleProjectRoot = false,
+  hosted = false,
+}: { singleProjectRoot?: boolean; hosted?: boolean } = {}) {
   render(
-    <QueryClientProvider client={gateSeededClient(singleProjectRoot)}>
+    <QueryClientProvider client={gateSeededClient(singleProjectRoot, hosted)}>
       <MemoryRouter initialEntries={['/settings/global/resources']}>
         <AppRoutes />
         <Toaster />
@@ -502,6 +507,34 @@ describe('Global settings → Resources', () => {
       await waitFor(() => expect(clearPassthrough()!.disabled).toBe(false))
       fireEvent.click(clearPassthrough()!)
       await waitFor(() => expect(puts().at(-1)?.body).toEqual({ agentEnvPassthrough: null }))
+    })
+  })
+
+  describe('extra agent variables in hosted mode', () => {
+    it('shows the forwarded names read-only with the reason on screen, and offers no Save', async () => {
+      serve()
+      renderResources({ hosted: true })
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="resources-env-passthrough-locked"]')).not.toBeNull(),
+      )
+      const field = document.querySelector<HTMLInputElement>('[data-slot="resources-env-passthrough-locked-value"]')!
+      expect(field.readOnly).toBe(true)
+      expect(field.value).toBe('Nothing extra')
+      const reason = document.querySelector('[data-slot="resources-env-passthrough-locked-reason"]')!
+      expect(reason.textContent).toBe('Set on the machine that runs xezar – remote changes are turned off.')
+      expect(field.getAttribute('aria-describedby')).toBe(reason.id)
+      expect(document.querySelector('[data-slot="resources-env-passthrough"]')).toBeNull()
+      expect(document.querySelector('[data-action="resources-save-env-passthrough"]')).toBeNull()
+      expect(document.querySelector('[data-action="resources-clear-env-passthrough"]')).toBeNull()
+      // The settings that stay writable remotely are still offered.
+      expect(parallelSelect()).not.toBeNull()
+    })
+
+    it('keeps the editable field in local mode', async () => {
+      serve()
+      renderResources()
+      await waitFor(() => expect(document.querySelector('[data-slot="resources-env-passthrough"]')).not.toBeNull())
+      expect(document.querySelector('[data-slot="resources-env-passthrough-locked"]')).toBeNull()
     })
   })
 })
