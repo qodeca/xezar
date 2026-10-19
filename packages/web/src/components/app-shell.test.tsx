@@ -586,6 +586,12 @@ describe('AppShell', () => {
       expect(slotText('mobile-title')).toBe('Workspace settings')
     })
 
+    it('names a page outside the nav by its own name, not the product name', () => {
+      renderShell('/p/shop/new', { projectName: 'shop-frontend', pageName: 'New task' })
+      expect(slotText('mobile-context')).toBe('shop-frontend')
+      expect(slotText('mobile-title')).toBe('New task')
+    })
+
     it('shows no context line while the project is not yet known', () => {
       renderShell('/p/shop/git')
       expect(slotText('mobile-context')).toBeNull()

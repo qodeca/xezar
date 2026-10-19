@@ -28,10 +28,13 @@
   suggestion list is announced as you move through it and when Enter inserts one.
 - 🐛 **On a phone the top bar says which project and which settings you are in.** A quiet line
   above the page name shows the project, and Global settings is titled as such instead of plain
-  "Settings".
+  "Settings". A page outside the menu, such as New task, shows its own name.
 - 🐛 **A greyed-out composer control says why on screen.** The model, variants, Worktree and
   Autonomous controls used to explain a disabled state only in a hover tooltip, which a phone or a
   keyboard never shows; a short reason now sits beside them.
 - 🐛 **Switching projects no longer sends the old page's requests to the new project.** The
   project scope now changes only when the new project's page is actually shown, so the page you
   are leaving can no longer fetch, or cache answers, under the project you are opening.
+- 🐛 **Links in rendered Markdown are readable in the light theme.** Transcript, GitHub and skill
+  links were pale lime on white (about 1.3:1); they now use the text colour with an underline. The
+  dark theme is unchanged.

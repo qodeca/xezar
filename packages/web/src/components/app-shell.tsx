@@ -130,6 +130,9 @@ export type AppShellProps = {
    *  Global settings (no project applies) and while the registry has not named it — the line is
    *  then absent rather than guessed. The desktop shows the project in the sidebar instead. */
   projectName?: string | null
+  /** The page's own name from the route map ("New task"), for the phone top bar when the page
+   *  belongs to no nav item. Without it the bar fell back to the product name. */
+  pageName?: string | null
 }
 
 /**
@@ -194,6 +197,7 @@ export function AppShell({
   agentQuota,
   agentQuotaCompact,
   projectName = null,
+  pageName = null,
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
@@ -290,7 +294,7 @@ export function AppShell({
             title={
               isGlobalSettingsPath(pathname)
                 ? singleProjectRoot ? 'Workspace settings' : 'Global settings'
-                : (current?.label ?? 'xezar')
+                : (current?.label ?? pageName ?? 'xezar')
             }
             context={isGlobalSettingsPath(pathname) ? null : projectName}
             singleProjectRoot={singleProjectRoot}

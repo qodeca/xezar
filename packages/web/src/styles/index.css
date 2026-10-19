@@ -535,6 +535,16 @@
   }
 }
 
+/* ---------- rendered Markdown links ----------
+ * Streamdown paints every link (`data-streamdown='link'`, an <a> or the link-safety button)
+ * `text-primary underline`. On the light ground the accent is about 1.3:1 (lime) or 3.1:1
+ * (violet) – below AA for text of any size – so light links take the ink token and keep the
+ * underline as the link cue. Dark theme is unchanged: the accent passes there. Unlayered, like
+ * the block below, so it outranks the `utilities` layer. (known-gaps.md G-23) */
+.light [data-streamdown='link'] {
+  color: var(--foreground);
+}
+
 /* ---------- thread markdown (mockup `.msg-assist`) ----------
  * Chat-scale typography for assistant messages. Streamdown ships document-scale utility
  * classes on its elements (text-2xl headings, prose paddings); these rules are deliberately
