@@ -202,6 +202,8 @@ export interface AgentToolCallRecord {
 export interface AgentRunResult {
   /** Concatenated assistant text across the run, trimmed. */
   text: string;
+  /** Empty from the shipped runners: tool calls stream as `tool-call` events, and collecting
+   *  every call's full input here grew with the session while nothing read it. */
   toolCalls: AgentToolCallRecord[];
   /** Cost-weighted token usage; 0 when the backend surfaced no telemetry. */
   tokensUsed: number;

@@ -22,6 +22,7 @@ import { claudeMcpIsolation, runMcpIsolationNote, type ClaudeMcpIsolation } from
 import { writeSystemPromptFile } from './system-prompt-file.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
 import { readNdjson } from './ndjson.ts';
+import { StderrTail } from './stderr-tail.ts';
 import {
   claudeTurnStarted,
   createClaudeUiState,
@@ -236,6 +237,9 @@ export class ClaudeCliRunner implements AgentRunner {
     // Pasted task screenshots (spec.images) ride along as leading blocks.
     sendMessage([...(spec.images ?? []), { type: 'text', text: spec.userPrompt }]);
 
+    // Never filled: no caller reads a result's tool calls, and keeping every call's full input
+    // (a whole written file, a long command) grew with the session. Tool calls reach consumers as
+    // `tool-call` events.
     const toolCalls: AgentToolCallRecord[] = [];
     const textChunks: string[] = [];
     let tokensUsed = 0;
@@ -246,9 +250,9 @@ export class ClaudeCliRunner implements AgentRunner {
       spawnFailed = wrapSpawnError(err, this.bin);
     });
 
-    const stderrChunks: string[] = [];
+    const stderrTail = new StderrTail();
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => stderrTail.push(chunk));
 
     // Optional wall-clock kill switch (disabled for interactive sessions).
     const limitMs = spec.timeoutMs ?? this.timeoutMs;
@@ -294,7 +298,7 @@ export class ClaudeCliRunner implements AgentRunner {
 
           let delta = 0;
           try {
-            delta = handleClaudeMessage(mappedMessage, { toolCalls, textChunks, onEvent });
+            delta = handleClaudeMessage(mappedMessage, { textChunks, onEvent });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onEvent?.({ type: 'note', message: `claude: skipped malformed event (${msg.type ?? 'unknown'}): ${message}` });
@@ -359,7 +363,7 @@ export class ClaudeCliRunner implements AgentRunner {
       }
 
       if (exitCode !== 0 && exitCode !== null) {
-        const stderr = stderrChunks.join('').trim();
+        const stderr = stderrTail.text().trim();
         const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
         // Reaching here on a 128+signal code means the flag above was false:
         // this CLI was signalled and xezar was not the one who signalled it.
@@ -540,7 +544,6 @@ function normalizeIntentionalTeardownResult(
 function handleClaudeMessage(
   msg: ClaudeStreamMessage,
   ctx: {
-    toolCalls: AgentToolCallRecord[];
     textChunks: string[];
     onEvent?: (e: AgentEvent) => void;
   },
@@ -552,7 +555,6 @@ function handleClaudeMessage(
         ctx.textChunks.push(b.text);
         ctx.onEvent?.({ type: 'text', text: b.text });
       } else if (b.type === 'tool_use' && b.id && b.name) {
-        ctx.toolCalls.push({ id: b.id, name: b.name, input: b.input });
         ctx.onEvent?.({ type: 'tool-call', id: b.id, tool: b.name, input: b.input });
       }
     }

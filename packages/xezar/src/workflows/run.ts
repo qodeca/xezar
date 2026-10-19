@@ -2548,7 +2548,7 @@ export class RunManager {
     // after it, the pin missed the window, the ledger rejected the root and a stop swept nothing.
     const trackProcess = (pid: number): void => {
       const spawnedAt = Date.now();
-      registerRunProcess(runId, pid);
+      registerRunProcess(runId, pid, spawnedAt);
       if (this.active.get(runId) === state) this.runProcesses.pinRoot(runId, pid, spawnedAt);
     };
     if (session.pid !== undefined) trackProcess(session.pid);

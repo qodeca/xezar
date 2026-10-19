@@ -24,6 +24,7 @@ import { launch } from '../platform/process-launch.ts';
 import { stopChildWithDescendants } from '../platform/process-tree.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { readNdjson } from './ndjson.ts';
+import { StderrTail } from './stderr-tail.ts';
 import { costWeightedTokens } from './usage.ts';
 import { stringifyToolResultContent, toolResultImageBlocks } from './claude-ui-mapper.ts';
 import {
@@ -299,6 +300,9 @@ class QwenSession {
   private readonly pidListeners: Array<(pid: number) => void> = [];
   private versionChecked = false;
   private uiState;
+  // Never filled: no caller reads a result's tool calls, and keeping every call's full input
+  // (a whole written file, a long command) grew with the session. Tool calls reach consumers as
+  // `tool-call` events.
   private readonly toolCalls: AgentToolCallRecord[] = [];
   private readonly textChunks: string[] = [];
   private tokensUsed = 0;
@@ -516,9 +520,9 @@ class QwenSession {
       spawnFailed = wrapSpawnError(err, bin);
     });
     if (child.pid !== undefined) for (const listener of this.pidListeners) listener(child.pid);
-    const stderrChunks: string[] = [];
+    const stderrTail = new StderrTail();
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => stderrTail.push(chunk));
     // An agent that exits before it reads a prompt larger than the pipe buffer fails the write with
     // EPIPE as an `error` event on stdin; unhandled, that event would stop the whole server. The
     // exit code and stderr already report the failure, so this only records it.
@@ -563,7 +567,7 @@ class QwenSession {
       if (!this.timedOut) throw err;
     }
     outcome.exitCode = await waitForExit(child);
-    outcome.stderr = stderrChunks.join('').trim();
+    outcome.stderr = stderrTail.text().trim();
     if (spawnFailed) throw spawnFailed;
     return outcome;
   }
@@ -610,7 +614,6 @@ class QwenSession {
           if (msg.parent_tool_use_id == null && b.text.trimStart().startsWith(QWEN_API_ERROR_PREFIX)) outcome.apiError ??= b.text.trim();
         } else if (b.type === 'tool_use' && b.id && b.name) {
           const tool = unwrapQwenToolCall(b.name, b.input);
-          this.toolCalls.push({ id: b.id, name: tool.name, input: tool.input });
           onEvent?.({ type: 'tool-call', id: b.id, tool: tool.name, input: tool.input });
         }
       }
