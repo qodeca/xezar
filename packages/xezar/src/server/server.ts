@@ -39,6 +39,8 @@ import {
   agentQuotaQuerySchema,
   agentQuotaRefreshInputSchema,
   engineOwnsRun,
+  TERMINAL_ACCOUNT_UNSAFE_CODE,
+  TERMINAL_FOLDER_UNSAFE_CODE,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -227,7 +229,7 @@ import { activeStateLayout } from '../state-layout.ts';
 import { globalImportStateAfter, globalImportSummary, importGlobalAccounts } from '../workspace/import-global.ts';
 import { recordGlobalImportState } from '../workspace/project-machine-state.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
-import { terminalCommandLine } from '../core/shell-env.ts';
+import { terminalCommandLine, terminalLineRefusal } from '../core/shell-env.ts';
 import {
   allocateProjectSlug,
   findRegistryProject,
@@ -1913,6 +1915,13 @@ export function createApp(deps: ServerDeps) {
    *  launcher uses. `null` when the dir or the account cannot be embedded safely: a refusal. */
   const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null =>
     terminalCommandLine(cwd, command, env, process.platform);
+
+  /** The 409 body for a handoff whose line `handoffFallbackCommand` refused – one accurate
+   *  sentence and code per reason: the task's folder, or the session's account folder. */
+  const handoffRefusal = (cwd: string, command: string, env: Record<string, string>) =>
+    terminalLineRefusal(cwd, command, env, process.platform) === 'folder'
+      ? { error: 'this task\'s folder path cannot be passed safely to cmd.exe, so no terminal can be opened in it', code: TERMINAL_FOLDER_UNSAFE_CODE }
+      : { error: 'this account\'s folder cannot be used in a terminal command', code: TERMINAL_ACCOUNT_UNSAFE_CODE };
 
   /** A registered project's realpath'd root, or null when the id is unknown. Layout-aware (#600
    *  review M2): in the project layout the registry is the DERIVED row, so a raw stored-row lookup
@@ -4597,9 +4606,7 @@ export function createApp(deps: ServerDeps) {
       const fallback = handoffFallbackCommand(cwd, command, account.env);
       // Fail closed for the same reason as the session id: a terminal opened without the
       // account's config dir resumes nothing and says nothing about why.
-      if (fallback === null) {
-        return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-      }
+      if (fallback === null) return c.json(handoffRefusal(cwd, command, account.env), 409);
       const opened = await openTerminal(cwd, command, account.env);
       if (!opened) {
         return c.json({ error: 'no terminal emulator found', command: fallback }, 409);
@@ -4725,9 +4732,7 @@ export function createApp(deps: ServerDeps) {
           : await freshCliEnv(repoRoot, cliRunner);
         if ('error' in account) return c.json({ error: account.error }, 409);
         const fallback = handoffFallbackCommand(dir, command, account.env);
-        if (fallback === null) {
-          return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-        }
+        if (fallback === null) return c.json(handoffRefusal(dir, command, account.env), 409);
         const opened = await openTerminal(dir, command, account.env);
         if (!opened) {
           return c.json({ error: 'no terminal emulator found', command: fallback }, 409);

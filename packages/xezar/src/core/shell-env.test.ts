@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderEnvPrefix, shellQuote, terminalCommandLine, withEnvPrefix } from './shell-env.ts';
+import { renderEnvPrefix, shellQuote, terminalCommandLine, terminalLineRefusal, withEnvPrefix } from './shell-env.ts';
 
 /**
  * Rendering an agent account's config dir into a shell command (spec 2026-07-29-agent-profiles).
@@ -108,5 +108,31 @@ describe('terminalCommandLine – the one copy-paste takeover line', () => {
     expect(terminalCommandLine('C:\\dev\\a%PATH%', 'claude --resume s1', {}, 'win32')).toBeNull();
     expect(terminalCommandLine('C:\\dev', 'claude --resume s1', { CLAUDE_CONFIG_DIR: 'C:\\a%b' }, 'win32')).toBeNull();
     expect(terminalCommandLine('/r', 'claude --resume s1', { CLAUDE_CONFIG_DIR: '/a\nb' }, 'linux')).toBeNull();
+  });
+});
+
+describe('terminalLineRefusal – one reason per refused line', () => {
+  it('Windows: a folder cmd.exe would re-read is a folder refusal, not an account one', () => {
+    expect(terminalLineRefusal('C:\\dev\\a"b', 'claude --resume s1', {}, 'win32')).toBe('folder');
+    expect(terminalLineRefusal('C:\\dev\\a%PATH%', 'claude --resume s1', { CLAUDE_CONFIG_DIR: 'C:\\acc' }, 'win32')).toBe('folder');
+  });
+
+  it('Windows: an account folder cmd.exe cannot embed is an account refusal, even in a good folder', () => {
+    expect(terminalLineRefusal('C:\\dev', 'claude --resume s1', { CLAUDE_CONFIG_DIR: 'C:\\a%b' }, 'win32')).toBe('account');
+  });
+
+  it('agrees with terminalCommandLine: null exactly when a line is built', () => {
+    const cases: Array<[string, Record<string, string>, NodeJS.Platform]> = [
+      ['C:\\dev', {}, 'win32'],
+      ['C:\\dev\\a"b', {}, 'win32'],
+      ['C:\\dev', { CLAUDE_CONFIG_DIR: 'C:\\a!b' }, 'win32'],
+      ['/r/a"b', {}, 'linux'],
+      ['/r', { CLAUDE_CONFIG_DIR: '/a\nb' }, 'linux'],
+    ];
+    for (const [cwd, env, platform] of cases) {
+      expect(terminalLineRefusal(cwd, 'claude --resume s1', env, platform) === null).toBe(
+        terminalCommandLine(cwd, 'claude --resume s1', env, platform) !== null,
+      );
+    }
   });
 });

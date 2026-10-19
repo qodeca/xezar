@@ -75,6 +75,24 @@ export function withEnvPrefix(
  * folder cmd.exe reads as plain text (`cmdPathSafe`). `null` when the folder or the env cannot be
  * embedded safely: callers fail closed, for the reason at the top of this file.
  */
+export type TerminalLineRefusal = 'folder' | 'account';
+
+/**
+ * Why `terminalCommandLine` answered `null`, or `null` when it would not: `account` when the
+ * account assignments cannot be embedded (checked first, as the builder does), `folder` when the
+ * Windows folder cannot be passed safely to cmd.exe. Each reason gets its own sentence.
+ */
+export function terminalLineRefusal(
+  cwd: string,
+  command: string,
+  env: Record<string, string>,
+  platform: NodeJS.Platform,
+): TerminalLineRefusal | null {
+  if (withEnvPrefix(command, env, platform) === null) return 'account';
+  if (platform === 'win32' && !cmdPathSafe(cwd)) return 'folder';
+  return null;
+}
+
 export function terminalCommandLine(
   cwd: string,
   command: string,

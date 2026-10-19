@@ -12,7 +12,7 @@ import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
-import { TEST_DIR_RM_OPTIONS, onWindows } from '../../test/helpers/platform.ts';
+import { TEST_DIR_RM_OPTIONS, onWindows, withPlatform } from '../../test/helpers/platform.ts';
 
 // The terminal launcher actually spawns a process (osascript/cmd/x-terminal-emulator) — mocked
 // so this suite exercises only the command construction, never a real terminal window.
@@ -391,6 +391,32 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
       const run = makeRun('claude', 'sess-1');
       store.updateStep(run.id, 'work', { profileId: 'deleted-yesterday' });
       expect(await (await resumeCommandOf(run.id)).json()).toEqual({ command: null });
+    });
+
+    it('Windows: a folder cmd.exe would re-read is refused for its folder, not for the account', async () => {
+      // A POSIX temp folder is no drive path, so cmd.exe could not be handed it safely.
+      const run = makeRun('claude', 'sess-1');
+      const res = await withPlatform('win32', () => openInCli(run.id));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "this task's folder path cannot be passed safely to cmd.exe, so no terminal can be opened in it",
+        code: 'terminal_folder_unsafe',
+      });
+      expect(mockOpenInTerminal).not.toHaveBeenCalled();
+    });
+
+    it('Windows: an account folder cmd.exe cannot embed is refused for the account', async () => {
+      const dir = join(home, 'claude-100%');
+      await addAccount('work', 'claude', dir);
+      const run = makeRun('claude', 'sess-1');
+      store.updateStep(run.id, 'work', { profileId: 'work' });
+      const res = await withPlatform('win32', () => openIn(run.id, 'cli:claude'));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "this account's folder cannot be used in a terminal command",
+        code: 'terminal_account_unsafe',
+      });
+      expect(mockOpenInTerminal).not.toHaveBeenCalled();
     });
 
     it('adds nothing for a run recorded on the default account', async () => {

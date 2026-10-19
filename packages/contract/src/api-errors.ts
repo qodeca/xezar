@@ -14,12 +14,18 @@ export const API_ERROR_CODES = [
    * schedule; every other 409 is a final answer.
    */
   'run_still_active',
+  /** A terminal handoff (409): the task's folder path cannot be passed safely to cmd.exe. */
+  'terminal_folder_unsafe',
+  /** A terminal handoff (409): the session's account folder cannot be put in a terminal command. */
+  'terminal_account_unsafe',
 ] as const;
 
 export const apiErrorCodeSchema = z.enum(API_ERROR_CODES);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 
 export const RUN_STILL_ACTIVE_CODE = 'run_still_active' satisfies ApiErrorCode;
+export const TERMINAL_FOLDER_UNSAFE_CODE = 'terminal_folder_unsafe' satisfies ApiErrorCode;
+export const TERMINAL_ACCOUNT_UNSAFE_CODE = 'terminal_account_unsafe' satisfies ApiErrorCode;
 
 export const apiErrorBodySchema = z.object({
   error: z.string(),
