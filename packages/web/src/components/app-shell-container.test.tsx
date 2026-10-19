@@ -779,7 +779,8 @@ describe('workspace attention (All tasks badge and tab title)', () => {
       return found as HTMLElement
     })
     expect(note.getAttribute('role')).toBe('status')
-    expect(note.textContent).toBe('Other projects’ counts could not be refreshed — they may be out of date.')
+    // The index never answered at all, so the "could not be loaded" variant.
+    expect(note.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
     // Exactly one, under All tasks — not one per group.
     expect(document.querySelectorAll('[data-slot="sidebar"] [data-slot="attention-stale"]')).toHaveLength(1)
     // A lower bound, not a zero: the one count we can still vouch for.
@@ -789,6 +790,45 @@ describe('workspace attention (All tasks badge and tab title)', () => {
     ).toBe('1')
     await waitFor(() => expect(document.title).toBe('(1) xezar — Tasks · xezar'))
   })
+
+  it('says the counts could not be LOADED when the index never answered (a 5xx, after its retry)', async () => {
+    // Empty badges alone cannot tell "nothing needs you" from "we could not check".
+    fetchMock.mockImplementation(async (input) => {
+      const path = String(input)
+      const routes: Record<string, unknown> = {
+        '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+        '/api/v1/todos': [],
+        '/api/v1/projects': TWO_PROJECTS,
+        '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+        '/api/v1/providers/status': PROVIDERS,
+        '/api/v1/workspace/ui-state': {},
+      }
+      if (path === '/api/v1/workspace/runs-index') {
+        return new Response(JSON.stringify({ error: 'workspace unreadable' }), { status: 500 })
+      }
+      const body = routes[path]
+      return body === undefined
+        ? new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+        : new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderShell('/p/xezar/')
+
+    const note = await waitFor(
+      () => {
+        const found = document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')
+        expect(found).not.toBeNull()
+        return found as HTMLElement
+      },
+      { timeout: 5_000 },
+    )
+    expect(note.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
+    expect(note.getAttribute('role')).toBe('status')
+    // The active project's own count is still the fallback.
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')).toBeNull()
+  }, 15_000)
 
   it('shows no number at all when BOTH the index and the active list fail — never an old count as live', async () => {
     serve({

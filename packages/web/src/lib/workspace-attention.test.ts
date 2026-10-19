@@ -155,3 +155,12 @@ describe('resolveAttentionCounts — never an old count presented as live', () =
     expect(resolveAttentionCounts({ index, indexFailed: true, activeProjectId: 'web', activeCount: 3 }).activeProjectId).toBe('web')
   })
 })
+
+describe('resolveAttentionCounts — unloaded', () => {
+  it('is unloaded only when the index failed AND never answered', () => {
+    const index = summarizeAttention([row('web', 'waiting')])
+    expect(resolveAttentionCounts({ index: undefined, indexFailed: true, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(true)
+    expect(resolveAttentionCounts({ index, indexFailed: true, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(false)
+    expect(resolveAttentionCounts({ index: undefined, indexFailed: false, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(false)
+  })
+})

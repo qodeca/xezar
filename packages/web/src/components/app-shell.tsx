@@ -113,6 +113,9 @@ export type AppShellProps = {
   /** The workspace task index could not be refreshed, so the other projects' counts may be old;
    *  renders one status line under All tasks. Defaults off. */
   allTasksAttentionStale?: boolean
+  /** With `allTasksAttentionStale`: the index never answered, so the line says "could not be
+   *  loaded" instead of "may be out of date". Defaults off. */
+  allTasksAttentionUnloaded?: boolean
   /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
    *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
@@ -185,6 +188,7 @@ export function AppShell({
   projectGroups,
   allTasksAttentionCount = null,
   allTasksAttentionStale = false,
+  allTasksAttentionUnloaded = false,
   otherProjects,
   agentQuota,
   agentQuotaCompact,
@@ -251,6 +255,7 @@ export function AppShell({
     projectGroups,
     allTasksAttentionCount,
     allTasksAttentionStale,
+    allTasksAttentionUnloaded,
     otherProjects,
     agentQuota,
     singleProject,
@@ -325,6 +330,7 @@ type NavProps = {
   projectGroups?: ReactNode
   allTasksAttentionCount: number | null
   allTasksAttentionStale: boolean
+  allTasksAttentionUnloaded: boolean
   otherProjects?: ReactNode
   agentQuota?: ReactNode
   singleProject: boolean
@@ -515,6 +521,7 @@ function SidebarContent({
   projectGroups,
   allTasksAttentionCount,
   allTasksAttentionStale,
+  allTasksAttentionUnloaded,
   otherProjects,
   agentQuota,
   singleProject,
@@ -603,7 +610,7 @@ function SidebarContent({
               wearing a second name. */}
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
             <AllTasksLink onNavigate={onNavigate} attentionCount={allTasksAttentionCount} />
-            <AttentionStaleNote stale={allTasksAttentionStale} />
+            <AttentionStaleNote stale={allTasksAttentionStale} unloaded={allTasksAttentionUnloaded} />
           </div>
           {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
@@ -991,13 +998,18 @@ function MobileTopBar({
  * The current project's count is not covered by it — that one comes from its own live list.
  *
  * @param props.stale - Whether the index's latest refresh failed.
+ * @param props.unloaded - Whether it also never answered, so no counts are shown at all.
  * @returns The status line, or nothing when the counts are current.
  */
-function AttentionStaleNote({ stale }: { stale: boolean }) {
+function AttentionStaleNote({ stale, unloaded }: { stale: boolean; unloaded: boolean }) {
   if (!stale) return null
   return (
     <p data-slot="attention-stale" role="status" className="px-2.5 pt-1 text-[11.5px] text-muted-foreground">
-      Other projects’ counts could not be refreshed — they may be out of date.
+      {/* Two facts, two sentences: with no answer ever, there is no old number to warn about —
+          the badges are empty because nothing could be checked, not because nothing waits. */}
+      {unloaded
+        ? 'Other projects’ counts could not be loaded — they are not shown.'
+        : 'Other projects’ counts could not be refreshed — they may be out of date.'}
     </p>
   )
 }

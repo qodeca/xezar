@@ -217,6 +217,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         // `?? null`: no badge while the index is unknown, none at zero.
         allTasksAttentionCount={attention.total}
         allTasksAttentionStale={attention.stale}
+        allTasksAttentionUnloaded={attention.unloaded}
         otherProjects={otherProjects}
         // The plan-limits chip (#867 S5). Each form renders nothing until an agent applies.
         agentQuota={<AgentQuotaChip variant="band" />}

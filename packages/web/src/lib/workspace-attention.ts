@@ -115,6 +115,9 @@ export interface AttentionCounts {
   /** The workspace index could not be refreshed: every count except the active project's is the
    *  last known answer (or unknown). The UI shows the stale line instead of a silent zero. */
   stale: boolean
+  /** `stale`, and the index has never answered at all, so there are no last known counts: the
+   *  UI says the counts could not be LOADED rather than that they may be old. */
+  unloaded: boolean
   /** The project whose count comes from its own live run list while the index is stale; null
    *  whenever no such fallback is in effect (index current, or that list not loaded / failed), so
    *  nothing presents an old count as live. */
@@ -153,7 +156,13 @@ export function resolveAttentionCounts(input: {
   if (fallback && activeProjectId !== null) {
     total = (total ?? 0) - (index?.byProject.get(activeProjectId) ?? 0) + (activeCount ?? 0)
   }
-  return { countFor, total, stale: indexFailed, activeProjectId: fallback ? activeProjectId : null }
+  return {
+    countFor,
+    total,
+    stale: indexFailed,
+    unloaded: indexFailed && index === undefined,
+    activeProjectId: fallback ? activeProjectId : null,
+  }
 }
 
 /**
