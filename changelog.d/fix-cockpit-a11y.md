@@ -20,8 +20,8 @@
   is no longer pale lime on white, a picked option shows a check mark, and after you answer, focus
   lands on the answer summary instead of the top of the page.
 - 🐛 **Agent config edits are no longer thrown away without asking.** "Reload from disk", opening
-  another file or agent, and leaving the page now confirm first when the open file has unsaved
-  edits, and closing the tab asks too. A newer copy fetched in the background no longer replaces
+  another file or agent, and leaving the page – by a link, Back or Forward, or the ⌘K palette –
+  now confirm first when the open file has unsaved edits, and closing or reloading the tab asks too. A newer copy fetched in the background no longer replaces
   your draft.
 - 🐛 **Screen readers hear the composer's choices.** The runner, model, variants, base branch and
   project pills now say both the setting and its value ("Model: sonnet"), and the `/` and `@`

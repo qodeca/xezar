@@ -20,6 +20,7 @@ import {
 } from '@/components/command-palette'
 import { orderSkills } from '@/lib/skills'
 import { ThemeProvider } from '@/components/theme-provider'
+import { useLeaveGuard } from '@/lib/use-leave-guard'
 import { THEME_STORAGE_KEY, type Theme } from '@/lib/theme'
 
 afterEach(cleanup)
@@ -144,6 +145,12 @@ function serve(routes: Record<string, unknown>): void {
 }
 
 /** Where did the palette send us? Rendered as a sibling so navigation is observable. */
+/** A screen with unsaved edits (what Agent config is while its draft is dirty). */
+function GuardProbe({ onAttempt }: { onAttempt: (proceed: () => void) => void }) {
+  useLeaveGuard(true, onAttempt)
+  return null
+}
+
 function LocationProbe() {
   const location = useLocation()
   return <output data-testid="location">{location.pathname + location.search}</output>
@@ -162,6 +169,7 @@ function renderPalette({
   instanceMode,
   uiState = {} as Record<string, unknown>,
   entry = '/',
+  guard,
 }: {
   runs?: RunRecord[]
   skills?: Skill[]
@@ -180,6 +188,8 @@ function renderPalette({
   uiState?: Record<string, unknown>
   /** The URL to mount at. `/p/<id>/…` is what gives the palette an ACTIVE project. */
   entry?: string
+  /** Arms an unsaved-edits guard beside the palette; its confirm hands `proceed` here. */
+  guard?: (proceed: () => void) => void
 } = {}) {
   if (theme) localStorage.setItem(THEME_STORAGE_KEY, theme)
   serve({
@@ -195,6 +205,7 @@ function renderPalette({
       <ThemeProvider>
         <MemoryRouter initialEntries={[entry]}>
           <CommandPalette />
+          {guard ? <GuardProbe onAttempt={guard} /> : null}
           <LocationProbe />
           <input data-testid="outside-input" aria-label="outside" />
         </MemoryRouter>
@@ -351,6 +362,26 @@ describe('Views group', () => {
 
     expect(location()).toBe('/workflows')
     await waitFor(() => expect(dialog()).toBeNull())
+  })
+
+  it('a pick with unsaved edits on the page goes through that page’s confirm first', async () => {
+    let pending: (() => void) | null = null
+    renderPalette({ guard: (proceed) => (pending = proceed) })
+    openWith({ metaKey: true })
+    await screen.findByRole('dialog')
+    fireEvent.click(document.querySelector('[data-nav-to="/workflows"]') as HTMLElement)
+    expect(location()).toBe('/')
+    expect(pending).not.toBeNull()
+    act(() => pending!())
+    await waitFor(() => expect(location()).toBe('/workflows'))
+  })
+
+  it('the `c` shortcut is guarded the same way', () => {
+    let pending: (() => void) | null = null
+    renderPalette({ guard: (proceed) => (pending = proceed) })
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(location()).toBe('/')
+    expect(pending).not.toBeNull()
   })
 
   it('⌘N client-navigates to the React /new composer (R4 Step 1.1)', () => {
