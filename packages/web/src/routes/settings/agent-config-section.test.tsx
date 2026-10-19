@@ -175,6 +175,22 @@ describe('AgentConfigSection', () => {
     await waitFor(() => expect(document.querySelector('[data-slot="agent-config-user-mcp"]')).toBeNull())
   })
 
+  it('breaks a long user-state path instead of widening the phone pane', async () => {
+    // A macOS home can be a long /var/folders/… path with no break opportunity; jsdom has no
+    // layout, so this pins the class the B3 browser matrix measures at 375 px.
+    const path = '/var/folders/j5/99w8pwxn1pg9pwjcym9ytb640000gn/T/xezar-e2e-b3-AbCdEf/.xez-home/.claude.json'
+    serve({
+      editable: true,
+      files: [fileOf({ id: 'claude.project.mcp', label: '.mcp.json', kind: 'mcp', holdsMcp: true })],
+      userMcp: { path, servers: [], readable: true },
+    })
+    renderSection()
+    await waitFor(() => expect(screen.getByText('.mcp.json')).toBeTruthy())
+    const shown = document.querySelector('[data-slot="agent-config-user-mcp-path"]')
+    expect(shown?.textContent).toBe(path)
+    expect(shown?.className.split(/\s+/)).toContain('break-all')
+  })
+
   it('a file selection never survives an agent switch', async () => {
     serve({
       editable: true,

@@ -296,7 +296,14 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
     <div data-slot="agent-config-user-mcp" className="mt-3">
       <h4 className="mb-1 text-[12px] font-semibold">User &amp; local scopes</h4>
       <p className="mb-2 text-[12px] text-soft-foreground">
-        Managed by <code className="font-mono">claude mcp add</code> in {userMcp.path} — xezar does not edit
+        {/* The path is the user's real home path – on macOS a long, unbreakable `/var/folders/…` or
+            `/Users/<name>/…` string that would hold the pane wider than a 375 px phone. It breaks
+            anywhere, like the skill path in SkillDetail. */}
+        Managed by <code className="font-mono">claude mcp add</code> in{' '}
+        <code data-slot="agent-config-user-mcp-path" className="font-mono break-all">
+          {userMcp.path}
+        </code>{' '}
+        — xezar does not edit
         Claude’s state file.
       </p>
       {userMcp.readable ? (
