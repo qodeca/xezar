@@ -28,7 +28,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { DEFAULT_SHARDS, STRYKER_CONFIG, mutationShardPlan, repoRoot } from './shards.mjs'
+import { STRYKER_CONFIG, mutationShardPlan, repoRoot } from './shards.mjs'
 
 /** Stryker's `MutantStatus` values that count as detected. */
 export const DETECTED = ['Killed', 'Timeout']
@@ -146,7 +146,7 @@ export const shardArtifact = (shard) => `mutation-report-${shard}`
  * @param {string} [options.root]
  * @returns {Promise<{ ok: boolean, problems: string[], threshold: number, counts: Counts, metrics: ReturnType<typeof metrics>, perFile: { path: string, counts: Counts, score: number | null }[], perShard: { shard: number, counts: Counts, metrics: ReturnType<typeof metrics> }[] }>}
  */
-export async function aggregate({ readReport, shards = DEFAULT_SHARDS, root = repoRoot }) {
+export async function aggregate({ readReport, shards = undefined, root = repoRoot }) {
   const plan = await mutationShardPlan(shards, root)
   const threshold = await breakThreshold(root)
   /** @type {string[]} */
@@ -267,7 +267,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     return at === -1 ? fallback : args[at + 1]
   }
   const reportsDir = arg('--reports', '.local/mutation/shards')
-  const shards = Number(arg('--shards', String(DEFAULT_SHARDS)))
+  const shardsArg = arg('--shards', '')
+  const shards = shardsArg === '' ? undefined : Number(shardsArg)
   const result = await aggregate({
     shards,
     readReport: (shard) =>

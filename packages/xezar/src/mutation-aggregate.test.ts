@@ -42,7 +42,6 @@ type AggregateModule = {
   renderMarkdown: (result: AggregateResult, context?: { runUrl?: string; ref?: string; sha?: string }) => string;
 };
 type ShardsModule = {
-  DEFAULT_SHARDS: number;
   mutationShardPlan: (count?: number, root?: string) => Promise<{ globs: string[]; files: ScopeFile[]; shards: Shard[] }>;
 };
 
@@ -51,7 +50,7 @@ const load = async <T>(script: string): Promise<T> =>
 
 const agg = await load<AggregateModule>('aggregate.mjs');
 const shards = await load<ShardsModule>('shards.mjs');
-const plan = await shards.mutationShardPlan(shards.DEFAULT_SHARDS, REPO_ROOT);
+const plan = await shards.mutationShardPlan(undefined, REPO_ROOT);
 
 /** A Stryker JSON report for one shard: `spread` mutant statuses over the files it owns. */
 function reportFor(files: string[], perFile: Counts): unknown {
@@ -130,7 +129,7 @@ describe('summing the shards into one verdict (#377)', () => {
     expect(result.problems).toEqual([]);
     expect(result.ok).toBe(true);
     expect(result.metrics.score).toBe(90);
-    expect(result.perShard).toHaveLength(shards.DEFAULT_SHARDS);
+    expect(result.perShard).toHaveLength(plan.shards.length);
     expect(result.perFile.length).toBe(plan.files.length);
     expect(agg.renderMarkdown(result)).toContain('PASSED');
   });
@@ -267,6 +266,6 @@ describe('summing the shards into one verdict (#377)', () => {
 
   it('names the artifact each shard uploads, which is how the report job finds them', () => {
     expect(agg.shardArtifact(1)).toBe('mutation-report-1');
-    expect(agg.shardArtifact(shards.DEFAULT_SHARDS)).toBe(`mutation-report-${shards.DEFAULT_SHARDS}`);
+    expect(agg.shardArtifact(plan.shards.length)).toBe(`mutation-report-${plan.shards.length}`);
   });
 });

@@ -25,7 +25,10 @@ import { availableParallelism } from 'node:os'
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   testRunner: 'vitest',
-  plugins: ['@stryker-mutator/vitest-runner'],
+  // `mutation/timing-reporter.mjs` writes `timing.json` beside the JSON report: how long each file
+  // took, which is what `mutation/shards.mjs` balances the nightly jobs on (#443). It reads
+  // results and changes none. A relative plugin path resolves from the repository root.
+  plugins: ['@stryker-mutator/vitest-runner', './packages/xezar/mutation/timing-reporter.mjs'],
   vitest: { configFile: 'packages/xezar/vitest.mutation.config.ts' },
   mutate: ['packages/xezar/src/mcp/**/*.ts', '!**/*.test.ts', '!**/*.testkit.ts'],
   coverageAnalysis: 'perTest',
@@ -47,7 +50,7 @@ export default {
   // is deliberately thin. It is a floor, never a target, and it is one number for the whole scope:
   // per file the spread is still wide, which § 10.8 lists and #338 closes.
   thresholds: { high: 90, low: 80, break: 80 },
-  reporters: ['clear-text', 'progress', 'html', 'json'],
+  reporters: ['clear-text', 'progress', 'html', 'json', 'xezar-timing'],
   htmlReporter: { fileName: '.local/mutation/mcp/index.html' },
   jsonReporter: { fileName: '.local/mutation/mcp/report.json' },
   tempDirName: '.local/stryker-tmp',
