@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,12 @@ import type { WorkflowDef } from './types.ts';
 
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 const ONE_STEP: WorkflowDef = { name: 'quick-task', source: 'built-in', steps: [{ id: 'task', name: 'Task', prompt: '{{task}}' }] };
+/** A read-only step: its tools name neither Edit nor Write (`isReadOnlyStep`). */
+const READ_ONLY: WorkflowDef = {
+  name: 'review',
+  source: 'built-in',
+  steps: [{ id: 'review', name: 'Review', prompt: '{{task}}', allowedTools: ['Read', 'Grep', 'Glob', 'Bash'] }],
+};
 const TIMED: WorkflowDef = {
   name: 'timed',
   source: 'built-in',
@@ -199,6 +205,50 @@ describe('RunManager and the run-process sweep (#943)', () => {
     expect(events(run.id).some((e) => e.type === 'lifecycle' && e.message === 'goal achieved — session closed')).toBe(true);
     expect(machine.isAlive(SERVER_PID)).toBe(false);
     expect(machine.isAlive(OTHER_RUN_PID)).toBe(true);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('an agent error stops what the run left running (owner 2026-10-19)', async () => {
+    const run = manager.startRun(ONE_STEP, { task: 'mock:auth-error', worktree: false });
+    leaveBackgroundServer(run.id);
+    await settled(run.id);
+    expect(status(run.id)).toBe('failed');
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(machine.isAlive(OTHER_RUN_PID)).toBe(true);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('a backend that fails the session is an agent error too (owner 2026-10-19)', async () => {
+    const failing = join(repoRoot, 'claude-exits-one.mjs');
+    writeFileSync(failing, "#!/usr/bin/env node\nprocess.stdin.once('data', () => process.exit(1));\n", { mode: 0o755 });
+    process.env.XEZ_CLAUDE_BIN = failing;
+    const run = manager.startRun(ONE_STEP, { task: 'start a dev server', worktree: false });
+    leaveBackgroundServer(run.id);
+    await settled(run.id);
+    expect(status(run.id)).toBe('failed');
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('an agent error in a Continue stops what the run left running (owner 2026-10-19)', async () => {
+    const run = manager.startRun(ONE_STEP, { task: 'mock:done', worktree: false });
+    await settled(run.id);
+    leaveBackgroundServer(run.id);
+    expect(manager.continueRun(run.id, { text: 'mock:auth-error' }).ok).toBe(true);
+    await waitFor(() => manager.isActive(run.id), 'the continuation to start');
+    await settled(run.id);
+    expect(status(run.id)).toBe('failed');
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('an autonomous read-only step that finishes at its nudge bound stops what the run left running (owner 2026-10-19)', async () => {
+    const run = manager.startRun(READ_ONLY, { task: 'review the change', worktree: false, autonomous: true });
+    leaveBackgroundServer(run.id);
+    await settled(run.id);
+    expect(status(run.id)).toBe('done');
+    expect(events(run.id).some((e) => e.type === 'note' && (e.message ?? '').startsWith('autonomous read-only step finished'))).toBe(true);
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
     expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
   }, 60_000);
 
