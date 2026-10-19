@@ -517,7 +517,7 @@ describe('Global settings → Resources', () => {
       await waitFor(() =>
         expect(document.querySelector('[data-slot="resources-env-passthrough-locked"]')).not.toBeNull(),
       )
-      const field = document.querySelector<HTMLInputElement>('[data-slot="resources-env-passthrough-locked-value"]')!
+      const field = document.querySelector<HTMLTextAreaElement>('[data-slot="resources-env-passthrough-locked-value"]')!
       expect(field.readOnly).toBe(true)
       expect(field.value).toBe('Nothing extra')
       const reason = document.querySelector('[data-slot="resources-env-passthrough-locked-reason"]')!

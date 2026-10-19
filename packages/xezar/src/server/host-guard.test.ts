@@ -210,6 +210,38 @@ describe('host-header guard (DNS rebinding)', () => {
       expect((await request('stale.example.com')).status).toBe(403);
     });
 
+    it('answers a non-API page under a refused name with a self-contained 403 page that says how to allow it', async () => {
+      process.env.XEZ_REMOTE = '1';
+      for (const path of ['/', '/p/default/tasks', '/assets/index.js', '/xezar.svg']) {
+        const res = await request('other.example:8443', path);
+        expect(res.status).toBe(403);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        const csp = res.headers.get('content-security-policy') ?? '';
+        expect(csp).toContain("default-src 'none'");
+        expect(csp).toContain("frame-ancestors 'none'");
+        expect(res.headers.get('cache-control')).toBe('no-store');
+        const html = await res.text();
+        expect(html).toContain('<code>other.example</code>');
+        expect(html).toContain('XEZ_ALLOWED_HOSTS');
+        expect(html).toContain('server-install --domain');
+        expect(html).not.toMatch(/<(script|link|img)\b/i);
+      }
+    });
+
+    it('serves non-API pages under an allowed name, loopback and an IP address', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.com';
+      for (const host of ['cockpit.example.com', '127.0.0.1:4321', '203.0.113.7']) {
+        const res = await request(host, '/');
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-security-policy') ?? '').not.toContain("default-src 'none'");
+      }
+    });
+
+    it('leaves non-API pages alone in local mode', async () => {
+      expect((await request('other.example', '/')).status).toBe(200);
+    });
+
     it('keeps XEZ_ALLOWED_HOSTS out of local mode', async () => {
       process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.com';
       expect((await request('cockpit.example.com')).status).toBe(403);

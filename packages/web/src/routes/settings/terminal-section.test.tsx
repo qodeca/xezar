@@ -316,7 +316,7 @@ describe('Global settings → Terminal', () => {
       serve({ instance: 'project' })
       renderTerminal({ hosted: true })
       await waitFor(() => expect(document.querySelector('[data-slot="terminal-instance-locked"]')).not.toBeNull())
-      const field = document.querySelector<HTMLInputElement>('[data-slot="terminal-instance-locked-value"]')!
+      const field = document.querySelector<HTMLTextAreaElement>('[data-slot="terminal-instance-locked-value"]')!
       expect(field.readOnly).toBe(true)
       expect(field.value).toBe('One cockpit per project')
       const reason = document.querySelector('[data-slot="terminal-instance-locked-reason"]')!
@@ -333,7 +333,7 @@ describe('Global settings → Terminal', () => {
       await waitFor(() =>
         expect(document.querySelector('[data-slot="terminal-instance-locked-value"]')).not.toBeNull(),
       )
-      expect(document.querySelector<HTMLInputElement>('[data-slot="terminal-instance-locked-value"]')!.value).toBe('Not set')
+      expect(document.querySelector<HTMLTextAreaElement>('[data-slot="terminal-instance-locked-value"]')!.value).toBe('Not set')
     })
 
     it('keeps the instance select in local mode', async () => {

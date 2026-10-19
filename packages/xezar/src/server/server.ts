@@ -276,7 +276,9 @@ import {
   ASSET_CACHE_CONTROL,
   BUILD_HINT_HTML,
   HTML_FRAME_HEADERS,
+  HOST_REFUSED_HEADERS,
   assetContentType,
+  hostRefusedHtml,
   isSafeAssetFilename,
   resolveGetRequest,
 } from './static-ui.ts';
@@ -1454,6 +1456,15 @@ export function createApp(deps: ServerDeps) {
     }
     return false;
   };
+  // Every non-API path in hosted mode: the same Host rule, answered with a small page that says
+  // which name was refused and how to allow it — not a cockpit shell whose API calls would all
+  // fail. Local mode keeps serving the static shell (it carries no data; check 1 guards the API).
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/api' || c.req.path.startsWith('/api/') || !isHostedMode()) return next();
+    const hostName = hostnameOfHost(c.req.header('host'));
+    if (isLoopbackHostHeader(hostName) || hostedModeAllowsHost(hostName)) return next();
+    return new Response(hostRefusedHtml(hostName), { status: 403, headers: HOST_REFUSED_HEADERS });
+  });
   app.use('/api/*', async (c, next) => {
     const hostName = hostnameOfHost(c.req.header('host'));
     // Strict twin of `isLoopbackHost`: a *missing* Host is untrusted here (an

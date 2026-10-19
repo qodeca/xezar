@@ -138,3 +138,54 @@ export const HTML_FRAME_HEADERS: Readonly<Record<string, string>> = Object.freez
   'content-security-policy': "frame-ancestors 'none'",
   'x-frame-options': 'DENY',
 });
+
+/** Response headers for the refused-address page: nothing loads from anywhere, nothing may frame
+ *  it, and nothing caches it — the next request may come under an allowed name. */
+export const HOST_REFUSED_HEADERS: Record<string, string> = {
+  'content-type': 'text/html; charset=utf-8',
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+};
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+}
+
+/** The page a hosted cockpit answers a non-API request with when its `Host` name is not one it
+ *  serves. Self-contained (inline style only) and generic: it names the refused name and the two
+ *  ways to allow one, both done on the machine that runs xezar. */
+export function hostRefusedHtml(hostname: string): string {
+  const name = hostname ? escapeHtml(hostname.slice(0, 253)) : '(no name)';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar — address not allowed</title>
+<style>
+  body { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; min-height: 100dvh;
+         font: 15px/1.6 system-ui, sans-serif; background: #101014; color: #e8e8ea; }
+  main { box-sizing: border-box; width: 100%; max-width: 34rem; padding: 2rem; }
+  code { font-family: ui-monospace, monospace; background: #1c1c22; border-radius: 6px; padding: 2px 6px;
+         word-break: break-all; }
+  p { color: #a0a0aa; }
+  @media (max-width: 400px) { main { padding: 2rem 1rem; } }
+  @media (prefers-color-scheme: light) {
+    body { background: #ffffff; color: #18181b; }
+    code { background: #f0f0f2; }
+    p { color: #52525b; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>This address is not allowed</h1>
+  <p>This xezar cockpit runs in hosted mode and answers only to its own public names. It refused the name <code>${name}</code>.</p>
+  <p>If this is the cockpit's address, allow it on the machine that runs xezar: add it to <code>XEZ_ALLOWED_HOSTS</code> (comma-separated names) and restart xezar, or record it with <code>xezar server-install --domain &lt;name&gt;</code>.</p>
+</main>
+</body>
+</html>
+`;
+}

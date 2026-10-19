@@ -673,9 +673,12 @@ describe('Global settings → Projects', () => {
         ['browse', '~/', 'Default browse folder'],
         ['checkout', '~/xezar/projects', 'Default checkout folder'],
       ] as const) {
-        const field = document.querySelector<HTMLInputElement>(`[data-slot="projects-${slot}-root-locked-value"]`)!
+        const field = document.querySelector<HTMLTextAreaElement>(`[data-slot="projects-${slot}-root-locked-value"]`)!
         expect(field.readOnly).toBe(true)
         expect(field.disabled).toBe(false)
+        // A long path wraps on a phone instead of being cut off mid-word.
+        expect(field.tagName).toBe('TEXTAREA')
+        expect(field.className).toContain('break-all')
         expect(field.value).toBe(value)
         expect(screen.getByLabelText(label)).toBe(field)
         const reason = document.querySelector(`[data-slot="projects-${slot}-root-locked-reason"]`)!

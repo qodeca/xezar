@@ -41,14 +41,21 @@ export function HostedLockedValue({
   const reasonId = useId()
   return (
     <div data-slot={slot} className="flex flex-col gap-1">
-      <input
-        type="text"
+      {/* A read-only textarea rather than an input: a long folder path WRAPS (anywhere, since a
+          path has few spaces) instead of being cut off on a phone, and the whole value stays
+          readable and focusable. `field-sizing-content` grows it to its text. */}
+      <textarea
         readOnly
+        rows={1}
         aria-label={label}
         aria-describedby={pending ? undefined : reasonId}
         data-slot={`${slot}-value`}
         value={value}
-        className={cn(nativeFieldClass, 'block max-w-sm cursor-default bg-muted/40', mono && 'font-mono')}
+        className={cn(
+          nativeFieldClass,
+          'block h-auto max-w-sm cursor-default resize-none bg-muted/40 py-1.5 field-sizing-content',
+          mono && 'font-mono break-all',
+        )}
       />
       {pending ? null : (
         <p id={reasonId} data-slot={`${slot}-reason`} className="text-[11px] text-soft-foreground">

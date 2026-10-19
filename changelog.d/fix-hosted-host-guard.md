@@ -18,3 +18,7 @@
   and Terminal (instance mode) show the current value in a read-only field with the reason on
   screen, instead of an editable field the server would refuse. The MCP `set_workspace_config`
   description says the same keys are refused in hosted mode.
+- 🔒 **A page under a refused address explains itself.** In hosted mode, a non-API page requested
+  under a name the cockpit does not serve gets a small self-contained `403` page that names the
+  refused name and how to allow it, instead of a cockpit that cannot load its data. On a phone,
+  a long locked folder path now wraps instead of being cut off.
