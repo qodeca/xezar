@@ -16,7 +16,7 @@ import { useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { createRun, getLaunchKey, postPlan, putConfig, putUiState } from '@/api/client'
+import { createRun, postPlan, putConfig, putUiState } from '@/api/client'
 import { useProjectScope } from '@/api/project-scope-context'
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import {
@@ -76,12 +76,7 @@ import { cn } from '@/lib/utils'
 import { usableRunners } from '@/lib/provider-status'
 import { projectsLocked } from '@/lib/project-mode'
 
-import {
-  bookmarkletRunBody,
-  deepLinkToast,
-  unknownSkillPrefillText,
-  type DeepLinkNotice,
-} from './new-task-autostart'
+import { deepLinkToast, unknownSkillPrefillText } from './new-task-autostart'
 import {
   clearStartedDraft,
   composerRunModeNote,
@@ -114,9 +109,8 @@ import { PlanReview } from './plan-review'
  * and opens the review overlay (plan-review.tsx) instead of starting a run.
  *
  * This route also owns the saved-bookmarklet contract (spec 011, the backward-compatibility promise):
- * a full document load of `/new?skill=&ref=&auto=1&key=` auto-starts a run unattended when the
- * key matches `GET /api/launch-key`, and only prefills otherwise — `handleDeepLink()` in
- * web/app.js, verbatim (see new-task-autostart.ts for the verified semantics).
+ * a full document load of `/new?skill=&ref=&auto=&key=` fills the form and the user presses
+ * Start. Since 2026-10-19 `auto=1` no longer starts a run by itself (see new-task-autostart.ts).
  */
 export function NewTaskRoute() {
   const [search] = useSearchParams()
@@ -320,15 +314,11 @@ export function NewTaskRoute() {
   const [planning, setPlanning] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  // ---- bookmarklet deep-link (spec 011 — legacy handleDeepLink, verbatim) -------------------
-  // `auto=1` with a ref arms the unattended start; the composer stays hidden behind a
-  // "Starting…" surface until the key check + POST settle (or fail into the prefill path).
-  const [autoStarting, setAutoStarting] = useState(() => deepLink.auto && deepLink.ref !== '')
-  const [notice, setNotice] = useState<DeepLinkNotice | null>(() =>
-    !deepLink.auto && deepLink.ref !== '' ? { kind: 'prefill' } : null,
-  )
+  // ---- bookmarklet deep-link (spec 011) ---------------------------------------------------------
+  // A link with a ref fills the form and asks for Start. `auto=1` + `key` from bookmarklets saved
+  // before 2026-10-19 are ignored on purpose: no link may start a task without a press on Start.
+  const [notice, setNotice] = useState<'prefill' | null>(() => (deepLink.ref !== '' ? 'prefill' : null))
   const deepLinkUrlCleaned = useRef(false)
-  const deepLinkHandled = useRef(false)
   useEffect(() => {
     if (deepLinkUrlCleaned.current) return
     deepLinkUrlCleaned.current = true
@@ -339,55 +329,6 @@ export function NewTaskRoute() {
     if (search.toString() !== '') void navigate('/new', { replace: true })
     // mount-only: search is intentionally the initial URL, captured before the replace
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (deepLinkHandled.current) return
-    if (!deepLink.auto || deepLink.ref === '') return
-    if (providers.isPending) return
-    if (!providersReady || runner === null) {
-      deepLinkHandled.current = true
-      // Authentication could not be established: keep the deep-link intent in the disabled
-      // composer and let the provider gate explain whether this is an error or missing setup.
-      setNotice({ kind: 'prefill' })
-      setAutoStarting(false)
-      return
-    }
-    // Provider status often resolves before project config on a cold load. The protected
-    // bookmarklet body may omit runner only against that scoped authoritative default, never
-    // our display fallback; a failed config read degrades to the prefilled composer.
-    if (config.isPending) return
-    deepLinkHandled.current = true
-    if (defaultRunner === undefined) {
-      setNotice({ kind: 'prefill' })
-      setAutoStarting(false)
-      return
-    }
-    void (async () => {
-      let launchKey = ''
-      try {
-        launchKey = (await getLaunchKey()).key
-      } catch {
-        // key endpoint unreachable → the blocked path, exactly like legacy
-      }
-      if (launchKey !== '' && deepLink.key === launchKey) {
-        try {
-          const created = await createRun(bookmarkletRunBody(deepLink, runner, defaultRunner))
-          clearStartedDraft(draftProjectId)
-          void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-          void navigate(startedRunPath(created))
-          return
-        } catch (error) {
-          setNotice({
-            kind: 'failed',
-            message: error instanceof Error ? error.message : String(error),
-          })
-        }
-      } else {
-        // Wrong or missing key: a drive-by page guessing the URL gets a form, never a run.
-        setNotice({ kind: 'blocked' })
-      }
-      setAutoStarting(false)
-    })()
-  }, [config.isPending, defaultRunner, providers.isPending, providersReady, runner]) // eslint-disable-line react-hooks/exhaustive-deps
   // The prefill toast waits for the pickers' data: whether the skill exists decides the
   // wording, and the unknown-skill case rewrites the draft the way legacy did (intent into
   // the text, quick-task as the source — its planner resolves skills from prose).
@@ -403,7 +344,7 @@ export function NewTaskRoute() {
       // needs no catalog lookup to say so.
       update({ text: unknownSkillPrefillText(deepLink.skill, deepLink.ref), source: null })
     }
-    const { message, tone } = deepLinkToast(notice, unknownSkill)
+    const { message, tone } = deepLinkToast(unknownSkill)
     toast(message, { tone })
     // Legacy focused the Run button so a bare Enter submits the reviewed form.
     document
@@ -529,26 +470,6 @@ export function NewTaskRoute() {
     } finally {
       setStarting(false)
     }
-  }
-
-  // The unattended bookmarklet start in flight: no composer, no params echoed anywhere —
-  // just an honest "working on it" until the POST answers (success navigates to the thread;
-  // failure drops back to the prefilled composer with a toast).
-  if (autoStarting) {
-    return (
-      <div
-        data-route="new"
-        className="relative isolate flex min-h-full flex-col items-center justify-center overflow-x-clip px-4 md:px-section"
-      >
-        <TwinkleBackdrop />
-        <div data-slot="auto-starting" role="status" className="text-center">
-          <h1 className="text-lg font-semibold tracking-tight motion-safe:animate-pulse">Starting task…</h1>
-          <p className="mt-1.5 text-[13.5px] text-muted-foreground">
-            Launched from a bookmarklet — taking you to the run.
-          </p>
-        </div>
-      </div>
-    )
   }
 
   return (

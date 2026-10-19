@@ -677,9 +677,8 @@ describe('legacy cockpit retirement (R7)', () => {
 
   it('serves the React shell for a full load of /new — the R1 legacy pin is gone (R4 1.3)', () => {
     // The React composer now carries the bookmarklet contract (/new?skill=&ref=&auto=1&key=),
-    // so a full document load of /new gets the shell like every other route. Without a valid
-    // key nothing starts — this link only prefills (the full auto-start matrix runs against
-    // the dry-run server in new-task.e2e.ts).
+    // so a full document load of /new gets the shell like every other route. Since 2026-10-19
+    // a link only fills the form, whatever `auto` says (the matrix runs in new-task.e2e.ts).
     browser.goto(baseUrl + '/new?skill=xez-code-review&ref=hello&auto=1')
 
     expect(browser.evaluate('document.getElementById("root") !== null')).toBe(true)

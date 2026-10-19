@@ -36,7 +36,7 @@ Set **Keep last N worktrees** and save. Zero means unlimited; older finished wor
 
 ### To start from GitHub — Bookmarklets
 
-Drag a generic or skill launcher to your bookmarks bar. The generic launcher prefills a task; **One-click launch (auto-submit)** applies to skill launchers. Re-drag after changing the option, and keep the originating cockpit running. See [GitHub and automations](07-github-and-automations.md#to-launch-from-a-github-page-with-a-bookmarklet).
+Drag a generic or skill launcher to your bookmarks bar. Each launcher fills in the task form and you press **Start**; nothing starts by itself. Keep the originating cockpit running. See [GitHub and automations](07-github-and-automations.md#to-launch-from-a-github-page-with-a-bookmarklet).
 
 ### To reuse instructions — Prompt templates
 

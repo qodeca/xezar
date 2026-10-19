@@ -1,80 +1,38 @@
-import type { CreateRunInput, Runner } from '@qodeca/xezar-api-client'
-
-import { buildCreateRunBody, type TaskSource } from './new-task-form'
-import type { NewTaskParams } from './new-task-params'
-
 /**
- * Bookmarklet auto-start (spec 011) — the React half of `handleDeepLink()` in web/app.js,
- * protected by the backward-compatibility promise: `/new?skill=&ref=&auto=1&key=` from a saved
- * bookmarklet must behave EXACTLY as it did on the legacy page.
+ * Bookmarklet deep links (spec 011) — the `/new?skill=&ref=&auto=&key=` grammar a saved
+ * bookmarklet opens, protected by the backward-compatibility promise: every link that ever
+ * landed keeps landing, with no error.
  *
- * Legacy semantics, verified against `web/app.js`:
+ * Owner decision 2026-10-19: a link FILLS the form and never starts a task by itself. The user
+ * reviews and presses Start. `auto=1` and `key` are still accepted and then ignored, so a
+ * bookmarklet saved with "One-click launch" before this change behaves like any other link.
+ *
+ * Semantics:
  *  - no `ref` (nor the `task` alias) → nothing to do beyond a plain composer;
- *  - `auto=1` + the correct launch key → POST /api/runs immediately, unattended;
- *  - `auto=1` + a wrong/missing key (or an unreachable key endpoint) → BLOCKED: prefill
- *    only, the user presses Start;
- *  - no `auto` → prefill + a toast;
- *  - the skill name is NOT validated client-side — the server starts the run and notes
- *    "skill not found … running with the plain prompt" (src/workflows/run.ts). Blocking an
- *    unknown skill here would break saved bookmarklets that legacy honored.
+ *  - a `ref` → prefill + a toast saying Start is needed, whatever `auto` and `key` say;
+ *  - the skill name is NOT validated client-side — an unknown skill falls back to quick-task
+ *    with the intent in the text, exactly as the legacy page did.
  */
 
-/** The exact unattended-start body. Legacy sent the ref as the literal step prompt with
- *  `task: ref` alongside; Step 1.1's `buildCreateRunBody` sends `prompt: '{{task}}'` with the
- *  same `task` — identical after template substitution, and pinned that way so the bookmarklet
- *  path and the composer submit can never drift apart. The runner stays absent when the
- *  resolved connected runner is the server default; a connected fallback is explicit so the
- *  server cannot resolve the request back to a disconnected default. */
-export function bookmarkletRunBody(
-  params: NewTaskParams,
-  runner: Runner,
-  defaultRunner: Runner,
-): CreateRunInput {
-  const source: TaskSource =
-    params.skill !== ''
-      ? { source: 'skill', ref: params.skill }
-      : { source: 'workflow', ref: 'quick-task' }
-  return buildCreateRunBody({
-    task: params.ref,
-    source,
-    model: '',
-    runner,
-    defaultRunner,
-    variants: 1,
-    images: [],
-    // Absent for every saved bookmarklet (legacy links have no `todo`), so this stays off the
-    // wire exactly as before — but if an in-app link ever arms auto, the inbox bookkeeping
-    // (#374) rides along here too rather than being silently lost on this path.
-    todoId: params.todo,
-  })
-}
-
-/** Why the composer is showing a prefilled form instead of a started run. */
-export type DeepLinkNotice =
-  | { kind: 'prefill' }
-  | { kind: 'blocked' }
-  | { kind: 'failed'; message: string }
-
-/** The one toast the deep-link handling shows (legacy `alertBar` had exactly one line too).
- *  `unknownSkill` is the skill param when it matches nothing installed here — the honest case
- *  legacy papered over by embedding the name in the task text. */
-export function deepLinkToast(
-  notice: DeepLinkNotice,
-  unknownSkill: string,
-): { message: string; tone: 'default' | 'danger' } {
-  if (notice.kind === 'failed') {
-    return { message: `Auto-start failed: ${notice.message} — review and press Start`, tone: 'danger' }
-  }
-  if (notice.kind === 'blocked') {
-    return { message: 'Auto-start blocked (bad key) — review and press Start', tone: 'danger' }
-  }
+/** The one toast a deep link shows (legacy `alertBar` had exactly one line too).
+ *
+ * @param unknownSkill - the skill param when it matches nothing installed here, else `''` —
+ *   the honest case legacy papered over by embedding the name in the task text.
+ * @returns the toast line and its tone; `danger` only for the unknown-skill case.
+ *
+ * @example
+ * ```ts
+ * deepLinkToast('') // { message: 'The link filled in the form — press Start to begin', tone: 'default' }
+ * ```
+ */
+export function deepLinkToast(unknownSkill: string): { message: string; tone: 'default' | 'danger' } {
   if (unknownSkill !== '') {
     return {
-      message: `Unknown skill "${unknownSkill}" — prefilled for quick-task; review and press Start`,
+      message: `Unknown skill "${unknownSkill}" — the link filled in the form for quick-task; press Start to begin`,
       tone: 'danger',
     }
   }
-  return { message: 'Prefilled from link — review and press Start', tone: 'default' }
+  return { message: 'The link filled in the form — press Start to begin', tone: 'default' }
 }
 
 /** Legacy's prefill for a skill the picker cannot select: the intent goes into the task text
