@@ -473,7 +473,7 @@ describe('launchMsys pid-file cleanup', () => {
     fsFakes.psExists = true;
     fsFakes.rmError = Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' });
     try {
-      const child = launchMsys('C:\\Program Files\\Git\\bin\\bash.exe', 'true', {}) as unknown as EventEmitter;
+      const child = launchMsys('C:\\Program Files\\Git\\bin\\bash.exe', 'true', { stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as EventEmitter;
       expect(() => child.emit('exit', 0, null)).not.toThrow();
     } finally {
       fsFakes.psExists = false;
