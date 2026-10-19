@@ -62,6 +62,7 @@ export type StateNamesPayload = z.infer<typeof stateNamesPayloadSchema>;
  */
 export const STATE_NAME_ENTRIES: readonly StateNameEntry[] = [
   { name: 'runs.json', kind: 'file', reason: 'The run index (runs/store.ts, runs/run-index.ts).', feature: null },
+  { name: 'backups', kind: 'directory', reason: 'A copy of a runs.json that did not load cleanly, kept before the next save replaces it (runs/store.ts runIndexBackupPath).', feature: null },
   { name: 'runs', kind: 'directory', reason: 'The per-run event NDJSON / handoff / images directory (runs/store.ts, workflows/run.ts).', feature: null },
   { name: 'worktrees', kind: 'directory', reason: 'Task git worktrees (git-worktree.ts WORKTREES_DIR, mcp/resource-ownership.ts).', feature: null },
   { name: 'tmp', kind: 'directory', reason: 'Per-run agent scratch directories (runs/agent-tmpdir.ts, project-data-paths.ts projectScratchDir).', feature: null },

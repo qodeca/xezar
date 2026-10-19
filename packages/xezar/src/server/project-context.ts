@@ -662,9 +662,10 @@ export class ProjectContexts {
       // best-effort sweeps serveCommand runs for the boot project, gated on the
       // root actually being a git repo.
       if (await getRepoInfo(project.root)) {
-        await pruneOrphans(project.root, new Set(store.listRuns().map((r) => r.id))).catch(
-          () => [] as string[],
-        );
+        // Never on a partial run list: see `RunStore.loadedCleanly`.
+        if (store.loadedCleanly) {
+          await pruneOrphans(project.root, new Set(store.listRuns().map((r) => r.id))).catch(() => undefined);
+        }
         const keep = await resolveWorktreeRetention(project.root).catch(
           () => DEFAULT_WORKTREE_RETENTION,
         );

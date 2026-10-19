@@ -627,27 +627,73 @@ export async function worktreeShortstat(
   return { ...parseShortstat(res.stdout), ...(repointedHead ? { repointed: true } : {}) };
 }
 
+/** What the startup reconcile did with the task folders no run record names. */
+export interface OrphanSweep {
+  /** Folders removed because git showed nothing that only they held; their branch is kept. */
+  removed: string[];
+  /** Folders left in place: uncommitted or untracked changes, no branch checked out, or git
+   *  could not confirm either. */
+  kept: string[];
+}
+
+/** A run id as `RunStore.createRun` mints it (`randomUUID`). Anything else under the worktrees
+ *  folder was not made by xezar and is never touched. */
+const RUN_ID_FOLDER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /**
- * Startup reconcile: `git worktree prune` + remove every directory under
- * `.local/xezar/worktrees/` whose run id is no longer in the store (and its
- * branch). Returns the removed run ids for the boot log. Never throws.
+ * Startup reconcile: `git worktree prune`, then look at every folder under
+ * `.local/xezar/worktrees/` whose run id is not in the store.
+ *
+ * "Not in the store" is not proof that the work is unwanted: the record may have been retired by
+ * the count-based retention, dropped as unreadable, or written by another xezar. So this is the
+ * same reclaim the worktree retention performs and never more: a folder is removed only when it is
+ * a registered worktree of this repository, has a branch checked out, and `git status` shows no
+ * uncommitted or untracked change, and the branch itself is ALWAYS kept, so every commit stays
+ * reachable. Everything else is left where it is. The caller must also skip this sweep when the
+ * store did not load cleanly (`RunStore.loadedCleanly`). Never throws.
  */
 export async function pruneOrphans(
   repoRoot: string,
   validIds: ReadonlySet<string>,
-): Promise<string[]> {
+): Promise<OrphanSweep> {
+  const sweep: OrphanSweep = { removed: [], kept: [] };
   await git(repoRoot, ['worktree', 'prune']);
   let entries: Dirent[];
   try {
     entries = await readdir(join(projectDataDir(repoRoot), 'worktrees'), { withFileTypes: true });
   } catch {
-    return []; // no worktrees dir yet
+    return sweep; // no worktrees dir yet
   }
-  const removed: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || validIds.has(entry.name)) continue;
-    await removeWorktree(repoRoot, worktreePathFor(repoRoot, entry.name), branchFor(entry.name));
-    removed.push(entry.name);
+  const orphans = entries.filter(
+    (entry) => entry.isDirectory() && RUN_ID_FOLDER.test(entry.name) && !validIds.has(entry.name),
+  );
+  if (orphans.length === 0) return sweep;
+  const registered = await registeredWorktrees(repoRoot);
+  for (const entry of orphans) {
+    const path = worktreePathFor(repoRoot, entry.name);
+    if (await orphanHoldsNothingOfItsOwn(path, registered)) {
+      await removeWorktree(repoRoot, path); // no branch argument: the branch is kept
+      sweep.removed.push(entry.name);
+    } else {
+      sweep.kept.push(entry.name);
+    }
   }
-  return removed;
+  return sweep;
+}
+
+/** True only when git confirms the folder is a registered worktree on a branch with a clean
+ *  status, so removing the folder loses nothing the kept branch does not hold. */
+async function orphanHoldsNothingOfItsOwn(
+  path: string,
+  registered: readonly RegisteredWorktree[],
+): Promise<boolean> {
+  const canonical = canonicalPath(path);
+  const own = registered.find((wt) => samePath(canonicalPath(wt.path), canonical));
+  if (!own?.branch) return false; // not a worktree git knows, or a detached HEAD
+  // The folder sits inside the repository, so a folder whose own `.git` link is broken would let
+  // `git status` answer for the enclosing checkout instead. Make git prove which tree it reads.
+  const top = await git(path, ['rev-parse', '--show-toplevel']);
+  if (!top.ok || !samePath(canonicalPath(fromGitPath(top.stdout.trim())), canonical)) return false;
+  const status = await git(path, ['status', '--porcelain', '--untracked-files=all']);
+  return status.ok && status.stdout.trim() === '';
 }
