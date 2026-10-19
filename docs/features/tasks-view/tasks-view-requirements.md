@@ -1,5 +1,7 @@
 # Tasks view — business requirements
 
+> **Status 2026-10-19: not implemented yet.**
+
 Date: 9 September 2026  
 Business stakeholder: Marcin Obel  
 Status: Ready for team handoff as business requirements. Technical specification, implementation, and validation remain to be completed.
