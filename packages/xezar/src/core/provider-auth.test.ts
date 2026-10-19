@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +34,8 @@ const originalEnv = {
   QWEN_HOME: process.env.QWEN_HOME,
 };
 
+let qwenHome: string | undefined;
+
 beforeEach(() => {
   delete process.env.XEZ_AGENT_MODELS_LOCKED;
   delete process.env.XEZ_DRY_RUN;
@@ -41,7 +43,7 @@ beforeEach(() => {
   delete process.env.XEZ_CODEX_BIN;
   delete process.env.XEZ_QWEN_BIN;
   // Qwen Code has no status command; its answer is its settings. A configured home of the test's own.
-  const qwenHome = mkdtempSync(join(tmpdir(), 'xez-provider-auth-qwen-'));
+  qwenHome = mkdtempSync(join(tmpdir(), 'xez-provider-auth-qwen-'));
   writeFileSync(join(qwenHome, 'settings.json'), JSON.stringify({ modelProviders: { openai: [{ id: 'local-model' }] } }));
   process.env.QWEN_HOME = qwenHome;
 });
@@ -51,6 +53,8 @@ afterEach(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+  if (qwenHome !== undefined) rmSync(qwenHome, TEST_DIR_RM_OPTIONS);
+  qwenHome = undefined;
 });
 
 function resultFor(executable: string): ProviderCommandResult {

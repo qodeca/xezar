@@ -63,6 +63,14 @@ const ALLOWED: readonly Allowance[] = [
       'A REFUSAL of anything that is not a plain relative name: it refuses a leading `/`, a backslash ' +
       'and a drive letter together, so it already covers the Windows spellings.',
   },
+  {
+    file: 'platform/socket-dir.ts',
+    rule: 'tmp-literal',
+    code: "const POSIX_SHORT_TEMP = '/tmp';",
+    reason:
+      'The POSIX-only fallback for a Unix socket whose os.tmpdir() is too deep for sun_path; ' +
+      '`socketTempRoot` returns os.tmpdir() on Windows before it is reached, and its tests pin both branches.',
+  },
 ];
 
 interface Finding {

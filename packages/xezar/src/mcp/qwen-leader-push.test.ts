@@ -23,6 +23,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { QWEN_MESSAGING_SOCKET_ENV, QWEN_MESSAGING_TOKEN_ENV } from './qwen-messaging.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { countControllerTicks } from './controller-ticks.testkit.ts';
 import { shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
 
 /**
@@ -49,7 +50,10 @@ const tmp = (prefix: string): string => {
   return dir;
 };
 
+let ticks: ReturnType<typeof countControllerTicks>;
+
 beforeEach(() => {
+  ticks = countControllerTicks();
   process.env.XEZ_HOME = tmp('xzq-');
   process.env.XEZ_DRY_RUN = '1';
   delete process.env.XEZ_REMOTE;
@@ -57,6 +61,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
+  ticks.restore();
   for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun], ['XEZ_REMOTE', saved.remote]] as const) {
     if (value === undefined) delete process.env[key];
@@ -80,6 +85,8 @@ async function fakeQwenInbox() {
   const dir = tmp('xqi-');
   const path = localSocketPath(dir, 'inbox.sock');
   const messages: InboxMessage[] = [];
+  /** Every `user` frame the inbox was offered, whatever it answered: one entry per delivery attempt. */
+  const offered: string[] = [];
   const unauthenticated: number[] = [];
   const control: { receipt: string } = { receipt: 'delivered' };
   const server: Server = createServer((socket) => {
@@ -103,6 +110,7 @@ async function fakeQwenInbox() {
         }
         if (frame.type !== 'user') continue;
         const message = frame.message as { role: string; content: string };
+        offered.push(message.content);
         const status = control.receipt;
         if (status === 'delivered') {
           messages.push({ at: Date.now(), msgId: String(frame.msgId), fromName: String(frame.fromName), content: message.content });
@@ -118,7 +126,7 @@ async function fakeQwenInbox() {
   });
   await new Promise<void>((resolve) => server.listen(path, resolve));
   closers.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  return { path, messages, unauthenticated, control };
+  return { path, messages, offered, unauthenticated, control };
 }
 
 async function cockpit() {
@@ -298,8 +306,9 @@ describe('#1045 — a Qwen Code leader receives pushed events through its sessio
     const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
     await until('the push', () => inbox.messages.find((m) => m.content.includes(change.eventId)));
 
-    // Several heartbeats: a delivered row is not pushed again on a timer, and delivery is not an ack.
-    await new Promise((r) => setTimeout(r, 2_000));
+    // Several heartbeats (counted, not slept): a delivered row is not pushed again on a timer, and
+    // delivery is not an ack.
+    await ticks.waitFor(3);
     expect(inbox.messages.filter((m) => m.content.includes(change.eventId))).toHaveLength(1);
     const replay = okResult(await leader.call('leader_events', { action: 'read' })).structuredContent as unknown as { events: Array<{ eventId: string }>; nextCursor: string };
     expect(replay.events.map((event) => event.eventId)).toContain(change.eventId);
@@ -319,7 +328,9 @@ describe('#1045 — a Qwen Code leader receives pushed events through its sessio
 
     expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
     const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
-    await new Promise((r) => setTimeout(r, 3_000));
+    // Wait for the refusals themselves, not a clock: the row was offered and refused at least twice.
+    await until('two refused attempts', () => (inbox.offered.filter((m) => m.includes(change.eventId)).length >= 2 ? true : undefined), 30_000);
+    expect(inbox.messages.some((m) => m.content.includes(change.eventId))).toBe(false);
     const waiting = await c.status();
     expect(waiting.available && (waiting.delivery?.deliveredSeq ?? 0) < change.journalSeq).toBe(true);
 
@@ -343,7 +354,9 @@ describe('#1045 — a Qwen Code leader receives pushed events through its sessio
     expect(okResult(await leader.call('leader_events', { action: 'stop' })).structuredContent).toMatchObject({ ok: true, outcome: 'stopped' });
     expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
     const one = await until('the first config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
-    await new Promise((r) => setTimeout(r, 1_500));
+    // Two heartbeats, each re-reading the journal: an attached controller would have pushed by now.
+    await ticks.waitFor(2);
+    expect(inbox.offered.some((m) => m.includes(one.eventId))).toBe(false);
     expect(inbox.messages.some((m) => m.content.includes(one.eventId))).toBe(false);
 
     // Attach again, then the cockpit restarts: the idle leader hears it once, through its inbox.

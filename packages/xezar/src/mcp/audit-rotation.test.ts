@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { countFileLockPolls } from '../core/file-lock-polls.testkit.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditRecordSchema, type AuditActionRecord, type AuditRecord } from '@qodeca/xezar-contract';
 import {
@@ -339,14 +340,15 @@ describe('AC-P3-04: a rotation that crashed between its rename and its marker', 
     expect(existsSync(rotatedAuditTrailPath(dataDir, 1))).toBe(true);
     expect(existsSync(auditLockPath(dataDir))).toBe(true);
 
-    const started = Date.now();
+    // The dead owner's lock is taken over at once, not after the 2 s bound: the lock never waits
+    // one poll interval for it. Counted, not timed, so a busy machine cannot pass or fail it.
+    const lockPolls = countFileLockPolls();
     const warn = vi.fn();
     const record = await new AuditTrail({ projectId: PROJECT, dataDir }, { warn }).channel('mcp').record(
       { action: 'run.cancel', resource: { kind: 'run', id: 'after-crash' } },
       { outcome: 'applied' },
-    );
-    // The dead owner's lock is taken over at once, not after the 2 s bound.
-    expect(Date.now() - started).toBeLessThan(1_500);
+    ).finally(() => lockPolls.restore());
+    expect(lockPolls.count()).toBe(0);
     expect(warn).not.toHaveBeenCalled();
     expect(record?.seq).toBe(lastFilled + 2);
     const live = recordsOf(auditTrailPath(dataDir));
