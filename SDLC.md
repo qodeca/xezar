@@ -765,6 +765,10 @@ records the evidence and updates this row.
   promotion comes first; the Release workflow then stamps the version while it publishes, tags the
   promoted commit through the GitHub API (unsigned), and opens the version-bump pull request
   afterwards (`docs/publishing.md` § Cutting a release).
+- **Who sets labels.** The core (§ Labels) lets contributors set category, priority and
+  `needs-design`. Here contributors set no labels at all, as `CONTRIBUTING.md` says: a maintainer
+  sets category, priority, risk, platform and `needs-design` at intake, and the pipeline sets the
+  rest.
 
 ### Known gaps to fix outside this file
 
