@@ -5,7 +5,8 @@
     "meta": "5319e7",
     "priority": "d93f0b",
     "risk": "b60205",
-    "platform": "c5def5"
+    "platform": "c5def5",
+    "debt": "c5def5"
   },
   "labels": {
     "review": {
@@ -127,6 +128,14 @@
     "design-failed": {
       "group": "pipeline",
       "description": "The design review found problems; rework the design."
+    },
+    "do-not-close": {
+      "group": "meta",
+      "description": "Housekeeping must never close this issue; a person decides."
+    },
+    "design-debt": {
+      "group": "debt",
+      "description": "A known gap between the cockpit and the design system, recorded for later repair."
     },
     "skip-design": {
       "group": "meta",

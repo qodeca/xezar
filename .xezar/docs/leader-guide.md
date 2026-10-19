@@ -156,7 +156,9 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 - The gate, in order: `npm ci`, the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`,
   `npm run build`, `npm run test:package`, then the repository checks. One command runs it, in the
   foreground: `bash .xezar/checks/repo-gates.sh`. No lint command exists.
-- The CI check a merge waits for: `Typecheck, unit tests, build, and package`.
+- The CI checks a merge waits for: the nine that branch protection on `develop` and `main` requires –
+  the five in `ci.requiredChecks` plus the four Windows and macOS legs on Node 22 and 24 of the
+  cross-platform matrix; `main` also requires `PR source guard` (`SDLC.md` § The gate here).
 - Source: four npm workspaces under `packages/` (`xezar` service and CLI, `contract`, `api-client`,
   `web` cockpit). Tests sit beside the code as `*.test.ts(x)`; the browser suite is `packages/web/e2e`.
 - Documents: `docs/` (design system `docs/design-system/`, specs `docs/features/`), designs in `designs/`,
@@ -173,7 +175,7 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 5. **Review** — `review`; `changes-requested` sends it back to the author, at most two response rounds.
 6. **QA** — `needs-qa` → `qa` → `qa-approved` or `qa-self-verified`; `qa-failed` sends it back;
    `skip-qa` only with the reason on the pull request.
-7. **Merge** — `merge-queue`, then the leader merges when the required check is green on the head
+7. **Merge** — `merge-queue`, then the leader merges when the required checks are green on the head
    and a review by a different model approved that head.
 `blocked` and `do-not-merge` stop any stage; `ci-monitoring` means a CI comment is still owed.
 
@@ -193,7 +195,8 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 
 The owner authorises every release; a release go is an owner-only decision. Full steps: `docs/publishing.md`.
 1. Everything for the release is on `develop` with a green CI run — proof: the run on that sha.
-2. `release-prep` workflow: changelog and candidate checks — proof: its evidence and the candidate sha.
+2. `release` workflow: its `changelog` step folds the `changelog.d/` fragments into `CHANGELOG.md`,
+   then the candidate is gated — proof: its evidence and the candidate sha.
 3. The changelog pull request merges into `develop`; `promote/v<version>`, cut at that merge commit,
    merges into `main` with a merge commit — proof: `main`'s head has two parents.
 4. The owner dispatches **Actions → Release** on `main` with the bump — proof: a green `Release` run
