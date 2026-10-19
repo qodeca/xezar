@@ -399,10 +399,11 @@ interface ActiveRun {
    *  "xezar cut it off" and recorded the pause as `done`. Consumed once, where `session.result`
    *  resolves, and cleared there. */
   memoryLimitPause?: string;
-  /** Why xezar is stopping this run (#943), set beside `cancelled` by `cancel()` and beside
-   *  `memoryLimitPause` by `enforceMemoryLimit`. `dropActive` reads it to sweep what the run
-   *  started; a run that ends on its own has none, and its processes are left alone. */
-  stopReason?: Exclude<SweepReason, 'restart'>;
+  /** Why xezar is stopping this run (#943), set beside `cancelled` by `cancel()`, beside
+   *  `memoryLimitPause` by `enforceMemoryLimit`, and as `close` wherever xezar closes a session the
+   *  agent had not ended (the idle close, `finish()`, a gated bound). `dropActive` reads it to sweep
+   *  what the run started; a run that ends on its own has none, and its processes are left alone. */
+  stopReason?: Exclude<SweepReason, 'restart' | 'timeout' | 'eof-kill'>;
 }
 
 /** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
@@ -1950,8 +1951,8 @@ export class RunManager {
   /** Remove a run from the live registries — keeps `waiting ⊆ active`. */
   private dropActive(runId: string): void {
     const state = this.active.get(runId);
-    // #943: a run xezar paused or cancelled leaves nothing it started running; every other end
-    // forgets the run's process ledger. Synchronous – the sweep runs enrolled in the background.
+    // #943: a run xezar paused, cancelled or closed leaves nothing it started running; every other
+    // end forgets the run's process ledger. Synchronous – the sweep runs enrolled in the background.
     if (state?.stopReason) this.runProcesses.start(runId, state.stopReason);
     else this.runProcesses.drop(runId);
     state?.releaseRepoRoot?.();
@@ -3024,6 +3025,7 @@ export class RunManager {
     if (state?.session?.open) {
       this.clearIdleTimer(state);
       this.store.appendEvent(runId, { type: 'lifecycle', message: 'session closed by user' });
+      state.stopReason ??= 'close'; // #943, owner 2026-10-19: every stop stops what the task started
       state.session.end();
       return true;
     }
@@ -3485,6 +3487,7 @@ export class RunManager {
             !autoContinued && !gatedStop && !monitoring &&
             this.finishStoppedReadOnlyTurn(runId, state, stepId, continueTools);
           if (gatedStop) {
+            state.stopReason ??= 'close'; // in place of the idle close it would wait out (#943)
             state.session?.end();
           } else if (!autoContinued && !finishedReadOnly) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
@@ -3710,9 +3713,11 @@ export class RunManager {
       if (state.cwd !== this.repoRoot) await autosaveCommit(state.cwd, 'turn end');
     };
     try {
-      await session.result;
+      const settled = await session.result;
       // The exit is the shutdown's own stop: record nothing, the next start resumes the run (#963).
       if (this.exiting) await this.parkedForExit();
+      // #943, as in `execute`: before the tail of the workflow, if any, starts anything.
+      if (settled.stoppedAfterClose && !state.stopReason) await this.runProcesses.now(runId, 'eof-kill');
       if (sessionError) throw new Error(sessionError);
       // Same "our own signal coming back" teardown path a legitimate `XEZ:DONE` close settles on
       // (#703) — a close xezar forced for the memory guard must land on the `catch` below as a
@@ -4796,6 +4801,9 @@ export class RunManager {
         // agent left running too, before anything else of this run starts. A cancel that lands
         // meanwhile is seen below and by the step loop, never behind a retry.
         if (result.timedOut) await this.runProcesses.now(runId, 'timeout');
+        // The same for a backend the EOF watchdog stopped after its session closed (owner
+        // 2026-10-19). A stop xezar named itself sweeps when the run leaves, in `dropActive`.
+        if (result.stoppedAfterClose && !state.stopReason) await this.runProcesses.now(runId, 'eof-kill');
         if (sessionError) {
           sink.sessionEnded('error', sessionError);
           return sessionError;
@@ -5315,6 +5323,9 @@ export class RunManager {
           type: 'lifecycle',
           message: `session closed after ${Math.round(timeoutMs / 60_000)}m of inactivity`,
         });
+        // #943, owner 2026-10-19: the run then sweeps what it started. No `beforeStop` read: the
+        // session sat idle for the whole timeout, so the sampler has long recorded its programs.
+        state.stopReason ??= 'close';
         state.session.end();
       }
     }, timeoutMs);

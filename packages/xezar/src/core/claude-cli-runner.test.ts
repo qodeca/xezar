@@ -680,6 +680,27 @@ describe('a signal xezar did not send', () => {
       );
     });
   }, 15_000);
+
+  /** #943: only the EOF watchdog's stop after `end()` asks the run manager to sweep; a cancel sweeps on its own path. */
+  it('marks a session the EOF watchdog stopped after close, and not an interrupted one', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let closed: ReturnType<typeof startWithFakeChild>;
+    try {
+      closed = startWithFakeChild();
+      closed.session.end();
+      vi.advanceTimersByTime(EOF_TERM_GRACE_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(closed.fake.signals).toEqual(['SIGTERM']);
+    closed.fake.exit(143);
+    expect((await closed.session.result).stoppedAfterClose).toBe(true);
+
+    const interrupted = startWithFakeChild();
+    interrupted.session.interrupt();
+    interrupted.fake.exit(143);
+    expect((await interrupted.session.result).stoppedAfterClose).toBeUndefined();
+  }, 15_000);
 });
 
 describe('prependSystemPrompt (codex delivery)', () => {

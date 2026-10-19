@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RUN_MARKER_ENV, RunProcessSweeper, type RunProcessSweeperDeps } from '../runs/run-process-sweeper.ts';
 import { FakeMachine } from '../runs/run-process-sweeper.testkit.ts';
@@ -12,9 +13,9 @@ import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
 /**
- * #943 wiring: `RunManager` hands a paused, cancelled or timed-out run to its
- * `RunProcessSweeper`, waits for a pending sweep before a new life of the run starts anything
- * (R2), enrols every sweep so `quiesce()` waits for it (R3), and lets a cancel that lands during
+ * #943 wiring: `RunManager` hands a paused, cancelled, closed or timed-out run – and one whose CLI
+ * the EOF watchdog had to stop – to its `RunProcessSweeper`, waits for a pending sweep before a
+ * new life of the run starts anything (R2), enrols every sweep so `quiesce()` waits for it (R3), and lets a cancel that lands during
  * a timeout sweep end the run cancelled (R6). The sweeper runs over a fake Linux machine here –
  * no real process is touched; `memory-limit-pause.test.ts` proves the real thing.
  */
@@ -31,6 +32,10 @@ const TIMED: WorkflowDef = {
 };
 const SERVER_PID = 4121;
 const OTHER_RUN_PID = 5001;
+/** 0.001 minutes = 60 ms: the idle close fires almost at once after the session parks. */
+const IDLE_MINUTES = 0.001;
+/** A `claude` that finishes its turn with `XEZ:DONE` and then never exits on its own. */
+const DONE_THEN_HANGS = fileURLToPath(new URL('../core/__fixtures__/claude/stub-done-ignores-eof.mjs', import.meta.url));
 
 /** A promise the test opens by hand, and a flag that says someone is waiting on it. */
 class Gate {
@@ -65,9 +70,9 @@ describe('RunManager and the run-process sweep (#943)', () => {
   let argsFile: string;
   const savedEnv: Record<string, string | undefined> = {};
 
-  function build(limitMb = 100_000): void {
+  function build(resources: { idleTimeoutMinutes?: number } = {}): void {
     manager = new RunManager(store, repoRoot, {
-      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2, memoryLimitMb: limitMb } }),
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2, memoryLimitMb: 100_000, ...resources } }),
       runProcesses: (hooks) => {
         const deps: RunProcessSweeperDeps = machine.deps({
           readTable: async () => {
@@ -151,6 +156,50 @@ describe('RunManager and the run-process sweep (#943)', () => {
     const note = all.find(isReport)!;
     expect(note.message).toBe(`Stopped 1 program this task started: ${SERVER_PID} node server.js --port 3000.`);
     expect(all.findIndex((e) => e.message === 'run cancelled')).toBeLessThan(all.indexOf(note));
+  }, 60_000);
+
+  /** The run has left the active set and its sweep, if any, has finished. */
+  const settled = async (id: string): Promise<void> => {
+    await waitFor(() => !manager.isActive(id), 'the run to end', 40_000);
+    await sweeper.pending(id);
+  };
+  const stoppedServerNote = `Stopped 1 program this task started: ${SERVER_PID} node server.js --port 3000.`;
+
+  it('an idle close stops what the run left running (owner 2026-10-19)', async () => {
+    await manager.dispose();
+    build({ idleTimeoutMinutes: IDLE_MINUTES });
+    const run = manager.startRun(ONE_STEP, { task: 'start a dev server', worktree: false });
+    leaveBackgroundServer(run.id);
+    await settled(run.id);
+    expect(events(run.id).some((e) => e.type === 'lifecycle' && (e.message ?? '').includes('of inactivity'))).toBe(true);
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(machine.isAlive(OTHER_RUN_PID)).toBe(true);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('a Finish on a waiting session stops what the run left running (owner 2026-10-19)', async () => {
+    const run = manager.startRun(ONE_STEP, { task: 'start a dev server', worktree: false });
+    await waitFor(() => status(run.id) === 'waiting', 'the session to park');
+    leaveBackgroundServer(run.id);
+    expect(manager.finish(run.id)).toBe(true);
+    await settled(run.id);
+    expect(status(run.id)).toBe('done');
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(machine.isAlive(OTHER_RUN_PID)).toBe(true);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
+  }, 60_000);
+
+  it('a CLI the EOF watchdog stops after XEZ:DONE has what the run left running stopped too (owner 2026-10-19)', async () => {
+    process.env.XEZ_CLAUDE_BIN = DONE_THEN_HANGS;
+    const run = manager.startRun(ONE_STEP, { task: 'start a dev server', worktree: false });
+    leaveBackgroundServer(run.id);
+    await settled(run.id);
+    // The agent finished: the run is done, and only the watchdog's stop of its CLI asks for the sweep.
+    expect(status(run.id)).toBe('done');
+    expect(events(run.id).some((e) => e.type === 'lifecycle' && e.message === 'goal achieved — session closed')).toBe(true);
+    expect(machine.isAlive(SERVER_PID)).toBe(false);
+    expect(machine.isAlive(OTHER_RUN_PID)).toBe(true);
+    expect(reportNotes(run.id).map((e) => e.message)).toEqual([stoppedServerNote]);
   }, 60_000);
 
   it('a run that ends on its own sweeps nothing', async () => {

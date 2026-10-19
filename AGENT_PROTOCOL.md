@@ -113,7 +113,10 @@ A termination the runner itself caused is **not** an agent failure (pre-rename i
 exit `128 + signal`. A runner MUST therefore record that it sent the signal and
 settle such an exit on the normal path — `isXezarStopExit(exitCode)`
 (`packages/xezar/src/core/agent-runner.ts`) plus a `note` — instead of throwing. Throwing makes
-a finished run settle as `failed` and a cancelled run settle as `failed` too.
+a finished run settle as `failed` and a cancelled run settle as `failed` too. When it was the
+`end()` watchdog that had to signal, also **return `stoppedAfterClose: true`** on the
+`AgentRunResult` (#943; never for `interrupt()`, never with `timedOut`): the run manager reads it
+to stop what the agent left running, and a runner that omits it leaves those programs behind.
 
 **The other half of that bit is an obligation too: when the runner sent NO signal and the CLI still
 exits `128 + signal`, name the signal.** Report it through `foreignSignalExitMessage(cli, exitCode)`
@@ -680,7 +683,8 @@ To be first-class:
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
    `qwen-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
    `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.
-   Return `timedOut: true` on a deadline stop (§1). Start the process with `launch` from
+   Return `timedOut: true` on a deadline stop (§1), and `stoppedAfterClose: true` when the `end()`
+   watchdog had to stop the child. Start the process with `launch` from
    `packages/xezar/src/platform/process-launch.ts`, never `node:child_process` –
    `process-spawn-scan.test.ts` fails the unit gate otherwise; on Windows this is what finds npm
    shims and refuses unsafe `.cmd` arguments.

@@ -158,6 +158,8 @@ describe('QwenRunner stop (#1042)', () => {
       // Bounded, so a regression fails here and the finally still stops what the turn started.
       const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000))]);
       expect(outcome).not.toBe('still running');
+      // A cancel sweeps on its own path (#943): only the EOF watchdog's stop is marked.
+      expect(await session.result.then((result) => result.stoppedAfterClose, () => undefined)).toBeUndefined();
       await vi.waitFor(() => expect(pids.filter(alive)).toEqual([]), { timeout: 5_000, interval: 50 });
     } finally {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
@@ -170,6 +172,8 @@ describe('QwenRunner stop (#1042)', () => {
       session.end();
       const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 15_000))]);
       expect(outcome).toBe('resolved');
+      // The run manager sweeps what the turn left behind a stop like this one (#943).
+      expect((await session.result).stoppedAfterClose).toBe(true);
     } finally {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
     }
