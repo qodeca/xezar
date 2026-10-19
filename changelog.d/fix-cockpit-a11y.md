@@ -41,3 +41,7 @@
 - 🐛 **No more pale lime text in the light theme.** Selected-item check marks, the Workflows drop
   hint and the MCP "completed" mark now use the text colour on white, as links already do; the dark
   theme keeps the lime.
+- 🐛 **Readable green, red and violet text in the light theme.** Diff counts, check words, failed
+  states and reference chips were too pale on white (2.5–3.8:1); the light theme now uses darker
+  shades of the same colours (5.7–6.0:1), with white text on the red and violet badges and buttons.
+  The dark theme is unchanged.

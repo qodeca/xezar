@@ -234,6 +234,18 @@
    * Far enough from `--pending-strong` (amber-700) to stay a different colour, not a shade. */
   --conflict: #c2410c;
 
+  /* The three status hues as ink on white were 2.5:1 (success #10b981), 3.8:1 (danger #ef4444)
+   * and 3.1:1 (violet #8f86e8) – under AA for the 10–13px text they colour (G-23). Same hue,
+   * lower lightness, until each clears 4.5:1 on every light surface it prints on: white, the
+   * card/sidebar tints, `--muted` (#f7f7f7) and its own 10–15% tint over white. The darker
+   * fills then carry white ink better than near-black (near-black drops to ~3.3:1), so the
+   * light theme flips the ink on these fills to white; the dark theme keeps near-black. */
+  --success: #0a7350;
+  --danger: #c61111;
+  --danger-ink: #ffffff;
+  --violet: #5d50de;
+  --violet-foreground: #ffffff;
+
   --shadow-modal: 0 16px 48px 0 rgba(0, 0, 0, 0.12);
 
   --diff-add-bg: rgba(16, 185, 129, 0.08);

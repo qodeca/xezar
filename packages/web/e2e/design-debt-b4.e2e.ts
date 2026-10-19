@@ -524,14 +524,10 @@ function contrast(scope: string) {
   })()`)
 }
 
-// Light-theme ink tokens already below 4.5:1 as small text, recorded in known-gaps G-23. B4 may
-// not change a token (#453: B1 owns them), so these three colours are reported, not passed: any
-// OTHER colour below the line still fails, and so does one of these on a dark surface.
-const G23_LIGHT_INKS: Record<string, string> = {
-  'rgb(16, 185, 129)': '--success',
-  'rgb(239, 68, 68)': '--danger',
-  'rgb(143, 134, 232)': '--violet',
-}
+// Light-theme ink tokens once below 4.5:1 as small text (known-gaps G-23). The light theme now
+// darkens `--success`, `--danger` and `--violet` past 4.5:1 (`src/light-status-ink.test.ts`), so
+// no colour is excused any more: every sample below the line fails, in both themes.
+const G23_LIGHT_INKS: Record<string, string> = {}
 
 it.each(['light', 'dark'] as const)('small task-list text has composited contrast in %s with both accents', (theme) => {
   const low: string[] = []

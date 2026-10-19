@@ -166,6 +166,11 @@
   --info: #1d4ed8;
   --pending-strong: #b45309;
   --conflict: #c2410c;
+  --success: #0a7350;
+  --danger: #c61111;
+  --danger-ink: #ffffff;
+  --violet: #5d50de;
+  --violet-foreground: #ffffff;
 
   --shadow-modal: 0 16px 48px 0 rgba(0, 0, 0, 0.12);
 

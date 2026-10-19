@@ -205,7 +205,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |
 | `packages/web/src/components/provider-banner-container.tsx` | ProviderBannerContainer | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
 | `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented (G-44 retired) |
-| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented with known gap (G-23, light violet ink) |
+| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented |
 | `packages/web/src/components/reference-conflict-action.tsx` | ReferenceConflictAction | components.md §2 ReferenceConflictAction | Documented |
 | `packages/web/src/components/reference-status.tsx` | ReferenceStatus registry | components.md §2 ReferenceStatus registry | Not applicable – a registry of status → tone/label; rendered by ReferenceChip (components.md §2 ReferenceStatus registry). |
 | `packages/web/src/components/route-error-boundary.tsx` | RouteErrorBoundary | components.md §2 RouteErrorBoundary | Documented |
@@ -242,7 +242,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | 1. App shell | patterns.md §1 | `specimens/patterns.html` | Documented with known gap (G-14) |
 | 2. Sidebar navigation and badges | patterns.md §2 | `specimens/patterns.html` | Documented with known gap (G-14) |
 | 3. Page headers | patterns.md §3 | `specimens/patterns.html` | Documented (G-01 retired in #453 B7) |
-| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented with known gap (G-23; G-02 and G-17 retired) |
+| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented (G-23 closed; G-02 and G-17 retired) |
 | 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented (G-04 retired) |
 | 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented (G-05 and G-08 retired) |
 | 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-16; G-10 retired) |
