@@ -26,6 +26,7 @@ import { launchFile } from '../../platform/process-launch.ts';
 import type { RunRecord } from '../../runs/store.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { imageMimeType } from '../../server/git-changes.ts';
+import { redactRemoteUrl } from '../../server/git.ts';
 import {
   MCP_CURSOR_MAX_BYTES,
   openCursor,
@@ -382,11 +383,6 @@ export function gitIsoDate(text: string): string {
 async function committedAt(git: GitRunner, sha: string): Promise<string | undefined> {
   const res = await git(['show', '-s', '--format=%cI', sha]);
   return res.ok && res.stdout.trim() ? gitIsoDate(res.stdout.trim()) : undefined;
-}
-
-/** A remote URL without any `user:token@` it may carry (F-15). */
-function withoutUserinfo(url: string): string {
-  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, '$1');
 }
 
 // ---- paging -----------------------------------------------------------------------
@@ -1026,7 +1022,7 @@ class EvidenceReader {
     const payload = repoResponseSchema.safeParse(jsonOf(read.value));
     if (!payload.success) return { ok: false, result: errorResult('the service answered an unexpected repository shape') };
     const data: Record<string, unknown> = { ...payload.data };
-    if (payload.data.info?.remote) data.info = { ...payload.data.info, remote: withoutUserinfo(payload.data.info.remote) };
+    if (payload.data.info?.remote) data.info = { ...payload.data.info, remote: redactRemoteUrl(payload.data.info.remote) /* F-15 */ };
     const revision: Revision | null = read.head ? { headSha: read.head, uncommitted: await isDirty(gitIn(root)) } : null;
     return { ok: true, evidence: { base: this.baseFor(args, revision), data, shape: { lists: ['status', 'log', 'branches'] } } };
   }

@@ -76,11 +76,12 @@ describe('the versioned API surface', () => {
     expect((await answer('/api/v1/p/nope/agent-config')).status).toBe(404);
   });
 
-  it('serves health cross-origin — the discovery endpoint', async () => {
-    // The deliberate CORS exception (spec 011): the one route a cross-origin caller may read,
-    // because it is how anything discovers a running cockpit and what it speaks.
-    const res = await apiRequest(app, '/api/v1/health');
-    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  it('serves health same-origin only — no route grants a cross-origin read', async () => {
+    // The old spec 011 exception is gone with the bookmarklet port probe that needed it: the
+    // cockpit reads health same-origin and native clients are not subject to CORS.
+    const res = await apiRequest(app, '/api/v1/health', { headers: { origin: 'https://other.invalid' } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   /**

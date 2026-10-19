@@ -36,7 +36,7 @@ import { containmentRealpath, containmentSpelling } from '../platform/canonical-
 
 /** One listed subdirectory. `path` is absolute — this route is same-origin and
  *  behind the cockpit, exactly like `GET /api/projects`' `root`s (health, the
- *  CORS-open route, is the one that must never carry absolute paths). */
+ *  discovery route, is the one that must never carry absolute paths). */
 export interface FsBrowseDir {
   name: string;
   path: string;

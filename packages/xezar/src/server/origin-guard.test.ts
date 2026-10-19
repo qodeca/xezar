@@ -70,12 +70,13 @@ describe('request-origin guard (#426)', () => {
     expect(res.status).toBe(200);
   });
 
-  it.each(['GET', 'OPTIONS'])('A-CORS-01 local %s never reflects credentials', async (method) => {
+  it.each(['GET', 'OPTIONS'])('A-CORS-01 local %s sends no CORS grant to another origin', async (method) => {
     const res = await app.request('/api/v1/health', { method,
       headers: { host: LOOPBACK, origin: 'https://evil.invalid',
         authorization: 'Basic fixture', cookie: 'fixture=1' } });
-    expect(res.status).toBe(method === 'GET' ? 200 : 204);
-    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    if (method === 'GET') expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    expect(res.headers.get('access-control-allow-private-network')).toBeNull();
     expect(res.headers.get('access-control-allow-credentials')).not.toBe('true');
   });
 
@@ -287,20 +288,22 @@ describe('request-origin guard (#426)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('leaves /api/v1/health open cross-origin on a loopback Host (the bookmarklet discovery probe) → 200', async () => {
+  it('answers /api/v1/health on a loopback Host whatever the Origin, without granting it the read → 200', async () => {
     const res = await app.request('/api/v1/health', {
       headers: { host: LOOPBACK, origin: 'https://github.com' },
     });
     expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 
-  it('answers the /api/v1/health CORS preflight on a loopback Host → 204', async () => {
+  it('grants no CORS preflight on /api/v1/health', async () => {
     const res = await app.request('/api/v1/health', {
       method: 'OPTIONS',
-      headers: { host: LOOPBACK, origin: 'https://github.com' },
+      headers: { host: LOOPBACK, origin: 'https://github.com', 'access-control-request-private-network': 'true' },
     });
-    expect(res.status).toBe(204);
-    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.status).not.toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    expect(res.headers.get('access-control-allow-private-network')).toBeNull();
   });
 });
 
@@ -370,12 +373,13 @@ describe('request-origin guard — hosted mode (#426)', () => {
     expect(store.listRuns()).toHaveLength(before);
   });
 
-  it.each(['GET', 'OPTIONS'])('A-CORS-01 %s never reflects credentialed health CORS', async (method) => {
+  it.each(['GET', 'OPTIONS'])('A-CORS-01 %s sends no health CORS grant to another origin', async (method) => {
     const res = await app.request('/api/v1/health', { method,
       headers: { host: 'hosted.invalid', origin: 'https://evil.invalid',
         authorization: 'Basic fixture', cookie: 'fixture=1' } });
-    expect(res.status).toBe(method === 'GET' ? 200 : 204);
-    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    if (method === 'GET') expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    expect(res.headers.get('access-control-allow-private-network')).toBeNull();
     expect(res.headers.get('access-control-allow-credentials')).not.toBe('true');
   });
 
