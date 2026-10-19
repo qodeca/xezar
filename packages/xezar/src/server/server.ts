@@ -4627,11 +4627,14 @@ export function createApp(deps: ServerDeps) {
       if (!command) return c.json(none);
       const account = await handoffEnv(run.runner ?? 'claude', sessionStep?.profileId);
       if ('error' in account) return c.json(none);
-      // Hosted mode: the folder and a named account's config dir are paths on the server, so the
-      // hint drops the `cd` and is offered only when no account variable is needed.
-      if (!capabilities().localHandoff) return c.json({ command: Object.keys(account.env).length === 0 ? command : null });
-      const cwd = run.worktreePath && existsSync(run.worktreePath) ? run.worktreePath : repoRoot;
-      return c.json({ command: handoffFallbackCommand(cwd, command, account.env) });
+      if (capabilities().localHandoff) {
+        const cwd = run.worktreePath && existsSync(run.worktreePath) ? run.worktreePath : repoRoot;
+        return c.json({ command: handoffFallbackCommand(cwd, command, account.env) });
+      }
+      // Hosted mode still answers – this is a read with no local effect, so it is not a
+      // `localHandoffRoute` refusal. The folder and a named account's config dir are paths on the
+      // server, so the hint drops the `cd` and is offered only when no account variable is needed.
+      return c.json({ command: Object.keys(account.env).length === 0 ? command : null });
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
