@@ -54,6 +54,9 @@ afterEach(() => {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
+// The header's "take over interactively" line is built by the server (`GET /runs/:id/resume-command`).
+const RESUME_LINE = "cd '/tmp/wt' && claude --resume sess-1"
+
 function stubFetch() {
   vi.stubGlobal(
     'fetch',
@@ -63,6 +66,7 @@ function stubFetch() {
       if (path === '/api/v1/providers/status') {
         return json({ providers: [{ provider: 'claude', status: 'connected', enabled: true }] })
       }
+      if (path === '/api/v1/runs/r1/resume-command') return json({ command: RESUME_LINE })
       return json({})
     }),
   )
@@ -234,7 +238,7 @@ describe('Q80 / G-21 / G-10 / G-16 the run header', () => {
     const writeText = vi.fn(() => Promise.resolve())
     vi.stubGlobal('navigator', { clipboard: { writeText } })
     renderHeader(run())
-    const hint = screen.getByRole('button', { name: /take over interactively/ })
+    const hint = await screen.findByRole('button', { name: /take over interactively/ })
     expect(classes(hint)).toEqual(expect.arrayContaining(PHONE_ROW))
     fireEvent.click(hint)
     expect((await screen.findByRole('status')).textContent).toBe('Command copied')
@@ -244,9 +248,10 @@ describe('Q80 / G-21 / G-10 / G-16 the run header', () => {
     stubFetch()
     vi.stubGlobal('navigator', { clipboard: { writeText: () => Promise.reject(new Error('Document is not focused.')) } })
     renderHeader(run())
-    fireEvent.click(screen.getByRole('button', { name: /take over interactively/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /take over interactively/ }))
     const toast = await screen.findByRole('status')
     expect(toast.textContent).toMatch(/^Run manually: /)
+    expect(toast.textContent).toContain(RESUME_LINE)
     expect(toast.textContent).not.toContain('copied')
   })
 })

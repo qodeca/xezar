@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { hc } from 'hono/client';
 import { z } from 'zod';
 import {
   RUN_HISTORY_PAGE_ITEMS,
@@ -24,7 +23,6 @@ import { resolveTaskDiffBase, type GitRunner } from '../../git-diff-base.ts';
 import { isSafeGitRef } from '../../git-refs.ts';
 import { launchFile } from '../../platform/process-launch.ts';
 import type { RunRecord } from '../../runs/store.ts';
-import type { AppType } from '../../server/app-type.ts';
 import { imageMimeType } from '../../server/git-changes.ts';
 import { redactRemoteUrl } from '../../server/git.ts';
 import {
@@ -37,7 +35,7 @@ import {
   sealCursor,
   type OwnershipScope,
 } from '../resource-ownership.ts';
-import { McpServiceAdapter, type ServiceDispatch } from '../service-adapter.ts';
+import { inProcessClient, McpServiceAdapter, type ServiceDispatch } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -291,19 +289,8 @@ export const resultsEvidenceTool = createResultsEvidenceTool();
 
 // ---- the typed in-process client ------------------------------------------------
 
-/** The same in-process dispatch the shared adapter uses: loopback `host`, no `Origin`. The
- *  operations below are additional READS the adapter's closed table does not carry yet. */
-const buildClient = (service: ServiceDispatch) =>
-  hc<AppType>('http://127.0.0.1', {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', '127.0.0.1');
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  });
-type ScopedApi = ReturnType<typeof buildClient>['api']['v1']['p'][':projectId'];
+/** The operations below are additional READS the adapter's closed table does not carry yet. */
+type ScopedApi = ReturnType<typeof inProcessClient>['api']['v1']['p'][':projectId'];
 
 /** A route's answer, read once: its status and its raw body text. */
 interface Answer {
@@ -554,7 +541,7 @@ class EvidenceReader {
     service: ServiceDispatch,
   ) {
     this.adapter = new McpServiceAdapter({ projectId: project.id, service });
-    this.api = buildClient(service).api.v1.p[':projectId'];
+    this.api = inProcessClient(service).api.v1.p[':projectId'];
     this.scopeParam = { projectId: project.id };
   }
 

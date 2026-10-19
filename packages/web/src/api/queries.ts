@@ -61,6 +61,7 @@ import {
   getRunDiff,
   getRunFile,
   getRunHandoff,
+  getRunResumeCommand,
   getRuns,
   getRunsIndex,
   getImportableSkills,
@@ -99,7 +100,7 @@ import {
   putAgentConfigFile,
   retryProviderAuth,
 } from './client'
-import { mcpLeaderTopicSchema, projectInstancesTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
+import { engineOwnsRun, mcpLeaderTopicSchema, projectInstancesTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -160,6 +161,8 @@ export const queryKeys = {
     changes: (id: string) => [queryScope(), 'runs', 'changes', id] as const,
     file: (id: string, path: string) => [queryScope(), 'runs', 'files', id, path] as const,
     handoff: (id: string) => [queryScope(), 'runs', 'handoff', id] as const,
+    resumeCommand: (id: string, status: string, sessionId: string) =>
+      [queryScope(), 'runs', 'resume-command', id, status, sessionId] as const,
     commits: (id: string) => [queryScope(), 'runs', 'commits', id] as const,
     commit: (id: string, sha: string) => [queryScope(), 'runs', 'commit', id, sha] as const,
   },
@@ -1229,6 +1232,18 @@ export function useRunHandoff(id: string | undefined, enabled = true) {
     queryKey: queryKeys.runs.handoff(id ?? ''),
     queryFn: ({ signal }) => getRunHandoff(id as string, { signal }),
     enabled: Boolean(id) && enabled,
+  })
+}
+
+/** The header's "take over interactively" line, as the server builds it. Asked only once the
+ *  engine has let go of a run that recorded a session, and keyed by the status and session so a
+ *  run that finishes or resumes asks again. */
+export function useRunResumeCommand(run: Pick<RunRecord, 'id' | 'status' | 'steps'>) {
+  const sessionId = [...run.steps].reverse().find((step) => step.sessionId)?.sessionId
+  return useQuery({
+    queryKey: queryKeys.runs.resumeCommand(run.id, run.status, sessionId ?? ''),
+    queryFn: ({ signal }) => getRunResumeCommand(run.id, { signal }),
+    enabled: !engineOwnsRun(run.status) && sessionId !== undefined,
   })
 }
 

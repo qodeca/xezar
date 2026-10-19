@@ -6,7 +6,8 @@ import { REPO_ROOT, sourceFiles } from './mcp/audit-source-scan.testkit.ts';
 import { stripComments } from './release/instruction-hygiene.testkit.ts';
 
 /**
- * Processes start and stop only through the platform layer (#963 AC-10).
+ * Processes start and stop only through the platform layer (#963 AC-10), and no call site outside
+ * that layer tests which operating system it runs on.
  *
  * `platform/process-launch.ts` is the one place a program starts – on Windows it is also where a
  * bare name is searched without the working folder, an npm shim runs without cmd.exe and a batch
@@ -15,20 +16,26 @@ import { stripComments } from './release/instruction-hygiene.testkit.ts';
  * or a raw `.kill(` elsewhere quietly skips all of that on Windows while Linux and macOS keep
  * working, which is why a test has to notice it.
  *
- * Four rules over comment-free source (tests and testkits are not scanned):
+ * Five rules over comment-free source (tests and testkits are not scanned):
  *  - child-process-ref: any `'child_process'` / `'node:child_process'` string literal outside
  *    `platform/` – static and multi-line imports, `require`, `createRequire(…)(…)`, `import()`.
  *    A statement that starts with `import type` or `export type` is fine: it starts nothing.
  *  - raw-kill: every `.kill(` outside `platform/`, except the liveness probe `process.kill(x, 0)`.
  *  - shell-option: a `shell` option that is not literally `false`, everywhere.
  *  - platform-leaf: an import in `platform/` other than `node:*` or a sibling `./x.ts`.
+ *  - platform-test: a `process.platform` test outside `platform/` – a comparison either way round,
+ *    `switch (process.platform)`, `.includes(process.platform)`, or a copy into a variable
+ *    (`= process.platform;`) that a later comparison would test. Reading it as a value is fine:
+ *    a pure helper's trailing default (`platform = process.platform`), a fallback
+ *    (`?? process.platform`) or an argument (`f(x, process.platform)`) hands the host to a
+ *    helper that is tested with every platform. The per-OS answer lives in `platform/`.
  *
  * An allowance names a file, a rule, the exact number of findings and a reason; the scan fails
  * when that number moves in EITHER direction, so a new call in an allowed file is caught too.
  */
 const SCAN_ROOT = 'packages/xezar/src';
 
-export type SpawnRule = 'child-process-ref' | 'raw-kill' | 'shell-option' | 'platform-leaf';
+export type SpawnRule = 'child-process-ref' | 'raw-kill' | 'shell-option' | 'platform-leaf' | 'platform-test';
 
 export interface SpawnFinding {
   readonly file: string;
@@ -49,6 +56,7 @@ const FIX: Readonly<Record<SpawnRule, string>> = {
   'raw-kill': 'stop it through platform/process-tree.ts (stopChildTree / signalProcessGroup)',
   'shell-option': 'never start a program through a shell; pass a fixed argument vector',
   'platform-leaf': 'platform/ imports only node:* and its own siblings',
+  'platform-test': 'answer the per-OS question in a platform/ helper with a trailing platform parameter',
 };
 
 const ALLOWED: readonly Allowance[] = [
@@ -101,6 +109,15 @@ const MODULE_SPECIFIERS = [
   /\brequire\s*\(\s*(['"])([^'"\n]+)\1\s*\)/g,
 ];
 const LEAF_SPECIFIER = /^(?:node:.+|\.\/[^/\\]+\.ts)$/;
+/** `process.platform` – also `process?.platform` and `process['platform']` – tested at a call site. */
+const PLATFORM_READ = String.raw`process\s*(?:\??\.\s*platform\b|\[\s*(['"\x60])platform\1\s*\])`;
+const PLATFORM_TESTS = [
+  new RegExp(String.raw`${PLATFORM_READ}\s*[!=]==?`, 'g'),
+  new RegExp(String.raw`[!=]==?\s*${PLATFORM_READ}`, 'g'),
+  new RegExp(String.raw`\bswitch\s*\(\s*${PLATFORM_READ}`, 'g'),
+  new RegExp(String.raw`\.includes\(\s*${PLATFORM_READ}`, 'g'),
+  new RegExp(String.raw`(?<![=!<>?&|])=\s*${PLATFORM_READ}\s*;`, 'g'),
+];
 
 function lineOf(text: string, index: number): number {
   let line = 1;
@@ -150,6 +167,9 @@ export function spawnFindings(file: string, source: string): SpawnFinding[] {
     for (const index of matchIndexes(KILL_KEY_CALL, text)) add('raw-kill', index);
   }
   for (const pattern of SHELL_OPTIONS) for (const index of matchIndexes(pattern, text)) add('shell-option', index);
+  if (!inPlatform) {
+    for (const pattern of PLATFORM_TESTS) for (const index of matchIndexes(pattern, text)) add('platform-test', index);
+  }
   if (inPlatform) {
     for (const pattern of MODULE_SPECIFIERS) {
       for (const match of text.matchAll(new RegExp(pattern.source, 'g'))) {
@@ -192,7 +212,7 @@ export function allowanceProblems(findings: readonly SpawnFinding[], allowed: re
   return problems;
 }
 
-describe('processes start and stop only through the platform layer (#963)', () => {
+describe('processes start and stop only through the platform layer, and only it tests the OS (#963)', () => {
   it('finds nothing outside the allowances, and every allowance count is exact', () => {
     expect(allowanceProblems(scan(), ALLOWED).join('\n')).toBe('');
   });
@@ -299,6 +319,32 @@ describe('the rules fire on every spelling, so a green scan is not a dropped rul
     expect(rulesIn('platform/probe.ts', "import type { T } from '../core/t.ts';")).toEqual(['platform-leaf']);
     expect(rulesIn('platform/probe.ts', "import { y } from './y.ts';\nimport './exe-search.ts';\nimport { a } from 'node:fs';")).toEqual([]);
     expect(rulesIn('core/probe.ts', "import { x } from '../core/x.ts';")).toEqual([]);
+  });
+
+  const os = ['process', 'platform'].join('.');
+
+  it.each([
+    ['a strict comparison', `if (${os} === 'win32') run();`],
+    ['a negated comparison', `if (${os} !== 'darwin') return false;`],
+    ['a loose comparison', `const win = ${os} == 'win32';`],
+    ['the literal first', `if ('win32' === ${os}) run();`],
+    ['a ternary', `const bin = ${os} === 'darwin' ? 'open' : 'xdg-open';`],
+    ['a switch', `switch (${os}) { case 'win32': break; }`],
+    ['a membership test', `if (['darwin', 'linux'].includes(${os})) run();`],
+    ['a copy into a variable', `const os = ${os};`],
+    ['an optional read', `if (process?.platform === 'win32') run();`],
+    ['a bracketed read', `if (process['platform'] === 'win32') run();`],
+  ])('platform-test: %s', (_label, source) => {
+    expect(rulesIn('core/probe.ts', source)).toEqual(['platform-test']);
+  });
+
+  it('platform-test: allows reading the host as a value, comments, and anything inside platform/', () => {
+    expect(rulesIn('core/probe.ts', `export function f(x: string, platform = ${os}): string { return x; }`)).toEqual([]);
+    expect(rulesIn('core/probe.ts', `export function f(platform: NodeJS.Platform = ${os}) {}`)).toEqual([]);
+    expect(rulesIn('core/probe.ts', `this.platform = deps.platform ?? ${os};`)).toEqual([]);
+    expect(rulesIn('core/probe.ts', `const line = withEnvPrefix(command, env, ${os});`)).toEqual([]);
+    expect(rulesIn('core/probe.ts', `// if (${os} === 'win32') run();`)).toEqual([]);
+    expect(rulesIn('platform/probe.ts', `if (${os} === 'win32') run();`)).toEqual([]);
   });
 
   it('counts an allowance exactly, in both directions', () => {

@@ -1,4 +1,4 @@
-import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
+import { engineOwnsRun, type RunRecord, type RunStatus } from '@qodeca/xezar-api-client'
 import { cliTargetRunner } from '@/components/open-in-menu'
 import { canBeUnread, isUnread } from '@/lib/read-state'
 import { resumeCommand as getResumeCommand } from '@/lib/runner-label'
@@ -17,7 +17,7 @@ export { cliTargetRunner }
  *  claimed). `review` is deliberately NOT active — a parked review can be continued, archived
  *  or deleted like any finished run. */
 export function isRunActive(status: RunStatus): boolean {
-  return status === 'running' || status === 'queued' || status === 'waiting'
+  return engineOwnsRun(status)
 }
 
 /** The latest agent session across steps — what Continue/Terminal resume. */
@@ -35,25 +35,16 @@ export function lastSessionId(run: RunRecord): string | undefined {
  *  either. Fails closed: no hint beats a hint that runs `rm -rf ~` on paste. */
 export const resumeCommand = getResumeCommand
 
-/** The copyable "take over interactively" line under the header — only once the engine has
- *  let go of the session (same gate as the Terminal button). Prefixes the `cd` when the run
- *  has its own worktree, because the resume only makes sense from in there. Absent for an id
- *  `resumeCommand` refuses (#431), exactly as for a run that never recorded a session. */
-export function resumeHint(run: RunRecord): string | undefined {
-  if (isRunActive(run.status)) return undefined
-  const sessionId = lastSessionId(run)
-  if (sessionId === undefined) return undefined
-  const command = resumeCommand(run.runner, sessionId)
-  if (command === undefined) return undefined
-  return run.worktreePath ? `cd ${run.worktreePath} && ${command}` : command
-}
+// The copyable "take over interactively" line under the header is built by the SERVER
+// (`GET /runs/:id/resume-command`, `useRunResumeCommand`) with the same quoting and account as the
+// terminal launcher – a second, client-side spelling had no quoting and no account variable.
 
 /** Does picking this "Open in…" CLI target resume THIS run's own session, or start a fresh
  *  one (#402)? Only the backend that produced the session can resume it — a foreign CLI's
  *  session id means nothing to a different agent, so cross-runner picks always launch clean.
  *  Legacy runs with no `runner` recorded predate the runner choice and default to Claude, same
  *  as `resumeCommand`.
- *  Active runs never resume, same gate as `resumeHint`/`runActionFlags.terminal`: the engine
+ *  Active runs never resume, same gate as the resume hint and `runActionFlags.terminal`: the engine
  *  seeds `sessionId` when the step STARTS (workflows/run.ts), so a running run already has one
  *  and would otherwise offer to attach a second CLI to the transcript the engine is driving.
  *  Those picks launch a fresh CLI in the worktree instead — what the server does too. */

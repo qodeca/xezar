@@ -417,12 +417,15 @@ describe('task thread', () => {
       'Delete',
     ])
 
-    // The take-over hint, per-backend (the fixture's last agent session, in its worktree).
+    // The take-over hint, per-backend (the fixture's last agent session). The server builds the
+    // line: the fixture's recorded worktree no longer exists on disk, so it opens in the project
+    // folder instead, as the open-in-terminal action does – never in the vanished folder.
     const hint = browser.evaluate(
       `document.querySelector('[data-slot="resume-hint"]').textContent`,
     ) as string
     expect(hint).toContain('claude --resume 40169e05-629f-4d7c-853c-8a2a197255e4')
-    expect(hint).toContain('cd /tmp/xezar-fixture-hg7X')
+    expect(hint).toMatch(/cd (\/d )?["']/)
+    expect(hint).not.toContain('xezar-fixture-hg7X')
   })
 
   it('opens the Notes panel — an unseeded handoff reads as the honest empty state', () => {

@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
 // they go out on every run route, and one definition is what keeps the wire and the file identical.
-import { decisionQuestionSchema, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
+import { decisionQuestionSchema, engineOwnsRun, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
@@ -658,7 +658,7 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
   // all still work.
   if (
     !opts?.keepLive &&
-    (run.status === 'running' || run.status === 'queued' || run.status === 'waiting')
+    engineOwnsRun(run.status)
   ) {
     run.status = 'failed';
     run.error = 'interrupted — xezar process exited during the run';
@@ -667,7 +667,7 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
       if (step.status === 'running' || step.status === 'waiting') step.status = 'failed';
     }
   }
-  if (!['running', 'waiting', 'queued'].includes(run.status)) {
+  if (!engineOwnsRun(run.status)) {
     run.activity = undefined;
     run.monitoringWakeAt = undefined;
   }
@@ -1031,7 +1031,7 @@ export class RunStore extends EventEmitter {
       delete run.referencedIssueNumberSeeded;
     }
     const normalized = { ...patch };
-    if (normalized.status && !['running', 'waiting', 'queued'].includes(normalized.status)) {
+    if (normalized.status && !engineOwnsRun(normalized.status)) {
       normalized.activity = undefined;
       normalized.monitoringWakeAt = undefined;
       normalized.monitoringWakeCapReached = undefined;
@@ -1040,7 +1040,7 @@ export class RunStore extends EventEmitter {
     // 2026-08-03-auto-resume-after-usage-limit): it is a promise made ABOUT a failed run, so a
     // run coming back to life — the resume itself, a user Continue, a re-queue — retires it.
     // The manager's timer re-checks the record before it fires, so a cleared field is enough.
-    if (normalized.status && ['running', 'waiting', 'queued'].includes(normalized.status)) {
+    if (normalized.status && engineOwnsRun(normalized.status)) {
       normalized.autoResumeAt = undefined;
     }
     Object.assign(run, this.redactPatch(normalized));

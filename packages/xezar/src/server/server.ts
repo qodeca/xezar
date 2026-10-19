@@ -38,6 +38,9 @@ import {
   appearanceSchema,
   agentQuotaQuerySchema,
   agentQuotaRefreshInputSchema,
+  engineOwnsRun,
+  TERMINAL_ACCOUNT_UNSAFE_CODE,
+  TERMINAL_FOLDER_UNSAFE_CODE,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -48,6 +51,9 @@ import {
   type GroupVariant,
   type PickVariantResponse,
   type ProjectsResponse,
+  type RegisterProjectResponse,
+  type RemoveProjectResponse,
+  type UpdateProjectResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
 } from '@qodeca/xezar-contract';
@@ -116,7 +122,7 @@ import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService
 import { getTeamSkillsCached, refreshTeamSkills, skillsCatalogVersions, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
-import type { RunEvent, RunRecord, RunStatus, RunStore } from '../runs/store.ts';
+import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
 import type { InstallChannel } from '../install-channel.ts';
 import {
   HistoryCursorError,
@@ -223,7 +229,7 @@ import { activeStateLayout } from '../state-layout.ts';
 import { globalImportStateAfter, globalImportSummary, importGlobalAccounts } from '../workspace/import-global.ts';
 import { recordGlobalImportState } from '../workspace/project-machine-state.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
-import { withEnvPrefix } from '../core/shell-env.ts';
+import { terminalCommandLine, terminalLineRefusal } from '../core/shell-env.ts';
 import {
   allocateProjectSlug,
   findRegistryProject,
@@ -636,33 +642,10 @@ async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
 // `ProjectsResponse` used to be declared here as an interface; it is the contract's
 // `projectsResponseSchema` type now and is re-exported at the top of this file (#467, PR 3).
 
-/** `POST /api/projects` (multi-project spec, step 4.2) — the folder-browser
- *  dialog's commit step. The entry carries the same `status`/`branch` probe
- *  `GET /api/projects` attaches, so the cockpit sees one project shape.
- *  `error` is present ONLY on the 409 (already registered), where `project` is
- *  the EXISTING entry — the dialog navigates to it instead of dead-ending. */
-export interface RegisterProjectResponse {
-  project: ProjectListEntry;
-  error?: string;
-}
-
-/** `DELETE /api/projects/:projectId` (multi-project spec, step 4.4) — the
- *  Projects settings pane's Remove. DEREGISTRATION ONLY: the entry leaves
- *  `~/.xezar/config.json` and nothing under the project root is read, moved or
- *  deleted. `removed` is always true on a 200 (the failure paths are 404/409). */
-export interface RemoveProjectResponse {
-  removed: true;
-  id: string;
-}
-
-/** `PATCH /api/projects/:projectId` (spec 2026-07-22-per-project-concurrency)
- *  — sets or clears a project's per-project `maxParallel`. The entry carries
- *  the same `status`/`branch` probe `GET /api/projects` attaches, so the
- *  cockpit sees one project shape. `null` in the request clears the override
- *  back to "inherit the workspace cap". */
-export interface UpdateProjectResponse {
-  project: ProjectListEntry;
-}
+// `RegisterProjectResponse`, `RemoveProjectResponse` and `UpdateProjectResponse` were
+// hand-written interfaces here; they are the contract's inferred types now, re-exported for the
+// tests that import them from this file (AGENTS.md § The HTTP API).
+export type { RegisterProjectResponse, RemoveProjectResponse, UpdateProjectResponse };
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
  *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
@@ -1927,12 +1910,18 @@ export function createApp(deps: ServerDeps) {
     return { env: resolved.env };
   };
 
-  /** The copy-paste fallback shown when no terminal could be opened — same account, spelled for
-   *  this platform's shell. `null` when the dir cannot be embedded safely, which is a refusal. */
-  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null => {
-    const prefixed = withEnvPrefix(command, env, process.platform);
-    return prefixed === null ? null : `cd '${cwd}' && ${prefixed}`;
-  };
+  /** The copy-paste line shown when no terminal could be opened, and as the cockpit's takeover
+   *  hint — same account, spelled for this platform's shell by the one builder the terminal
+   *  launcher uses. `null` when the dir or the account cannot be embedded safely: a refusal. */
+  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null =>
+    terminalCommandLine(cwd, command, env, process.platform);
+
+  /** The 409 body for a handoff whose line `handoffFallbackCommand` refused – one accurate
+   *  sentence and code per reason: the task's folder, or the session's account folder. */
+  const handoffRefusal = (cwd: string, command: string, env: Record<string, string>) =>
+    terminalLineRefusal(cwd, command, env, process.platform) === 'folder'
+      ? { error: 'this task\'s folder path cannot be passed safely to cmd.exe, so no terminal can be opened in it', code: TERMINAL_FOLDER_UNSAFE_CODE }
+      : { error: 'this account\'s folder cannot be used in a terminal command', code: TERMINAL_ACCOUNT_UNSAFE_CODE };
 
   /** A registered project's realpath'd root, or null when the id is unknown. Layout-aware (#600
    *  review M2): in the project layout the registry is the DERIVED row, so a raw stored-row lookup
@@ -3193,7 +3182,6 @@ export function createApp(deps: ServerDeps) {
   // deregistering mid-run would strand a live agent process under a root no
   // route can resolve any more — the run would keep burning tokens with no
   // cockpit able to show, message or cancel it.
-  const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 
   /**
    * How many of `projectId`'s runs this process is actively responsible for.
@@ -3216,7 +3204,7 @@ export function createApp(deps: ServerDeps) {
   const activeRunCount = (projectId: string): number => {
     const ctx = contexts.peek(projectId);
     if (!ctx) return 0;
-    return ctx.store.listRuns().filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).length;
+    return ctx.store.listRuns().filter((run) => engineOwnsRun(run.status)).length;
   };
 
   // Workspace-level by design: update state spans project and global installs,
@@ -4581,7 +4569,7 @@ export function createApp(deps: ServerDeps) {
         // step's own agent instead (#984).
         keepRunAgent: true,
       });
-      if (!result.ok) return c.json({ error: result.error }, 409);
+      if (!result.ok) return c.json({ error: result.error, ...(result.code ? { code: result.code } : {}) }, 409);
       return c.json({ continued: true });
     })
 
@@ -4618,14 +4606,35 @@ export function createApp(deps: ServerDeps) {
       const fallback = handoffFallbackCommand(cwd, command, account.env);
       // Fail closed for the same reason as the session id: a terminal opened without the
       // account's config dir resumes nothing and says nothing about why.
-      if (fallback === null) {
-        return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-      }
+      if (fallback === null) return c.json(handoffRefusal(cwd, command, account.env), 409);
       const opened = await openTerminal(cwd, command, account.env);
       if (!opened) {
         return c.json({ error: 'no terminal emulator found', command: fallback }, 409);
       }
       return c.json({ opened: true, command });
+    })
+
+    // The cockpit's copyable "take over interactively" line: the same session, folder and account
+    // as `open-in-cli` above, through the same builder, so the hint and the terminal never differ.
+    .get('/runs/:id/resume-command', async (c) => {
+      const { root: repoRoot, store } = c.get('project');
+      const run = store.getRun(c.req.param('id'));
+      if (!run) return c.json({ error: 'not found' }, 404);
+      const none = { command: null };
+      if (engineOwnsRun(run.status)) return c.json(none);
+      const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
+      const command = sessionStep?.sessionId ? resumeCommand(run.runner, sessionStep.sessionId) : null;
+      if (!command) return c.json(none);
+      const account = await handoffEnv(run.runner ?? 'claude', sessionStep?.profileId);
+      if ('error' in account) return c.json(none);
+      if (capabilities().localHandoff) {
+        const cwd = run.worktreePath && existsSync(run.worktreePath) ? run.worktreePath : repoRoot;
+        return c.json({ command: handoffFallbackCommand(cwd, command, account.env) });
+      }
+      // Hosted mode still answers – this is a read with no local effect, so it is not a
+      // `localHandoffRoute` refusal. The folder and a named account's config dir are paths on the
+      // server, so the hint drops the `cd` and is offered only when no account variable is needed.
+      return c.json({ command: Object.keys(account.env).length === 0 ? command : null });
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
@@ -4710,7 +4719,7 @@ export function createApp(deps: ServerDeps) {
       if (cliRunner) {
         const blocked = await providerActionError([cliRunner]);
         if (blocked) return c.json({ error: blocked }, 409);
-        const engineOwnsSession = run.status === 'running' || run.status === 'queued' || run.status === 'waiting';
+        const engineOwnsSession = engineOwnsRun(run.status);
         const sessionStep = engineOwnsSession ? undefined : [...run.steps].reverse().find((s) => s.sessionId);
         const sessionId = sessionStep?.sessionId;
         // An id resumeCommand refuses (#431) degrades to a fresh CLI in the worktree,
@@ -4726,9 +4735,7 @@ export function createApp(deps: ServerDeps) {
           : await freshCliEnv(repoRoot, cliRunner);
         if ('error' in account) return c.json({ error: account.error }, 409);
         const fallback = handoffFallbackCommand(dir, command, account.env);
-        if (fallback === null) {
-          return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-        }
+        if (fallback === null) return c.json(handoffRefusal(dir, command, account.env), 409);
         const opened = await openTerminal(dir, command, account.env);
         if (!opened) {
           return c.json({ error: 'no terminal emulator found', command: fallback }, 409);

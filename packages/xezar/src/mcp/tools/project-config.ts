@@ -68,7 +68,6 @@ import {
   type WorkspaceUiState,
   type McpDiscoveryCockpit,
 } from '@qodeca/xezar-contract';
-import { hc } from 'hono/client';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
@@ -79,8 +78,7 @@ import { slugify } from '../../planner.ts';
 import { projectWorkflowsDir } from '../../workflows/load.ts';
 import { singleProjectNarrowing } from '../../workspace/projects.ts';
 import { activeStateLayout } from '../../state-layout.ts';
-import type { AppType } from '../../server/app-type.ts';
-import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
+import { inProcessClient, MCP_ORIGIN, settleServiceAnswer as settle, type ServiceAnswer, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { cockpitLinks, localHandoffNow } from '../cockpit-address.ts';
@@ -848,40 +846,10 @@ export type ProjectConfigInput = z.output<typeof projectConfigInputSchema>;
 
 // ---- the in-process client ----------------------------------------------------------------------
 
-const IN_PROCESS_BASE = 'http://127.0.0.1';
-const IN_PROCESS_HOST = '127.0.0.1';
+/** The shared in-process client (`service-adapter.ts`), at the versioned root. */
+const buildClient = (service: ServiceDispatch) => inProcessClient(service).api.v1;
 
-/** The same in-process client the shared adapter builds (`service-adapter.ts`): loopback host, no
- *  Origin — the request never leaves the process. */
-const buildClient = (service: ServiceDispatch) =>
-  hc<AppType>(IN_PROCESS_BASE, {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', IN_PROCESS_HOST);
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  }).api.v1;
-
-type Answer<T> = { ok: true; status: number; value: T } | { ok: false; status: number; error: string; body: unknown };
-
-/** Map a service answer. A success without a JSON body is an error, never an empty value — except
- *  a 204, whose whole meaning is "done, nothing to say". */
-async function settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<Answer<T>> {
-  const res = await pending;
-  const body: unknown = await res.json().catch(() => undefined);
-  if (success.includes(res.status)) {
-    if (res.status === 204) return { ok: true, status: 204, value: undefined as T };
-    if (body === undefined) return { ok: false, status: 502, error: `service answered ${res.status} without a body`, body };
-    return { ok: true, status: res.status, value: body as T };
-  }
-  const error =
-    body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : `service answered ${res.status}`;
-  return { ok: false, status: res.status, error, body };
-}
+type Answer<T> = ServiceAnswer<T>;
 
 // ---- results ------------------------------------------------------------------------------------
 

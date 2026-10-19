@@ -13,9 +13,9 @@ import { stripComments } from './release/instruction-hygiene.testkit.ts';
  *   `isFullyQualifiedPath` from `platform/path-syntax.ts`.
  * - A runtime `/tmp` literal does not exist on Windows. Use `os.tmpdir()`.
  *
- * Exactly these two patterns and nothing more: this is not the general platform lint rule, which
- * comes later. Comments are blanked first, so prose about the defect is never a finding; tests and
- * testkits are not scanned. An exception names its exact comment-free source line and a reason.
+ * Exactly these two patterns and nothing more: the general rule against a `process.platform` test
+ * at a call site is `platform-test` in `process-spawn-scan.test.ts`. Comments are blanked first,
+ * so prose about the defect is never a finding; tests and testkits are not scanned. An exception names its exact comment-free source line and a reason.
  */
 const SCAN_ROOT = 'packages/xezar/src';
 

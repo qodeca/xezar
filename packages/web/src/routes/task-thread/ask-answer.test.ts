@@ -68,7 +68,7 @@ describe('askDeliveryMode — where an ask answer goes, per run status', () => {
 describe('resumeAfterIdleTeardown', () => {
   it('waits through the exact active-run teardown refusal, then returns the continuation result', async () => {
     const resume = vi.fn()
-      .mockRejectedValueOnce(new ApiError(409, 'run is still active'))
+      .mockRejectedValueOnce(new ApiError(409, 'run is still active', { code: 'run_still_active' }))
       .mockResolvedValueOnce({ continued: true })
     const wait = vi.fn().mockResolvedValue(undefined)
 
@@ -78,7 +78,18 @@ describe('resumeAfterIdleTeardown', () => {
     expect(wait).toHaveBeenCalledWith(IDLE_TEARDOWN_RETRY_DELAYS_MS[0])
   })
 
+  it('matches the code, not the sentence: a reworded message with the code still waits', async () => {
+    const resume = vi.fn()
+      .mockRejectedValueOnce(new ApiError(409, 'the engine has not let go of this task yet', { code: 'run_still_active' }))
+      .mockResolvedValueOnce({ continued: true })
+    const wait = vi.fn().mockResolvedValue(undefined)
+
+    await expect(resumeAfterIdleTeardown(resume, wait)).resolves.toEqual({ continued: true })
+    expect(resume).toHaveBeenCalledTimes(2)
+  })
+
   it.each([
+    new ApiError(409, 'run is still active'),
     new ApiError(409, 'no agent session to resume'),
     new ApiError(409, 'cannot continue a waiting run'),
     new ApiError(0, 'cannot reach the xezar server'),
@@ -92,7 +103,7 @@ describe('resumeAfterIdleTeardown', () => {
   })
 
   it('stops after the bounded retry window and preserves the server error', async () => {
-    const error = new ApiError(409, 'run is still active')
+    const error = new ApiError(409, 'run is still active', { code: 'run_still_active' })
     const resume = vi.fn().mockRejectedValue(error)
     const wait = vi.fn().mockResolvedValue(undefined)
 

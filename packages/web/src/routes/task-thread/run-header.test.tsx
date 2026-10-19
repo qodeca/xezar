@@ -1304,23 +1304,39 @@ describe('meta line, tabs, pill and resume hint', () => {
     })
   })
 
-  it('a closed run with a session shows the copyable per-backend resume hint', async () => {
-    stubFetch()
+  it('a closed run with a session shows the server-built resume line, verbatim, and copies it', async () => {
+    // The server quotes the folder for the host's shell and carries the session's account
+    // (`GET /runs/:id/resume-command`); the cockpit shows exactly that and builds nothing itself.
+    const command = "cd '/tmp/my wt' && export CLAUDE_CONFIG_DIR='/home/u/.qwen-work'; qwen --resume sess-1"
+    const sent = stubFetch({ '/api/v1/runs/r1/resume-command': () => jsonResponse({ command }) })
     const writeText = vi.fn(() => Promise.resolve())
     vi.stubGlobal('navigator', { clipboard: { writeText } })
-    renderHeader(run('failed', { runner: 'qwen', worktreePath: '/tmp/wt' }))
+    renderHeader(run('failed', { runner: 'qwen', worktreePath: '/tmp/my wt' }))
 
-    const hint = document.querySelector('[data-slot="resume-hint"]') as HTMLElement
-    expect(hint.textContent).toContain('cd /tmp/wt && qwen --resume sess-1')
+    const hint = await waitFor(() => {
+      const found = document.querySelector('[data-slot="resume-hint"]') as HTMLElement | null
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    expect(hint.textContent).toContain(command)
     fireEvent.click(hint)
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('cd /tmp/wt && qwen --resume sess-1')
+      expect(writeText).toHaveBeenCalledWith(command)
     })
+    expect(sent.filter((r) => r.path === '/api/v1/runs/r1/resume-command')).toHaveLength(1)
   })
 
-  it('an active run has no resume hint — the engine still owns the session', () => {
-    stubFetch()
+  it('no hint when the server has none to offer', async () => {
+    const sent = stubFetch({ '/api/v1/runs/r1/resume-command': () => jsonResponse({ command: null }) })
+    renderHeader(run('done'))
+    await waitFor(() => expect(sent.some((r) => r.path === '/api/v1/runs/r1/resume-command')).toBe(true))
+    expect(document.querySelector('[data-slot="resume-hint"]')).toBeNull()
+  })
+
+  it('an active run has no resume hint and does not ask for one — the engine still owns the session', () => {
+    const sent = stubFetch()
     renderHeader(run('running'))
     expect(document.querySelector('[data-slot="resume-hint"]')).toBeNull()
+    expect(sent.some((r) => r.path.endsWith('/resume-command'))).toBe(false)
   })
 })

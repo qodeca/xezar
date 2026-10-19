@@ -12,7 +12,7 @@ import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
-import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { TEST_DIR_RM_OPTIONS, onWindows, withPlatform } from '../../test/helpers/platform.ts';
 
 // The terminal launcher actually spawns a process (osascript/cmd/x-terminal-emulator) — mocked
 // so this suite exercises only the command construction, never a real terminal window.
@@ -240,6 +240,31 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
     expect(mockOpenInTerminal).not.toHaveBeenCalled();
   });
 
+  const resumeCommandOf = (runId: string) => apiRequest(app(), `/api/v1/runs/${runId}/resume-command`);
+
+  it('GET resume-command: one line, built like the terminal fallback, only once the engine let go', async () => {
+    const run = makeRun('codex', 'sess-1');
+    const res = await resumeCommandOf(run.id);
+    expect(res.status).toBe(200);
+    const root = realpathSync(repoRoot);
+    expect(await res.json()).toEqual({
+      command: onWindows ? `cd /d "${root}" && codex resume sess-1` : `cd '${root}' && codex resume sess-1`,
+    });
+
+    for (const status of ['queued', 'running', 'waiting'] as const) {
+      store.updateRun(run.id, { status });
+      expect(await (await resumeCommandOf(run.id)).json()).toEqual({ command: null });
+    }
+    store.updateRun(run.id, { status: 'review' });
+    expect(((await (await resumeCommandOf(run.id)).json()) as { command: string | null }).command).toContain('codex resume sess-1');
+  });
+
+  it('GET resume-command: nothing without a session or with a session id that cannot be pasted safely; 404 for no run', async () => {
+    expect(await (await resumeCommandOf(makeRun('claude').id)).json()).toEqual({ command: null });
+    expect(await (await resumeCommandOf(makeRun('claude', 'x; rm -rf ~').id)).json()).toEqual({ command: null });
+    expect((await resumeCommandOf('no-such-run')).status).toBe(404);
+  });
+
   /**
    * The handoff must land on the account that OWNS the session, not on whatever the project is
    * pointed at now. Without the config dir, `claude --resume` finds nothing under the default
@@ -331,6 +356,71 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
       } finally {
         setActiveStateLayout(null);
       }
+    });
+
+    it('GET resume-command: the hint carries the folder, the session\'s account and the resume, quoted for the shell', async () => {
+      const dir = join(home, "claude-it's work");
+      await addAccount('work', 'claude', dir);
+      const run = makeRun('claude', 'sess-1');
+      store.updateStep(run.id, 'work', { profileId: 'work' });
+
+      const res = await resumeCommandOf(run.id);
+
+      expect(res.status).toBe(200);
+      const root = realpathSync(repoRoot);
+      const quoted = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+      expect(await res.json()).toEqual({
+        command: onWindows
+          ? `cd /d "${root}" && set "CLAUDE_CONFIG_DIR=${dir}" && claude --resume sess-1`
+          : `cd ${quoted(root)} && export CLAUDE_CONFIG_DIR=${quoted(dir)}; claude --resume sess-1`,
+      });
+    });
+
+    it('GET resume-command: hosted mode drops the folder, and offers nothing that needs a named account', async () => {
+      await addAccount('work', 'claude', join(home, 'claude-work'));
+      const plain = makeRun('claude', 'sess-1');
+      const named = makeRun('claude', 'sess-2');
+      store.updateStep(named.id, 'work', { profileId: 'work' });
+      process.env.XEZ_REMOTE = '1';
+
+      expect(await (await resumeCommandOf(plain.id)).json()).toEqual({ command: 'claude --resume sess-1' });
+      expect(await (await resumeCommandOf(named.id)).json()).toEqual({ command: null });
+    });
+
+    it('GET resume-command: nothing for an account that no longer exists', async () => {
+      const run = makeRun('claude', 'sess-1');
+      store.updateStep(run.id, 'work', { profileId: 'deleted-yesterday' });
+      expect(await (await resumeCommandOf(run.id)).json()).toEqual({ command: null });
+    });
+
+    it('Windows: a folder cmd.exe would re-read is refused for its folder, not for the account', async () => {
+      // `%` expands inside cmd.exe, so this folder is unsafe on every runner – a POSIX temp folder
+      // is no drive path either, but a Windows one is, so the test cannot lean on the temp folder.
+      const run = makeRun('claude', 'sess-1');
+      const unsafe = join(repoRoot, 'wt-100%');
+      mkdirSync(unsafe);
+      store.updateRun(run.id, { worktreePath: unsafe });
+      const res = await withPlatform('win32', () => openInCli(run.id));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "this task's folder path cannot be passed safely to cmd.exe, so no terminal can be opened in it",
+        code: 'terminal_folder_unsafe',
+      });
+      expect(mockOpenInTerminal).not.toHaveBeenCalled();
+    });
+
+    it('Windows: an account folder cmd.exe cannot embed is refused for the account', async () => {
+      const dir = join(home, 'claude-100%');
+      await addAccount('work', 'claude', dir);
+      const run = makeRun('claude', 'sess-1');
+      store.updateStep(run.id, 'work', { profileId: 'work' });
+      const res = await withPlatform('win32', () => openIn(run.id, 'cli:claude'));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "this account's folder cannot be used in a terminal command",
+        code: 'terminal_account_unsafe',
+      });
+      expect(mockOpenInTerminal).not.toHaveBeenCalled();
     });
 
     it('adds nothing for a run recorded on the default account', async () => {

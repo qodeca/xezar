@@ -34,6 +34,7 @@ import {
   useReferenceProjectId,
   useProviderStatus,
   useRunHandoff,
+  useRunResumeCommand,
   useRuns,
 } from '@/api/queries'
 import { DEFAULT_AGENT_ACCOUNT_ID, type ApiRun, type OpenTarget } from '@qodeca/xezar-api-client'
@@ -85,7 +86,7 @@ import { cn, isHttpUrl } from '@/lib/utils'
 
 import { Markdown } from './markdown'
 import { useContinuationProvider } from './continuation-provider'
-import { cliTargetResumes, cliTargetRunner, finishTitle, resumeHint, runActionFlags } from './run-actions'
+import { cliTargetResumes, cliTargetRunner, finishTitle, runActionFlags } from './run-actions'
 import { WorkflowSteps } from './step-rail'
 import { useFinishRun } from './use-finish-run'
 
@@ -134,7 +135,7 @@ export function RunHeader({
 }) {
   const attention = deriveAttention(run)
   const flags = runActionFlags(run)
-  const hint = resumeHint(run)
+  const hint = useRunResumeCommand(run).data?.command ?? undefined
   const [notesOpen, setNotesOpen] = useState(false)
   const actions = useRunActions(run, onMarkedUnread)
 

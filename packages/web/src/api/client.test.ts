@@ -509,10 +509,12 @@ describe('errors', () => {
   it.each([
     { name: 'command (open-in-cli)', body: { error: 'no terminal emulator found', command: "cd '/r' && claude --resume x" } },
     { name: 'exists (save workflow)', body: { error: 'workflow file already exists: /r/x.yaml', exists: true } },
+    { name: 'code (continue while still active)', body: { error: 'run is still active', code: 'run_still_active' } },
   ])('carries $name', async ({ body }) => {
     fail(409, JSON.stringify(body))
     const error = (await cancelRun('run-1').catch((e: unknown) => e)) as ApiError
     expect(error.message).toBe(body.error)
+    if ('code' in body) expect(error.code).toBe(body.code)
     if ('command' in body) expect(error.command).toBe(body.command)
     if ('exists' in body) expect(error.exists).toBe(true)
   })

@@ -81,6 +81,7 @@ import type {
   RepoBranchResponse,
   RepoCommitPayload,
   RunCommitsResponse,
+  RunResumeCommandResponse,
   RunHistoryContext,
   RunHistoryPage,
   RepoResponse,
@@ -121,10 +122,11 @@ import {
   getApiScope,
   queryScope,
   agentQuotaResponseSchema,
+  apiErrorCode,
   runHistoryContextSchema,
   runHistoryPageSchema,
 } from '@qodeca/xezar-api-client'
-import type { Ok, OkJson } from '@qodeca/xezar-api-client'
+import type { ApiErrorCode, Ok, OkJson } from '@qodeca/xezar-api-client'
 import type { ClientResponse } from 'hono/client'
 import type { ResponseFormat } from 'hono/types'
 import type { AppType } from '@qodeca/xezar/app-type'
@@ -170,11 +172,13 @@ export class ApiError extends Error {
   readonly command?: string
   /** `POST /api/workflows`: the file is already there — the caller may retry with `overwrite`. */
   readonly exists?: boolean
+  /** The contract's stable machine code for a refusal a client acts on (`API_ERROR_CODES`). */
+  readonly code?: ApiErrorCode
 
   constructor(
     status: number,
     message: string,
-    extras: { manual?: string; command?: string; exists?: boolean; cause?: unknown } = {},
+    extras: { manual?: string; command?: string; exists?: boolean; code?: ApiErrorCode; cause?: unknown } = {},
   ) {
     super(message, extras.cause !== undefined ? { cause: extras.cause } : undefined)
     this.name = 'ApiError'
@@ -182,6 +186,7 @@ export class ApiError extends Error {
     this.manual = extras.manual
     this.command = extras.command
     this.exists = extras.exists
+    this.code = extras.code
   }
 }
 
@@ -219,6 +224,7 @@ function errorFor(status: number, statusText: string, body: string): ApiError {
     manual: str(json.manual),
     command: str(json.command),
     exists: typeof json.exists === 'boolean' ? json.exists : undefined,
+    code: apiErrorCode(json),
   })
 }
 
@@ -935,6 +941,18 @@ export function getRunDiff(id: string, opts?: ReadOptions): Promise<string> {
  *  the server only 404s for an unknown run, never for a missing file. */
 export function getRunHandoff(id: string, opts?: ReadOptions): Promise<string> {
   return requestText(runPath(id, '/handoff'), { method: 'GET', signal: opts?.signal })
+}
+
+/** The header's "take over interactively" line, built by the server (`GET /runs/:id/resume-command`)
+ *  with the same quoting and account as the terminal launcher; `command: null` when there is none. */
+export async function getRunResumeCommand(id: string, opts?: ReadOptions): Promise<RunResumeCommandResponse> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].runs[':id']['resume-command'].$get(
+      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      init(opts),
+    ),
+    runPath(id, '/resume-command'),
+  )
 }
 
 /** The run's structured working-directory-vs-base diff (R5): per-file status/±/patch + the

@@ -496,6 +496,18 @@ describe('RunManager.continueRun override', () => {
     expect(calls[0]?.[3]).toBe('claude');
   });
 
+  it('refuses a second Continue while the first still holds the run, with the stable retry code', () => {
+    const id = resumableRun();
+    (manager as unknown as { runContinuation: (...args: unknown[]) => Promise<void> }).runContinuation = () =>
+      new Promise<void>(() => {});
+    expect(manager.continueRun(id, { text: 'first' })).toEqual({ ok: true });
+    expect(manager.continueRun(id, { text: 'second' })).toEqual({
+      ok: false,
+      error: 'run is still active',
+      code: 'run_still_active',
+    });
+  });
+
   it('an omitted override preserves the run current backend/model (backward compat)', () => {
     const id = resumableRun();
     expect(manager.continueRun(id, { text: 'keep going' })).toEqual({ ok: true });

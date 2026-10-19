@@ -1,9 +1,8 @@
 import { lstat } from 'node:fs/promises';
-import { mcpExpectedVersionSchema, operationIdSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
-import { hc, type InferResponseType } from 'hono/client';
+import { engineOwnsRun, mcpExpectedVersionSchema, operationIdSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
+import type { InferResponseType } from 'hono/client';
 import { z } from 'zod';
 import type { RunRecord } from '../../runs/store.ts';
-import type { AppType } from '../../server/app-type.ts';
 import {
   openCursor,
   ownGroupMember,
@@ -17,7 +16,14 @@ import {
   type OwnershipRefusal,
   type OwnershipScope,
 } from '../resource-ownership.ts';
-import { MCP_ORIGIN, McpServiceAdapter, type McpServiceResult, type ServiceDispatch } from '../service-adapter.ts';
+import {
+  inProcessClient,
+  MCP_ORIGIN,
+  McpServiceAdapter,
+  settleWithOrigin as settle,
+  type McpServiceResult,
+  type ServiceDispatch,
+} from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
@@ -83,8 +89,7 @@ const PAGE_ITEMS = 100;
 const BRIEF_PREVIEW_BYTES = 1_000;
 const MESSAGE_PREVIEW_BYTES = 300;
 
-/** The cockpit's "active" (`isRunActive`) and "terminal" (`TERMINAL_STATUSES`) sets. */
-const ACTIVE_STATUSES: ReadonlySet<string> = new Set(['queued', 'running', 'waiting']);
+/** The cockpit's "terminal" (`TERMINAL_STATUSES`) set; "active" is the contract's `engineOwnsRun`. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['done', 'failed', 'review', 'cancelled']);
 
 const ACTIONS = [
@@ -218,18 +223,8 @@ type Args = z.output<typeof inputSchema>;
 
 // ---- the narrowed route table ----------------------------------------------------------------
 
-/** The same in-process dispatch `McpServiceAdapter` uses: the request never leaves the process, it
- *  reaches the chained routes as a local non-browser caller, and it can only name routes under
- *  `/api/v1/p/<bound project>`. */
-const scopedRoutes = (service: ServiceDispatch) =>
-  hc<AppType>('http://127.0.0.1', {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', '127.0.0.1');
-      headers.delete('origin');
-      return service.request(input instanceof Request ? input.url : String(input), { ...init, headers });
-    },
-  }).api.v1.p[':projectId'];
+/** The shared in-process client (`service-adapter.ts`), narrowed to `/api/v1/p/<bound project>`. */
+const scopedRoutes = (service: ServiceDispatch) => inProcessClient(service).api.v1.p[':projectId'];
 
 type Routes = ReturnType<typeof scopedRoutes>;
 type RunRoutes = Routes['runs'][':id'];
@@ -302,24 +297,6 @@ class WorkOrganisation {
   removeTodo(id: string): Promise<McpServiceResult<RemoveTodoValue>> {
     return settle(this.routes.todos[':id'].$delete({ param: { projectId: this.projectId, id } }), [200]);
   }
-}
-
-/** The adapter's own mapping: a refusal keeps the service's status and message, and a success
- *  status without a JSON body is an error rather than an empty value. */
-async function settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<McpServiceResult<T>> {
-  const res = await pending;
-  const body: unknown = await res.json().catch(() => undefined);
-  if (success.includes(res.status)) {
-    if (body === undefined) {
-      return { ok: false, origin: MCP_ORIGIN, status: 502, error: `service answered ${res.status} without a body` };
-    }
-    return { ok: true, origin: MCP_ORIGIN, status: res.status, value: body as T };
-  }
-  const error =
-    body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : `service answered ${res.status}`;
-  return { ok: false, origin: MCP_ORIGIN, status: res.status, error, body };
 }
 
 // ---- results ---------------------------------------------------------------------------------
@@ -458,7 +435,7 @@ function listQueue(scope: OwnershipScope, runs: readonly RunLike[], args: Args):
 }
 
 async function archive(ops: WorkOrganisation, run: RunLike, expectedVersion: string): Promise<McpToolResult> {
-  if (!run.archived && ACTIVE_STATUSES.has(run.status)) {
+  if (!run.archived && engineOwnsRun(run.status)) {
     return conflict('archive', `this task is ${run.status} — cancel it or let it finish, then archive it`, { run: slimRun(run) });
   }
   const result = await ops.adapter.archiveRun(run.id, true, expectedVersion);

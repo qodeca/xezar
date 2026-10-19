@@ -1,9 +1,7 @@
 import { operationIdSchema, runIdParamSchema, openTargetSchema } from '@qodeca/xezar-contract';
-import { hc } from 'hono/client';
 import { z } from 'zod';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
-import type { AppType } from '../../server/app-type.ts';
-import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
+import { inProcessClient, MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -148,21 +146,6 @@ export type LocalHandoffResult = z.infer<typeof localHandoffResultSchema>;
 
 // ---- the service entry -------------------------------------------------------------------------
 
-const IN_PROCESS_BASE = 'http://127.0.0.1';
-const IN_PROCESS_HOST = '127.0.0.1';
-
-/** The same in-process client the adapter builds (`service-adapter.ts`): loopback host, no Origin. */
-const buildClient = (service: ServiceDispatch) =>
-  hc<AppType>(IN_PROCESS_BASE, {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', IN_PROCESS_HOST);
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  });
-
 interface Answer {
   status: number;
   body: Record<string, unknown> | undefined;
@@ -212,7 +195,7 @@ export async function runLocalHandoff(
   projectId: string,
   service: ServiceDispatch,
 ): Promise<LocalHandoffResult> {
-  const client = buildClient(service);
+  const client = inProcessClient(service);
 
   // The capability first, and nothing else until it says yes. An unreadable answer fails CLOSED:
   // "we could not tell" must never read as "go ahead".

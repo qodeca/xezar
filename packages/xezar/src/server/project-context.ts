@@ -7,7 +7,8 @@ import { DEFAULT_WORKTREE_RETENTION, resolveWorktreeRetention } from '../config.
 import { pruneOrphans } from '../git-worktree.ts';
 import { armRepoHandle } from '../runs/arm-repo-handle.ts';
 import { reclaimWorktrees } from '../runs/retention.ts';
-import { RunStore, type RunStatus } from '../runs/store.ts';
+import { engineOwnsRun } from '@qodeca/xezar-contract';
+import { RunStore } from '../runs/store.ts';
 import { ownProjectData, primeWriterClaims } from '../runs/project-writer.ts';
 import type { InstanceModeInForce } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -185,11 +186,6 @@ export function otherInstanceRefusalText(
   );
 }
 
-/** Mirrors `ACTIVE_RUN_STATUSES` in server.ts — the same three statuses the removal route's own
- *  running-tasks 409 guard treats as "this process is actively responsible for it" (#592 review
- *  round 1, Major 2). Kept as a second literal rather than an import: `server.ts` declares its
- *  copy inside `createApp`'s closure, not at module scope, so there is nothing to import from. */
-const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 
 /**
  * Lazy `Map<projectId, ProjectContext>`. Nothing is instantiated at
@@ -366,7 +362,7 @@ export class ProjectContexts {
    *  removal route's `activeRunCount` guard makes off the store, so a benign drift under a live
    *  run is refused the same way an explicit removal already is. */
   private hasActiveRuns(ctx: ProjectContext): boolean {
-    return ctx.store.listRuns().some((run) => ACTIVE_RUN_STATUSES.has(run.status));
+    return ctx.store.listRuns().some((run) => engineOwnsRun(run.status));
   }
 
   /** Logs once per (id, target root) pair — see `activeDriftWarned`'s field doc for why. */

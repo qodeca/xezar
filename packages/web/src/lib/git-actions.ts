@@ -1,4 +1,4 @@
-import type { ForgeInfo, RunStatus } from '@qodeca/xezar-api-client'
+import { engineOwnsRun, type ForgeInfo, type RunStatus } from '@qodeca/xezar-api-client'
 
 /**
  * The git action policy object (spec §"Session git view — Changes & Files tabs (#390)",
@@ -56,10 +56,9 @@ export interface GitActionBar {
   menu: GitAction[]
 }
 
-/** "Active" as the engine means it: the session/queue still owns the run. `review` is parked,
- *  not active — same rule as run-actions.ts `isRunActive`. */
-const isActive = (status: RunStatus): boolean =>
-  status === 'running' || status === 'queued' || status === 'waiting'
+/** "Active" as the engine means it: the session/queue still owns the run (the contract's
+ *  `engineOwnsRun`). `review` is parked, not active. */
+const isActive = (status: RunStatus): boolean => engineOwnsRun(status)
 
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree'
 

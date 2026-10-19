@@ -48,6 +48,24 @@ export const runStatusSchema = z.enum([
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
 /**
+ * The statuses in which the engine still owns a run: executing (`running`), parked on its live
+ * session for input (`waiting`), or claimed by the queue (`queued`). While a run is in one of
+ * these, its session belongs to the engine – nothing may resume it in a second CLI, delete it,
+ * remove its worktree or deregister its project. `review` is deliberately NOT here: a parked
+ * review has no live process, and it can be continued, archived or deleted like a finished run.
+ *
+ * This is a fact about the RECORD. The engine's own in-memory view (`RunManager.isActive`: a run
+ * this process has started, is starting or has queued) is a different question and stays separate.
+ */
+export const ENGINE_OWNED_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
+
+/** Does the engine still own a run in this status? See `ENGINE_OWNED_RUN_STATUSES`. Takes any
+ *  string so a caller holding an unvalidated status gets `false` for anything unknown. */
+export function engineOwnsRun(status: string): boolean {
+  return (ENGINE_OWNED_RUN_STATUSES as ReadonlySet<string>).has(status);
+}
+
+/**
  * Sub-state of `running` (spec 2026-07-18-subagent-monitoring-status, #490): the agent ended its
  * turn still working on its own downstream work (a sub-agent, a monitored command) and said so
  * with the `XEZ:MONITORING` marker — a non-attention state, not "needs you".
@@ -616,6 +634,17 @@ export const openInCliResponseSchema = z.object({
   command: z.string(),
 });
 export type OpenInCliResponse = z.infer<typeof openInCliResponseSchema>;
+
+/**
+ * `GET /runs/:id/resume-command` — the cockpit's "take over interactively" line, built by the
+ * server with the same builder as the terminal launcher and its fallback: `cd` into the task's
+ * folder, the account the session belongs to, then the resume command, quoted for the host's
+ * shell. `null` when there is nothing to offer: the engine still owns the run, no session was
+ * recorded, the session id or account cannot be embedded safely, or – in hosted mode – the
+ * session needs a named account (its folder is on the server). Hosted mode drops the `cd`.
+ */
+export const runResumeCommandResponseSchema = z.object({ command: z.string().nullable() });
+export type RunResumeCommandResponse = z.infer<typeof runResumeCommandResponseSchema>;
 
 /** `POST /runs/:id/remove-worktree` — per-row delete in the worktrees panel (#483). */
 export const removeWorktreeResponseSchema = z.object({ removed: z.literal(true) });

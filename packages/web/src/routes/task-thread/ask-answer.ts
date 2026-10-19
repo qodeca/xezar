@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 
 import { ApiError } from '@/api/client'
 import { useContinueRun, useSendMessage } from '@/api/queries'
-import type { ApiRun, RunRecord } from '@qodeca/xezar-api-client'
+import { RUN_STILL_ACTIVE_CODE, type ApiRun, type RunRecord } from '@qodeca/xezar-api-client'
 
 import {
   useActiveProviderAvailability,
@@ -32,14 +32,15 @@ export type AskBlockedReason = 'provider' | 'no-session'
 /** The idle timer closes the backend before the RunManager has finished settling
  *  the run record and releasing its active-run entry. A stale ask card can therefore
  *  learn that `/messages` is closed, then reach `/continue` a few milliseconds too
- *  early. Retry only that exact transitional refusal; every other 409 is actionable. */
+ *  early. Retry only that transitional refusal, matched by its contract code
+ *  (`run_still_active`), never by its wording; every other 409 is actionable. */
 export const IDLE_TEARDOWN_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1_000, 1_000, 1_000, 1_000] as const
 
 const delayIdleTeardownRetry = (delayMs: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, delayMs))
 
 function isIdleTeardownRefusal(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.status === 409 && error.message === 'run is still active'
+  return error instanceof ApiError && error.status === 409 && error.code === RUN_STILL_ACTIVE_CODE
 }
 
 /** Reopen once the old idle-closed session has left the RunManager's active map.
