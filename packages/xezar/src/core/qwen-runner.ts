@@ -291,6 +291,8 @@ class QwenSession {
   private child: ChildProcessWithoutNullStreams | null = null;
   private hasExited: (() => boolean) | null = null;
   private terminatedByXezar = false;
+  /** The EOF watchdog had to stop a turn still running after `end()` (`AgentRunResult.stoppedAfterClose`). */
+  private stoppedAfterClose = false;
   private timedOut = false;
   private stopRequested = false;
   private autoEndTimer: NodeJS.Timeout | undefined;
@@ -368,7 +370,10 @@ class QwenSession {
     // A turn still running gets the same EOF watchdog Claude Code's session gets.
     if (this.child && !this.hasExited?.()) {
       this.eofTermTimer = setTimeout(() => {
-        if (!this.hasExited?.()) this.signalChild('SIGTERM');
+        if (!this.hasExited?.()) {
+          this.stoppedAfterClose = true;
+          this.signalChild('SIGTERM');
+        }
         this.eofKillTimer = setTimeout(() => {
           if (!this.hasExited?.()) this.signalChild('SIGKILL');
         }, EOF_KILL_GRACE_MS);
@@ -478,7 +483,9 @@ class QwenSession {
     }
     if (!this.sawUsage && this.turns > 0) onEvent?.({ type: 'note', message: 'token usage not reported by Qwen Code' });
     onEvent?.({ type: 'done' });
-    return { text, toolCalls: this.toolCalls, tokensUsed: this.tokensUsed, sessionId };
+    // #943: the run manager sweeps what the agent left running behind a turn the watchdog stopped.
+    const closeStop = this.stoppedAfterClose ? { stoppedAfterClose: true as const } : {};
+    return { text, toolCalls: this.toolCalls, tokensUsed: this.tokensUsed, sessionId, ...closeStop };
   }
 
   /** Start one turn's process, read it to the end, and wait for its exit. */

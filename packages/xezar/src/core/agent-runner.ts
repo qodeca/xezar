@@ -211,6 +211,10 @@ export interface AgentRunResult {
   /** The runner's wall clock (`timeoutMs`) ran out and it stopped its child (#943). Absent
    *  otherwise – the run manager then sweeps what the agent left running. */
   timedOut?: true;
+  /** The session was closed (`end()`) and the backend did not exit on its own, so the EOF
+   *  watchdog stopped it (#703). Never with `timedOut`, and never for `interrupt()`. The run
+   *  manager then sweeps what the agent left running, as it does after a timeout. */
+  stoppedAfterClose?: true;
 }
 
 export interface SessionOptions {

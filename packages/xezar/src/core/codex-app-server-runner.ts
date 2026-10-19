@@ -377,6 +377,8 @@ class CodexSession implements AgentSession {
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
   private terminatedByXezar = false;
+  /** The EOF watchdog had to stop the app-server after `end()` (`AgentRunResult.stoppedAfterClose`). */
+  private stoppedAfterClose = false;
   /** "Has the app-server really terminated?" — the question `child.killed`
    *  does not answer: it flips on signal delivery, so the SIGTERM this runner
    *  sends would otherwise veto its own SIGKILL escalation (#844). */
@@ -562,6 +564,8 @@ class CodexSession implements AgentSession {
         this.emit({ type: 'done' });
         return { ...base, timedOut: true };
       }
+      // #943: the run manager sweeps what the agent left running behind an app-server the watchdog stopped.
+      const closeStop = this.stoppedAfterClose ? { stoppedAfterClose: true as const } : {};
 
       // Our own EOF watchdog / cancel signal coming back as 143/137 — the
       // teardown xezar asked for, not a codex failure (#703). On Windows that
@@ -572,7 +576,7 @@ class CodexSession implements AgentSession {
           message: `codex app-server did not exit on its own after close; terminated by xezar (code ${exitCode})`,
         });
         this.emit({ type: 'done' });
-        return base;
+        return { ...base, ...closeStop };
       }
 
       if (exitCode !== 0 && exitCode !== null) {
@@ -595,7 +599,7 @@ class CodexSession implements AgentSession {
       }
 
       this.emit({ type: 'done' });
-      return base;
+      return { ...base, ...closeStop };
     })();
   }
 
@@ -645,6 +649,7 @@ class CodexSession implements AgentSession {
         },
         () => {
           this.terminatedByXezar = true;
+          this.stoppedAfterClose = true;
         },
       );
     } catch {

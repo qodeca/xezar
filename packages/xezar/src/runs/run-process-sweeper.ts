@@ -1,8 +1,10 @@
 /**
- * Stop what a run started when xezar stops the run (#943): a memory-limit pause, a cancel, a
- * step's time limit. The agent's own process tree is stopped by its runner; this sweep finds
- * what outlived it or left it – a dev server started in the background, a watcher – and stops
- * those too, then leaves one note naming them.
+ * Stop what a run started when xezar stops it or its agent fails (#943): a memory-limit pause, a
+ * cancel, a step's time limit, a session xezar closed (the idle close, the user's Finish, a bound),
+ * a CLI the EOF watchdog had to stop after its session closed, and an agent error. The agent's own
+ * process tree is stopped by its runner; this sweep finds what outlived it or left it – a dev
+ * server started in the background, a watcher – and stops those too, then leaves one note naming
+ * them.
  *
  * Attribution, never by name, working folder, command line or port:
  *  - Linux: a process whose environment holds exactly `XEZ_TASK_ID=<runId>`, the marker every
@@ -59,11 +61,19 @@ import { buildSweepReport, rootNotConfirmedNote } from './run-process-report.ts'
 /** The environment entry every agent of a run carries; it lives with the rest of the proof. */
 export { RUN_MARKER_ENV };
 
-/** Why xezar stopped the run. A `timeout` keeps the ledger (the run goes on); the others end
- *  the run's current life, so its ledger is handed to the sweep and a Continue starts afresh.
+/** Why the run stopped. A `timeout`, an `eof-kill` and an `agent-error` keep the ledger (the run
+ *  may go on to a retry or its next step); the others end the run's current life, so its ledger is
+ *  handed to the sweep and a Continue starts afresh. `close`: xezar closed a session the agent had
+ *  not ended – the idle close, the user's Finish, a bound (one that would otherwise wait out the
+ *  idle close, or a read-only step's finish). `eof-kill`: the backend did not exit after its
+ *  session closed and the runner's EOF watchdog stopped it. `agent-error`: the backend reported an
+ *  error or failed the session.
  *  `restart` (#982): xezar exited while the run was running, and the restarted engine sweeps what
  *  that turn left before it resumes the run. */
-export type SweepReason = 'memory-limit' | 'cancel' | 'timeout' | 'restart';
+export type SweepReason = 'memory-limit' | 'cancel' | 'close' | 'timeout' | 'eof-kill' | 'agent-error' | 'restart';
+
+/** The reasons after which the run may go on, so the run keeps its ledger. */
+const RUN_GOES_ON: ReadonlySet<SweepReason> = new Set<SweepReason>(['timeout', 'eof-kill', 'agent-error']);
 
 /** A run's saved ledger, next to its other files: `<ledgerDir>/<runId>.processes.json` (#982). */
 const LEDGER_FILE_SUFFIX = '.processes.json';
@@ -360,7 +370,7 @@ export class RunProcessSweeper {
 
   private schedule(runId: string, reason: SweepReason): Promise<void> {
     const ledger = this.ledgers.get(runId);
-    if (reason !== 'timeout') {
+    if (!RUN_GOES_ON.has(reason)) {
       this.ledgers.delete(runId);
       // The sweep holds this ledger now; the run's next life starts a new one, and its own saves.
       this.removeSaved(runId);

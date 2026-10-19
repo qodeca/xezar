@@ -153,6 +153,8 @@ export class ClaudeCliRunner implements AgentRunner {
     let autoEndTimer: NodeJS.Timeout | undefined;
     let eofTermTimer: NodeJS.Timeout | undefined;
     let eofKillTimer: NodeJS.Timeout | undefined;
+    /** The EOF watchdog had to stop the CLI after `end()` (`AgentRunResult.stoppedAfterClose`). */
+    let stoppedAfterClose = false;
 
     // Protocol v2 emission — additive alongside v1 (`onEvent` keeps flowing
     // byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
@@ -219,7 +221,10 @@ export class ClaudeCliRunner implements AgentRunner {
         // already gone
       }
       eofTermTimer = setTimeout(() => {
-        if (!hasExited()) signalChild('SIGTERM');
+        if (!hasExited()) {
+          stoppedAfterClose = true;
+          signalChild('SIGTERM');
+        }
         eofKillTimer = setTimeout(() => {
           if (!hasExited()) signalChild('SIGKILL');
         }, EOF_KILL_GRACE_MS);
@@ -348,6 +353,8 @@ export class ClaudeCliRunner implements AgentRunner {
         onEvent?.({ type: 'done' });
         return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, timedOut: true };
       }
+      // #943: the run manager sweeps what the agent left running behind a CLI the watchdog stopped.
+      const closeStop = stoppedAfterClose ? { stoppedAfterClose: true as const } : {};
 
       // A session xezar itself tore down (EOF watchdog after `end()`, or a
       // cancel) exits 143/137 — that is our own signal coming back, not an
@@ -359,7 +366,7 @@ export class ClaudeCliRunner implements AgentRunner {
           message: `claude CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,
         });
         onEvent?.({ type: 'done' });
-        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
+        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, ...closeStop };
       }
 
       if (exitCode !== 0 && exitCode !== null) {
@@ -381,7 +388,7 @@ export class ClaudeCliRunner implements AgentRunner {
       }
 
       onEvent?.({ type: 'done' });
-      return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
+      return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, ...closeStop };
     })();
 
     const session: AgentSession = {
