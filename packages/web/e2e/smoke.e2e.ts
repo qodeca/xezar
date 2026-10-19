@@ -431,7 +431,7 @@ describe('mobile shell', () => {
 
   describe('nav drawer', () => {
     const DRAWER = '[data-slot="mobile-nav-drawer"]'
-    const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label="Open menu"]'
+    const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label^="Open menu"]'
 
     // The drawer slides in over 500ms and out over 300ms, so every assertion has to wait for the
     // transition to settle. "Settled open" is specifically `left === 0`: mid-flight it is already

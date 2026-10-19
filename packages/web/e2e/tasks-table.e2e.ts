@@ -257,7 +257,7 @@ describe('the sidebar is navigation only, with real runs to list (#546)', () => 
     browser.setViewport(390, 844)
     browser.goto(`${baseUrl}${scoped('/')}`)
     browser.waitForFunction(`document.querySelectorAll('[data-slot="task-card"]').length > 0`)
-    browser.click('button[aria-label="Open menu"]')
+    browser.click('button[aria-label^="Open menu"]')
     // Settled, not merely mounted: the drawer slides in, and a click aimed at a link that is still
     // moving lands on the backdrop, which dismisses the drawer instead of navigating.
     browser.waitForFunction(

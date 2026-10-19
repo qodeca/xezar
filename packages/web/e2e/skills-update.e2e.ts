@@ -138,7 +138,7 @@ describe('automatic xezar-skills updates', () => {
     browser.setViewport(IPHONE.width, IPHONE.height)
     browser.goto(`${baseUrl}/p/${projectId}/`)
     browser.waitForFunction(`document.querySelector('[data-slot="mobile-top-bar"]') !== null`)
-    browser.click('[data-slot="mobile-top-bar"] button[aria-label="Open menu"]')
+    browser.click('[data-slot="mobile-top-bar"] button[aria-label^="Open menu"]')
     browser.waitForFunction(`document.querySelector('[role="dialog"] nav') !== null`)
 
     expect(browser.text('[role="dialog"] nav')).toContain('Skills')
