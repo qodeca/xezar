@@ -104,6 +104,17 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     expect(names(await body(await browse('?showHidden=1')))).toContain('.hidden');
   });
 
+  it('never lists hidden entries in hosted mode, with or without showHidden=1', async () => {
+    process.env.XEZ_REMOTE = '1';
+    for (const query of ['', '?showHidden=1']) {
+      const res = await browse(query);
+      expect(res.status).toBe(200);
+      const listed = names(await body(res));
+      expect(listed).toContain('projects');
+      expect(listed).not.toContain('.hidden');
+    }
+  });
+
   it('flags git repos with isRepo and still lists plain folders', async () => {
     const payload = await body(await browse(`?path=${encodeURIComponent(join(home, 'projects'))}`));
     expect(payload.path).toBe(join(home, 'projects'));

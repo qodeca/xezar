@@ -309,8 +309,8 @@ describe('request-origin guard (#426)', () => {
 
 /**
  * Hosted mode (XEZ_REMOTE=1 — spec §"Deployment modes"): xezar binds loopback
- * behind a reverse proxy that forwards the real public Host, so the loopback
- * allowlist must stand down there. CSRF protection stays on — Origin still has
+ * behind a reverse proxy that forwards the real public Host, so the Host
+ * allowlist also admits the cockpit's public names there. CSRF protection stays on — Origin still has
  * to match the served Host.
  */
 describe('request-origin guard — hosted mode (#426)', () => {
@@ -318,11 +318,15 @@ describe('request-origin guard — hosted mode (#426)', () => {
   let store: RunStore;
   let app: Hono;
   const savedRemote = process.env.XEZ_REMOTE;
+  const savedAllowed = process.env.XEZ_ALLOWED_HOSTS;
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-guard-hosted-'));
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     process.env.XEZ_REMOTE = '1';
+    // The public names these tests serve under; the Host check itself is pinned
+    // in host-guard.test.ts, so here every Host passes it and only Origin decides.
+    process.env.XEZ_ALLOWED_HOSTS = 'xez.example.com,hosted.invalid';
     const manager = {
       startRun: (_workflow: WorkflowDef, input: StartRunInput) =>
         store.createRun({ title: 't', workflow: '(planned)', task: input.task, steps: [] }),
@@ -341,6 +345,8 @@ describe('request-origin guard — hosted mode (#426)', () => {
     rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
+    if (savedAllowed === undefined) delete process.env.XEZ_ALLOWED_HOSTS;
+    else process.env.XEZ_ALLOWED_HOSTS = savedAllowed;
   });
 
   const startBody = { task: 'do the thing', steps: [{ id: 'work', prompt: '{{task}}' }] };

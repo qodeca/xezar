@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/toaster'
 import { inSingleProjectRoot } from '@/lib/project-mode'
 import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
+import { HostedLockedValue, useHostedSettingsLock } from './hosted-locked'
 
 /**
  * Global settings → Resources: how hard the MACHINE works. `maxParallel` caps concurrent tasks
@@ -184,6 +185,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       },
     )
 
+  const lock = useHostedSettingsLock()
   // F — the agent env passthrough list, previously `XEZ_ENV_PASSTHROUGH=A,B,C` at boot only.
   const storedPassthrough = config.agentEnvPassthrough
   const [passthrough, setPassthrough] = useState((storedPassthrough ?? []).join(', '))
@@ -634,59 +636,78 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Extra variables agents receive"
-        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own. Name any others here, comma-separated."
+        hint={`Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own.${
+          lock === 'local' ? ' Name any others here, comma-separated.' : ''
+        }`}
       >
-        <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            aria-label="Extra environment variable names for agents"
-            data-slot="resources-env-passthrough"
-            value={passthrough}
-            disabled={save.isPending}
-            placeholder="VITEST_MAX_WORKERS, MY_TOOL_DIR"
-            onChange={(event) => setPassthrough(event.target.value)}
-            className={cn(nativeFieldClass, 'block font-mono')}
-          />
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              data-action="resources-save-env-passthrough"
-              disabled={passthroughSaved || passthroughInvalid || save.isPending}
-              onClick={savePassthrough}
-            >
-              Save
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-action="resources-clear-env-passthrough"
-              disabled={config.agentEnvPassthrough === null || save.isPending}
-              onClick={clearPassthrough}
-            >
-              Follow XEZ_ENV_PASSTHROUGH
-            </Button>
-          </div>
-        </div>
-        {passthroughInvalid ? (
-          <p data-slot="resources-env-passthrough-invalid" className="text-[11px] text-danger">
-            Use variable NAMES only (letters, digits and underscores), at most {ENV_PASSTHROUGH_MAX}
-            {' '}of them — never their values.
-          </p>
-        ) : (
-          <p className="text-[11px] text-soft-foreground">
-            Names only — the values come from this machine's environment and are never stored
-            here. Currently forwarding:{' '}
-            <span data-slot="resources-env-passthrough-effective">
-              {config.effectiveAgentEnvPassthrough.length > 0
+        {lock !== 'local' ? (
+          // Hosted mode: the server refuses this key, so the names are shown, not offered for editing.
+          <HostedLockedValue
+            label="Extra environment variable names for agents"
+            value={
+              config.effectiveAgentEnvPassthrough.length > 0
                 ? config.effectiveAgentEnvPassthrough.join(', ')
-                : 'nothing extra'}
-            </span>
-            {config.agentEnvPassthrough === null ? ' (from the environment)' : ''}. Applies to the
-            next task, with no restart.
-          </p>
+                : 'Nothing extra'
+            }
+            slot="resources-env-passthrough-locked"
+            mono={config.effectiveAgentEnvPassthrough.length > 0}
+            pending={lock === 'pending'}
+          />
+        ) : (
+          <>
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                aria-label="Extra environment variable names for agents"
+                data-slot="resources-env-passthrough"
+                value={passthrough}
+                disabled={save.isPending}
+                placeholder="VITEST_MAX_WORKERS, MY_TOOL_DIR"
+                onChange={(event) => setPassthrough(event.target.value)}
+                className={cn(nativeFieldClass, 'block font-mono')}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-action="resources-save-env-passthrough"
+                  disabled={passthroughSaved || passthroughInvalid || save.isPending}
+                  onClick={savePassthrough}
+                >
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-action="resources-clear-env-passthrough"
+                  disabled={config.agentEnvPassthrough === null || save.isPending}
+                  onClick={clearPassthrough}
+                >
+                  Follow XEZ_ENV_PASSTHROUGH
+                </Button>
+              </div>
+            </div>
+            {passthroughInvalid ? (
+              <p data-slot="resources-env-passthrough-invalid" className="text-[11px] text-danger">
+                Use variable NAMES only (letters, digits and underscores), at most {ENV_PASSTHROUGH_MAX}
+                {' '}of them — never their values.
+              </p>
+            ) : (
+              <p className="text-[11px] text-soft-foreground">
+                Names only — the values come from this machine's environment and are never stored
+                here. Currently forwarding:{' '}
+                <span data-slot="resources-env-passthrough-effective">
+                  {config.effectiveAgentEnvPassthrough.length > 0
+                    ? config.effectiveAgentEnvPassthrough.join(', ')
+                    : 'nothing extra'}
+                </span>
+                {config.agentEnvPassthrough === null ? ' (from the environment)' : ''}. Applies to the
+                next task, with no restart.
+              </p>
+            )}
+          </>
         )}
       </SettingsField>
 

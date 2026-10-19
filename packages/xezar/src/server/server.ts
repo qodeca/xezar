@@ -4,6 +4,7 @@ import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { resolveNextStartCli } from '../cli-settings.ts';
 import { createUiAuditDoor } from './audit-ui.ts';
+import { allowsHost } from './hosted-hosts.ts';
 import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -275,7 +276,9 @@ import {
   ASSET_CACHE_CONTROL,
   BUILD_HINT_HTML,
   HTML_FRAME_HEADERS,
+  HOST_REFUSED_HEADERS,
   assetContentType,
+  hostRefusedHtml,
   isSafeAssetFilename,
   resolveGetRequest,
 } from './static-ui.ts';
@@ -1407,12 +1410,12 @@ export function createApp(deps: ServerDeps) {
   // Two zero-config checks close both holes on every /api route EXCEPT
   // /api/v1/health (the intentional cross-origin discovery endpoint, spec 011 —
   // it exposes nothing sensitive, see #431):
-  //   1. Host allowlist (loopback deployments only) — a request whose Host is
-  //      not a loopback name did not really originate from this machine. A
-  //      rebound `evil.com` still sends `Host: evil.com`, so this kills DNS
-  //      rebinding for reads AND writes. Skipped in hosted mode (XEZ_REMOTE /
-  //      non-loopback bind), where the reverse proxy forwards the real public
-  //      Host and TLS+auth own the perimeter.
+  //   1. Host allowlist — a request whose Host is not a loopback name did not
+  //      really originate from this machine. A rebound `evil.com` still sends
+  //      `Host: evil.com`, so this kills DNS rebinding for reads AND writes.
+  //      In hosted mode (XEZ_REMOTE / non-loopback bind) the proxy forwards the
+  //      real public Host, so the allowlist also admits IP literals, the public
+  //      names the install recorded and XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`).
   //      The match runs through `isLoopbackHostHeader`, whose 127.0.0.0/8 test
   //      is *anchored* and whose missing-Host answer is "untrusted". Both are
   //      load-bearing: a `startsWith('127.')` prefix would accept the
@@ -1433,15 +1436,46 @@ export function createApp(deps: ServerDeps) {
   // what check 1 stops.
   const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   const isHostedMode = () => !resolveCapabilities(process.env, bindHost).localHandoff;
+  // Hosted mode used to skip check 1 outright, but the installers keep the
+  // listener on loopback behind a local proxy, so a browser on the same machine
+  // can still reach it under a foreign name. A hosted cockpit therefore serves a
+  // non-loopback Host only when it is an IP literal, a public name this host's
+  // install records, or a name in XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`). Each
+  // refused name is logged once (bounded), with how to allow it.
+  const loggedRefusedHosts = new Set<string>();
+  const hostedModeAllowsHost = (hostName: string): boolean => {
+    if (!isHostedMode()) return false;
+    if (allowsHost(hostName)) return true;
+    if (!loggedRefusedHosts.has(hostName) && loggedRefusedHosts.size < 64) {
+      loggedRefusedHosts.add(hostName);
+      console.warn(
+        `[xezar] hosted mode: refused a request for Host "${hostName.slice(0, 120) || '(none)'}". ` +
+          `${HOSTED_HOST_HINT} To serve this name, add it to XEZ_ALLOWED_HOSTS (comma-separated) and restart, ` +
+          'or record it with `xezar server-install --domain <name>`.',
+      );
+    }
+    return false;
+  };
+  // Every non-API path in hosted mode: the same Host rule, answered with a small page that says
+  // which name was refused and how to allow it — not a cockpit shell whose API calls would all
+  // fail. Local mode keeps serving the static shell (it carries no data; check 1 guards the API).
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/api' || c.req.path.startsWith('/api/') || !isHostedMode()) return next();
+    const hostName = hostnameOfHost(c.req.header('host'));
+    if (isLoopbackHostHeader(hostName) || hostedModeAllowsHost(hostName)) return next();
+    return new Response(hostRefusedHtml(hostName), { status: 403, headers: HOST_REFUSED_HEADERS });
+  });
   app.use('/api/*', async (c, next) => {
     const hostName = hostnameOfHost(c.req.header('host'));
     // Strict twin of `isLoopbackHost`: a *missing* Host is untrusted here (an
     // absent header is not the "we defaulted to the loopback bind" case), and
     // the loopback match is anchored so `127.0.0.1.evil.com` does not pass.
-    if (!isHostedMode() && !isLoopbackHostHeader(hostName)) {
+    if (!isLoopbackHostHeader(hostName) && !hostedModeAllowsHost(hostName)) {
       return c.json(
         {
-          error: 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
+          error: isHostedMode()
+            ? `forbidden: unexpected Host header — ${HOSTED_HOST_HINT} To allow a name, list it in XEZ_ALLOWED_HOSTS (comma-separated) and restart (see #426)`
+            : 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
         },
         403,
       );
@@ -3373,6 +3407,28 @@ export function createApp(deps: ServerDeps) {
         agentDefaults,
         cli,
       } = parsed.data;
+      // Hosted mode: the keys that decide what this machine exposes stay a local-machine
+      // choice, like agent config. `browseRoot` bounds which host folders a remote viewer can
+      // list and register, `projectsDir` is where checkouts are written, `agentEnvPassthrough`
+      // names host variables handed to every agent, and `cli.instance` decides which
+      // registered projects this process serves. Display and resource settings stay writable.
+      // Refused before any probe or write, so a refused body changes nothing.
+      if (!capabilities().localHandoff) {
+        const machineKeys = [
+          browseRoot !== undefined && 'browseRoot',
+          projectsDir !== undefined && 'projectsDir',
+          agentEnvPassthrough !== undefined && 'agentEnvPassthrough',
+          cli?.instance !== undefined && 'cli.instance',
+        ].filter((key): key is string => typeof key === 'string');
+        if (machineKeys.length > 0) {
+          return c.json(
+            {
+              error: `changing ${machineKeys.join(', ')} is disabled in hosted mode (XEZ_REMOTE) — change it from the machine that owns the checkout`,
+            },
+            409,
+          );
+        }
+      }
       for (const [configuredRoot, create] of [
         [browseRoot, false],
         [projectsDir, true],
@@ -3541,7 +3597,10 @@ export function createApp(deps: ServerDeps) {
         const result = await browseDirectory({
           root,
           path: query.path,
-          showHidden: query.showHidden === '1',
+          // Hosted mode never lists hidden entries: dot-folders hold credentials and agent
+          // configuration, and a remote viewer only needs project folders. The flag is ignored
+          // there rather than refused, so the picker keeps working.
+          showHidden: query.showHidden === '1' && capabilities().localHandoff,
         });
         if (!result.ok) return c.json({ error: result.error }, result.status);
         return c.json(result.body);
@@ -6901,6 +6960,10 @@ export function verifyWsUpgrade(req: IncomingMessage, bindHost?: string): WsUpgr
 
 /** The bare hostname of a `Host` header — see `normalizeHostname`. `''` when the
  *  header is absent, which no allowlist matches. */
+/** Shared by the hosted-mode 403 body and its log line, so the two cannot drift. */
+const HOSTED_HOST_HINT =
+  'this hosted cockpit serves only loopback, IP addresses, public names recorded by `xezar server-install` and names listed in XEZ_ALLOWED_HOSTS.';
+
 function hostnameOfHost(host: string | undefined): string {
   return host ? normalizeHostname(host) : '';
 }

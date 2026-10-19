@@ -259,7 +259,7 @@ try {
   await mkdir(join(root, '.local'), { recursive: true });
   fixture = await mkdtemp(join(root, '.local/server-mode-'));
   const env = { PATH: process.env.PATH, HOME: join(fixture, 'home'), CI: '1', NO_COLOR: '1',
-    XEZ_HOME: join(fixture, 'xez-home'), XEZ_REMOTE: '1', XEZ_DRY_RUN: '1', XEZ_SKILLS_AUTO_UPDATE: '0',
+    XEZ_HOME: join(fixture, 'xez-home'), XEZ_REMOTE: '1', XEZ_ALLOWED_HOSTS: 'hosted.invalid', XEZ_DRY_RUN: '1', XEZ_SKILLS_AUTO_UPDATE: '0',
     CLAUDE_CONFIG_DIR: join(fixture, 'claude'), CODEX_HOME: join(fixture, 'codex'),
     QWEN_HOME: join(fixture, 'qwen'),
     XDG_CONFIG_HOME: join(fixture, 'xdg-config'), XDG_CACHE_HOME: join(fixture, 'xdg-cache'),
@@ -347,7 +347,17 @@ try {
   const beforeHost = forwarded;
   assert.equal((await request('/api/v1/runs', { headers: { host: 'evil.invalid' } })).status, 421, 'A-HOST-01');
   assert.equal(forwarded, beforeHost);
-  assert.equal((await request('/api/v1/runs', { direct: true, headers: { host: 'evil.invalid' } })).status, 200, 'A-HOST-02 private backend is not authentication');
+  // A-HOST-02: the private backend is not authentication, but a foreign Host name is still refused
+  // there; the allowlisted public name the proxy forwards passes.
+  assert.equal((await request('/api/v1/runs', { direct: true, headers: { host: 'evil.invalid' } })).status, 403, 'A-HOST-02 foreign Host refused in hosted mode');
+  assert.equal((await request('/api/v1/runs', { direct: true, headers: { host: authority } })).status, 200, 'A-HOST-02 allowlisted public name');
+  // A-HOST-03: a page under a refused name gets the self-contained explanation, not the shell;
+  // the allowlisted name (XEZ_ALLOWED_HOSTS) gets the cockpit page through the proxy.
+  const refusedPage = await request('/', { direct: true, headers: { host: 'evil.invalid' } });
+  assert.equal(refusedPage.status, 403, 'A-HOST-03 page under a foreign Host refused');
+  assert.match(refusedPage.body, /XEZ_ALLOWED_HOSTS/, 'A-HOST-03 page says how to allow a name');
+  assert.match(refusedPage.headers['content-security-policy'] ?? '', /frame-ancestors 'none'/, 'A-HOST-03 page cannot be framed');
+  assert.equal((await request('/')).status, 200, 'A-HOST-03 allowlisted public name serves the page');
   assert.equal((await request('/api/v1/runs', { headers: { 'x-forwarded-host': 'evil.invalid' } })).status, 200);
   assert.equal(lastForwardedHost, authority, 'A-XFH-01 proxy must overwrite attacker authority');
   assert.equal((await request('/api/v1/runs', { direct: true, headers: { 'x-forwarded-host': 'evil.invalid' } })).status, 200, 'A-XFH-02');

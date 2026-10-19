@@ -6,6 +6,8 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { saveServerState } from '../server-install/state.ts';
+import { freshServerState, type ServerState } from '../server-install/types.ts';
 
 /**
  * DNS-rebinding guard: in local mode (loopback bind, no `XEZ_REMOTE`) every
@@ -15,14 +17,18 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
  * requests are same-origin to the attacker's page, and the Host header is the
  * one tell left. The guard turns those into a 403 before any route runs.
  *
- * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) is exempt: the operator
- * deliberately exposed the server behind a hostname or proxy this code cannot
- * enumerate. A missing Host header fails closed in local mode; real HTTP/1.1
- * clients always send one, while the in-process test harness must add it.
+ * Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) also serves IP literals,
+ * the public names the server install recorded on this machine and the names
+ * in `XEZ_ALLOWED_HOSTS`, and refuses every other name, recorded or not — the
+ * installers keep the listener on loopback behind a local proxy, so a browser
+ * on the same machine can still reach it. A missing Host header fails closed;
+ * real HTTP/1.1 clients always send one, while the in-process test harness
+ * must add it.
  */
 describe('host-header guard (DNS rebinding)', () => {
   const savedHome = process.env.XEZ_HOME;
   const savedRemote = process.env.XEZ_REMOTE;
+  const savedAllowed = process.env.XEZ_ALLOWED_HOSTS;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -32,6 +38,7 @@ describe('host-header guard (DNS rebinding)', () => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-hostguard-repo-'));
     process.env.XEZ_HOME = home;
     delete process.env.XEZ_REMOTE;
+    delete process.env.XEZ_ALLOWED_HOSTS;
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
@@ -43,6 +50,8 @@ describe('host-header guard (DNS rebinding)', () => {
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
+    if (savedAllowed === undefined) delete process.env.XEZ_ALLOWED_HOSTS;
+    else process.env.XEZ_ALLOWED_HOSTS = savedAllowed;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -86,14 +95,161 @@ describe('host-header guard (DNS rebinding)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('is exempt in hosted mode (XEZ_REMOTE=1) — the operator fronts it with their own hostname', async () => {
-    process.env.XEZ_REMOTE = '1';
-    const res = await request('cockpit.example.com');
-    expect(res.status).toBe(200);
-  });
+  describe('hosted mode', () => {
+    const record = (state: Partial<ServerState>, instance = 'default') =>
+      saveServerState({ ...freshServerState(), installed: true, ...state }, instance);
 
-  it('is exempt for a non-loopback bind host — deliberately exposed', async () => {
-    const res = await request('cockpit.example.com', '/api/v1/health', { bindHost: '0.0.0.0' });
-    expect(res.status).toBe(200);
+    it('serves the public domain an install recorded, under any case and with a port', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      for (const host of ['cockpit.example.com', 'Cockpit.Example.COM', 'cockpit.example.com:443']) {
+        const res = await request(host, '/api/v1/projects');
+        expect(res.status).toBe(200);
+      }
+    });
+
+    it('serves the host named by a recorded public URL and a named instance', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', publicUrl: 'https://tunnel.example.org' });
+      record({ platform: 'ubuntu-vps', domain: 'second.example.net' }, 'second-example-net');
+      expect((await request('tunnel.example.org', '/api/v1/projects')).status).toBe(200);
+      expect((await request('second.example.net', '/api/v1/projects')).status).toBe(200);
+    });
+
+    it('refuses a name the install did not record, on reads and writes', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', domain: 'tunnel.example.org', publicUrl: 'https://tunnel.example.org' });
+      for (const host of ['other.example', 'tunnel.example.org.other.example', 'other.example:4321']) {
+        for (const path of ['/api/v1/health', '/api/v1/projects', '/api/v1/runs']) {
+          const res = await request(host, path);
+          expect(res.status).toBe(403);
+        }
+      }
+      const post = await makeApp().request('/api/v1/projects', {
+        method: 'POST',
+        headers: { host: 'other.example', origin: 'http://other.example', 'content-type': 'application/json' },
+        body: JSON.stringify({ root: repoRoot }),
+      });
+      expect(post.status).toBe(403);
+    });
+
+    it('serves an ngrok-assigned hostname when an ngrok install recorded no domain', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'macosx-ngrok', ephemeral: true });
+      expect((await request('abc-123.ngrok-free.app', '/api/v1/projects')).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects')).status).toBe(403);
+      expect((await request('ngrok-free.app.other.example', '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('does not widen ngrok zones for an install on another platform', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('abc-123.ngrok-free.app', '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('still serves loopback and IP-literal hosts when names are recorded', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      for (const host of ['127.0.0.1:4321', 'localhost', '[::1]:4321', '203.0.113.7', '[2001:db8::1]:443']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+    });
+
+    it('refuses an unrecorded name for a non-loopback bind once a name is recorded', async () => {
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com', bindHost: '172.17.0.1', externalProxy: true });
+      expect((await request('cockpit.example.com', '/api/v1/projects', { bindHost: '0.0.0.0' })).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects', { bindHost: '0.0.0.0' })).status).toBe(403);
+    });
+
+    it('refuses an unknown name when no install records a public name, and says how to allow it', async () => {
+      process.env.XEZ_REMOTE = '1';
+      for (const over of [{}, { bindHost: '0.0.0.0' }]) {
+        const res = await request('cockpit.example.com', '/api/v1/projects', over);
+        expect(res.status).toBe(403);
+        expect(((await res.json()) as { error: string }).error).toContain('XEZ_ALLOWED_HOSTS');
+      }
+    });
+
+    it('refuses a missing Host in hosted mode', async () => {
+      process.env.XEZ_REMOTE = '1';
+      expect((await request(null, '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('serves loopback and IP-literal hosts when no install records a public name', async () => {
+      process.env.XEZ_REMOTE = '1';
+      for (const host of ['127.0.0.1:4321', 'localhost', '203.0.113.7:443', '[2001:db8::1]']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+    });
+
+    it('serves names listed in XEZ_ALLOWED_HOSTS — exact, case-insensitive, port ignored', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = ' Cockpit.Example.com , other.example:8443,,';
+      for (const host of ['cockpit.example.com', 'COCKPIT.example.com:443', 'other.example']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(200);
+      }
+      for (const host of ['sub.cockpit.example.com', 'cockpit.example.com.other.example', 'example.com']) {
+        expect((await request(host, '/api/v1/projects')).status).toBe(403);
+      }
+    });
+
+    it('serves an allowlisted second name next to a recorded one', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = 'alias.example.net';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('cockpit.example.com', '/api/v1/projects')).status).toBe(200);
+      expect((await request('alias.example.net', '/api/v1/projects')).status).toBe(200);
+      expect((await request('other.example', '/api/v1/projects')).status).toBe(403);
+    });
+
+    it('ignores a dry-run record and a record without a platform', async () => {
+      process.env.XEZ_REMOTE = '1';
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com', dryRun: true });
+      record({ domain: 'stale.example.com' }, 'stale-example-com');
+      expect((await request('cockpit.example.com')).status).toBe(403);
+      expect((await request('stale.example.com')).status).toBe(403);
+    });
+
+    it('answers a non-API page under a refused name with a self-contained 403 page that says how to allow it', async () => {
+      process.env.XEZ_REMOTE = '1';
+      for (const path of ['/', '/p/default/tasks', '/assets/index.js', '/xezar.svg']) {
+        const res = await request('other.example:8443', path);
+        expect(res.status).toBe(403);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        const csp = res.headers.get('content-security-policy') ?? '';
+        expect(csp).toContain("default-src 'none'");
+        expect(csp).toContain("frame-ancestors 'none'");
+        expect(res.headers.get('cache-control')).toBe('no-store');
+        const html = await res.text();
+        expect(html).toContain('<code>other.example</code>');
+        expect(html).toContain('XEZ_ALLOWED_HOSTS');
+        expect(html).toContain('server-install --domain');
+        expect(html).not.toMatch(/<(script|link|img)\b/i);
+      }
+    });
+
+    it('serves non-API pages under an allowed name, loopback and an IP address', async () => {
+      process.env.XEZ_REMOTE = '1';
+      process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.com';
+      for (const host of ['cockpit.example.com', '127.0.0.1:4321', '203.0.113.7']) {
+        const res = await request(host, '/');
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-security-policy') ?? '').not.toContain("default-src 'none'");
+      }
+    });
+
+    it('leaves non-API pages alone in local mode', async () => {
+      expect((await request('other.example', '/')).status).toBe(200);
+    });
+
+    it('keeps XEZ_ALLOWED_HOSTS out of local mode', async () => {
+      process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.com';
+      expect((await request('cockpit.example.com')).status).toBe(403);
+    });
+
+    it('keeps local mode strict even when a public name is recorded', async () => {
+      record({ platform: 'ubuntu-vps', domain: 'cockpit.example.com' });
+      expect((await request('cockpit.example.com')).status).toBe(403);
+    });
   });
 });
