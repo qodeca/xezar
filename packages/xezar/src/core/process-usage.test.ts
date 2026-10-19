@@ -134,6 +134,14 @@ describe('aggregateTreeUsage walks exactly as it did before #963', () => {
   });
 });
 
+/** ps-style rows stamped with start times, so the Windows creation-filtered walk counts the child
+ *  too: a sampler test runs on every CI platform, and on Windows a child counts only when its
+ *  start is known and no earlier than the root's. */
+const SPAWNED_AT = 1_700_000_000_000;
+function stamped(lines: string[]): ProcRow[] {
+  return parsePsOutput(lines.join('\n')).map((row, i) => ({ ...row, startedAt: SPAWNED_AT + i * 100 }));
+}
+
 describe('onProcessTable (#943)', () => {
   const RUN = 'run-process-table-hook';
 
@@ -144,7 +152,7 @@ describe('onProcessTable (#943)', () => {
   });
 
   it("hands each tick's whole table to its listeners, before the usage listeners, and survives a throwing one", async () => {
-    const table: ProcessTable = { rows: parsePsOutput(['500 1 100 1', '501 500 50 0', '900 1 7 0'].join('\n')), queriedAt: 1_234 };
+    const table: ProcessTable = { rows: stamped(['500 1 100 1', '501 500 50 0', '900 1 7 0']), queriedAt: 1_234 };
     tableHook.next = table;
     const order: string[] = [];
     const seen: ProcessTable[] = [];
@@ -157,7 +165,7 @@ describe('onProcessTable (#943)', () => {
     });
     const offUsage = onUsage(() => order.push('usage'));
     try {
-      registerRunProcess(RUN, 500);
+      registerRunProcess(RUN, 500, SPAWNED_AT);
       await vi.waitFor(() => expect(order).toEqual(['table', 'usage']));
       expect(seen).toEqual([table]);
       expect(seen[0]).toBe(table);
@@ -172,7 +180,7 @@ describe('onProcessTable (#943)', () => {
   it('is not called for a table that could not be read, nor after unsubscribing', async () => {
     const calls: ProcessTable[] = [];
     const off = onProcessTable((received) => calls.push(received));
-    registerRunProcess(RUN, 500);
+    registerRunProcess(RUN, 500, SPAWNED_AT);
     await vi.waitFor(() => expect(tableHook.reads).toBe(1));
     // Let that read settle (its deadline race takes a few microtasks), so the re-register below
     // starts a read of its own instead of finding one in flight.
@@ -181,7 +189,7 @@ describe('onProcessTable (#943)', () => {
     off();
     unregisterRunProcess(RUN);
     tableHook.next = { rows: parsePsOutput('500 1 100 1'), queriedAt: 1 };
-    registerRunProcess(RUN, 500);
+    registerRunProcess(RUN, 500, SPAWNED_AT);
     await vi.waitFor(() => expect(tableHook.reads).toBe(2));
     expect(calls).toEqual([]);
   });
@@ -256,7 +264,7 @@ describe('a process-table read that never settles', () => {
   it('bounds the read and lets the next tick sample again', async () => {
     vi.useFakeTimers();
     tableHook.hang = true;
-    registerRunProcess(RUN, 500);
+    registerRunProcess(RUN, 500, SPAWNED_AT);
     await vi.advanceTimersByTimeAsync(0);
     expect(tableHook.reads).toBe(1);
     expect(vi.mocked(readProcessTable)).toHaveBeenLastCalledWith({ timeoutMs: SAMPLE_READ_TIMEOUT_MS });
@@ -266,7 +274,7 @@ describe('a process-table read that never settles', () => {
     expect(tableHook.reads).toBe(1);
 
     tableHook.hang = false;
-    tableHook.next = { rows: parsePsOutput(['500 1 100 1', '501 500 50 0'].join('\n')), queriedAt: 1 };
+    tableHook.next = { rows: stamped(['500 1 100 1', '501 500 50 0']), queriedAt: 1 };
     await vi.advanceTimersByTimeAsync(SAMPLE_READ_GRACE_MS + SAMPLE_INTERVAL_MS);
     expect(tableHook.reads).toBe(2);
     expect(currentUsage(RUN)).toEqual({ cpuPct: 1, rssBytes: 150 * 1024, procCount: 2 });
