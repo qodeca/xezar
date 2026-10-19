@@ -519,6 +519,12 @@ class QwenSession {
     const stderrChunks: string[] = [];
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    // An agent that exits before it reads a prompt larger than the pipe buffer fails the write with
+    // EPIPE as an `error` event on stdin; unhandled, that event would stop the whole server. The
+    // exit code and stderr already report the failure, so this only records it.
+    child.stdin.on('error', (err) => {
+      onEvent?.({ type: 'note', message: `qwen: stdin write failed: ${err.message}` });
+    });
     try {
       child.stdin.end(prompt);
     } catch {

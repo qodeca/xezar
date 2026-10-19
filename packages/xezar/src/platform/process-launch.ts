@@ -230,7 +230,16 @@ export function launchMsys(
     argv0: msysQuote(bash),
   });
   trackChild(child, { platform: 'win32', ...(prefix !== null ? { msys: { ps, pidFile } } : {}) });
-  if (prefix !== null) child.once('exit', () => rmSync(pidFile, { force: true }));
+  if (prefix !== null) {
+    child.once('exit', () => {
+      // A locked or protected file (EBUSY, EPERM) must not throw out of an event listener.
+      try {
+        rmSync(pidFile, { force: true });
+      } catch {
+        // The file sits in the temp folder; leaving it behind is harmless.
+      }
+    });
+  }
   return child;
 }
 

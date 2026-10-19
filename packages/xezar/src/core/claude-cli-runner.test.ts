@@ -729,3 +729,26 @@ describe('waitForExit — a child that a signal already ended (#1070)', () => {
     await expect(Promise.race([waitForExit(child as unknown as ChildProcessWithoutNullStreams), late])).resolves.toBeNull();
   });
 });
+
+describe('an agent that exits before it reads its first message', () => {
+  const stubBin = fileURLToPath(
+    new URL('./__fixtures__/process/exits-before-reading-stdin.mjs', import.meta.url),
+  );
+
+  it('fails the step with the exit and stderr instead of crashing on the failed stdin write', async () => {
+    const runner = new ClaudeCliRunner({ bin: stubBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    // Far larger than any pipe buffer, so the write is still pending when the agent exits.
+    const session = runner.startSession(
+      { userPrompt: 'x'.repeat(2_000_000), cwd: process.cwd() },
+      (event) => events.push(event),
+    );
+    const outcome = await session.result.then(
+      () => 'resolved',
+      (error: Error) => error.message,
+    );
+    expect(outcome).toMatch(/exited with code 1/);
+    expect(outcome).toMatch(/exited before reading its input/);
+    expect(events.some((e) => e.type === 'note' && e.message.startsWith('claude: stdin write failed:'))).toBe(true);
+  }, 15_000);
+});
