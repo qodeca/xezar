@@ -316,3 +316,40 @@ test('an unknown bump exits non-zero without touching the manifests', { timeout:
     await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
+
+test('pack mode stamps and packs every publishable package, publishes nothing, needs no credential', { timeout: 120_000 }, async () => {
+  // The Release workflow's read-only build job runs this; the publish job publishes the tarballs.
+  // No OIDC endpoint, no token, no login: packing must not need one, and must never claim a publish.
+  const root = await makeFixture('0.1.5');
+  const packDir = join(root, 'packed');
+  try {
+    await writeFile(join(root, 'github-output.txt'), '');
+    const { stdout } = await runScript(root, ['patch', '--pack-destination', packDir]);
+    assert.doesNotMatch(stdout, /npm publish/);
+    assert.doesNotMatch(stdout, /refusing to run/);
+
+    const output = await readFile(join(root, 'github-output.txt'), 'utf8');
+    assert.match(output, /^published=false$/m);
+    assert.match(output, /^packed=true$/m);
+    assert.match(output, /^version=0\.1\.6$/m);
+    // Dependency order, and only the publishable manifests (contract and web are private).
+    const tarballs = output.match(/^tarballs=(.*)$/m)?.[1]?.split(' ');
+    assert.deepEqual(tarballs, ['scope-fake-client-0.1.6.tgz', 'scope-fake-root-0.1.6.tgz']);
+    for (const name of tarballs!) await readFile(join(packDir, name));
+    assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.6');
+  } finally {
+    await rm(root, TEST_DIR_RM_OPTIONS);
+  }
+});
+
+test('pack mode refuses a missing directory and the --dry-run combination', { timeout: 60_000 }, async () => {
+  const root = await makeFixture('0.1.5');
+  try {
+    await writeFile(join(root, 'github-output.txt'), '');
+    await assert.rejects(runScript(root, ['patch', '--pack-destination']));
+    await assert.rejects(runScript(root, ['patch', '--pack-destination', join(root, 'p'), '--dry-run']));
+    assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.5');
+  } finally {
+    await rm(root, TEST_DIR_RM_OPTIONS);
+  }
+});

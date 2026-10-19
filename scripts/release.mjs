@@ -37,11 +37,18 @@
 // for local rehearsal. The workflow reads `version`/`published` from
 // $GITHUB_OUTPUT and cuts the tag + GitHub Release only on a real publish.
 //
-// Usage: node scripts/release.mjs <patch|minor|major|existing> [--dry-run]
+// PACK MODE (`--pack-destination <dir>`) is how the `Release` workflow uses it: the read-only build
+// job stamps the manifests and packs each publishable package into <dir> (`npm pack
+// --ignore-scripts`, the same file set `npm publish` would send), and the separate publish job —
+// the only one with `id-token: write` — publishes exactly those tarballs. Pack mode publishes
+// nothing, so it needs no credential and emits `published=false packed=true` plus `tarballs`, the
+// packed file names in publish (dependency) order.
+//
+// Usage: node scripts/release.mjs <patch|minor|major|existing> [--dry-run | --pack-destination <dir>]
 // Env override for tests: XEZ_RELEASE_ROOT (defaults to the repo root).
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isPublishable } from '../packages/xezar/dist/release/manifests.js';
@@ -99,6 +106,16 @@ if (!version) {
 }
 
 const dryRun = process.argv.includes('--dry-run');
+const packFlag = process.argv.indexOf('--pack-destination');
+const packDestination = packFlag === -1 ? undefined : process.argv[packFlag + 1];
+if (packFlag !== -1 && (!packDestination || packDestination.startsWith('--'))) {
+  console.error('release: --pack-destination needs a directory.');
+  process.exit(1);
+}
+if (packDestination && dryRun) {
+  console.error('release: --pack-destination and --dry-run are separate modes; pass one.');
+  process.exit(1);
+}
 
 // Same cross-platform npm resolution the publish step uses.
 const npmExecpath = process.env.npm_execpath;
@@ -139,7 +156,7 @@ const loggedIn = () => {
   }
 };
 
-if (!dryRun && !oidc && !token && !loggedIn()) {
+if (!dryRun && !packDestination && !oidc && !token && !loggedIn()) {
   console.error('release: no npm credential — refusing to run.');
   console.error('release: a release must publish or fail; it must never report a dry run as one.');
   console.error(
@@ -178,17 +195,55 @@ const publish = (dir, label) => {
   runNpm(args, dir);
 };
 
+const pack = (dir, label) => {
+  const args = ['pack', '--ignore-scripts', '--json', '--pack-destination', packDir];
+  console.log(`release: npm ${args.join(' ')}  (${label})`);
+  const [file, full] = npmArgv(args);
+  const out = execFileSync(file, full, {
+    cwd: dir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+    shell: !npmExecpath && process.platform === 'win32',
+  });
+  const filename = JSON.parse(out)[0]?.filename;
+  if (!filename || !/^[\w.@-]+\.tgz$/.test(filename)) {
+    console.error(`release: npm pack reported no usable tarball name for ${label}.`);
+    process.exit(1);
+  }
+  return filename;
+};
+
 // Dependency order — see the header. `ReleaseManifests` declares its fields in this order for
 // exactly this reason. A `private` manifest is stamped above but never published: it is part of
 // the release (its version moves, its pins are rewritten) without being on the registry.
+const packDir = packDestination ? path.resolve(packDestination) : undefined;
+if (packDir) mkdirSync(packDir, { recursive: true });
 const published = [];
+const tarballs = [];
 for (const key of RELEASE_ORDER) {
   if (!isPublishable(stamped[key])) {
     console.log(`release: ${stamped[key].name} is private — stamped to ${version}, not published.`);
     continue;
   }
+  if (packDir) {
+    tarballs.push(pack(dirs[key], stamped[key].name));
+    continue;
+  }
   publish(dirs[key], stamped[key].name);
   published.push(stamped[key].name);
+}
+
+if (packDir) {
+  emitOutput({
+    published: false,
+    packed: true,
+    dryRun: false,
+    bump,
+    version,
+    rootName: stamped.xezar.name,
+    tarballs: tarballs.join(' '),
+  });
+  process.exit(0);
 }
 
 emitOutput({

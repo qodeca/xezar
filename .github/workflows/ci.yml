@@ -1,16 +1,20 @@
 name: CI
 
 # `develop` is the base branch and takes every feature PR; `main` holds released work and takes
-# release-class PRs only (promotion, version bump, hotfix). CI runs for both.
+# release-class PRs only (promotion, version bump, hotfix). CI runs for both, and for the
+# `release/**` maintenance lines the Release workflow can also ship from (e.g. `release/0.10.x`),
+# so a fix bound for a patch line is verified before it is released.
 on:
   pull_request:
     branches:
       - main
       - develop
+      - 'release/**'
   push:
     branches:
       - main
       - develop
+      - 'release/**'
   workflow_dispatch:
 
 # Read-only, and no npm credential anywhere in this file. Ordinary PR CI verifies; it never
@@ -175,7 +179,11 @@ jobs:
     # by packages/web/src/e2e-runtime-ceiling.test.ts. `verify` keeps its own 20-minute budget —
     # the jobs run side by side, so CI's added wall clock is the slower of the two, not the sum.
     timeout-minutes: 30
-
+    # The agent-browser release this job runs, and the SHA-256 of each of its assets, live in ONE
+    # file shared with the local test environment: scripts/agent-browser-pin.sh. The binary runs
+    # with sudo below, so it must be exactly those bytes: a cached or downloaded file that does
+    # not match is never executed. The cache key carries the pin file's hash, so a new pin never
+    # restores an old binary.
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -203,9 +211,9 @@ jobs:
           path: |
             ~/.cache/agent-tools/agent-browser
             ~/.agent-browser/browsers
-          key: ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+          key: ${{ runner.os }}-${{ runner.arch }}-agent-browser-${{ hashFiles('scripts/agent-browser-pin.sh') }}-
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+            ${{ runner.os }}-${{ runner.arch }}-agent-browser-${{ hashFiles('scripts/agent-browser-pin.sh') }}-
 
       # The documented `ensure-installed` operation, run as its own step so that a provisioning
       # failure is reported HERE, with the doctor output in the log, rather than surfacing later
@@ -214,6 +222,8 @@ jobs:
       - name: Provision agent-browser and verify doctor is healthy
         id: browser
         shell: bash
+        env:
+          PIN_HASH: ${{ hashFiles('scripts/agent-browser-pin.sh') }}
         run: |
           set -euo pipefail
           TOOL_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/agent-tools/agent-browser"
@@ -225,16 +235,25 @@ jobs:
             echo "::error title=Unexpected runner::ui-e2e assumes linux/x86_64, got $(uname -s)/$(uname -m)"
             exit 1
           fi
-          BIN="$TOOL_DIR/agent-browser-linux-x64"
-          if [ ! -x "$BIN" ]; then
-            echo "Downloading agent-browser (cold cache)"
+          ASSET=agent-browser-linux-x64
+          BIN="$TOOL_DIR/$ASSET"
+          . scripts/agent-browser-pin.sh
+          if agent_browser_verify "$ASSET" "$BIN"; then
+            echo "Reusing the cached agent-browser $AGENT_BROWSER_VERSION binary (SHA-256 verified)"
+            chmod 755 "$BIN"
+          else
+            # Cold cache, or a cached file that is not the pinned release: replace it.
+            rm -f "$BIN"
+            echo "Downloading agent-browser $AGENT_BROWSER_VERSION"
             curl -fL --retry 3 --connect-timeout 30 --max-time 600 \
-              -o "$BIN.tmp" \
-              https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-linux-x64
+              -o "$BIN.tmp" "$(agent_browser_url "$ASSET")"
+            if ! agent_browser_verify "$ASSET" "$BIN.tmp"; then
+              rm -f "$BIN.tmp"
+              echo "::error title=agent-browser checksum mismatch::the downloaded v${AGENT_BROWSER_VERSION} binary does not match scripts/agent-browser-pin.sh; it was not run."
+              exit 1
+            fi
             chmod 755 "$BIN.tmp"
             mv "$BIN.tmp" "$BIN"
-          else
-            echo "Reusing the cached agent-browser binary"
           fi
 
           "$BIN" install || true
@@ -279,14 +298,12 @@ jobs:
           [ -n "$CHROME_VERSION" ] || CHROME_VERSION=unknown
           echo "agent-browser doctor exited 0 — the browser is usable; resolved Chrome: $CHROME_VERSION"
 
-          # "agent-browser 0.36.0" → "0.36.0"; `unknown` if the CLI ever stops answering, which
-          # only makes the key coarser, never wrong.
-          CLI_VERSION=$("$BIN" --version 2>/dev/null | awk 'NR==1{print $NF}' | tr -cd '0-9A-Za-z.-')
-          [ -n "$CLI_VERSION" ] || CLI_VERSION=unknown
+          # The key carries the pin file's hash (the restore prefix above uses the same one), so a
+          # cache saved under one pin is never restored under another.
           {
-            echo "cli-version=$CLI_VERSION"
+            echo "cli-version=$AGENT_BROWSER_VERSION"
             echo "chrome-version=$CHROME_VERSION"
-            echo "cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${CLI_VERSION}-chrome-${CHROME_VERSION}"
+            echo "cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${PIN_HASH}-chrome-${CHROME_VERSION}"
           } >> "$GITHUB_OUTPUT"
 
       # Saved with the exact resolved-Chrome key, so the next run restores that precise browser

@@ -1,0 +1,38 @@
+# Dependency update pull requests. They target `develop`, the base branch every change lands on
+# (`main` takes release-class PRs only, see .github/workflows/pr-source-guard.yml). Minor and patch
+# updates arrive grouped, one PR per ecosystem per week; a major update gets a PR of its own,
+# because it is the one that needs a person to read its changelog. `cooldown` waits a week after a
+# release before proposing it, so a version pulled soon after publication never reaches a PR.
+version: 2
+updates:
+  # The root manifest and lockfile cover all four workspaces.
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Workflow actions are pinned by commit SHA with a version comment; Dependabot keeps both in step.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
