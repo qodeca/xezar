@@ -35,6 +35,22 @@ describe('documentTitleOf', () => {
   })
 })
 
+describe('documentTitleOf — attention count', () => {
+  it.each([
+    { attentionCount: 2, expected: '(2) Storefront — Tasks · xezar' },
+    { attentionCount: 1, expected: '(1) Storefront — Tasks · xezar' },
+    { attentionCount: 0, expected: 'Storefront — Tasks · xezar' },
+    { attentionCount: null, expected: 'Storefront — Tasks · xezar' },
+    { attentionCount: undefined, expected: 'Storefront — Tasks · xezar' },
+  ])('leads with ($attentionCount) only when positive', ({ attentionCount, expected }) => {
+    expect(documentTitleOf({ projectName: 'Storefront', pageLabel: 'Tasks', attentionCount })).toBe(expected)
+  })
+
+  it('prefixes the bare fallback too', () => {
+    expect(documentTitleOf({ projectName: null, pageLabel: null, attentionCount: 3 })).toBe('(3) xezar')
+  })
+})
+
 describe('useDocumentTitle', () => {
   beforeEach(() => {
     document.title = 'xezar'

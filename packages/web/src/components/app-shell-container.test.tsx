@@ -46,6 +46,41 @@ const HEALTH: HealthResponse = {
 }
 
 /** One registered project — the degenerate workspace every existing install upgrades into. */
+/** The text an accessible name is computed from: every node except `aria-hidden` subtrees, with
+ *  whitespace collapsed. Enough for these controls, which carry no aria-label of their own. */
+function accessibleText(element: Element): string {
+  const parts: string[] = []
+  const walk = (node: Node): void => {
+    if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') return
+    if (node.nodeType === Node.TEXT_NODE) parts.push(node.textContent ?? '')
+    for (const child of Array.from(node.childNodes)) walk(child)
+  }
+  walk(element)
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+/** A cross-project runs index (`GET /workspace/runs-index`) answer for `[projectId, status]` rows. */
+function runsIndex(rows: Array<[projectId: string, status: RunRecord['status'], archived?: boolean]>) {
+  return {
+    runs: rows.map(([projectId, status, archived = false], index) => ({
+      projectId,
+      id: `${projectId}-${index}`,
+      title: `Task ${index}`,
+      status,
+      createdAt: '2026-07-14T10:00:00.000Z',
+      archived,
+      workflow: 'default',
+      runner: 'claude',
+    })),
+    referenceStatuses: {},
+    perProjectLimit: 200,
+    truncated: [],
+    attention: {},
+    unreadable: [] as string[],
+    registryUnreadable: false,
+  }
+}
+
 const PROJECT = {
   id: 'xezar',
   name: 'xezar',
@@ -422,6 +457,7 @@ describe('sidebar wiring', () => {
         },
         '/api/v1/runs': RUNS,
         '/api/v1/p/xezar/runs': RUNS,
+        '/api/v1/workspace/runs-index': runsIndex([['xezar', 'waiting'], ['xezar', 'done'], ['xezar', 'done', true]]),
       })
       renderShell('/p/xezar/')
 
@@ -430,7 +466,7 @@ describe('sidebar wiring', () => {
         expect(found).not.toBeNull()
         return found as HTMLElement
       })
-      expect(attention.getAttribute('title')).toBe('xezar: 1 task needs you')
+      expect(attention.getAttribute('title')).toBe('1 task needs you')
       expectNoTaskPanel()
       expect(screen.getByRole('navigation', { name: 'xezar navigation' })).toBeTruthy()
     })
@@ -599,11 +635,16 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
       '/api/v1/runs': [],
       '/api/v1/p/shop/runs': [],
       '/api/v1/p/blog/runs': [],
+      // A healthy, empty task index: the default sidebar, not the failed-index one.
+      '/api/v1/workspace/runs-index': runsIndex([]),
     })
     renderShell('/p/xezar/')
 
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(3),
+    )
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/workspace/runs-index'),
     )
     expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
     expect(sidebar().outerHTML).toMatchSnapshot()
@@ -684,6 +725,218 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
     await waitFor(() => expect(otherRow('shop')).not.toBeNull())
     expect(otherRow('shop')?.querySelector('[data-action="other-project-copy-command"]')).toBeNull()
     expect(otherRow('shop')?.querySelector('[data-slot="other-project-state"]')).toBeNull()
+  })
+})
+
+describe('workspace attention (All tasks badge and tab title)', () => {
+  const TWO_PROJECTS = {
+    projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' }],
+    bootProject: 'xezar',
+    projectsDir: '/home/me/xezar/projects',
+  }
+
+  it('badges All tasks with every project’s waiting and review tasks, collapsed groups included', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([
+        ['xezar', 'waiting'],
+        ['shop', 'review'],
+        ['shop', 'waiting'],
+        ['shop', 'running'],
+      ]),
+    })
+    renderShell('/p/xezar/')
+
+    const badge = await waitFor(() => {
+      const found = document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-attention"]')
+      expect(found?.textContent).toBe('3')
+      return found as HTMLElement
+    })
+    expect(badge.getAttribute('title')).toBe('3 tasks need you across all projects')
+    // The collapsed group (`shop` — not the project on screen) carries its own share.
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('2')
+    // And the tab title leads with the same total.
+    await waitFor(() => expect(document.title).toBe('(3) xezar — Tasks · xezar'))
+  })
+
+  it('when the index cannot be read: the active project still counts, and ONE line says the rest may be old', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      // The active project's own list — what the Tasks page holds — has one waiting task.
+      '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+      // No '/api/v1/workspace/runs-index' route: the request fails.
+    })
+    renderShell('/p/xezar/')
+
+    const note = await waitFor(() => {
+      const found = document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    expect(note.getAttribute('role')).toBe('status')
+    // The index never answered at all, so the "could not be loaded" variant.
+    expect(note.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
+    // Exactly one, under All tasks — not one per group.
+    expect(document.querySelectorAll('[data-slot="sidebar"] [data-slot="attention-stale"]')).toHaveLength(1)
+    // A lower bound, not a zero: the one count we can still vouch for.
+    expect(document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-attention"]')?.textContent).toBe('1')
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+    await waitFor(() => expect(document.title).toBe('(1) xezar — Tasks · xezar'))
+  })
+
+  it('says the counts could not be LOADED when the index never answered (a 5xx, after its retry)', async () => {
+    // Empty badges alone cannot tell "nothing needs you" from "we could not check".
+    fetchMock.mockImplementation(async (input) => {
+      const path = String(input)
+      const routes: Record<string, unknown> = {
+        '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+        '/api/v1/todos': [],
+        '/api/v1/projects': TWO_PROJECTS,
+        '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+        '/api/v1/providers/status': PROVIDERS,
+        '/api/v1/workspace/ui-state': {},
+      }
+      if (path === '/api/v1/workspace/runs-index') {
+        return new Response(JSON.stringify({ error: 'workspace unreadable' }), { status: 500 })
+      }
+      const body = routes[path]
+      return body === undefined
+        ? new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+        : new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderShell('/p/xezar/')
+
+    const note = await waitFor(
+      () => {
+        const found = document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')
+        expect(found).not.toBeNull()
+        return found as HTMLElement
+      },
+      { timeout: 5_000 },
+    )
+    expect(note.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
+    expect(note.getAttribute('role')).toBe('status')
+    // The active project's own count is still the fallback.
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')).toBeNull()
+  }, 15_000)
+
+  it('does not pass an index the server could not fully read off as "nothing needs you"', async () => {
+    // A 200 that says the registry could not be read: no rows, but not "no tasks".
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+      '/api/v1/workspace/runs-index': { ...runsIndex([]), registryUnreadable: true },
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')?.textContent).toBe(
+        'Other projects’ counts could not be loaded — they are not shown.',
+      ),
+    )
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+  })
+
+  it('names nothing as 0 for a project whose task data could not be read', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': { ...runsIndex([['xezar', 'waiting']]), unreadable: ['shop'] },
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')?.textContent).toBe(
+        'Some projects’ tasks could not be read — their counts are not shown.',
+      ),
+    )
+    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')).toBeNull()
+  })
+
+  it('shows no number at all when BOTH the index and the active list fail — never an old count as live', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      // Neither '/api/v1/runs' nor the index answers.
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')).not.toBeNull(),
+    )
+    expect(document.querySelector('[data-slot="project-attention"]')).toBeNull()
+    expect(document.querySelector('[data-slot="all-tasks-attention"]')).toBeNull()
+    expect(document.title).toBe('xezar — Tasks · xezar')
+  })
+
+  it('announces a change ONCE, and names every attention control in words', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([['xezar', 'waiting'], ['shop', 'review']]),
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="attention-live"]')?.textContent).toBe(
+        '2 tasks need you across all projects',
+      ),
+    )
+    // One polite region carries the attention news; no badge holds a second one.
+    const regions = Array.from(document.querySelectorAll('[role="status"]')).filter((el) =>
+      /need/.test(el.textContent ?? ''),
+    )
+    expect(regions).toEqual([document.querySelector('[data-slot="attention-live"]')])
+
+    // Accessible names (the text a screen reader reads for each control).
+    const allTasks = document.querySelector('[data-slot="sidebar"] [data-slot="all-tasks-link"]') as HTMLElement
+    expect(accessibleText(allTasks)).toBe('All tasks 2 tasks need you across all projects')
+    const shopHeader = document.querySelector(
+      '[data-slot="sidebar"] [data-project="shop"] [data-slot="project-group-header"]',
+    ) as HTMLElement
+    expect(accessibleText(shopHeader)).toBe('shop 1 task needs you main')
+    // The phone menu button: count in its name, a 44 px target.
+    const menu = screen.getByRole('button', { name: 'Open menu — 2 tasks need you' })
+    expect(menu.className).toContain('h-11')
+    expect(menu.className).toContain('min-w-11')
+    expect(menu.querySelector('[data-slot="menu-attention"]')?.textContent).toBe('2')
+  })
+
+  it('shows no All tasks badge and no title prefix when nothing needs you', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': runsIndex([['shop', 'running'], ['xezar', 'waiting', true]]),
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="project-group"]').length).toBeGreaterThan(0))
+    await waitFor(() => expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/workspace/runs-index'))
+    await waitFor(() => expect(document.title).toBe('xezar — Tasks · xezar'))
+    expect(document.querySelector('[data-slot="all-tasks-attention"]')).toBeNull()
   })
 })
 

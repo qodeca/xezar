@@ -483,6 +483,39 @@ export const runsIndexResponseSchema = z.object({
   perProjectLimit: z.number(),
   /** Ids of the projects that had more runs than the cap allowed. */
   truncated: z.array(z.string()),
+  /**
+   * Per project, how many of its tasks need a person — `waiting` or `review` and not archived —
+   * counted over ALL of that project's runs, not only the `perProjectLimit` rows above. Without it
+   * a task older than a busy project's newest rows would be missing from every count.
+   *
+   * Two numbers because the cockpit keeps the rows live from the event stream: `total` is the
+   * complete answer as of this response, and `beyondLimit` is the part of it that lives in runs
+   * NOT carried as rows — the share no stream patch can reach. A live consumer counts its patched
+   * rows and adds `beyondLimit`; anyone else reads `total`.
+   *
+   * Only projects with `total > 0` have an entry: absent means none. The rule is the cockpit's
+   * `needsYou` (`web/src/lib/workspace-attention.ts`) and `listCounts().waiting`; keep the three
+   * identical.
+   */
+  attention: z.record(
+    z.string(),
+    z.object({
+      total: z.number().int().nonnegative(),
+      beyondLimit: z.number().int().nonnegative(),
+    }),
+  ),
+  /**
+   * Ids of the registered projects whose task data exists but could not be read (a corrupt or
+   * unreadable `runs.json`). They contribute no rows and no `attention` entry — their tasks are
+   * UNKNOWN, which a consumer must not read as "none". Empty when everything was read.
+   */
+  unreadable: z.array(z.string()),
+  /**
+   * True when the workspace's project registry itself could not be read. The route still answers
+   * 200 with whatever it could gather (often nothing) — the status code is part of the promise —
+   * so this flag is what tells "no tasks anywhere" apart from "could not look".
+   */
+  registryUnreadable: z.boolean(),
 });
 export type RunsIndexResponse = z.infer<typeof runsIndexResponseSchema>;
 

@@ -4,11 +4,18 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createUsageStore, type UsageStore } from './events'
+import { RunNotifications } from '@/components/run-notifications'
 import { GlobalEventsProvider, useGlobalEvents, useRunUsage, useUsage } from './global-events'
 import { setApiScope } from '@qodeca/xezar-api-client'
 import { createQueryClient } from './query-client'
 import { queryKeys, useProviderStatus, workspaceQueryKeys } from './queries'
-import type { ApiRun, ProviderStatusResponse, RunRecord } from '@qodeca/xezar-api-client'
+import type {
+  ApiRun,
+  ProviderStatusResponse,
+  RunIndexEntry,
+  RunRecord,
+  RunsIndexResponse,
+} from '@qodeca/xezar-api-client'
 
 /**
  * jsdom ships no EventSource at all (it is not in its supported-API set), so there is nothing to
@@ -891,6 +898,215 @@ describe('useGlobalEvents — recovery', () => {
     // The pending backoff must not then build a third one on top.
     act(() => void vi.advanceTimersByTime(30_000))
     expect(FakeEventSource.instances).toHaveLength(2)
+  })
+})
+
+/** A slim index row as `GET /workspace/runs-index` sends it. */
+function indexRow(projectId: string, id: string, over: Partial<RunIndexEntry> = {}): RunIndexEntry {
+  return {
+    projectId,
+    id,
+    title: id,
+    status: 'running',
+    createdAt: '2026-07-14T10:00:00.000Z',
+    archived: false,
+    workflow: 'quick-task',
+    runner: 'claude',
+    ...over,
+  }
+}
+
+function seedIndex(runs: RunIndexEntry[]): void {
+  client.setQueryData<RunsIndexResponse>(workspaceQueryKeys.runsIndex, {
+    runs,
+    referenceStatuses: {},
+    perProjectLimit: 200,
+    truncated: [],
+    attention: {},
+    unreadable: [],
+    registryUnreadable: false,
+  })
+}
+
+const indexRows = (): RunIndexEntry[] | undefined =>
+  client.getQueryData<RunsIndexResponse>(workspaceQueryKeys.runsIndex)?.runs
+
+const indexRefreshCount = (invalidate: { mock: { calls: unknown[][] } }): number =>
+  invalidate.mock.calls.filter((call) => (call[0] as { queryKey?: unknown[] }).queryKey?.[1] === 'runs-index').length
+
+describe('useGlobalEvents — the workspace attention model (cross-project runs index)', () => {
+  it('patches ANOTHER project’s index row in place the moment its run starts waiting', () => {
+    // The bug: another project's events were dropped before they touched anything but a debounced
+    // invalidation nobody observed, so its sidebar badge never moved.
+    seedIndex([indexRow('shop', 'r9'), indexRow(BOOT, 'r1')])
+    const { source } = mount()
+
+    source.emit('run', stampedRun(runRecord('r9', { status: 'waiting' }), 'shop'))
+
+    // Synchronously — no timer, no refetch.
+    expect(indexRows()?.find((row) => row.id === 'r9')?.status).toBe('waiting')
+    // The same id in another project is a different run and stays put.
+    expect(indexRows()?.find((row) => row.id === 'r1')?.status).toBe('running')
+  })
+
+  it('copies the attention fields verbatim, clearing ones the record no longer carries', () => {
+    seedIndex([indexRow('shop', 'r9', { status: 'failed', autoResumeAt: '2026-07-14T11:00:00.000Z' })])
+    const { source } = mount()
+
+    source.emit('run', stampedRun(runRecord('r9', { status: 'review', titleSummary: 'Check the brief' }), 'shop'))
+
+    const row = indexRows()?.[0]
+    expect(row?.status).toBe('review')
+    expect(row?.titleSummary).toBe('Check the brief')
+    expect(row && 'autoResumeAt' in row).toBe(false)
+    // Server-derived fields are not rebuilt from the record.
+    expect(row?.runner).toBe('claude')
+  })
+
+  it('drops another project’s deleted run from the index', () => {
+    seedIndex([indexRow('shop', 'r9', { status: 'waiting' }), indexRow(BOOT, 'r9', { status: 'waiting' })])
+    const { source } = mount()
+
+    source.emit('run-deleted', JSON.stringify({ id: 'r9', project: 'shop' }))
+
+    expect(indexRows()?.map((row) => row.projectId)).toEqual([BOOT])
+  })
+
+  it('invents no index and no row from a stream message', () => {
+    const { source } = mount()
+    source.emit('run', stampedRun(runRecord('r9', { status: 'waiting' }), 'shop'))
+    expect(indexRows()).toBeUndefined()
+
+    seedIndex([])
+    source.emit('run', stampedRun(runRecord('r9', { status: 'waiting' }), 'shop'))
+    // A run the index does not hold yet is the debounced refetch's job, not a synthesized row.
+    expect(indexRows()).toEqual([])
+  })
+
+  it('a waiting task in another project fires a browser notification end to end', () => {
+    const constructed: string[] = []
+    function FakeNotification(this: unknown, title: string) {
+      constructed.push(title)
+    }
+    ;(FakeNotification as unknown as { permission: string }).permission = 'granted'
+    vi.stubGlobal('Notification', FakeNotification)
+    client.setQueryData(workspaceQueryKeys.uiState, { notifications: { enabled: true } })
+    seedIndex([indexRow('shop', 'r9', { title: 'Revise the methods section' })])
+    render(
+      <QueryClientProvider client={client}>
+        <GlobalEventsProvider>
+          <RunNotifications />
+        </GlobalEventsProvider>
+      </QueryClientProvider>,
+    )
+    setVisibility('hidden')
+
+    FakeEventSource.last.emit(
+      'run',
+      stampedRun(runRecord('r9', { title: 'Revise the methods section', status: 'waiting' }), 'shop'),
+    )
+
+    expect(constructed).toEqual(['Revise the methods section'])
+  })
+})
+
+describe('useGlobalEvents — runs-index refresh debounce', () => {
+  it('waits for a quiet moment: every event restarts the timer', () => {
+    vi.useFakeTimers()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { source } = mount()
+
+    source.emit('run', stampedRun(runRecord('r1', { status: 'running' })))
+    act(() => void vi.advanceTimersByTime(300))
+    source.emit('run', stampedRun(runRecord('r1', { status: 'waiting' })))
+    act(() => void vi.advanceTimersByTime(300))
+    // 600 ms after the first event, but only 300 ms after the last: still quiet-period pending.
+    // A throttle would already have fired here, mid-burst.
+    expect(indexRefreshCount(invalidate)).toBe(0)
+
+    act(() => void vi.advanceTimersByTime(100))
+    expect(indexRefreshCount(invalidate)).toBe(1)
+  })
+
+  it('never waits longer than the max wait under a stream that never goes quiet', () => {
+    vi.useFakeTimers()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { source } = mount()
+
+    // An event every 250 ms for 2.5 s — never 400 ms of quiet.
+    for (let tick = 0; tick < 10; tick += 1) {
+      source.emit('run', stampedRun(runRecord('r1', { status: 'running', tokensUsed: tick })))
+      act(() => void vi.advanceTimersByTime(250))
+    }
+
+    // One refresh at the 2 s deadline, not zero (starved) and not one per event.
+    expect(indexRefreshCount(invalidate)).toBe(1)
+  })
+
+  it('cancels a pending refresh on unmount', () => {
+    vi.useFakeTimers()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { source, unmount } = mount()
+    source.emit('run', stampedRun(runRecord('r1')))
+    unmount()
+    act(() => void vi.advanceTimersByTime(5_000))
+    expect(indexRefreshCount(invalidate)).toBe(0)
+  })
+})
+
+describe('useGlobalEvents — liveness watchdog', () => {
+  it('replaces an OPEN stream that has gone silent, and the replacement reconciles', () => {
+    vi.useFakeTimers()
+    const { source } = mount()
+    source.open()
+
+    // Half-open: readyState stays OPEN, no error ever fires, and nothing arrives.
+    act(() => void vi.advanceTimersByTime(60_000))
+
+    expect(FakeEventSource.instances).toHaveLength(2)
+    expect(source.closeCount).toBeGreaterThan(0)
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    FakeEventSource.last.open()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.runsIndex })
+  })
+
+  it('keeps a stream the keep-alive proves alive', () => {
+    vi.useFakeTimers()
+    const { source } = mount()
+    source.open()
+
+    for (let beat = 0; beat < 8; beat += 1) {
+      act(() => void vi.advanceTimersByTime(15_000))
+      source.emit('ping', '')
+    }
+
+    expect(FakeEventSource.instances).toHaveLength(1)
+  })
+
+  it('counts workspace-only events as liveness too', () => {
+    vi.useFakeTimers()
+    const { source } = mount()
+    source.open()
+
+    for (let beat = 0; beat < 6; beat += 1) {
+      act(() => void vi.advanceTimersByTime(20_000))
+      source.emit('automation-change', JSON.stringify({}))
+    }
+
+    expect(FakeEventSource.instances).toHaveLength(1)
+  })
+
+  it('leaves a CONNECTING stream to the browser and stops on unmount', () => {
+    vi.useFakeTimers()
+    const { source, unmount } = mount()
+    // Never opened: the browser is still connecting/retrying on its own.
+    act(() => void vi.advanceTimersByTime(120_000))
+    expect(FakeEventSource.instances).toHaveLength(1)
+
+    source.open()
+    unmount()
+    act(() => void vi.advanceTimersByTime(120_000))
+    expect(FakeEventSource.instances).toHaveLength(1)
   })
 })
 

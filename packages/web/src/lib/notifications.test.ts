@@ -161,21 +161,23 @@ describe('notificationSupport', () => {
 })
 
 describe('describeRunNotification', () => {
-  it('titles with the display title (#389: titleSummary ?? title) and bodies with the attention label', () => {
-    expect(describeRunNotification(run({ status: 'waiting' }))).toEqual({
+  it('titles with the display title (#389: titleSummary ?? title); the body names the project and does not repeat the title', () => {
+    expect(describeRunNotification(run({ status: 'waiting' }), 'Storefront')).toEqual({
       title: 'Normalize the agent-event protocol',
-      body: 'Task needs you',
+      body: 'Storefront — task needs you',
       tag: 'xezar-run-r1',
     })
-    expect(
-      describeRunNotification(run({ status: 'review', titleSummary: 'Protocol cleanup' })).title,
-    ).toBe('Protocol cleanup')
-    expect(describeRunNotification(run({ status: 'failed' })).body).toBe('Task failed')
+    const review = describeRunNotification(run({ status: 'review', titleSummary: 'Protocol cleanup' }), 'Paper')
+    expect(review.title).toBe('Protocol cleanup')
+    expect(review.body).toBe('Paper — task needs review')
+    expect(describeRunNotification(run({ status: 'failed' }), 'Brief').body).toBe(
+      'Brief — task failed',
+    )
   })
 
   it('tags stay stable per run, so a later transition replaces rather than piles up', () => {
-    const a = describeRunNotification(run({ status: 'waiting' }))
-    const b = describeRunNotification(run({ status: 'failed' }))
+    const a = describeRunNotification(run({ status: 'waiting' }), 'p')
+    const b = describeRunNotification(run({ status: 'failed' }), 'p')
     expect(a.tag).toBe(b.tag)
   })
 })

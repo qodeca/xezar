@@ -301,7 +301,7 @@ describe('B5 phone matrix', () => {
     collect('ask card', `find('group', /Which date library/).parentElement.parentElement`, failures, seen)
 
     // The drawer's Tools trigger and its menu.
-    browser.click('button[aria-label="Open menu"]')
+    browser.click('button[aria-label^="Open menu"]')
     until(`find('button', /Tools/)`); settle()
     collect('drawer Tools trigger', `find('button', /Tools/).parentElement`, failures, seen, `/Tools/.test(nameOf(el))`)
     press('button', /Tools/)

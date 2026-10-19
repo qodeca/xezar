@@ -192,7 +192,7 @@ function read<T>(expression: string): T {
 // Routes, selectors and the density lever
 // ---------------------------------------------------------------------------
 
-const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label="Open menu"]'
+const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label^="Open menu"]'
 const DRAWER = '[data-slot="mobile-nav-drawer"]'
 /**
  * The drawer is mounted, visible AND still parked at `left: -264` for ~500 ms of its slide, so

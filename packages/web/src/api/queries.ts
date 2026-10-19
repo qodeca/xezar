@@ -9,8 +9,15 @@ import type {
   McpLeaderActionInput,
   McpLeaderStatus,
 } from '@qodeca/xezar-api-client'
-import { agentQuotaResponseSchema } from '@qodeca/xezar-api-client'
+import { agentQuotaResponseSchema, healthResponseSchema } from '@qodeca/xezar-api-client'
 import { QUOTA_HOSTED_REFETCH_MS } from '@/lib/agent-quota'
+import {
+  resolveAttentionCounts,
+  selectWorkspaceAttention,
+  type AttentionCounts,
+  type WorkspaceAttention,
+} from '@/lib/workspace-attention'
+import { listCounts } from '@/lib/task-groups'
 
 import {
   ApiError,
@@ -805,7 +812,11 @@ export function useHealthSubscription(): void {
       const local = health?.capabilities?.localHandoff === true
       if (local && releaseTopic === undefined) {
         releaseTopic = subscribeTopic('health', (data) => {
-          queryClient.setQueryData(queryKeys.health, data as HealthResponse)
+          // Validated before it is cached, like the `agent-quota` topic below: ~15 readers render
+          // this answer, and `activeProject()` in global-events.tsx routes every stamped event by
+          // its `bootProject`. A malformed frame is dropped and the last good answer stays.
+          const parsed = healthResponseSchema.safeParse(data)
+          if (parsed.success) queryClient.setQueryData(queryKeys.health, parsed.data)
         })
       } else if (!local && releaseTopic !== undefined) {
         releaseTopic()
@@ -976,7 +987,9 @@ export function useRuns() {
 }
 
 /**
- * Every registered project's recent tasks, slim — the ⌘K palette's cross-project finder.
+ * Every registered project's recent tasks, slim — the ⌘K palette's cross-project finder and the
+ * global Tasks page. The same cache entry feeds the workspace attention model
+ * (`useWorkspaceAttention`), which keeps it observed for the whole session.
  *
  * `enabled` rather than always-on, and the palette passes `false` in a single-project workspace:
  * there is nothing to aggregate there, and the active project's own `useRuns()` entry (already
@@ -1011,14 +1024,86 @@ export function useRunsIndex(enabled = true, refetchIntervalMs?: number) {
 }
 
 /**
- * One project's run list by EXPLICIT id — the sidebar's per-group task lists (step 3.3), which
- * must read projects the mounted scope cannot reach. Keyed `[projectId, 'runs', 'list']`: for
- * the ACTIVE project that is the very entry `useRuns()` fills and the stream patches, so the
- * two views share one cache; for any other project it is that project's own entry, kept fresh
- * by refetch-on-expand rather than by the stream (the stream filter applies only the active
- * scope's events). `enabled: false` parks the fetch — a COLLAPSED group costs one registry
- * row, never a runs request (spec, "40 registered projects" row) — while still reading any
- * cached answer, which is what lets a collapsed group keep its attention badge.
+ * The workspace attention model: how many tasks need you, per project and in total, read from
+ * the cross-project runs index (`lib/workspace-attention.ts`).
+ *
+ * The one reader behind the sidebar group badges (expanded and collapsed alike), the "All tasks"
+ * badge and the tab title; `RunNotifications` watches the same cache entry. Always enabled, so
+ * the index has an observer for the whole session — that is what makes the global stream's
+ * debounced invalidation actually refetch it, rather than only mark it stale.
+ *
+ * `undefined` while the index is unknown (loading, or a failed first fetch): callers render no
+ * badge then, never a guessed zero.
+ *
+ * @returns The attention counts, or undefined until the index has answered once.
+ *
+ * @example
+ * ```tsx
+ * const attention = useWorkspaceAttention()
+ * <NavBadge>{attention?.byProject.get(project.id) ?? (attention ? 0 : null)}</NavBadge>
+ * ```
+ */
+export function useWorkspaceAttention(): WorkspaceAttention | undefined {
+  return useWorkspaceAttentionQuery().data
+}
+
+function useWorkspaceAttentionQuery() {
+  return useQuery({
+    queryKey: workspaceQueryKeys.runsIndex,
+    queryFn: ({ signal }) => getRunsIndex({ signal }),
+    // Same staleness as `useRunsIndex`: the stream and the reconcile keep it current, so a
+    // remount within half a minute must not re-ask the whole workspace.
+    staleTime: 30_000,
+    select: selectWorkspaceAttention,
+  })
+}
+
+/**
+ * The counts the badges and the tab title render: the workspace attention model, with the
+ * failed-index fallback applied (`resolveAttentionCounts`).
+ *
+ * When the index cannot be read, the active project's badge still comes from its own run list
+ * (the scope-led `useRuns()` entry the Tasks page and the stream already keep warm — no extra
+ * request) and `stale` is set, so the other counts say "stale" instead of going quietly to zero.
+ *
+ * @param activeProjectId - The project the scope-led run list belongs to: the URL's project, or
+ *   the boot project on a page that names none.
+ * @returns The resolved counts.
+ *
+ * @example
+ * ```tsx
+ * const counts = useAttentionCounts(projectId ?? bootProjectId)
+ * <NavBadge>{counts.countFor(project.id)}</NavBadge>
+ * ```
+ */
+export function useAttentionCounts(activeProjectId: string | null): AttentionCounts {
+  const index = useWorkspaceAttentionQuery()
+  const runs = useRuns()
+  // A list whose own refresh failed is not live either: then there is no fallback, and the
+  // active project's count is the index's last known one like everyone else's.
+  const activeCount = runs.data && !runs.isError ? listCounts(runs.data).waiting : undefined
+  return useMemo(
+    () =>
+      resolveAttentionCounts({
+        index: index.data,
+        indexFailed: index.isError,
+        activeProjectId,
+        activeCount,
+      }),
+    [index.data, index.isError, activeProjectId, activeCount],
+  )
+}
+
+/**
+ * One project's run list by EXPLICIT id, for a surface that must read a project the mounted
+ * scope cannot reach (today: the shell's tab title for an open task). The sidebar group badges
+ * no longer use it — they read the workspace attention model (`useWorkspaceAttention`).
+ *
+ * Keyed `[projectId, 'runs', 'list']`: for the ACTIVE project that is the very entry `useRuns()`
+ * fills and the stream patches, so the two views share one cache; for any other project it is
+ * that project's own entry, fetched when enabled rather than patched by the stream (the stream
+ * applies only the active scope's events to scoped caches). `enabled: false` parks the fetch
+ * while still reading any cached answer.
  *
  * `boot: true` aliases the key scope to `'default'`: the boot project mounts UNSCOPED
  * (routes.tsx keeps its legacy `/api/*` surface), so its main view and the SSE patcher both

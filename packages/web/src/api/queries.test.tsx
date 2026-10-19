@@ -13,6 +13,7 @@ import {
   useReferenceProjectId,
   useProjectRepoBase,
   queryKeys,
+  useAttentionCounts,
   useProviderStatus,
   useRefreshProviderStatus,
   useRetryProviderAuth,
@@ -67,13 +68,27 @@ function wrapper() {
   }
 }
 
+/** A complete, schema-valid `GET /health` answer: the pushed `health` topic frame is validated
+ *  against `healthResponseSchema` before it is cached, so a partial fixture would be dropped. */
 const HEALTH = {
   version: '0.1.3',
+  channel: 'release',
   repoRoot: '/home/me/xezar',
   repo: { root: '/home/me/xezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
-  capabilities: { localHandoff: true, followups: false, singleProject: false, automations: false },
+  forge: null,
+  capabilities: {
+    localHandoff: true,
+    followups: false,
+    singleProject: false,
+    automations: false,
+    tokenMetrics: true,
+    tokenUsageMetrics: true,
+    costMetrics: true,
+  },
+  projects: [{ id: 'xezar', name: 'xezar' }],
+  bootProject: 'xezar',
 }
 
 /** Just enough WebSocket for useHealth's topic subscription (api/ws.ts): records the frames the
@@ -571,7 +586,7 @@ describe('useHealth', () => {
   // #369 moved server-side: the branch-switched-in-a-terminal case is now the `health` topic on
   // /api/v1/ws (ws.ts) pushing a changed snapshot, not a per-tab refetchInterval. The ONE root-level
   // useHealthSubscription folds those pushes into the same cache useHealth reads; the poll is gone.
-  it('useHealthSubscription folds pushed frames into the cache instead of polling', async () => {
+  it('useHealthSubscription folds valid pushed frames into the cache instead of polling, and drops invalid ones', async () => {
     vi.useFakeTimers()
     try {
       vi.stubGlobal('WebSocket', FakeHealthSocket)
@@ -600,6 +615,14 @@ describe('useHealth', () => {
       if (!ws) throw new Error('useHealthSubscription never opened the topic socket')
       act(() => ws.open())
       expect(ws.sent.map((raw) => JSON.parse(raw))).toContainEqual({ type: 'subscribe', topic: 'health' })
+
+      // A frame that is not a valid answer is dropped, and the last good one stays: missing
+      // required fields (no capabilities, no bootProject), then not an object at all.
+      act(() => ws.message({ type: 'event', topic: 'health', data: { repo: { root: '/x', branch: 'broken' } } }))
+      act(() => ws.message({ type: 'event', topic: 'health', data: 'nope' }))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(result.current.data?.repo?.branch).toBe('main')
+      expect(result.current.data?.bootProject).toBe('xezar')
 
       act(() =>
         ws.message({
@@ -1096,4 +1119,28 @@ describe('refStatusRecheckAfter', () => {
     // that keeps the query from going silent forever.
     expect(refStatusRecheckAfter(undefined)).toBeGreaterThan(0)
   })
+})
+
+describe('useAttentionCounts', () => {
+  it('does not use the active list as the fallback when its own latest refresh failed', async () => {
+    // Index and run list both fail; the run list still holds an answer from earlier. That
+    // earlier count must not be shown as the live one.
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: 'down' }), { status: 500 }))
+    const client = createQueryClient()
+    client.setQueryData(queryKeys.runs.list(), [
+      { id: 'w', title: 'w', workflow: 'default', task: 't', status: 'waiting', createdAt: '', tokensUsed: 0, archived: false, steps: [] },
+    ])
+    const scopedWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useAttentionCounts('default'), { wrapper: scopedWrapper })
+    // What a reconnect's reconcile does: ask the run list again — and this time it fails.
+    void client.invalidateQueries({ queryKey: queryKeys.runs.list() })
+
+    await waitFor(() => expect(result.current.stale).toBe(true), { timeout: 5_000 })
+    await waitFor(() => expect(client.getQueryState(queryKeys.runs.list())?.status).toBe('error'), { timeout: 5_000 })
+    expect(result.current.countFor('default')).toBeNull()
+    expect(result.current.activeProjectId).toBeNull()
+    expect(result.current.total).toBeNull()
+  }, 15_000)
 })

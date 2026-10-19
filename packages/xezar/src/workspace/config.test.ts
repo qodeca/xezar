@@ -12,6 +12,7 @@ import {
   effectiveSkillsAutoUpdate,
   effectiveComposerDefault,
   loadWorkspaceConfig,
+  loadWorkspaceConfigChecked,
   mergeWriteWorkspaceConfig,
   workspaceConfigBackupPath,
   type WorkspaceConfig,
@@ -64,6 +65,37 @@ describe('workspace config', () => {
     lastOpenedAt: '2026-07-20T10:00:00Z',
     source: 'local' as const,
   });
+
+  describe('loadWorkspaceConfigChecked', () => {
+    it('is not degraded for a missing file — the zero-config case', async () => {
+      expect((await loadWorkspaceConfigChecked()).degraded).toBe(false)
+    })
+
+    it('is degraded for a corrupt or empty file with no backup, and still returns the defaults', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      write('{ not json')
+      const corrupt = await loadWorkspaceConfigChecked()
+      expect(corrupt.degraded).toBe(true)
+      expect(corrupt.config.projects).toEqual([])
+      write('')
+      expect((await loadWorkspaceConfigChecked()).degraded).toBe(true)
+    })
+
+    it('is degraded for a file that exists but cannot be read', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      mkdirSync(workspaceConfigPath(), { recursive: true })
+      expect((await loadWorkspaceConfigChecked()).degraded).toBe(true)
+    })
+
+    it('is not degraded when the backup restores the registry', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      write('{ not json')
+      writeFileSync(workspaceConfigBackupPath(), JSON.stringify({ projects: [project('alpha')] }), 'utf8')
+      const restored = await loadWorkspaceConfigChecked()
+      expect(restored.degraded).toBe(false)
+      expect(restored.config.projects.map((p) => p.id)).toEqual(['alpha'])
+    })
+  })
 
   it('a missing file behaves exactly like the defaults (zero-config, no warning)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

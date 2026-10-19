@@ -125,7 +125,7 @@ import {
   readRunHistoryPage,
   validateLiveCursor,
 } from '../runs/event-history.ts';
-import { readRunIndexFromDisk } from '../runs/run-index.ts';
+import { readRunIndexFromDiskChecked } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference, SkillsCatalogVersion } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
@@ -189,6 +189,7 @@ import {
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
   loadWorkspaceConfig,
+  loadWorkspaceConfigChecked,
   mergeWriteWorkspaceConfig,
   effectiveComposerDefault,
   type WorkspaceConfig,
@@ -6387,6 +6388,12 @@ export function createApp(deps: ServerDeps) {
     return undefined;
   };
 
+  /** "This task wants a person": `waiting` or `review`, not archived. The SAME rule as the
+   *  cockpit's `needsYou` (`web/src/lib/workspace-attention.ts`) — duplicated on purpose, because
+   *  the count spans runs the index does not ship as rows; keep the two identical. */
+  const runNeedsPerson = (run: Pick<RunRecord, 'status' | 'archived'>): boolean =>
+    !run.archived && (run.status === 'waiting' || run.status === 'review');
+
   const runIndexEntry = (
     projectId: string,
     run: RunRecord,
@@ -6452,6 +6459,7 @@ export function createApp(deps: ServerDeps) {
   const runsIndexRoutes = new Hono()
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
+      let registryUnreadable = false;
       try {
         // In `project` mode this answers for THIS project only (#467, spec Q-7 option A): the
         // rows exist to be opened, and a row this process refuses to build a context for would
@@ -6462,11 +6470,21 @@ export function createApp(deps: ServerDeps) {
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
+        // `listProjects` never throws for a bad registry file: it degrades to "no projects".
+        // Ask the same file whether that was a fault, so the answer can say "could not look"
+        // rather than pass an unreadable registry off as an empty workspace. Project mode derives
+        // its one row from the folder, so its registry file is not what this answer rests on.
+        if (activeStateLayout().mode !== 'project') {
+          registryUnreadable = (await loadWorkspaceConfigChecked(activeStateLayout().workspacePath)).degraded;
+        }
       } catch {
-        // unreadable workspace — an empty index, never a 500. The palette degrades to the
-        // active project's own run list, which it holds either way.
+        // unreadable workspace — an empty index, never a 500 (the status code is part of the
+        // compatibility promise). The palette degrades to the active project's own run list,
+        // which it holds either way — and `registryUnreadable` says this answer is not "no tasks".
+        registryUnreadable = true;
       }
       const bootId = await resolveBootProject(projects);
+      const unreadable: string[] = [];
       const runs: RunIndexEntry[] = [];
       const truncated: string[] = [];
       // Statuses the server already holds, shipped WITH the rows that carry the references. The
@@ -6475,6 +6493,7 @@ export function createApp(deps: ServerDeps) {
       // never touches `gh` and never slows the index down; anything cold stays absent and the
       // lazy `/github/ref-status` route fills it in.
       const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
+      const attention: RunsIndexResponse['attention'] = {};
       for (const project of projects) {
         // No folder, no runs to read. `not-git` still has an `.local/xezar` worth indexing.
         if (project.status === 'missing') continue;
@@ -6486,10 +6505,30 @@ export function createApp(deps: ServerDeps) {
         // `GET /runs`, which has always carried them, and excluding them here would mean a task
         // is findable while you stand in its project and vanishes the moment you leave — the
         // exact asymmetry a cross-project finder exists to remove.
-        const recent = (
-          owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
-        ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        let read: RunRecord[];
+        if (owned) {
+          read = owned.store.listRuns();
+        } else {
+          const fromDisk = readRunIndexFromDiskChecked(projectDataDir(project.root));
+          // Its tasks are unknown, not absent: name it, so no consumer reads "nothing waits".
+          if (!fromDisk.readable) unreadable.push(project.id);
+          read = fromDisk.runs;
+        }
+        const recent = read.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
+        // Over EVERY run, not the capped rows (see the schema): a task waiting for a person must
+        // be counted however many newer tasks the project has. One pass over a list this loop
+        // already holds — no extra read.
+        let attentionTotal = 0;
+        let attentionBeyondLimit = 0;
+        recent.forEach((run, position) => {
+          if (!runNeedsPerson(run)) return;
+          attentionTotal += 1;
+          if (position >= RUNS_INDEX_PER_PROJECT) attentionBeyondLimit += 1;
+        });
+        if (attentionTotal > 0) {
+          attention[project.id] = { total: attentionTotal, beyondLimit: attentionBeyondLimit };
+        }
         // LAZY, and at most once per project. This route is polled every 15s and invalidated on a
         // 400ms debounce during a run, so a config read per project per request would be dozens of
         // file reads a second on a large registry. Almost every row answers for itself — a started
@@ -6531,6 +6570,9 @@ export function createApp(deps: ServerDeps) {
         perProjectLimit: RUNS_INDEX_PER_PROJECT,
         truncated,
         referenceStatuses,
+        attention,
+        unreadable,
+        registryUnreadable,
       };
       return c.json(body);
     });

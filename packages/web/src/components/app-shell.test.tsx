@@ -1033,3 +1033,33 @@ describe('AppShell — plan-limits chip slots', () => {
     expect(footer().firstElementChild?.getAttribute('data-slot')).toBe('sidebar-footer-controls')
   })
 })
+
+describe('the attention stale line under All tasks', () => {
+  const groups = <div data-slot="test-groups" />
+  const note = () => document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')
+
+  it('is absent while the counts are current', () => {
+    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 2 })
+    expect(note()).toBeNull()
+  })
+
+  it('says the counts may be out of date when an earlier answer is still shown', () => {
+    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 2, allTasksAttentionNotice: 'refresh-failed' })
+    expect(note()?.textContent).toBe('Other projects’ counts could not be refreshed — they may be out of date.')
+  })
+
+  it('says the counts could not be loaded when there never was an answer — empty badges are not "nothing waits"', () => {
+    renderShell('/', {
+      projectGroups: groups,
+      allTasksAttentionCount: null,
+      allTasksAttentionNotice: 'not-loaded',
+    })
+    expect(note()?.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
+    expect(note()?.getAttribute('role')).toBe('status')
+  })
+
+  it('says some projects could not be read when the server names unreadable task data', () => {
+    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 1, allTasksAttentionNotice: 'partly-unreadable' })
+    expect(note()?.textContent).toBe('Some projects’ tasks could not be read — their counts are not shown.')
+  })
+})
