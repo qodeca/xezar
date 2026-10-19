@@ -72,6 +72,8 @@ const HOSTED_SAFE: readonly string[] = [
   'GET /api/v1/runs/:id/commit/:sha', 'GET /api/v1/runs/:id/commits',
   'POST /api/v1/runs/:id/continue', 'GET /api/v1/runs/:id/diff',
   'GET /api/v1/runs/:id/events', 'GET /api/v1/runs/:id/files',
+  // A read: in hosted mode it answers `{ command: null }` and runs nothing.
+  'GET /api/v1/runs/:id/resume-command',
   'POST /api/v1/runs/:id/finish', 'POST /api/v1/runs/:id/git/commit',
   'POST /api/v1/runs/:id/git/push', 'GET /api/v1/runs/:id/handoff',
   'GET /api/v1/runs/:id/history', 'GET /api/v1/runs/:id/history-context',
