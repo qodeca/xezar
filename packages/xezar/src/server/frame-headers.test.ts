@@ -19,6 +19,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 describe('HTML responses refuse framing by other sites', () => {
   const savedHome = process.env.XEZ_HOME;
   const savedRemote = process.env.XEZ_REMOTE;
+  const savedAllowed = process.env.XEZ_ALLOWED_HOSTS;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -28,6 +29,7 @@ describe('HTML responses refuse framing by other sites', () => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-frame-repo-'));
     process.env.XEZ_HOME = home;
     delete process.env.XEZ_REMOTE;
+    delete process.env.XEZ_ALLOWED_HOSTS;
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
@@ -37,6 +39,8 @@ describe('HTML responses refuse framing by other sites', () => {
     for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
+    if (savedAllowed === undefined) delete process.env.XEZ_ALLOWED_HOSTS;
+    else process.env.XEZ_ALLOWED_HOSTS = savedAllowed;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
   });
@@ -63,6 +67,8 @@ describe('HTML responses refuse framing by other sites', () => {
 
   it('hosted mode behind a proxy hostname still serves the page, with both headers', async () => {
     process.env.XEZ_REMOTE = '1';
+    // Hosted mode answers only names it serves; the proxy's public name is allowed explicitly.
+    process.env.XEZ_ALLOWED_HOSTS = 'cockpit.example.test';
     const res = await makeApp().request('/new', {
       headers: { host: 'cockpit.example.test', 'x-forwarded-proto': 'https' },
     });
