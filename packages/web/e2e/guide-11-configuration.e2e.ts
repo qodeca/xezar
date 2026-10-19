@@ -68,6 +68,8 @@ describe('guide 11 — configuration reference', () => {
   it('an absent skillsAutoUpdate leaves automatic skill updates on', async () => {
     browser.goto(`${baseUrl}/settings/global/skills`)
     await browser.waitForRole('heading', 'Skills')
+    // The heading renders before the settings load; the switch arrives with them.
+    await browser.waitForRole('switch', 'Update xezar-skills automatically')
     expect(browser.hasRole('switch', 'Update xezar-skills automatically')).toBe(true)
     expect(browser.hasText('Update xezar-skills automatically')).toBe(true)
   })
