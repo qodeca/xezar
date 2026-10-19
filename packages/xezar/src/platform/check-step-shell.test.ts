@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe('launchCheckStep on Linux and macOS (#963)', () => {
   for (const platform of ['linux', 'darwin'] as const) {
-    it(`is exactly launch('bash', ['-lc', command], options) on ${platform}`, () => {
+    it(`is launch('bash', ['-lc', command], options) with no stdin on ${platform}`, () => {
       const fake = {} as ReturnType<typeof processLaunch.launch>;
       const launch = vi.spyOn(processLaunch, 'launch').mockReturnValue(fake);
       const msys = vi.spyOn(processLaunch, 'launchMsys');
@@ -22,7 +22,8 @@ describe('launchCheckStep on Linux and macOS (#963)', () => {
       expect(launch).toHaveBeenCalledTimes(1);
       expect(launch.mock.calls[0]?.[0]).toBe('bash');
       expect(launch.mock.calls[0]?.[1]).toEqual(['-lc', 'npm test']);
-      expect(launch.mock.calls[0]?.[2]).toBe(options);
+      // The caller's options, plus a step that has no standard input (it cannot wait on one).
+      expect(launch.mock.calls[0]?.[2]).toEqual({ ...options, stdio: ['ignore', 'pipe', 'pipe'] });
       expect(msys).not.toHaveBeenCalled();
     });
   }
@@ -77,6 +78,32 @@ function runStep(command: string, cwd: string): Promise<{ code: number | null; o
   child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
   return new Promise((resolve) => child.on('close', (code) => resolve({ code, out })));
 }
+
+/**
+ * A check step runs unattended, so nothing will ever type into it. It used to get an open stdin
+ * pipe that xezar never wrote to or closed, and a command that reads standard input (a prompt, a
+ * bare `cat`, a tool asking for confirmation) waited on it forever. RED WITHOUT THE FIX: the
+ * command below never ends and the test times out. On every OS: Git Bash on Windows, bash elsewhere.
+ */
+describe('a check step has no standard input', () => {
+  let dir = '';
+  afterEach(() => {
+    if (dir) rmSync(dir, TEST_DIR_RM_OPTIONS);
+    dir = '';
+  });
+
+  it('lets a command that reads stdin finish at once', async () => {
+    dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'xez-check-stdin-')));
+    const child = launchCheckStep('cat; echo after-stdin', { cwd: dir, env: onWindows ? stockWindowsEnv() : { ...process.env } });
+    let out = '';
+    child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
+    child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
+    const code = await new Promise<number | null>((resolve) => child.on('close', resolve));
+    expect(out.trim()).toBe('after-stdin');
+    expect(code).toBe(0);
+    expect(child.stdin).toBeNull();
+  }, 10_000);
+});
 
 // win32-skip(#976): Git Bash exists on Windows only; Linux and macOS are pinned above
 describe.skipIf(!onWindows)('launchCheckStep in Git Bash on Windows (#963)', () => {

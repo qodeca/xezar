@@ -42,6 +42,7 @@ function fakeStore(runs: RunRecord[]): RetentionStore & { runs: RunRecord[] } {
   return {
     runs,
     listRuns: () => runs,
+    getRun: (id) => runs.find((x) => x.id === id),
     updateRun: (id, patch) => {
       const r = runs.find((x) => x.id === id);
       if (r) Object.assign(r, patch);
@@ -150,6 +151,56 @@ describe('reclaimWorktrees (real git, #483)', () => {
       expect(store.runs.find((r) => r.id === id)?.worktreeReclaimedAt).toBeUndefined();
     }
     expect(paths.filter((path) => existsSync(path))).toHaveLength(3);
+  });
+
+  // A sweep selects every over-limit worktree first and removes them one git spawn at a time, so a
+  // Continue can reopen one of them in between. Each removal re-checks the record and the caller's
+  // live runs; without that the second worktree below went while its task was running again.
+  it('skips a worktree whose run was continued after the sweep selected it', async () => {
+    const repo = await fixtureRepo();
+    const ids = [
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    ];
+    const paths: string[] = [];
+    for (const id of ids) paths.push((await createWorktree(repo, id, 'main')).path);
+    const store = fakeStore(
+      ids.map((id, index) => finishedRun(id, paths[index]!, `2026-07-0${index + 1}T00:00:00.000Z`)),
+    );
+    // keep=1 selects the two oldest. While the first of them is being removed, the other is
+    // continued (whichever order the sweep takes them in).
+    const selected = [paths[0]!, paths[1]!];
+    let continuedPath: string | undefined;
+    const reclaimed = await reclaimWorktrees(repo, store, 1, {
+      remove: async (root, path) => {
+        await realRemove(root, path);
+        if (continuedPath) return;
+        continuedPath = selected.find((candidate) => candidate !== path);
+        store.runs.find((r) => r.worktreePath === continuedPath)!.status = 'running';
+      },
+    });
+    expect(reclaimed).toHaveLength(1);
+    expect(existsSync(continuedPath!)).toBe(true);
+    expect(existsSync(paths[2]!)).toBe(true);
+  });
+
+  it('skips a worktree whose run the caller refuses to reserve', async () => {
+    const repo = await fixtureRepo();
+    const oldId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const newId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const oldWt = await createWorktree(repo, oldId, 'main');
+    const newWt = await createWorktree(repo, newId, 'main');
+    const store = fakeStore([
+      finishedRun(oldId, oldWt.path, '2026-07-01T00:00:00.000Z'),
+      finishedRun(newId, newWt.path, '2026-07-09T00:00:00.000Z'),
+    ]);
+    // A Continue is starting: the record still says `done`, but the manager holds the run.
+    const reclaimed = await reclaimWorktrees(repo, store, 1, {
+      reserve: (id) => (id === oldId ? undefined : () => undefined),
+    });
+    expect(reclaimed).toEqual([]);
+    expect(existsSync(oldWt.path)).toBe(true);
   });
 
   it('keep=0 reclaims nothing (unlimited)', async () => {
