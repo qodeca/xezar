@@ -923,6 +923,8 @@ function seedIndex(runs: RunIndexEntry[]): void {
     perProjectLimit: 200,
     truncated: [],
     attention: {},
+    unreadable: [],
+    registryUnreadable: false,
   })
 }
 

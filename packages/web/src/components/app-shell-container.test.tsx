@@ -76,6 +76,8 @@ function runsIndex(rows: Array<[projectId: string, status: RunRecord['status'], 
     perProjectLimit: 200,
     truncated: [],
     attention: {},
+    unreadable: [] as string[],
+    registryUnreadable: false,
   }
 }
 
@@ -829,6 +831,45 @@ describe('workspace attention (All tasks badge and tab title)', () => {
     ).toBe('1')
     expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')).toBeNull()
   }, 15_000)
+
+  it('does not pass an index the server could not fully read off as "nothing needs you"', async () => {
+    // A 200 that says the registry could not be read: no rows, but not "no tasks".
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [run({ id: 'w', status: 'waiting' })],
+      '/api/v1/workspace/runs-index': { ...runsIndex([]), registryUnreadable: true },
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')?.textContent).toBe(
+        'Other projects’ counts could not be loaded — they are not shown.',
+      ),
+    )
+    expect(
+      document.querySelector('[data-slot="sidebar"] [data-project="xezar"] [data-slot="project-attention"]')?.textContent,
+    ).toBe('1')
+  })
+
+  it('names nothing as 0 for a project whose task data could not be read', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': TWO_PROJECTS,
+      '/api/v1/runs': [],
+      '/api/v1/workspace/runs-index': { ...runsIndex([['xezar', 'waiting']]), unreadable: ['shop'] },
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="sidebar"] [data-slot="attention-stale"]')?.textContent).toBe(
+        'Some projects’ tasks could not be read — their counts are not shown.',
+      ),
+    )
+    expect(document.querySelector('[data-slot="sidebar"] [data-project="shop"] [data-slot="project-attention"]')).toBeNull()
+  })
 
   it('shows no number at all when BOTH the index and the active list fail — never an old count as live', async () => {
     serve({

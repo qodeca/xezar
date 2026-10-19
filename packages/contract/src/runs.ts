@@ -504,6 +504,18 @@ export const runsIndexResponseSchema = z.object({
       beyondLimit: z.number().int().nonnegative(),
     }),
   ),
+  /**
+   * Ids of the registered projects whose task data exists but could not be read (a corrupt or
+   * unreadable `runs.json`). They contribute no rows and no `attention` entry — their tasks are
+   * UNKNOWN, which a consumer must not read as "none". Empty when everything was read.
+   */
+  unreadable: z.array(z.string()),
+  /**
+   * True when the workspace's project registry itself could not be read. The route still answers
+   * 200 with whatever it could gather (often nothing) — the status code is part of the promise —
+   * so this flag is what tells "no tasks anywhere" apart from "could not look".
+   */
+  registryUnreadable: z.boolean(),
 });
 export type RunsIndexResponse = z.infer<typeof runsIndexResponseSchema>;
 

@@ -96,6 +96,8 @@ function indexOf(rows: Array<RunRecord | RunIndexEntry>): RunsIndexResponse {
     perProjectLimit: 200,
     truncated: [],
     attention: {},
+    unreadable: [],
+    registryUnreadable: false,
   }
 }
 

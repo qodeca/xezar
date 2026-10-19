@@ -86,7 +86,7 @@ describe('the tail beyond the row cap', () => {
   })
 
   it('reads the index answer, and tolerates one cached before the field existed', () => {
-    const base = { referenceStatuses: {}, perProjectLimit: 200, truncated: ['web'] }
+    const base = { referenceStatuses: {}, perProjectLimit: 200, truncated: ['web'], unreadable: [], registryUnreadable: false }
     const rows = [{ ...row('web', 'review'), createdAt: '', workflow: 'w', runner: 'claude' as const }]
     expect(selectWorkspaceAttention({ ...base, runs: rows, attention: { web: { total: 3, beyondLimit: 2 } } }).total).toBe(3)
     const legacy = { ...base, runs: rows } as unknown as Parameters<typeof selectWorkspaceAttention>[0]
@@ -162,5 +162,44 @@ describe('resolveAttentionCounts — unloaded', () => {
     expect(resolveAttentionCounts({ index: undefined, indexFailed: true, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(true)
     expect(resolveAttentionCounts({ index, indexFailed: true, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(false)
     expect(resolveAttentionCounts({ index: undefined, indexFailed: false, activeProjectId: 'web', activeCount: 1 }).unloaded).toBe(false)
+  })
+})
+
+describe('resolveAttentionCounts — the server could not read some data', () => {
+  const base = { referenceStatuses: {}, perProjectLimit: 200, truncated: [], attention: {} }
+  const entry = (projectId: string, status: RunStatus) => ({
+    ...row(projectId, status),
+    createdAt: '',
+    workflow: 'w',
+    runner: 'claude' as const,
+  })
+
+  it('shows an unreadable project as unknown, never 0, and says so', () => {
+    const index = selectWorkspaceAttention({
+      ...base,
+      runs: [entry('web', 'waiting')],
+      unreadable: ['lab'],
+      registryUnreadable: false,
+    })
+    const counts = resolveAttentionCounts({ index, indexFailed: false, activeProjectId: 'web', activeCount: 1 })
+    expect(counts.countFor('lab')).toBeNull()
+    expect(counts.countFor('web')).toBe(1)
+    expect(counts.notice).toBe('partly-unreadable')
+    expect(counts.stale).toBe(true)
+  })
+
+  it('reads an unreadable registry like an index that never answered, with the active fallback', () => {
+    const index = selectWorkspaceAttention({ ...base, runs: [], unreadable: [], registryUnreadable: true })
+    const counts = resolveAttentionCounts({ index, indexFailed: false, activeProjectId: 'web', activeCount: 2 })
+    expect(counts.notice).toBe('not-loaded')
+    expect(counts.countFor('web')).toBe(2)
+    expect(counts.countFor('lab')).toBeNull()
+    expect(counts.total).toBe(2)
+    expect(counts.activeProjectId).toBe('web')
+  })
+
+  it('a complete answer carries no notice', () => {
+    const index = selectWorkspaceAttention({ ...base, runs: [], unreadable: [], registryUnreadable: false })
+    expect(resolveAttentionCounts({ index, indexFailed: false, activeProjectId: 'web', activeCount: 0 }).notice).toBeNull()
   })
 })

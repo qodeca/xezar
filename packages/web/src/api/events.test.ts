@@ -232,6 +232,8 @@ describe('applyRunToIndex / applyRunDeletedToIndex', () => {
     perProjectLimit: 200,
     truncated: [],
     attention: {},
+    unreadable: [],
+    registryUnreadable: false,
   })
 
   it('returns undefined for an unfetched index — never invents one', () => {

@@ -39,6 +39,10 @@ export interface WorkspaceAttention {
   total: number
   /** Project id → tasks that need you there. A project with none has no entry. */
   byProject: ReadonlyMap<string, number>
+  /** Projects whose task data the server could not read: their counts are unknown, not 0. */
+  unreadable: ReadonlySet<string>
+  /** The server could not read the project registry itself: the answer holds nothing to count. */
+  registryUnreadable: boolean
 }
 
 /**
@@ -88,7 +92,7 @@ export function summarizeAttention(
     total += 1
     byProject.set(row.projectId, (byProject.get(row.projectId) ?? 0) + 1)
   }
-  return { total, byProject }
+  return { total, byProject, unreadable: new Set(), registryUnreadable: false }
 }
 
 /**
@@ -103,8 +107,22 @@ export function summarizeAttention(
 export function selectWorkspaceAttention(index: RunsIndexResponse): WorkspaceAttention {
   // `?? {}`: tolerate a cached answer from before the field existed (a long-lived tab across a
   // server upgrade) — it then counts the rows alone, as it always did.
-  return summarizeAttention(index.runs, index.attention ?? {})
+  return {
+    ...summarizeAttention(index.runs, index.attention ?? {}),
+    // Same tolerance for the two read-failure signals: absent reads as "everything was read".
+    unreadable: new Set(index.unreadable ?? []),
+    registryUnreadable: index.registryUnreadable ?? false,
+  }
 }
+
+/**
+ * Why the counts are incomplete, for the one status line under All tasks. Different facts get
+ * different words (writing.md):
+ * - `refresh-failed`: the index answered before, its latest refresh failed — old numbers shown;
+ * - `not-loaded`: it never answered, or the server could not read the registry — none shown;
+ * - `partly-unreadable`: it answered, but some projects' task data could not be read.
+ */
+export type AttentionNotice = 'refresh-failed' | 'not-loaded' | 'partly-unreadable'
 
 /** What the badges and the tab title render, after the failed-index fallback. */
 export interface AttentionCounts {
@@ -118,6 +136,9 @@ export interface AttentionCounts {
   /** `stale`, and the index has never answered at all, so there are no last known counts: the
    *  UI says the counts could not be LOADED rather than that they may be old. */
   unloaded: boolean
+  /** Why the counts are incomplete, or null when they are complete. `stale` is `notice !== null`
+   *  and `unloaded` is `notice === 'not-loaded'`. */
+  notice: AttentionNotice | null
   /** The project whose count comes from its own live run list while the index is stale; null
    *  whenever no such fallback is in effect (index current, or that list not loaded / failed), so
    *  nothing presents an old count as live. */
@@ -133,6 +154,9 @@ export interface AttentionCounts {
  *   other count keeps its last known value, or is unknown when there never was one. `stale`
  *   tells the UI to say so.
  * - Index still loading: unknown everywhere, not stale.
+ * - Index answered but names `unreadable` projects: those are unknown (null, never 0); the
+ *   registry itself unreadable reads as an index that never answered. The active project falls
+ *   back to its own list in both cases.
  *
  * @param input.index - The index's attention counts, or undefined when it never answered.
  * @param input.indexFailed - True when the index's latest fetch failed.
@@ -146,11 +170,28 @@ export function resolveAttentionCounts(input: {
   activeProjectId: string | null
   activeCount: number | undefined
 }): AttentionCounts {
-  const { index, indexFailed, activeProjectId, activeCount } = input
-  const fallback = indexFailed && activeProjectId !== null && activeCount !== undefined
+  const { indexFailed, activeProjectId, activeCount } = input
+  // An answer that says the registry could not be read holds nothing to count: treat it like
+  // an index that never answered.
+  const registryUnreadable = input.index?.registryUnreadable === true
+  const index = registryUnreadable ? undefined : input.index
+  const unreadable = index?.unreadable ?? new Set<string>()
+  const notice: AttentionNotice | null =
+    registryUnreadable || (indexFailed && index === undefined)
+      ? 'not-loaded'
+      : indexFailed
+        ? 'refresh-failed'
+        : unreadable.size > 0
+          ? 'partly-unreadable'
+          : null
+  // The active project's own list stands in whenever the index cannot vouch for it.
+  const activeDegraded =
+    indexFailed || registryUnreadable || (activeProjectId !== null && unreadable.has(activeProjectId))
+  const fallback = activeDegraded && activeProjectId !== null && activeCount !== undefined
   const countFor = (projectId: string): number | null => {
     if (fallback && projectId === activeProjectId) return activeCount ?? null
-    return index ? (index.byProject.get(projectId) ?? 0) : null
+    if (!index || unreadable.has(projectId)) return null
+    return index.byProject.get(projectId) ?? 0
   }
   let total: number | null = index ? index.total : null
   if (fallback && activeProjectId !== null) {
@@ -159,8 +200,9 @@ export function resolveAttentionCounts(input: {
   return {
     countFor,
     total,
-    stale: indexFailed,
-    unloaded: indexFailed && index === undefined,
+    stale: notice !== null,
+    unloaded: notice === 'not-loaded',
+    notice,
     activeProjectId: fallback ? activeProjectId : null,
   }
 }

@@ -83,7 +83,7 @@ function indexRow(projectId: string, over: Partial<RunIndexEntry> = {}): RunInde
 }
 
 function runsIndex(runs: RunIndexEntry[]): RunsIndexResponse {
-  return { runs, referenceStatuses: {}, perProjectLimit: 200, truncated: [], attention: {} }
+  return { runs, referenceStatuses: {}, perProjectLimit: 200, truncated: [], attention: {}, unreadable: [], registryUnreadable: false }
 }
 
 const INDEX_URL = '/api/v1/workspace/runs-index'

@@ -1044,7 +1044,7 @@ describe('the attention stale line under All tasks', () => {
   })
 
   it('says the counts may be out of date when an earlier answer is still shown', () => {
-    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 2, allTasksAttentionStale: true })
+    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 2, allTasksAttentionNotice: 'refresh-failed' })
     expect(note()?.textContent).toBe('Other projects’ counts could not be refreshed — they may be out of date.')
   })
 
@@ -1052,10 +1052,14 @@ describe('the attention stale line under All tasks', () => {
     renderShell('/', {
       projectGroups: groups,
       allTasksAttentionCount: null,
-      allTasksAttentionStale: true,
-      allTasksAttentionUnloaded: true,
+      allTasksAttentionNotice: 'not-loaded',
     })
     expect(note()?.textContent).toBe('Other projects’ counts could not be loaded — they are not shown.')
     expect(note()?.getAttribute('role')).toBe('status')
+  })
+
+  it('says some projects could not be read when the server names unreadable task data', () => {
+    renderShell('/', { projectGroups: groups, allTasksAttentionCount: 1, allTasksAttentionNotice: 'partly-unreadable' })
+    expect(note()?.textContent).toBe('Some projects’ tasks could not be read — their counts are not shown.')
   })
 })

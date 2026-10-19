@@ -39,6 +39,7 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
+import type { AttentionNotice } from '@/lib/workspace-attention'
 import { useIsDesktop } from '@/lib/use-desktop'
 // The xezar brand mark. A `public/` asset, not a bundled import: the service serves the
 // same file at this exact path (`GET /xezar.svg` — the favicon index.html points at), so
@@ -110,12 +111,9 @@ export type AppShellProps = {
    *  workspace attention model. Null (the default) while unknown and zero both render no badge.
    *  Only shown with `projectGroups`, which is the only time the link exists. */
   allTasksAttentionCount?: number | null
-  /** The workspace task index could not be refreshed, so the other projects' counts may be old;
-   *  renders one status line under All tasks. Defaults off. */
-  allTasksAttentionStale?: boolean
-  /** With `allTasksAttentionStale`: the index never answered, so the line says "could not be
-   *  loaded" instead of "may be out of date". Defaults off. */
-  allTasksAttentionUnloaded?: boolean
+  /** Why the other projects' counts are incomplete (`AttentionNotice`): renders one status line
+   *  under All tasks. Null (the default) renders none. */
+  allTasksAttentionNotice?: AttentionNotice | null
   /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
    *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
@@ -187,8 +185,7 @@ export function AppShell({
   banner,
   projectGroups,
   allTasksAttentionCount = null,
-  allTasksAttentionStale = false,
-  allTasksAttentionUnloaded = false,
+  allTasksAttentionNotice = null,
   otherProjects,
   agentQuota,
   agentQuotaCompact,
@@ -254,8 +251,7 @@ export function AppShell({
     toolsMenu,
     projectGroups,
     allTasksAttentionCount,
-    allTasksAttentionStale,
-    allTasksAttentionUnloaded,
+    allTasksAttentionNotice,
     otherProjects,
     agentQuota,
     singleProject,
@@ -329,8 +325,7 @@ type NavProps = {
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
   allTasksAttentionCount: number | null
-  allTasksAttentionStale: boolean
-  allTasksAttentionUnloaded: boolean
+  allTasksAttentionNotice: AttentionNotice | null
   otherProjects?: ReactNode
   agentQuota?: ReactNode
   singleProject: boolean
@@ -520,8 +515,7 @@ function SidebarContent({
   toolsMenu,
   projectGroups,
   allTasksAttentionCount,
-  allTasksAttentionStale,
-  allTasksAttentionUnloaded,
+  allTasksAttentionNotice,
   otherProjects,
   agentQuota,
   singleProject,
@@ -610,7 +604,7 @@ function SidebarContent({
               wearing a second name. */}
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
             <AllTasksLink onNavigate={onNavigate} attentionCount={allTasksAttentionCount} />
-            <AttentionStaleNote stale={allTasksAttentionStale} unloaded={allTasksAttentionUnloaded} />
+            <AttentionStaleNote notice={allTasksAttentionNotice} />
           </div>
           {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
@@ -997,19 +991,22 @@ function MobileTopBar({
  * group: a word beside each header read as part of the branch name and repeated down the list.
  * The current project's count is not covered by it — that one comes from its own live list.
  *
- * @param props.stale - Whether the index's latest refresh failed.
- * @param props.unloaded - Whether it also never answered, so no counts are shown at all.
+ * @param props.notice - Why the counts are incomplete (`lib/workspace-attention.ts`), or null.
  * @returns The status line, or nothing when the counts are current.
  */
-function AttentionStaleNote({ stale, unloaded }: { stale: boolean; unloaded: boolean }) {
-  if (!stale) return null
+const ATTENTION_NOTICE_TEXT: Record<AttentionNotice, string> = {
+  'refresh-failed': 'Other projects’ counts could not be refreshed — they may be out of date.',
+  'not-loaded': 'Other projects’ counts could not be loaded — they are not shown.',
+  'partly-unreadable': 'Some projects’ tasks could not be read — their counts are not shown.',
+}
+
+function AttentionStaleNote({ notice }: { notice: AttentionNotice | null }) {
+  if (!notice) return null
   return (
     <p data-slot="attention-stale" role="status" className="px-2.5 pt-1 text-[11.5px] text-muted-foreground">
-      {/* Two facts, two sentences: with no answer ever, there is no old number to warn about —
-          the badges are empty because nothing could be checked, not because nothing waits. */}
-      {unloaded
-        ? 'Other projects’ counts could not be loaded — they are not shown.'
-        : 'Other projects’ counts could not be refreshed — they may be out of date.'}
+      {/* Different facts, different sentences: an empty badge must never read as "nothing
+          waits" when the truth is "could not check". */}
+      {ATTENTION_NOTICE_TEXT[notice]}
     </p>
   )
 }
