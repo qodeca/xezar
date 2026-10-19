@@ -394,8 +394,12 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
     });
 
     it('Windows: a folder cmd.exe would re-read is refused for its folder, not for the account', async () => {
-      // A POSIX temp folder is no drive path, so cmd.exe could not be handed it safely.
+      // `%` expands inside cmd.exe, so this folder is unsafe on every runner – a POSIX temp folder
+      // is no drive path either, but a Windows one is, so the test cannot lean on the temp folder.
       const run = makeRun('claude', 'sess-1');
+      const unsafe = join(repoRoot, 'wt-100%');
+      mkdirSync(unsafe);
+      store.updateRun(run.id, { worktreePath: unsafe });
       const res = await withPlatform('win32', () => openInCli(run.id));
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
