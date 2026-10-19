@@ -233,6 +233,8 @@ it('T-2/T-0 keyboard opens, traps and returns palette focus on phone and desktop
     // so the desktop trigger is an ordinary sidebar link focus must come back to (this fixture is
     // multi-project, so the All tasks link rather than a flat nav row).
     const trigger=width===375?menu:'aside a[href="/tasks"]'
+    // The project groups render after the project list loads, so the link may not exist yet.
+    wait(trigger)
     read(`(() => {document.querySelector('${trigger}').focus();return true})()`)
     browser.press('Control+k');wait('[data-slot="dialog-content"]:has([cmdk-root])')
     expect(read(`document.activeElement?.hasAttribute('cmdk-input')`)).toBe(true)
