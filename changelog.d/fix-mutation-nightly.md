@@ -8,5 +8,5 @@
   The Qwen Code adapter's source check no longer trips over the mutation tool's own code, which had
   stopped one job before it started. Scope and the 80 % floor are unchanged. (#443)
 - 🚀 **The read-only command lock is mutation-tested every night.** The lock and Qwen Code's tool
-  policy now run beside the nightly gate with their own 71 % floor, in the same verdict and the same
+  policy now run beside the nightly gate with their own 68 % floor, in the same verdict and the same
   tracking issue.

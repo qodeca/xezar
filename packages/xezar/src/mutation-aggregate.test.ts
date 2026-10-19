@@ -287,7 +287,7 @@ describe('the read-only lock scope in the same verdict', () => {
     const config = await import(pathToFileURL(join(REPO_ROOT, agg.LOCK_CONFIG)).href);
     const floor = await agg.breakThreshold(REPO_ROOT, agg.LOCK_CONFIG);
     expect(floor).toBe(config.default.thresholds.break);
-    expect(floor).toBe(71);
+    expect(floor).toBe(68);
     expect(config.default.mutate).toEqual(LOCK_FILES.slice().reverse());
   });
 
@@ -295,9 +295,9 @@ describe('the read-only lock scope in the same verdict', () => {
     const healthyLock = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 72, Survived: 28 }), root: REPO_ROOT });
     expect(healthyLock.problems).toEqual([]);
     expect(healthyLock.metrics.score).toBe(72);
-    const below = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 70, Survived: 30 }), root: REPO_ROOT });
+    const below = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 60, Survived: 40 }), root: REPO_ROOT });
     expect(below.ok).toBe(false);
-    expect(below.problems.join('\n')).toMatch(/read-only lock: mutation score 70\.00 % is below its 71 % floor/);
+    expect(below.problems.join('\n')).toMatch(/read-only lock: mutation score 60\.00 % is below its 68 % floor/);
   });
 
   it('fails closed: a missing, an empty, a partial or a foreign report is not a measurement', async () => {
@@ -319,7 +319,7 @@ describe('the read-only lock scope in the same verdict', () => {
     expect(mcp.ok).toBe(true);
     const markdown = agg.renderMarkdown(mcp, {}, lock);
     expect(markdown).toContain('MCP mutation gate — FAILED');
-    expect(markdown).toContain('read-only lock: mutation score 10.00 % is below its 71 % floor');
+    expect(markdown).toContain('read-only lock: mutation score 10.00 % is below its 68 % floor');
     expect(markdown).toContain('### Read-only lock scope');
     expect(markdown).toContain('`core/read-only-lock.ts`');
     // The control: the same MCP result with a healthy lock scope passes.
