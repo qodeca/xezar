@@ -287,7 +287,10 @@ export function AppShell({
             there is no second column to trade width with and no pointer to drag a border. */}
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
-        <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
+        {/* `minmax(0,1fr)`, not the implicit `auto` track: an auto track grows to its widest child's
+            min-content, and the phone top bar's project line is one unbreakable string – a long
+            project name pushed every page past a 375 px viewport instead of truncating. */}
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_1fr_auto] overflow-hidden">
           <MobileTopBar
             // Global settings shares the Settings nav item, so the bare label could not tell the
             // two areas apart on a phone — where the desktop's scope chip is hidden.

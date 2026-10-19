@@ -598,6 +598,15 @@ describe('AppShell', () => {
       expect(slotText('mobile-title')).toBe('Git')
     })
 
+    it('keeps a long project name from widening the page column on a phone', () => {
+      // jsdom has no layout, so this pins the contract the browser suites measure (B3/B4 at
+      // 375 px): the column's one track is `minmax(0,1fr)`, so the top bar's unbreakable
+      // project line truncates instead of growing the track past the viewport.
+      renderShell('/p/shop/skills', { projectName: 'A long registered project name for settings geometry' })
+      const column = document.querySelector('[data-slot="main"]')?.parentElement
+      expect(column?.className.split(/\s+/)).toContain('grid-cols-[minmax(0,1fr)]')
+    })
+
   })
 
   /** The resizable desktop column (#788, option C). jsdom has no layout engine, so these assert

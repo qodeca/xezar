@@ -273,10 +273,12 @@ describe('cockpit app shell', () => {
     expect(box.withBadge).toBe(box.bare)
     browser.screenshot(`${artifactsDir}/shell-dev-badge.png`)
 
-    // Computed styles only a real stylesheet can answer (design review B-1, NB-1). The letter is
-    // near-black under every accent and theme: `--primary-foreground` would pass under lime and
-    // turn white under violet. And the badge keeps one size in every density, because the tile
-    // it sits on never scales. Every attribute is restored so later specs see the boot's look.
+    // Computed styles only a real stylesheet can answer (design review B-1, NB-1). The letter takes
+    // `--danger-ink`, which follows the theme and never the accent: near-black on the dark red,
+    // white on the darker light-theme red (G-23), the same under lime and violet –
+    // `--primary-foreground` would change with the accent. And the badge keeps one size in every
+    // density, because the tile it sits on never scales. Every attribute is restored so later
+    // specs see the boot's look.
     const looks = browser.evaluate(`(() => {
       const html = document.documentElement
       const saved = { accent: html.getAttribute('data-accent'), density: html.getAttribute('data-density'), light: html.classList.contains('light') }
@@ -303,7 +305,8 @@ describe('cockpit app shell', () => {
     })()`) as { ink: Record<string, string>; size: Record<string, number[]> }
 
     const nearBlack = 'rgb(13, 13, 13)'
-    expect(looks.ink).toEqual({ 'lime-dark': nearBlack, 'lime-light': nearBlack, 'violet-dark': nearBlack, 'violet-light': nearBlack })
+    const white = 'rgb(255, 255, 255)'
+    expect(looks.ink).toEqual({ 'lime-dark': nearBlack, 'lime-light': white, 'violet-dark': nearBlack, 'violet-light': white })
     expect(looks.size).toEqual({ roomy: [14, 14], comfortable: [14, 14], compact: [14, 14], ultra: [14, 14] })
   })
 
