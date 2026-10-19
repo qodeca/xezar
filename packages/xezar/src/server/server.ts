@@ -274,6 +274,7 @@ import {
 import {
   ASSET_CACHE_CONTROL,
   BUILD_HINT_HTML,
+  HTML_FRAME_HEADERS,
   assetContentType,
   isSafeAssetFilename,
   resolveGetRequest,
@@ -1579,11 +1580,11 @@ export function createApp(deps: ServerDeps) {
         console.log('xezar: the cockpit files (web/dist) are missing — reinstall xezar, or build the web interface when running from source');
       }
       return new Response(BUILD_HINT_HTML, {
-        headers: { 'content-type': HTML_TYPE },
+        headers: { 'content-type': HTML_TYPE, ...HTML_FRAME_HEADERS },
       });
     }
     return new Response(readFileSync(distIndex), {
-      headers: { 'content-type': HTML_TYPE },
+      headers: { 'content-type': HTML_TYPE, ...HTML_FRAME_HEADERS },
     });
   };
 
