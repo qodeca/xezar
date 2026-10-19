@@ -163,6 +163,12 @@ describe('the offer row', () => {
     const link = screen.getByRole('link', { name: /^Open the upgrade guide\s*\(opens in a new tab\)$/ })
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    // At 375 px the link's content is wider than half the row: on phones it must take the whole
+    // row (Later wraps below), never share it as `flex-1` with a nowrap label that overflows.
+    expect(link.className).toContain('max-md:basis-full')
+    expect(link.className).toContain('max-md:w-full')
+    expect(link.className).not.toContain('max-md:flex-1')
+    expect(link.parentElement?.className).toContain('max-md:flex-wrap')
     expect(link.getAttribute('href')).toBe(guide)
     expect(link.getAttribute('rel')).toBe('noreferrer')
     expect(screen.queryByRole('button', { name: 'Re-check' })).toBeNull()

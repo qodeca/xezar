@@ -88,11 +88,13 @@ export function OnboardingOfferRow({
         ) : null}
       </span>
       {/* Both actions keep full width at 44 px on a phone; neither ever disappears (§ 12). */}
-      <span className="flex shrink-0 items-center gap-row max-md:w-full md:ml-auto">
+      {/* `flex-wrap` on phones: the upgrade-guide link is wider than half a 375 px row, so it takes
+          the whole row and Later wraps below it, both still 44 px tall (QA of the kit-pin PR). */}
+      <span className="flex shrink-0 items-center gap-row max-md:w-full max-md:flex-wrap md:ml-auto">
         {copy.upgradeGuideUrl ? (
           // An older setup collection: a re-check before the upgrade changes nothing, so the
           // primary action opens the upgrade guide. Re-check stays on Settings for afterwards.
-          <Button asChild variant="outline" className="max-md:h-11 max-md:flex-1">
+          <Button asChild variant="outline" className="max-md:h-11 max-md:w-full max-md:basis-full">
             <a
               href={copy.upgradeGuideUrl}
               target="_blank"
