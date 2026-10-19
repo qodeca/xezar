@@ -120,6 +120,7 @@ export function TasksOverview({
   onToggleColumn = () => undefined,
   columnsPending = false,
   loadError,
+  onRetry,
 }: {
   /** Undefined while `/api/runs` has not answered: the header renders and the body says it is
    *  loading (or, with `loadError`, that it could not) — an empty state before we know there are
@@ -128,6 +129,8 @@ export function TasksOverview({
   /** The server's message when the first load of the runs list failed (patterns.md § 6). Ignored
    *  once `runs` holds data: a failed background refetch keeps the last good list on screen. */
   loadError?: string
+  /** Refetches the runs list from the load-error state. */
+  onRetry?: () => void
   view: ListView
   onViewChange: (view: ListView) => void
   onArchiveFinished: () => void
@@ -250,13 +253,20 @@ export function TasksOverview({
               tone="danger"
               title="Could not load tasks"
               subtitle={loadError}
+              actions={
+                onRetry ? (
+                  <Button type="button" variant="outline" onClick={onRetry}>
+                    Retry
+                  </Button>
+                ) : undefined
+              }
             />
           ) : (
             <CenteredState
               heading="h2"
               icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
               title="Loading tasks…"
-              subtitle="Fetching this project's tasks."
+              subtitle="Fetching this project’s tasks."
             />
           )
         ) : visible.length === 0 ? (
@@ -1237,6 +1247,7 @@ export function TasksOverviewRoute() {
         onToggleColumn={taskTableColumns.toggleColumn}
         columnsPending={taskTableColumns.isPending}
         loadError={runs.isError ? runs.error.message : undefined}
+        onRetry={() => void runs.refetch()}
       />
     </ReferenceStatusProvider>
   )

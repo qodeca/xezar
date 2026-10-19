@@ -168,6 +168,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
 
       <DiscardEditsDialog
         open={pendingLeave !== null}
+        leaving
         fileLabel={selected?.label}
         onKeep={() => setPendingLeave(null)}
         onDiscard={() => {
@@ -189,6 +190,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
  * page. Focus returns to whatever opened it.
  *
  * @param props.open - Whether the confirm is showing.
+ * @param props.leaving - Whether discarding also leaves the file (changes the action's words).
  * @param props.fileLabel - The file whose edits are at stake, named in the title.
  * @param props.onKeep - Dismiss and keep editing.
  * @param props.onDiscard - Throw the edits away and carry on.
@@ -196,11 +198,15 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
  */
 export function DiscardEditsDialog({
   open,
+  leaving = false,
   fileLabel,
   onKeep,
   onDiscard,
 }: {
   open: boolean
+  /** The discard also leaves the file (a link, Back, the palette, another file or agent), so the
+   *  action says so: "Discard and leave". Reloading from disk stays on the file: "Discard". */
+  leaving?: boolean
   fileLabel: string | undefined
   onKeep: () => void
   onDiscard: () => void
@@ -211,7 +217,7 @@ export function DiscardEditsDialog({
       <AlertDialogContent onCloseAutoFocus={returnFocus}>
         <AlertDialogHeader className="min-w-0">
           <AlertDialogTitle className="break-words">
-            Discard your edits to {fileLabel ?? 'this file'}?
+            {fileLabel === undefined ? 'Discard your edits to this file?' : `Discard your edits to “${fileLabel}”?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             Your unsaved changes to this file are lost. There is no undo.
@@ -220,7 +226,7 @@ export function DiscardEditsDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
           <AlertDialogAction className={buttonVariants({ variant: 'danger' })} onClick={onDiscard}>
-            Discard
+            {leaving ? 'Discard and leave' : 'Discard'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

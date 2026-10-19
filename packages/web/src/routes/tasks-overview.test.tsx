@@ -960,7 +960,7 @@ describe('TasksOverview — empty and loading states', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Tasks')
     // patterns.md § 6 "Loading a page": a CenteredState, not a blank body.
     expect(screen.getByRole('heading', { level: 2, name: 'Loading tasks…' })).not.toBeNull()
-    expect(screen.getByText("Fetching this project's tasks.")).not.toBeNull()
+    expect(screen.getByText('Fetching this project’s tasks.')).not.toBeNull()
   })
 
   it('shows a danger load error with the server message when the first load failed', () => {
@@ -969,6 +969,15 @@ describe('TasksOverview — empty and loading states', () => {
     expect(title.closest('[data-slot="centered-state"]')?.getAttribute('data-tone')).toBe('danger')
     expect(screen.getByText('the xezar server is not reachable')).not.toBeNull()
     expect(screen.queryByText('Loading tasks…')).toBeNull()
+  })
+
+  it('the load error offers an outline Retry that refetches', () => {
+    const onRetry = vi.fn()
+    renderOverview({ runs: undefined, loadError: 'boom', onRetry })
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    expect(retry.getAttribute('data-variant')).toBe('outline')
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the last good list when only a background refetch failed', () => {

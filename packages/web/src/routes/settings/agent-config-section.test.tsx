@@ -286,7 +286,9 @@ describe('AgentConfigSection — unsaved edits are never discarded silently', ()
     fireEvent.click(await screen.findByRole('button', { name: 'Reload from disk' }))
 
     let dialog = await screen.findByRole('alertdialog')
-    expect(within(dialog).getByText('Discard your edits to .claude/settings.json?')).toBeTruthy()
+    expect(within(dialog).getByText('Discard your edits to “.claude/settings.json”?')).toBeTruthy()
+    // Reloading stays on the file, so the action is a plain Discard.
+    expect(within(dialog).queryByRole('button', { name: 'Discard and leave' })).toBeNull()
     expect(within(dialog).getByText(/There is no undo\./)).toBeTruthy()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
@@ -355,7 +357,7 @@ describe('AgentConfigSection — unsaved edits are never discarded silently', ()
 
     fireEvent.click(screen.getByText('.claude/settings.local.json'))
     dialog = await screen.findByRole('alertdialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard and leave' }))
     expect(await screen.findByLabelText('.claude/settings.local.json contents')).toBeTruthy()
   })
 
@@ -367,7 +369,7 @@ describe('AgentConfigSection — unsaved edits are never discarded silently', ()
     fireEvent.click(screen.getByRole('link', { name: 'Appearance' }))
     const dialog = await screen.findByRole('alertdialog')
     expect(screen.queryByText('Appearance page')).toBeNull()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard and leave' }))
     expect(await screen.findByText('Appearance page')).toBeTruthy()
   })
 

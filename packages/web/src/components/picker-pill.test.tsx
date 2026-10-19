@@ -63,14 +63,14 @@ describe('PickerPill disabled reason (visible, not a title only)', () => {
     onPick: () => {},
     options: [{ value: '1', label: '×1' }],
     disabledHint: 'Parallel variants need a git repository — each variant runs in its own worktree.',
-    disabledNote: 'Needs a git repository',
+    disabledNote: 'Variants need a git repository',
   }
 
   it('a disabled pill shows its short reason beside it and is described by it', () => {
     render(<PickerPill {...props} disabled />)
     const pill = screen.getByRole('button', { name: /^Parallel variants:/u })
     const note = document.querySelector('[data-slot="variants-pill-note"]') as HTMLElement
-    expect(note.textContent).toBe('Needs a git repository')
+    expect(note.textContent).toBe('Variants need a git repository')
     expect(pill.getAttribute('aria-describedby')).toBe(note.id)
   })
 

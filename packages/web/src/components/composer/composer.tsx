@@ -258,12 +258,14 @@ export function Composer({
 
   const closeMenu = useCallback(() => setTrigger(null), [])
 
-  // ---- combobox semantics (WAI-ARIA APG "combobox with listbox popup") --------------------------
+  // ---- suggestion-list semantics (ARIA 1.2 autocomplete on a textbox) ------------------------
   //
   // Focus never leaves the textarea while the menu is open, so a screen reader only learns about
-  // the menu through the textarea: `role="combobox"`, `aria-expanded`, `aria-controls` pointing at
-  // the listbox, and `aria-activedescendant` naming the highlighted option, which makes ↑/↓ speak
-  // each suggestion. cmdk owns the listbox and option ids (it overwrites any id passed in), so the
+  // the menu through the textarea. It stays a multi-line TEXTBOX – `role="combobox"` would tell
+  // readers it is a single-line picker – and carries the attributes ARIA 1.2 allows a textbox:
+  // `aria-autocomplete="list"`, `aria-controls` pointing at the listbox, and
+  // `aria-activedescendant` naming the highlighted option, which makes ↑/↓ speak each
+  // suggestion. cmdk owns the listbox and option ids (it overwrites any id passed in), so the
   // two ids are mirrored from the DOM rather than reinvented.
   // A callback ref held in state: the listbox lives in a portal that mounts after the textarea's
   // commit, so an effect keyed on `menuOpen` would still see no element.
@@ -559,11 +561,7 @@ export function Composer({
             value={text}
             disabled={disabled}
             aria-label={ariaLabel}
-            role="combobox"
-            aria-multiline="true"
             aria-autocomplete="list"
-            aria-haspopup="listbox"
-            aria-expanded={menuOpen}
             aria-controls={menuOpen ? listbox.id : undefined}
             aria-activedescendant={menuOpen ? listbox.active : undefined}
             placeholder={disabled ? disabledReason : placeholder}

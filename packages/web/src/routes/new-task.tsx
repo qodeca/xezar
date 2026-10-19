@@ -658,7 +658,7 @@ export function NewTaskRoute() {
                     ? 'Model selection is locked to native coding-agent settings.'
                     : undefined
                 }
-                disabledNote={modelsLocked ? 'Locked to native settings' : undefined}
+                disabledNote={modelsLocked ? 'Model set by the agent’s own settings' : undefined}
                 onPick={(next) => update({ model: next })}
                 options={models.map((m) => ({ value: m.id, label: m.label, desc: m.desc }))}
                 status={modelCatalogStatus(displayRunner, catalog.data, catalog.isError)}
@@ -672,7 +672,7 @@ export function NewTaskRoute() {
                 disabled={!hasGit}
                 hint="How many times to run this task in parallel — each variant gets its own worktree, and you pick the diff you keep. ×1 runs it once."
                 disabledHint="Parallel variants need a git repository — each variant runs in its own worktree."
-                disabledNote="Needs a git repository"
+                disabledNote="Variants need a git repository"
                 options={[
                   { value: '1', label: '×1', desc: 'One run' },
                   { value: '2', label: '×2 variants', desc: 'Two competing runs — pick the diff you keep' },
@@ -684,7 +684,7 @@ export function NewTaskRoute() {
                   on={worktreeOn}
                   disabled={worktreeForced}
                   disabledReason="Parallel variants always use isolated worktrees"
-                  disabledNote="Always isolated with variants"
+                  disabledNote="Worktree always on with variants"
                   onChange={(on) => update({ worktree: on })}
                 />
               ) : null}
@@ -857,7 +857,7 @@ function AutonomousToggle({
         )}
         Autonomous
       </button>
-      {disabled ? <ToggleNote id={noteId}>Unavailable with Plan first</ToggleNote> : null}
+      {disabled ? <ToggleNote id={noteId}>Autonomous unavailable with Plan first</ToggleNote> : null}
     </span>
   )
 }

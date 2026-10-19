@@ -126,7 +126,7 @@ describe('Q05 / G-21 the composer', () => {
         <Composer onSubmit={async () => ({})} />
       </QueryClientProvider>,
     )
-    const field = screen.getByRole('combobox', { name: 'Reply to the agent' })
+    const field = screen.getByRole('textbox', { name: 'Reply to the agent' })
     expect(classes(field)).toEqual(expect.arrayContaining(['min-h-tap', 'md:min-h-13.5']))
     expect(screen.getByRole('button', { name: 'Attach files' }).querySelector('svg')?.getAttribute('class')).toContain('size-4')
   })
@@ -139,7 +139,7 @@ describe('Q05 / G-21 the composer', () => {
       </QueryClientProvider>,
     )
     const file = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' })
-    fireEvent.paste(screen.getByRole('combobox', { name: 'Reply to the agent' }), {
+    fireEvent.paste(screen.getByRole('textbox', { name: 'Reply to the agent' }), {
       clipboardData: { items: [{ kind: 'file', type: file.type, getAsFile: () => file }] },
     })
     const remove = await screen.findByRole('button', { name: 'Remove shot.png' })
