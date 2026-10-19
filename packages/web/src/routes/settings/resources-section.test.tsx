@@ -521,11 +521,12 @@ describe('Global settings → Resources', () => {
       expect(field.readOnly).toBe(true)
       expect(field.value).toBe('Nothing extra')
       const reason = document.querySelector('[data-slot="resources-env-passthrough-locked-reason"]')!
-      expect(reason.textContent).toBe('Set on the machine that runs xezar – remote changes are turned off.')
+      expect(reason.textContent).toBe('Changed on the machine that runs xezar — this cockpit runs in hosted mode.')
       expect(field.getAttribute('aria-describedby')).toBe(reason.id)
       expect(document.querySelector('[data-slot="resources-env-passthrough"]')).toBeNull()
       expect(document.querySelector('[data-action="resources-save-env-passthrough"]')).toBeNull()
       expect(document.querySelector('[data-action="resources-clear-env-passthrough"]')).toBeNull()
+      expect(document.body.textContent).not.toContain('Name any others here')
       // The settings that stay writable remotely are still offered.
       expect(parallelSelect()).not.toBeNull()
     })
@@ -535,6 +536,7 @@ describe('Global settings → Resources', () => {
       renderResources()
       await waitFor(() => expect(document.querySelector('[data-slot="resources-env-passthrough"]')).not.toBeNull())
       expect(document.querySelector('[data-slot="resources-env-passthrough-locked"]')).toBeNull()
+      expect(document.body.textContent).toContain('Name any others here, comma-separated.')
     })
   })
 })

@@ -320,11 +320,20 @@ describe('Global settings → Terminal', () => {
       expect(field.readOnly).toBe(true)
       expect(field.value).toBe('One cockpit per project')
       const reason = document.querySelector('[data-slot="terminal-instance-locked-reason"]')!
-      expect(reason.textContent).toBe('Set on the machine that runs xezar – remote changes are turned off.')
+      expect(reason.textContent).toBe('Changed on the machine that runs xezar — this cockpit runs in hosted mode.')
       expect(field.getAttribute('aria-describedby')).toBe(reason.id)
       expect(control()).toBeNull()
       expect(select('terminal-output')).not.toBeNull()
       expect(select('terminal-log-level')).not.toBeNull()
+    })
+
+    it('reads plain "Not set" when nothing is stored', async () => {
+      serve()
+      renderTerminal({ hosted: true })
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="terminal-instance-locked-value"]')).not.toBeNull(),
+      )
+      expect(document.querySelector<HTMLInputElement>('[data-slot="terminal-instance-locked-value"]')!.value).toBe('Not set')
     })
 
     it('keeps the instance select in local mode', async () => {

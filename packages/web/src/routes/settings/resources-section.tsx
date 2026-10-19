@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toaster'
 import { inSingleProjectRoot } from '@/lib/project-mode'
 import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
-import { HostedLockedValue, useHostedSettingsLocked } from './hosted-locked'
+import { HostedLockedValue, useHostedSettingsLock } from './hosted-locked'
 
 /**
  * Global settings → Resources: how hard the MACHINE works. `maxParallel` caps concurrent tasks
@@ -185,7 +185,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       },
     )
 
-  const locked = useHostedSettingsLocked()
+  const lock = useHostedSettingsLock()
   // F — the agent env passthrough list, previously `XEZ_ENV_PASSTHROUGH=A,B,C` at boot only.
   const storedPassthrough = config.agentEnvPassthrough
   const [passthrough, setPassthrough] = useState((storedPassthrough ?? []).join(', '))
@@ -636,9 +636,11 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Extra variables agents receive"
-        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own. Name any others here, comma-separated."
+        hint={`Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own.${
+          lock === 'local' ? ' Name any others here, comma-separated.' : ''
+        }`}
       >
-        {locked ? (
+        {lock !== 'local' ? (
           // Hosted mode: the server refuses this key, so the names are shown, not offered for editing.
           <HostedLockedValue
             label="Extra environment variable names for agents"
@@ -649,6 +651,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             }
             slot="resources-env-passthrough-locked"
             mono={config.effectiveAgentEnvPassthrough.length > 0}
+            pending={lock === 'pending'}
           />
         ) : (
           <>

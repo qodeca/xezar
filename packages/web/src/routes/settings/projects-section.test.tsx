@@ -162,12 +162,14 @@ function serve(answers: Answers = {}) {
 }
 
 /** Seeds the step-3.2 route gates so the (unscoped) global settings shell renders immediately. */
-function gateSeededClient(hosted = false) {
+function gateSeededClient(hosted: boolean | 'unknown' = false) {
   const client = createQueryClient()
-  client.setQueryData(
-    queryKeys.health,
-    hosted ? { bootProject: 'xezar', capabilities: { localHandoff: false } } : { bootProject: 'xezar' },
-  )
+  if (hosted !== 'unknown') {
+    client.setQueryData(
+      queryKeys.health,
+      hosted ? { bootProject: 'xezar', capabilities: { localHandoff: false } } : { bootProject: 'xezar' },
+    )
+  }
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: PROJECTS,
     bootProject: 'xezar',
@@ -176,7 +178,7 @@ function gateSeededClient(hosted = false) {
   return client
 }
 
-function renderProjects({ hosted = false }: { hosted?: boolean } = {}) {
+function renderProjects({ hosted = false }: { hosted?: boolean | 'unknown' } = {}) {
   const client = gateSeededClient(hosted)
   render(
     <QueryClientProvider client={client}>
@@ -677,11 +679,22 @@ describe('Global settings → Projects', () => {
         expect(field.value).toBe(value)
         expect(screen.getByLabelText(label)).toBe(field)
         const reason = document.querySelector(`[data-slot="projects-${slot}-root-locked-reason"]`)!
-        expect(reason.textContent).toBe('Set on the machine that runs xezar – remote changes are turned off.')
+        expect(reason.textContent).toBe('Changed on the machine that runs xezar — this cockpit runs in hosted mode.')
         expect(field.getAttribute('aria-describedby')).toBe(reason.id)
         expect(document.querySelector(`[data-action="projects-save-${slot}-root"]`)).toBeNull()
         expect(document.querySelector(`[data-slot="projects-${slot}-root"]`)).toBeNull()
       }
+    })
+
+    it('offers no editable folder before health answers, and claims no reason yet', async () => {
+      serve()
+      renderProjects({ hosted: 'unknown' })
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="projects-browse-root-locked-value"]')).not.toBeNull(),
+      )
+      expect(browseInput()).toBeNull()
+      expect(rootInput()).toBeNull()
+      expect(document.querySelector('[data-slot="projects-browse-root-locked-reason"]')).toBeNull()
     })
 
     it('keeps the editable folders in local mode', async () => {
