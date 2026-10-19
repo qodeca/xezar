@@ -799,7 +799,7 @@ function WorktreeToggle({
         className={cn(chipClass, on && 'border-primary/60 text-foreground')}
       >
         {on ? (
-          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary light:text-foreground" />
         ) : (
           <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
         )}
@@ -851,7 +851,7 @@ function AutonomousToggle({
         className={cn(chipClass, on && !disabled && 'border-primary/60 text-foreground')}
       >
         {on ? (
-          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary light:text-foreground" />
         ) : (
           <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
         )}
@@ -886,7 +886,7 @@ function GenerateFollowupsToggle({
       className={cn(chipClass, on && 'border-primary/60 text-foreground')}
     >
       {on ? (
-        <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+        <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary light:text-foreground" />
       ) : (
         <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
       )}
@@ -1013,7 +1013,7 @@ function ProjectPill({
                   </span>
                 ) : null}
                 {project.id === projectId ? (
-                  <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+                  <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary light:text-foreground" />
                 ) : null}
               </CommandItem>
             ))}
@@ -1173,7 +1173,7 @@ function SourcePill({
         >
           <EyeIcon aria-hidden="true" className="size-3.5" />
         </button>
-        {selected ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" /> : null}
+        {selected ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary light:text-foreground" /> : null}
       </CommandItem>
     )
   }
@@ -1294,7 +1294,7 @@ function SourcePill({
                       {quickTask?.description ?? 'One agent run on your task — no ceremony.'}
                     </span>
                     {source === null ? (
-                      <CheckIcon aria-hidden="true" className="ml-auto size-3.5 shrink-0 text-primary" />
+                      <CheckIcon aria-hidden="true" className="ml-auto size-3.5 shrink-0 text-primary light:text-foreground" />
                     ) : null}
                   </CommandItem>
                 </CommandGroup>
@@ -1332,7 +1332,7 @@ function SourcePill({
                           </span>
                         ) : null}
                         {selected ? (
-                          <CheckIcon aria-hidden="true" className="ml-auto size-3.5 shrink-0 text-primary" />
+                          <CheckIcon aria-hidden="true" className="ml-auto size-3.5 shrink-0 text-primary light:text-foreground" />
                         ) : null}
                       </CommandItem>
                     )

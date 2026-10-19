@@ -120,4 +120,5 @@ new duration without a reason in a comment.
 - Overlay scrims (`bg-black/50`, `bg-black/80`) are theme-agnostic by design and allowed only in `ui/` and
   `zoomable-image.tsx`.
 - `color-scheme` follows the theme so native controls and scrollbars match.
+- One light-only variant exists, `light:` (`@custom-variant light` in `styles/index.css`), and it has one use: `light:text-foreground` beside `text-primary` wherever the accent would be text or a state mark on white (G-23). It is CSS, not a theme read. Nothing else may use it; a new accent-ink site takes it or is listed as decorative in `src/light-accent-ink.test.ts`.
 - A component that must know the resolved theme (Shiki, the theme toggle icon) reads `useTheme()`.

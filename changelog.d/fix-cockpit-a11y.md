@@ -38,3 +38,6 @@
 - 🐛 **Links in rendered Markdown are readable in the light theme.** Transcript, GitHub and skill
   links were pale lime on white (about 1.3:1); they now use the text colour with an underline. The
   dark theme is unchanged.
+- 🐛 **No more pale lime text in the light theme.** Selected-item check marks, the Workflows drop
+  hint and the MCP "completed" mark now use the text colour on white, as links already do; the dark
+  theme keeps the lime.

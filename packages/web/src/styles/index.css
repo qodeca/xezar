@@ -29,6 +29,10 @@
  * Reach for this on any control that is hidden until hover. Pair it with `focus-visible:`, which
  * is the keyboard's answer to the same problem. */
 @custom-variant no-hover (@media (hover: none));
+/* The light theme, for the few places where the accent as INK fails on white (G-23): the lime is
+ * about 1.3:1 there and the violet accent 3.1:1, so `light:text-foreground` gives a state mark or
+ * a hint the ink token while the dark theme keeps the accent it was designed with. */
+@custom-variant light (&:where(.light, .light *));
 
 /* Streamdown (the thread's markdown renderer) styles itself with Tailwind utility classes that
  * live in node_modules — without this @source Tailwind would purge them and every code block /
