@@ -107,7 +107,7 @@ const MIDDLEWARE: readonly string[] = [
   'ALL /api/v1/*', 'ALL /api/v1/automation-checks/*',
   'ALL /api/v1/automation-log', 'ALL /api/v1/automation-log/*',
   'ALL /api/v1/automations', 'ALL /api/v1/automations/*',
-  'ALL /api/v1/health', 'ALL /api/v1/ui-state',
+  'ALL /api/v1/ui-state',
   'ALL /api/v1/workspace/ui-state',
 ];
 
