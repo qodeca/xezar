@@ -206,7 +206,7 @@ function SkillsCatalog() {
               </span>
             </span>
             <span className="pl-5.5 text-xs text-soft-foreground">
-              One-click skill launch from any GitHub PR or issue.
+              Fill in a skill task from any GitHub PR or issue.
             </span>
           </Link>
         </div>

@@ -1,5 +1,7 @@
 # Decisions – an owner-only decision gate: requirements
 
+> **Status 2026-10-19: not implemented yet.**
+
 > **Status update — 2026-09-15:** Not implemented (`runStatusSchema` has no `decision` state). Design revision
 > 2 supersedes the first draft reviewed below; it applies the U-/G-findings and owner interview. This is a
 > requirement record, not current product behavior.

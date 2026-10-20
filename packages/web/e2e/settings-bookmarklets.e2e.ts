@@ -143,20 +143,12 @@ describe('settings → bookmarklets against the live dry-run server', () => {
     )
   })
 
-  it('one-click launch arms the per-skill launchers but never the generic one', () => {
+  it('every launcher only fills the form — there is no one-click option to arm auto=1', () => {
     const skillLink = `[data-slot="bm-list"] [data-slot="bm-row"] [data-slot="bm-link"]`
     waitForGeneratedHref(skillLink)
     expect(hrefOf(skillLink)).toContain('auto=0')
-
-    browser.click('[data-slot="bm-auto"]')
-    browser.waitForFunction(
-      `decodeURIComponent(document.querySelector('${skillLink}').getAttribute('href')).includes('auto=1')`,
-    )
-    expect(hrefOf(skillLink)).toContain('auto=1')
-
-    // The generic launcher forces auto off no matter what the checkbox says: it has no skill
-    // to run, so auto-submitting it would arm nothing.
     expect(hrefOf(linkIn('bm-generic'))).toContain('auto=0')
+    expect(browser.count('[data-slot="bm-auto"]')).toBe(0)
   })
 
   it('the legacy /settings/skills?skill=__bm entry point still opens the same generator', () => {

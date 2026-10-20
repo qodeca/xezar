@@ -52,7 +52,7 @@ The task creates at most one new issue. It does not edit, comment on, relabel, r
 2. Drag **xezar (<repo>): this PR/issue** or a skill button to your browser's bookmarks bar. Use **Copy** to copy its bookmarklet URL.
 3. Keep this cockpit running. On a GitHub issue or PR page, click the saved bookmark.
 
-The generic launcher prefills the composer. Skill launchers can use **One-click launch (auto-submit)**; a valid launch key is required for auto-submit, and an invalid key only prefills the composer. Re-drag the buttons after changing that option. A bookmark points to the cockpit and project that generated it, so create it from the project you intend to use.
+Every launcher fills in the task form, and a short notice says the form was filled. Review the form and press **Start** – a bookmark never starts a task by itself. Bookmarks saved with the old **One-click launch (auto-submit)** option still work the same way: they fill the form and wait for **Start**. A bookmark points to the cockpit and project that generated it, so create it from the project you intend to use.
 
 ## To enable and test an automation
 

@@ -1,5 +1,7 @@
 # Built-in project leader and standard process kit — requirements draft
 
+> **Status 2026-10-19: not implemented yet.**
+
 > **Status update — 2026-09-15:** The built-in conversation and distributed kit remain unimplemented. The
 > shipped MCP dependency covers single ownership (L-F01), operation keys and stale writes (L-F34), event
 > delivery (L-F08/L-F25) and a fixed base role instruction (part of L-F33; no per-project customization). Its
