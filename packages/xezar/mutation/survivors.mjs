@@ -50,7 +50,7 @@ import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 import { normaliseFileKey, shardArtifact } from './aggregate.mjs'
-import { DEFAULT_SHARDS, mutationShardPlan, repoRoot } from './shards.mjs'
+import { mutationShardPlan, repoRoot } from './shards.mjs'
 
 /** The committed starting list. */
 export const BASELINE = 'docs/testing/mcp-mutation-survivors.json'
@@ -267,7 +267,7 @@ export function pickPreviousRun(answer, runId, branches = ['main']) {
  * Read every shard's report and collect its survivors.
  * @param {{ readReport: (shard: number) => unknown, shards?: number, root?: string }} options
  */
-export async function collectSurvivors({ readReport, shards = DEFAULT_SHARDS, root = repoRoot }) {
+export async function collectSurvivors({ readReport, shards = undefined, root = repoRoot }) {
   const plan = await mutationShardPlan(shards, root)
   /** @type {Survivor[]} */
   const survivors = []
@@ -298,7 +298,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const all = (name) => args.flatMap((value, at) => (args[at - 1] === name ? [value] : []))
   const readJson = (/** @type {string} */ path) => JSON.parse(readFileSync(resolve(repoRoot, path), 'utf8'))
   const reportsDir = arg('--reports') ?? '.local/mutation/shards'
-  const shards = Number(arg('--shards') ?? DEFAULT_SHARDS)
+  const shards = arg('--shards') === undefined ? undefined : Number(arg('--shards'))
   const readReport = (/** @type {number} */ shard) => readJson(join(reportsDir, shardArtifact(shard), 'report.json'))
 
   if (command === 'group') {

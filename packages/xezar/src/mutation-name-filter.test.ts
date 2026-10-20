@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import mutationConfig from '../vitest.mutation.config.ts';
+import { STRYKER_HEADER } from './mcp/adapters/source-guard.testkit.ts';
 
 // The MCP mutation gate (`npm run test:mutation:mcp`, #333) is run by no pull request and by no
 // per-PR CI job: since #377 it runs only nightly against `main` (`.github/workflows/mutation.yml`).
@@ -49,7 +50,17 @@ function walk(dir: string): string[] {
   return out;
 }
 
-type Case = { readonly file: string; readonly describe: string; readonly name: string; readonly full: string; readonly readsSourceText: boolean };
+type Case = {
+  readonly file: string;
+  readonly describe: string;
+  readonly name: string;
+  readonly full: string;
+  readonly readsSourceText: boolean;
+  /** The `it` call's own text, up to the next `describe`/`it`. */
+  readonly body: string;
+  /** Whether the enclosing `describe` reads a file as text. */
+  readonly blockReadsFile: boolean;
+};
 
 /**
  * Every `describe`/`it` name in the mutation run's own test files, with the body each `it` owns.
@@ -83,6 +94,8 @@ function casesIn(file: string): Case[] {
       full: current ? `${current} ${name}` : name,
       // The class in one sentence: it reads a file as text and forbids `process.` in what it read.
       readsSourceText: /\.not\.toMatch\(/.test(body) && /process\\\./.test(body) && /readFileSync/.test(block),
+      body,
+      blockReadsFile: /readFileSync/.test(block),
     });
   }
   return cases;
@@ -134,5 +147,58 @@ describe("the MCP mutation run's test-name exclusion (#375)", () => {
       expect(excluded(sibling.full), `wrongly excluded from the mutation run: ${sibling.full}`).toBe(false);
     }
     expect(cases.filter((c) => excluded(c.full)).length, 'the pattern must skip a class, never a suite').toBe(0);
+  });
+});
+
+/**
+ * Every pattern a case forbids in text it read: `.not.toMatch(/…/)` literals, and
+ * `.not.toMatch(NAME)` where the file declares `const NAME = /…/`.
+ */
+function forbiddenPatterns(body: string, fileText: string): RegExp[] {
+  const patterns: RegExp[] = [];
+  for (const [, literal, flags] of body.matchAll(/\.not\.toMatch\(\s*\/((?:\\.|\[(?:\\.|[^\]\n])*\]|[^/\\\n[])+)\/([dgimsuy]*)\s*[,)]/g)) {
+    patterns.push(new RegExp(literal!, flags));
+  }
+  for (const [, name] of body.matchAll(/\.not\.toMatch\(\s*([A-Z_][A-Z0-9_]*)\s*[,)]/g)) {
+    const declared = fileText.match(new RegExp(`const ${name} = \\/((?:\\\\.|\\[(?:\\\\.|[^\\]\\n])*\\]|[^/\\\\\\n[])+)\\/([dgimsuy]*);`));
+    if (declared) patterns.push(new RegExp(declared[1]!, declared[2]));
+  }
+  return patterns;
+}
+
+/** The patterns a raw-text guard forbids that Stryker's own instrumentation header contains. */
+function brokenBySandbox(body: string, fileText: string): string[] {
+  if (/guardedCode\(/.test(body)) return [];
+  return forbiddenPatterns(body, fileText).filter((re) => re.test(STRYKER_HEADER)).map(String);
+}
+
+describe("source guards read Stryker's instrumented copy in the mutation run (#443)", () => {
+  // In the sandbox every mutated file starts with Stryker's header, which reads `g.process.env`. A
+  // test that reads a mutated file as text and forbids a word that header contains fails the dry
+  // run, and the shard holding that file measures nothing — the Qwen Code adapter's guard did that
+  // on every night from the day it landed, and nothing per PR noticed, because its describe is not
+  // one of the `AGENTS.md — …` guards the name pattern above excludes.
+  const fileTexts = new Map(files.map((file) => [relative(PACKAGE_ROOT, file).split('\\').join('/'), readFileSync(file, 'utf8')]));
+  const guards = cases
+    .filter((c) => c.blockReadsFile && !excluded(c.full))
+    .map((c) => ({ c, patterns: forbiddenPatterns(c.body, fileTexts.get(c.file)!) }))
+    .filter(({ patterns }) => patterns.length > 0);
+
+  it('found the guards it judges, and its check bites — the controls that stop an empty pass', () => {
+    // Populated input: real raw-text guards are in scope, through both a literal and a named pattern.
+    const found = guards.map(({ c }) => c.file);
+    expect(found).toEqual(expect.arrayContaining(['src/mcp/tools/execution-control.test.ts', 'src/mcp/adapters/qwen-code.test.ts']));
+    // The check bites: the Qwen Code guard as it was, over the raw text, is refused…
+    const before = "expect(source).not.toMatch(/process\\.env|child_process|spawn\\(/);";
+    expect(brokenBySandbox(before, '')).toEqual(['/process\\.env|child_process|spawn\\(/']);
+    // …through a named pattern too, and stripping the instrumentation first is what lets it pass.
+    const named = 'const FORBIDDEN = /process\\.env/;';
+    expect(brokenBySandbox('expect(source).not.toMatch(FORBIDDEN);', named)).toEqual(['/process\\.env/']);
+    expect(brokenBySandbox('const source = guardedCode(text);\nexpect(source).not.toMatch(FORBIDDEN);', named)).toEqual([]);
+  });
+
+  it("lets no guard in the mutation run forbid a word Stryker's header contains in text it did not strip", () => {
+    const broken = guards.flatMap(({ c }) => brokenBySandbox(c.body, fileTexts.get(c.file)!).map((re) => `${c.file} :: ${c.full} :: ${re}`));
+    expect(broken, 'read the file through guardedCode (mcp/adapters/source-guard.testkit.ts)').toEqual([]);
   });
 });
