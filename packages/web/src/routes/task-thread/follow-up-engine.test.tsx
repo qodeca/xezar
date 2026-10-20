@@ -208,12 +208,12 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     renderAction(makeRun())
 
     // Two backends detected → the runner pill appears; pick codex.
-    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /^Runner:/u }))
     let options = await screen.findAllByRole('menuitemradio')
     fireEvent.click(options.find((o) => o.textContent?.includes('codex')) as HTMLElement)
 
     // The model pill now lists codex's discovered models; pin one once the catalog lands (#794).
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Model' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Model:/u }))
     let discovered: HTMLElement | undefined
     await waitFor(() => {
       discovered = screen.getAllByRole('menuitemradio').find((o) => o.textContent?.includes('gpt-future'))
@@ -236,12 +236,18 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     )
     renderAction(makeRun({ runner: 'claude', model: 'old-run-model' }))
 
-    const model = await screen.findByLabelText('Model')
+    const model = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="follow-up-model-pill"]')
+      if (!el) throw new Error('no model pill yet')
+      return el
+    })
     expect(model.tagName).toBe('SPAN')
+    // The read-only pill still says what it is: "Model: native-sonnet".
+    expect(model.textContent).toMatch(/^Model: /u)
     expect(model.textContent).toContain('native-sonnet')
-    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Model:/u })).toBeNull()
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Runner:/u }))
     const options = await screen.findAllByRole('menuitemradio')
     fireEvent.click(options.find((option) => option.textContent?.includes('Codex')) as HTMLElement)
     await waitFor(() => expect(model.textContent).toContain('gpt-5.6-codex'))
@@ -253,14 +259,14 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
   it('a legacy run (no persisted runner) shows claude — the server continues it on claude, not defaultRunner', async () => {
     serve({ ...HEALTH_MULTI, defaultRunner: 'codex' })
     renderAction(makeRun({ runner: undefined }))
-    const pill = await screen.findByRole('button', { name: 'Runner' })
+    const pill = await screen.findByRole('button', { name: /^Runner:/u })
     expect(pill.textContent).toContain('claude')
   })
 
   it('a model-only pick on a legacy run can only send a claude model — never a codex one', async () => {
     serve({ ...HEALTH_MULTI, defaultRunner: 'codex' })
     renderAction(makeRun({ runner: undefined }))
-    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Model' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /^Model:/u }))
     const options = await screen.findAllByRole('menuitemradio')
     // The menu lists claude presets, so a codex model id cannot even be picked.
     expect(options.some((o) => o.textContent?.includes('gpt-5.1-codex'))).toBe(false)
@@ -273,7 +279,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
   it("a legacy run's pinned model stays the pill default — keyed under claude, not defaultRunner", async () => {
     serve({ ...HEALTH_MULTI, defaultRunner: 'codex' })
     renderAction(makeRun({ runner: undefined, model: 'opus' }))
-    const pill = await screen.findByRole('button', { name: 'Model' })
+    const pill = await screen.findByRole('button', { name: /^Model:/u })
     expect(pill.textContent).toContain('opus')
   })
 
@@ -286,8 +292,8 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
       ],
     })
     renderAction(makeRun())
-    await screen.findByRole('button', { name: 'Model' })
-    expect(screen.queryByRole('button', { name: 'Runner' })).toBeNull()
+    await screen.findByRole('button', { name: /^Model:/u })
+    expect(screen.queryByRole('button', { name: /^Runner:/u })).toBeNull()
   })
 
   it('preserves session affinity when the current runner remains connected', async () => {
@@ -324,7 +330,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     renderAction(makeRun({ runner: 'claude', model: 'opus' }))
 
     const button = await screen.findByRole('button', { name: /continue/i })
-    expect(screen.queryByRole('button', { name: 'Runner' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Runner:/u })).toBeNull()
     fireEvent.click(button)
 
     await waitFor(() => expect(continueBody()).toBeDefined())
@@ -346,7 +352,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     renderAction(makeRun({ runner: 'claude', model: 'opus' }))
 
     const button = await screen.findByRole('button', { name: /continue/i })
-    expect(screen.queryByRole('button', { name: 'Runner' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Runner:/u })).toBeNull()
     fireEvent.click(button)
 
     await waitFor(() => expect(continueBody()).toBeDefined())
@@ -370,8 +376,8 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     const link = await screen.findByRole('link', { name: 'Configure providers' })
     expect(link.getAttribute('href')).toBe('/p/acme/settings/agents#providers')
     expect(screen.queryByRole('button', { name: /continue/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Runner' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Runner:/u })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Model:/u })).toBeNull()
     expect(continueBody()).toBeUndefined()
   })
 
@@ -396,7 +402,7 @@ describe('follow-up ContinueAction runner/model selection (#401)', () => {
     serve(HEALTH_MULTI, {}, providers)
     renderAction(makeRun({ runner: 'claude' }))
 
-    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /^Runner:/u }))
     const options = await screen.findAllByRole('menuitemradio')
     expect(options.map((option) => option.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('claude'), expect.stringContaining('qwen')]),
@@ -518,11 +524,11 @@ describe('the follow-up runner pill carries the account', () => {
     renderAction(makeRun({ model: 'opus', steps: [step({ sessionId: 'sess-1', profileId: 'default' })] }))
     await waitFor(() => expect(runnerPill()).not.toBeNull())
     // The catalog is identical across logins of one agent, so the pin survives the switch.
-    expect(screen.getByRole('button', { name: 'Model' }).textContent).toContain('opus')
+    expect(screen.getByRole('button', { name: /^Model:/u }).textContent).toContain('opus')
 
     await pickFrom(runnerPill()!, 'Klaudiusz')
     await waitFor(() => expect(runnerPill()?.textContent).toContain('Klaudiusz'))
-    expect(screen.getByRole('button', { name: 'Model' }).textContent).toContain('opus')
+    expect(screen.getByRole('button', { name: /^Model:/u }).textContent).toContain('opus')
   })
 
   it('drops a claude account when the continuation switches to another agent', async () => {
@@ -533,7 +539,7 @@ describe('the follow-up runner pill carries the account', () => {
     await pickFrom(runnerPill()!, 'Klaudiusz')
     await waitFor(() => expect(runnerPill()?.textContent).toContain('Klaudiusz'))
     await pickFrom(runnerPill()!, 'codex')
-    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('codex'))
+    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('Runner: codex'))
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
     // A Claude login means nothing to codex, so it must not ride along.
@@ -551,7 +557,7 @@ describe('the follow-up runner pill carries the account', () => {
       },
     )
     renderAction(makeRun())
-    await screen.findByRole('button', { name: 'Model' })
+    await screen.findByRole('button', { name: /^Model:/u })
     expect(runnerPill()).toBeNull()
   })
 })

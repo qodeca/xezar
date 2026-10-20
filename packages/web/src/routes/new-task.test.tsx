@@ -574,6 +574,8 @@ describe('picker data flows', () => {
     const pill = document.querySelector('[data-slot="variants-pill"]') as HTMLButtonElement
     expect(pill.disabled).toBe(true)
     expect(pill.title).toContain('need a git repository')
+    // …and on screen, because a title never reaches a touch screen.
+    expect(document.querySelector('[data-slot="variants-pill-note"]')?.textContent).toBe('Variants need a git repository')
     expect(document.querySelector('[data-slot="base-pill"]')).toBeNull()
   })
 
@@ -1125,6 +1127,12 @@ describe('submit', () => {
     await waitFor(() =>
       expect((document.querySelector('[data-slot="variants-pill"]') as HTMLElement).textContent).toContain('×2'),
     )
+    // Variants force isolation: the Worktree toggle says why it cannot be unchecked.
+    const worktree = document.querySelector('[data-slot="worktree-toggle"]') as HTMLButtonElement
+    expect(worktree.disabled).toBe(true)
+    expect(document.getElementById(worktree.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      'Worktree always on with variants',
+    )
 
     fireEvent.change(textarea(), { target: { value: 'Race two attempts' } })
     await startTask()
@@ -1153,11 +1161,15 @@ describe('submit', () => {
     const modelPill = document.querySelector('[data-slot="model-pill"]') as HTMLElement
     expect(modelPill.textContent).toContain('native-sonnet')
     expect(modelPill.textContent).not.toContain('opus')
+    // Why it cannot be changed, as visible text tied to the pill.
+    const note = document.querySelector('[data-slot="model-pill-note"]') as HTMLElement
+    expect(note.textContent).toBe('Model set by the agent’s own settings')
+    expect(modelPill.getAttribute('aria-describedby')).toBe(note.id)
     expect(modelPill.tagName).toBe('SPAN')
     expect(modelPill.querySelector('svg')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Model:/u })).toBeNull()
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Runner:/u }))
     const runnerOptions = await screen.findAllByRole('menuitemradio')
     fireEvent.click(runnerOptions.find((option) => option.textContent?.includes('Codex')) as HTMLElement)
     await waitFor(() => expect(modelPill.textContent).toContain('gpt-5.6-codex'))
@@ -1726,9 +1738,14 @@ describe('the Start | Plan first toggle', () => {
 
     // Off plan mode the toggle is interactive.
     expect(autonomous().disabled).toBe(false)
+    expect(document.querySelector('[data-slot="toggle-note"]')).toBeNull()
     fireEvent.click(planToggle())
     expect(autonomous().disabled).toBe(true)
     expect(autonomous().getAttribute('aria-checked')).toBe('false')
+    // The reason is on screen (a title never reaches a touch screen) and describes the toggle.
+    const noteId = autonomous().getAttribute('aria-describedby')
+    expect(noteId).not.toBeNull()
+    expect(document.getElementById(noteId!)?.textContent).toBe('Autonomous unavailable with Plan first')
   })
 
   it('persists in the draft store across unmount/remount', async () => {
@@ -2288,7 +2305,7 @@ describe('the composer runner pill carries the account', () => {
     await pickFrom(runnerPill()!, 'codex')
 
     // Codex has no second login, so the account group goes away and the pill is a runner again…
-    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('codex'))
+    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('Runner: codex'))
     fireEvent.change(textarea(), { target: { value: 'do the thing' } })
     await startTask()
     // …and nothing account-shaped reaches the wire.

@@ -126,6 +126,13 @@ export type AppShellProps = {
   agentQuota?: ReactNode
   /** The same chip's phone form, in the top bar's `mobile-status` slot. */
   agentQuotaCompact?: ReactNode
+  /** The project the current page belongs to, for the phone top bar's context line. Null on
+   *  Global settings (no project applies) and while the registry has not named it — the line is
+   *  then absent rather than guessed. The desktop shows the project in the sidebar instead. */
+  projectName?: string | null
+  /** The page's own name from the route map ("New task"), for the phone top bar when the page
+   *  belongs to no nav item. Without it the bar fell back to the product name. */
+  pageName?: string | null
 }
 
 /**
@@ -189,6 +196,8 @@ export function AppShell({
   otherProjects,
   agentQuota,
   agentQuotaCompact,
+  projectName = null,
+  pageName = null,
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
@@ -278,9 +287,19 @@ export function AppShell({
             there is no second column to trade width with and no pointer to drag a border. */}
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
-        <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
+        {/* `minmax(0,1fr)`, not the implicit `auto` track: an auto track grows to its widest child's
+            min-content, and the phone top bar's project line is one unbreakable string – a long
+            project name pushed every page past a 375 px viewport instead of truncating. */}
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_1fr_auto] overflow-hidden">
           <MobileTopBar
-            title={current?.label ?? 'xezar'}
+            // Global settings shares the Settings nav item, so the bare label could not tell the
+            // two areas apart on a phone — where the desktop's scope chip is hidden.
+            title={
+              isGlobalSettingsPath(pathname)
+                ? singleProjectRoot ? 'Workspace settings' : 'Global settings'
+                : (current?.label ?? pageName ?? 'xezar')
+            }
+            context={isGlobalSettingsPath(pathname) ? null : projectName}
             singleProjectRoot={singleProjectRoot}
             agentQuota={agentQuotaCompact}
             attentionCount={allTasksAttentionCount}
@@ -925,14 +944,23 @@ function ModeBadge() {
   )
 }
 
-/** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
+/** Whether a pathname is the global (workspace-wide) settings area, `/settings/global[/…]`. */
+function isGlobalSettingsPath(pathname: string): boolean {
+  return pathname === '/settings/global' || pathname.startsWith('/settings/global/')
+}
+
+/** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`.
+ *  `context` is the project the page belongs to, a quiet line above the page name, because on a
+ *  phone the sidebar that names it is behind the menu button. */
 function MobileTopBar({
   title,
+  context,
   singleProjectRoot,
   agentQuota,
   attentionCount,
 }: {
   title: string
+  context?: string | null
   singleProjectRoot: boolean
   agentQuota?: ReactNode
   /** Tasks needing you across the workspace. Below `md` the sidebar is a drawer, so without this
@@ -972,7 +1000,16 @@ function MobileTopBar({
             ) : null}
           </Button>
         </SheetTrigger>
-        <span className="truncate text-[14.5px] font-semibold">{title}</span>
+        <div className="flex min-w-0 flex-col">
+          {context ? (
+            <span data-slot="mobile-context" className="truncate text-[11px] leading-tight text-soft-foreground">
+              {context}
+            </span>
+          ) : null}
+          <span data-slot="mobile-title" className="truncate text-[14.5px] leading-tight font-semibold">
+            {title}
+          </span>
+        </div>
         {/* SLOT — the run status dot / kebab land with the thread view (Step R3). The mode badge
             (#600) is its first occupant: below `md` the sidebar is a drawer, and the mode must be
             legible without opening it. */}

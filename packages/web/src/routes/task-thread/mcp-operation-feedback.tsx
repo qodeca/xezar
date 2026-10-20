@@ -94,7 +94,7 @@ const RETRYABLE_STATUSES: ReadonlySet<McpOperationStatus> = new Set(['conflict',
 function StatusIcon({ status }: { status: McpOperationStatus }) {
   switch (status) {
     case 'completed':
-      return <CircleCheckIcon aria-hidden="true" className="size-4 shrink-0 text-primary" />
+      return <CircleCheckIcon aria-hidden="true" className="size-4 shrink-0 text-primary light:text-foreground" />
     case 'failed':
     case 'conflict':
       return <CircleXIcon aria-hidden="true" className="size-4 shrink-0 text-danger" />

@@ -221,6 +221,10 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         // The plan-limits chip (#867 S5). Each form renders nothing until an agent applies.
         agentQuota={<AgentQuotaChip variant="band" />}
         agentQuotaCompact={<AgentQuotaChip variant="phone" />}
+        // The same name the document title uses; null on Global settings.
+        projectName={projectName}
+        // The route map's page name, never the run title: the top bar is a place, not a task.
+        pageName={titleContext.pageLabel}
         toolsMenu={<ToolsMenu health={health.data} />}
       >
         {children}

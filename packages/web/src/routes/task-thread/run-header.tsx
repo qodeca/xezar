@@ -119,6 +119,42 @@ export type RunTab = 'session' | 'changes' | 'commits' | 'files'
  *  into run B. Session-lifetime only; no server persistence invented for it. */
 const detailsOpenByRun = new Map<string, boolean>()
 
+/**
+ * The run's status change, said out loud (WCAG 2.2 SC 4.1.3 Status Messages).
+ *
+ * The pill, the dock's paused hint and the ask card all change on screen when a run moves from
+ * `running` to `needs you`, but none of them is a live region, so a screen-reader user heard
+ * nothing. This is the ONE region that speaks for all of them: a persistent `sr-only`
+ * `role="status"` span that stays mounted (a region inserted together with its text is often not
+ * announced) and holds text only after the label CHANGED. Opening a task is not a status change,
+ * so the first render and a switch to another run stay silent. No `aria-live` attribute beside
+ * the role: Radix exempts that attribute from modal background hiding (see `NavBadge`).
+ *
+ * @param props.runId - The run on screen; a different id resets the baseline instead of speaking.
+ * @param props.label - `deriveAttention(run).label`, the word the pill shows.
+ * @returns A visually hidden status region.
+ *
+ * @example
+ * ```tsx
+ * <StatusAnnouncer runId={run.id} label={deriveAttention(run).label} />
+ * ```
+ */
+export function StatusAnnouncer({ runId, label }: { runId: string; label: string }) {
+  // Previous-render tracking in state (React's "adjusting state while rendering" pattern) rather
+  // than an effect, so the announcement lands in the same commit as the pill's new word.
+  const [seen, setSeen] = useState({ runId, label, message: '' })
+  if (seen.runId !== runId) {
+    setSeen({ runId, label, message: '' })
+  } else if (seen.label !== label) {
+    setSeen({ runId, label, message: `Task status: ${label}` })
+  }
+  return (
+    <span data-slot="run-status-announcer" role="status" aria-atomic="true" className="sr-only">
+      {seen.runId === runId ? seen.message : ''}
+    </span>
+  )
+}
+
 export function RunHeader({
   run,
   planTally,
@@ -184,6 +220,7 @@ export function RunHeader({
               {attention.label}
               {queuePosition !== undefined ? ` #${queuePosition}` : ''}
             </Pill>
+            <StatusAnnouncer runId={run.id} label={attention.label} />
             {/* Phone-width only: above `md` the meta row never collapses, so a control to expand
                 it would be a permanently disabled-looking chevron next to always-visible content.
                 On the Session tab of a run with a plan it lands in the slot #764 freed by hiding

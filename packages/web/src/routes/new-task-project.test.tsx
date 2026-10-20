@@ -219,7 +219,7 @@ function renderAt(entry: string) {
 }
 
 const textarea = () => screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
-const projectPill = () => screen.getByRole('button', { name: 'Project' })
+const projectPill = () => screen.getByRole('button', { name: /^Project:/u })
 const sourcePill = () => screen.getByRole('button', { name: 'Choose a skill or workflow' })
 const pathname = () => screen.getByTestId('location').textContent
 
@@ -255,6 +255,8 @@ describe('the new-task project pill', () => {
     await composerReady()
 
     expect(projectPill().textContent).toContain('shop-frontend')
+    // The accessible name keeps the project's name (it used to be the bare word "Project").
+    expect(screen.getByRole('button', { name: /^Project:\s?shop-frontend/u })).toBe(projectPill())
     fireEvent.click(projectPill())
     await screen.findByPlaceholderText('search projects…')
     const options = [...document.querySelectorAll(String.raw`[data-slot="project-option"]`)]
@@ -274,7 +276,7 @@ describe('the new-task project pill', () => {
     })
     renderAt(`/p/${BOOT}/new`)
     await composerReady()
-    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Project:/u })).toBeNull()
     expect(document.querySelector('[data-slot="source-pill"]')).not.toBeNull()
   })
 })
@@ -292,7 +294,7 @@ describe('project pill in single-project mode (#600)', () => {
     renderAt(`/p/${OTHER}/new`)
     await composerReady()
     await waitFor(() => expect(requests.some((r) => r.url === '/api/v1/health')).toBe(true))
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Project' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Project:/u })).toBeNull())
     expect(document.querySelector('[data-slot="source-pill"]')).not.toBeNull()
 
     fireEvent.change(textarea(), { target: { value: 'Ship the storefront' } })

@@ -176,6 +176,74 @@ describe('AskCard', () => {
     expect(screen.queryByRole('button', { name: /date-fns/ })).toBeNull()
   })
 
+  it('names the card in ink, not the brand lime (1.3:1 on the light card)', () => {
+    renderAsk(singleAsk)
+    const eyebrow = screen.getByText('The agent is asking')
+    expect(eyebrow.className).toContain('text-foreground')
+    expect(eyebrow.className).not.toContain('text-primary')
+  })
+
+  it('marks a picked option with a check mark and an ink border, not colour alone', () => {
+    renderAsk(twoQuestionAsk)
+    const option = screen.getByRole('button', { name: /date-fns/ })
+    expect(option.querySelector('[data-slot="ask-option-check"]')).toBeNull()
+    fireEvent.click(option)
+    expect(option.getAttribute('aria-pressed')).toBe('true')
+    expect(option.querySelector('[data-slot="ask-option-check"]')).not.toBeNull()
+    expect(option.className).toContain('border-foreground/60')
+    // The unpicked neighbour shows neither.
+    const other = screen.getByRole('button', { name: /Luxon/ })
+    expect(other.querySelector('[data-slot="ask-option-check"]')).toBeNull()
+  })
+
+  it('a picked multi-select box is ink with a check glyph', () => {
+    renderAsk(multiAsk)
+    const option = screen.getByRole('button', { name: /Profile/ })
+    fireEvent.click(option)
+    const box = option.querySelector('[data-slot="ask-option-box"]') as HTMLElement
+    expect(box.className).toContain('bg-foreground')
+    expect(box.querySelector('svg')).not.toBeNull()
+  })
+
+  it('moves focus to the answered summary when answering drops it to the page', () => {
+    const { rerender } = renderAsk(singleAsk)
+    const option = screen.getByRole('button', { name: /date-fns/ })
+    option.focus()
+    fireEvent.click(option)
+    // The thread reducer resolves the card when the answer lands; the option button unmounts.
+    rerender(
+      <MemoryRouter>
+        <AskCard ask={{ ...singleAsk, resolved: true, answer: 'Library: date-fns' }} run={activeRun} />
+      </MemoryRouter>,
+    )
+    const summary = document.querySelector('[data-slot="ask-card"][data-resolved="true"]')
+    expect(document.activeElement).toBe(summary)
+    expect(summary?.getAttribute('tabindex')).toBe('-1')
+  })
+
+  it('leaves focus alone when it is still somewhere (an answer typed in the composer)', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <textarea aria-label="composer" />
+        <AskCard ask={singleAsk} run={activeRun} />
+      </MemoryRouter>,
+    )
+    const composer = screen.getByLabelText('composer')
+    composer.focus()
+    rerender(
+      <MemoryRouter>
+        <textarea aria-label="composer" />
+        <AskCard ask={{ ...singleAsk, resolved: true, answer: 'Other' }} run={activeRun} />
+      </MemoryRouter>,
+    )
+    expect(document.activeElement).toBe(composer)
+  })
+
+  it('does not take focus for a card that loads already answered', () => {
+    renderAsk({ ...singleAsk, resolved: true, answer: 'Library: date-fns' })
+    expect(document.activeElement).toBe(document.body)
+  })
+
   it.each([
     ['disabled', { provider: 'claude', status: 'connected', enabled: false }, 'Claude Code is disabled. Enable it in Settings → Agents → Providers.'],
     ['disconnected', { provider: 'claude', status: 'disconnected', enabled: true }, 'Claude Code credentials are unavailable. Authorize it in Settings → Agents → Providers.'],

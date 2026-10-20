@@ -87,6 +87,10 @@ Markdown files into .xezar/skills/, …".
   remains (#453 B3 fixed settings, B4 the global Tasks page).
 - Disabled-action reasons: "{Thing} unavailable — {why}": "Commit unavailable — no changes to commit",
   "Push unavailable — no remote configured" (`lib/git-actions.ts`).
+- The short visible reason beside a disabled composer control names that control, so it reads on its
+  own: "Variants need a git repository", "Worktree always on with variants", "Autonomous unavailable
+  with Plan first", "Model set by the agent’s own settings" (`routes/new-task.tsx`,
+  `components/engine-pills.tsx`, `routes/task-thread/follow-up-engine.tsx`; PickerPill `disabledNote`).
 - Refusals name the consequence and who can act, never the phrase "not available in hosted mode":
   "Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode."
   (`accounts-section.tsx`); "This xezar is not running in local mode, so actions on the host machine are
@@ -110,6 +114,7 @@ Title is a question naming the object; body states what happens; irreversible ac
 | "Cancel this task?" | "The agent is stopped and the run completes as cancelled. The worktree stays." | "Keep it" | "Cancel the run" | `run-header.tsx` |
 | "Remove {name} from the workspace?" | "This only unregisters the project — nothing on disk is deleted. …" | "Keep it" | "Remove from list" | `remove-project.tsx` |
 | "Open this link?" | – | "Cancel" | "Open link" | `link-safety-dialog.tsx` |
+| "Discard your edits to “{file}”?" | "Your unsaved changes to this file are lost. There is no undo." | "Keep it" | "Discard and leave" when it also leaves the file (a link, Back, the palette, another file or agent); "Discard" for Reload from disk | `settings/agent-config-section.tsx` |
 
 Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent account",
 "Open local folder", "Clone from GitHub", "Save as chain".

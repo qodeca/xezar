@@ -43,8 +43,8 @@ token has no utility and is read with `var(--name)`.
 | `--accent-lime` | `#a8f372` | same | The stable name of the brand lime. Never used directly; `--primary` points at it. | – |
 | `--primary` | `var(--accent-lime)` | same | The active accent: primary button, checked switch, text selection, the ghost-code caret. Settings → Appearance can repoint it (see [theming.md](theming.md)). | `bg-primary`, `text-primary` |
 | `--primary-foreground` | `#0d0d0d` | same | Ink on `--primary`. | `text-primary-foreground` |
-| `--violet` | `#8f86e8` | same | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. | `bg-violet`, `text-violet` |
-| `--violet-foreground` | `#0d0d0d` | same | Ink on `--violet` — and, under the violet accent, on every primary surface: `--primary-foreground` resolves to this token, so it inks every primary Button, the selected facet chip and the facet checkbox, not just the Inbox count badge (10.5px). Near-black in both themes: white on this violet is 3.1:1, the near-black 6.2:1 — which is also what makes the two accents ink their primary the same way. | `text-violet-foreground` |
+| `--violet` | `#8f86e8` | `#5d50de` | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. Light darkens it at the same hue so it reads as small text: 5.7:1 on white, 5.3:1 on `--muted` (the dark value was 3.1:1 on white, G-23). | `bg-violet`, `text-violet` |
+| `--violet-foreground` | `#0d0d0d` | `#ffffff` | Ink on `--violet` — and, under the violet accent, on every primary surface: `--primary-foreground` resolves to this token, so it inks every primary Button, the selected facet chip and the facet checkbox, not just the Inbox count badge (10.5px). Near-black in dark (6.2:1; white is 3.1:1 on `#8f86e8`); white in light, where the darker violet takes white at 5.7:1 and near-black at only 3.4:1. | `text-violet-foreground` |
 | `--ring` | `#a8f372` | `#171717` | Focus ring colour. Used as `ring-ring/50`. | `ring-ring` |
 | `--grad` | `linear-gradient(135deg, #b4f372 12%, #eefb63 58%, #bc9aff 100%)` | same | Brand gradient (lime → yellow → violet). Read with `var(--grad)`. | – |
 
@@ -52,10 +52,10 @@ token has no utility and is read with `var(--name)`.
 
 | Token | Dark | Light | Meaning | Utility |
 | --- | --- | --- | --- | --- |
-| `--danger` | `#ef4444` | same | Failed, destructive, deletions. | `bg-danger`, `text-danger` |
-| `--danger-foreground` | `var(--danger-ink)` | same | Ink on `--danger` (the destructive button, the danger toast). Points at `--danger-ink` because white on this red is 3.8:1. | `text-danger-foreground` |
-| `--danger-ink` | `#0d0d0d` | same | Near-black ink on `--danger` (about 5.1:1; white is 3.8:1). Does not follow the accent, unlike `--primary-foreground`. `--danger-foreground` now points at it, so every label printed on the red reads; the development-build badge keeps naming it directly (decisions.md D-08). | `text-danger-ink` |
-| `--success` | `#10b981` | same | Done, passed, additions. | `bg-success`, `text-success` |
+| `--danger` | `#ef4444` | `#c61111` | Failed, destructive, deletions. Light darkens it at the same hue so it reads as small text: 6.0:1 on white, 5.6:1 on `--muted` (the dark value was 3.8:1 on white, G-23). | `bg-danger`, `text-danger` |
+| `--danger-foreground` | `var(--danger-ink)` | same | Ink on `--danger` (the destructive button, the danger toast). Points at `--danger-ink`, so it is near-black on the dark red and white on the light red. | `text-danger-foreground` |
+| `--danger-ink` | `#0d0d0d` | `#ffffff` | Ink on `--danger`: near-black in dark (about 5.1:1; white is 3.8:1 on `#ef4444`), white in light (6.0:1 on `#c61111`; near-black is 3.2:1). Does not follow the accent, unlike `--primary-foreground`. `--danger-foreground` points at it, so every label printed on the red reads; the development-build badge keeps naming it directly (decisions.md D-08). | `text-danger-ink` |
+| `--success` | `#10b981` | `#0a7350` | Done, passed, additions. Light darkens it at the same hue so it reads as small text: 5.9:1 on white, 5.5:1 on `--muted` (the dark value was 2.5:1 on white, G-23). | `bg-success`, `text-success` |
 | `--pending` | `#fbbf24` | same | Waiting, scheduled, in progress. Fill only: dots and spinners. Never text. | `bg-pending` |
 | `--pending-strong` | `#fbbf24` | `#b45309` | The ink version of pending. Amber-700 on light so it stays readable. | `text-pending-strong` |
 | `--info` | `#93c5fd` | `#1d4ed8` | Waiting on a person (a PR that needs review). Ink only. The only blue in the cockpit. | `text-info`, `border-info` |

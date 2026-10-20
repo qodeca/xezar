@@ -104,6 +104,14 @@ function renderHeader(
   )
 }
 
+/** The toast, not the header's own status announcer: both are `role="status"`. */
+const findToast = () =>
+  waitFor(() => {
+    const el = document.querySelector<HTMLElement>('[data-slot="toast"]')
+    if (!el) throw new Error('no toast yet')
+    return el
+  })
+
 const actionBar = () => within(document.querySelector('[data-slot="run-actions"]') as HTMLElement)
 
 describe('monitoring schedule', () => {
@@ -500,7 +508,7 @@ describe('actions hit their endpoints', () => {
     const button = actionBar().getByRole<HTMLButtonElement>('button', { name: 'Continue' })
     await waitFor(() => expect(button.disabled).toBe(false))
     fireEvent.click(button)
-    const item = await screen.findByRole('status')
+    const item = await findToast()
     expect(item.textContent).toBe('no agent session to resume')
     expect(item.getAttribute('data-tone')).toBe('danger')
   })
@@ -515,7 +523,7 @@ describe('actions hit their endpoints', () => {
     fireEvent.click(actionBar().getByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('alertdialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
-    const item = await screen.findByRole('status')
+    const item = await findToast()
     expect(item.textContent).toBe(refusal)
     expect(item.getAttribute('data-tone')).toBe('danger')
     expect(sent.some((r) => r.method === 'DELETE')).toBe(true)
@@ -548,7 +556,7 @@ describe('Terminal — the copy-command 409 fallback', () => {
     await clickTerminalResume()
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(command))
-    expect((await screen.findByRole('status')).textContent).toBe(
+    expect((await findToast()).textContent).toBe(
       'No terminal found — command copied',
     )
   })
@@ -564,7 +572,7 @@ describe('Terminal — the copy-command 409 fallback', () => {
     renderHeader(run('done'))
     await clickTerminalResume()
 
-    expect((await screen.findByRole('status')).textContent).toBe(`Run manually: ${command}`)
+    expect((await findToast()).textContent).toBe(`Run manually: ${command}`)
   })
 
   it('a 409 without a command is an ordinary error toast', async () => {
@@ -573,7 +581,7 @@ describe('Terminal — the copy-command 409 fallback', () => {
     })
     renderHeader(run('done'))
     await clickTerminalResume()
-    expect((await screen.findByRole('status')).textContent).toBe('no agent session to resume')
+    expect((await findToast()).textContent).toBe('no agent session to resume')
   })
 })
 
@@ -1338,5 +1346,50 @@ describe('meta line, tabs, pill and resume hint', () => {
     renderHeader(run('running'))
     expect(document.querySelector('[data-slot="resume-hint"]')).toBeNull()
     expect(sent.some((r) => r.path.endsWith('/resume-command'))).toBe(false)
+  })
+})
+
+describe('status announcer (WCAG 4.1.3)', () => {
+  const tree = (record: ApiRun) => (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[`/tasks/${record.id}`]}>
+        <Routes>
+          <Route path="/tasks/:id" element={<RunHeader run={record} />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+  let client = createQueryClient()
+  const announcer = () => document.querySelector('[data-slot="run-status-announcer"]') as HTMLElement
+
+  it('keeps one persistent, silent status region on open', () => {
+    stubFetch()
+    client = createQueryClient()
+    render(tree(run('running')))
+    expect(screen.getAllByRole('status').filter((el) => el === announcer())).toHaveLength(1)
+    expect(announcer().getAttribute('aria-atomic')).toBe('true')
+    // Opening a task is not a status change: nothing is said until the label moves.
+    expect(announcer().textContent).toBe('')
+  })
+
+  it('announces the new attention label when the run changes status', () => {
+    stubFetch()
+    client = createQueryClient()
+    const { rerender } = render(tree(run('running')))
+    const region = announcer()
+    rerender(tree(run('waiting')))
+    // The same node — a region replaced along with its text is often not announced.
+    expect(announcer()).toBe(region)
+    expect(region.textContent).toBe('Task status: needs you')
+    rerender(tree(run('review')))
+    expect(region.textContent).toBe('Task status: needs review')
+  })
+
+  it('stays silent when the header switches to another run', () => {
+    stubFetch()
+    client = createQueryClient()
+    const { rerender } = render(tree(run('running')))
+    rerender(tree(run('done', { id: 'r2' })))
+    expect(announcer().textContent).toBe('')
   })
 })
