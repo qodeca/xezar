@@ -24,7 +24,9 @@ describe('T-15 — bundled workflow check significance', () => {
       // not the conclusion the workflow exists to deliver (#863).
       // `guard` (3.0.3) refuses deploy, localisation and performance while their config is empty:
       // passing it only means the workflow may start.
-      if (['kit', 'preflight', 'setup', 'guard'].includes(check.id)) expect(check.resultScope, `${check.file}:${check.id}`).toBe('routine');
+      // `prepare` (3.2.1) checks the reviewed PR's head out, detached, before the reading step
+      // (qodeca/xezar-skills#225): acquisition of the verdict's input, so `routine` too.
+      if (['kit', 'preflight', 'setup', 'guard', 'prepare'].includes(check.id)) expect(check.resultScope, `${check.file}:${check.id}`).toBe('routine');
       // `ci-watch` (#667) is the integration workflow's bounded, token-free observation of merge CI on the
       // base branch. Its pass is the answer to "did what we just merged stay green", which is exactly the
       // kind of conclusion the leader is waiting for — `stage`, not `routine`.

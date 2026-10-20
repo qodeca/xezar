@@ -17,7 +17,8 @@ import { TASK_VERDICT_FINDINGS_MAX, taskVerdictPacketSchema } from '@qodeca/xeza
  * `findings` block carries REAL values in every skill and is parsed as written.
  *
  * Since the 3.0.3 kit the example leaves `taskId` and `stepId` out: `.xezar/checks/verdict-write.sh`
- * stamps both from the step's environment. They are stamped here the same way before the parse.
+ * stamps both from the step's environment. Since the 3.2.1 kit it leaves `recordedAt` out as well,
+ * which the script stamps from the clock. All three are stamped here the same way before the parse.
  */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -44,8 +45,13 @@ function fillPlaceholders(value: unknown, key?: string): unknown {
   return value;
 }
 
-/** What `verdict-write.sh packet` stamps from `XEZ_TASK_ID` and `XEZ_STEP_ID` at write time. */
-const STAMPED = { taskId: '2027093c-c801-45f0-91e3-fdae5605d712', stepId: 'review' } as const;
+/** What `verdict-write.sh packet` stamps at write time: the ids from `XEZ_TASK_ID` and `XEZ_STEP_ID`,
+ *  and, since the 3.2.1 kit, `recordedAt` from the machine's clock (qodeca/xezar-skills#172). */
+const STAMPED = {
+  taskId: '2027093c-c801-45f0-91e3-fdae5605d712',
+  stepId: 'review',
+  recordedAt: '2026-09-20T12:00:00.000Z',
+} as const;
 
 /** The first fenced JSON block of a skill — the one packet example each of them carries. */
 function packetExample(skill: string): Record<string, unknown> {
@@ -69,6 +75,7 @@ describe('the kit skills’ verdict packet examples', () => {
       // verdict at all; the skill tells the reviewer to leave both to the write script.
       expect(Object.keys(example), skill).not.toContain('taskId');
       expect(Object.keys(example), skill).not.toContain('stepId');
+      expect(Object.keys(example), skill).not.toContain('recordedAt');
       const parsed = taskVerdictPacketSchema.safeParse({ ...example, ...STAMPED });
       expect(parsed.error?.issues ?? [], skill).toEqual([]);
       expect(parsed.success).toBe(true);
