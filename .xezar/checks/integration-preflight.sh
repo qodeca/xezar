@@ -261,7 +261,14 @@ field() { printf '%s' "$pr_json" | node -e '
 
 actual_head="" pr_state="" pr_merged="" pr_base="" pr_draft="" mergeable_state=""
 if [ -n "$pr_json" ]; then
-  policy="$(printf '%s' "$pr_json" | node "$SCRIPT_DIR/lib/project-policy.mjs")"
+  # The REST answer has no file list and no closing references, which the design-only check reads
+  # (#207); `gh pr view` adds both. Unreadable is reported, never read as "nothing closes".
+  pr_links=""
+  if ! pr_links="$("$GH" pr view "$PR" --repo "$REPO" --json files,closingIssuesReferences 2>&1)"; then
+    unavail pr.links "could not read the files and closing references of PR #$PR: $(printf '%s' "$pr_links" | head -1)"
+    pr_links="{}"
+  fi
+  policy="$(node -e 'const [a,b]=process.argv.slice(1).map(s=>{try{return JSON.parse(s)}catch{return null}});process.stdout.write(a&&b?JSON.stringify({...a,...b}):"not json")' "$pr_json" "$pr_links" | node "$SCRIPT_DIR/lib/project-policy.mjs")"
   policy_unavailable="$(printf '%s' "$policy" | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{try{process.stdout.write(JSON.parse(s).unavailable||"")}catch{process.stdout.write("policy evaluator unavailable")}})')"
   policy_refused="$(printf '%s' "$policy" | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{try{process.stdout.write(JSON.parse(s).refused||"")}catch{}})')"
   [ -z "$policy_unavailable" ] || unavail project.policy "$policy_unavailable"

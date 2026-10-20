@@ -9,23 +9,16 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` �
 - Since: 2026-10-05
 - Confirmed: yes
 
-## LP-2 – keep the gate worker's MSYS=noglob out of the gate command
-- Files: .xezar/checks/lib/gate-parallel.mjs, .xezar/checks/lib/windows-process.mjs
-- Reason: on Windows the worker passed MSYS=noglob to every gate command, so Git's sh split quoted paths with a space and npm test failed in every local gate run (#1078)
-- Upstream: qodeca/xezar-skills#216
-- Since: 2026-10-17
-- Confirmed: yes
-
 ## LP-3 – route this project's DeepSeek lanes through Qwen Code
-- Files: .xezar/checks/route.mjs, .xezar/routing.schema.json, .xezar/docs/routing.md, .xezar/docs/leader-guide.md
-- Reason: the engine runs claude, codex and qwen only (#1046), and qwen holds a reading step read-only (#1044); the kit still names the two backends removed in 0.30.0. Since 2026-10-18 leader-guide.md also describes this project's two-branch model (`develop` base, `main` for released work) and its release runbook – see LP-5; it names the nine CI checks branch protection requires and the `release` workflow's `changelog` step as the place fragments are folded
+- Files: .xezar/docs/leader-guide.md
+- Reason: the engine runs claude, codex and qwen only (#1046), and qwen holds a reading step read-only (#1044); kit 3.2.1 carries the Qwen lanes itself, so route.mjs, routing.schema.json and routing.md match the kit again and left this patch at the 3.2.1 upgrade. Since 2026-10-18 leader-guide.md also describes this project's two-branch model (`develop` base, `main` for released work) and its release runbook – see LP-5; it names the nine CI checks branch protection requires and the `release` workflow's `changelog` step as the place fragments are folded
 - Upstream: local only
 - Since: 2026-10-16
 - Confirmed: yes
 
 ## LP-4 – drop the two backends removed in 0.30.0 from the kit text
-- Files: .xezar/checks/gh-write.sh, .xezar/checks/verdict-write.sh, .xezar/checks/local-tree.sh, .xezar/docs/parallel-tasks.md, .xezar/docs/ui-operations.md, .xezar/docs/recovery.md
-- Reason: the engine runs claude, codex and qwen only since 0.30.0 (#1041), and these kit files still described the two removed backends as current. Since 2026-10-18 recovery.md also names the merge-commit exception for release-class PRs under the two-branch model (LP-5); that line is local wording, so dropping this patch at an upgrade needs qodeca/xezar-skills#248 as well. Each changed line is the upstream wording, verbatim: kit 3.2.0 for ui-operations.md, parallel-tasks.md, gh-write.sh and verdict-write.sh, and the fix for qodeca/xezar-skills#231 for recovery.md and local-tree.sh. An upgrade that brings those lines finds them already here, so this patch can be dropped then.
+- Files: .xezar/docs/recovery.md
+- Reason: the engine runs claude, codex and qwen only since 0.30.0 (#1041), and these kit files still described the two removed backends as current. Since 2026-10-18 recovery.md also names the merge-commit exception for release-class PRs under the two-branch model (LP-5); that line is local wording, so dropping this patch at an upgrade needs qodeca/xezar-skills#248 as well. Each changed line is the upstream wording, verbatim: kit 3.2.0 for ui-operations.md, parallel-tasks.md, gh-write.sh and verdict-write.sh, and the fix for qodeca/xezar-skills#231 for recovery.md and local-tree.sh. An upgrade that brings those lines finds them already here, so this patch can be dropped then. Kit 3.2.1 brought them: every file but recovery.md matches the kit again and left this patch at that upgrade; recovery.md keeps only its two-branch line.
 - Upstream: qodeca/xezar-skills#231
 - Since: 2026-10-18
 - Confirmed: yes

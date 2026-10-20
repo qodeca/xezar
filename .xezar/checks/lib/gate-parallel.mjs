@@ -13,8 +13,14 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const [library, mode, rawEntries] = process.argv.slice(2);
-const entries = JSON.parse(rawEntries);
+const [library, mode, rawEntries, ...triples] = process.argv.slice(2);
+// The entries come as one JSON array, or – from repo-gates.sh, which then needs no node start of its
+// own to build that array (#132 speed bar) – as `--triples` followed by index, name and command
+// for each gate. Both give the same entries; the checks below judge them the same way.
+const entries = rawEntries === '--triples'
+  ? Array.from({ length: Math.ceil(triples.length / 3) }, (_, i) =>
+    ({ index: Number(triples[3 * i]), name: triples[3 * i + 1], command: triples[3 * i + 2] }))
+  : JSON.parse(rawEntries);
 const byIndex = new Map(entries.map((entry) => [entry.index, entry]));
 if (!['application', 'serial'].includes(mode) || !entries.length || byIndex.size !== entries.length ||
     entries.some(e => !Number.isInteger(e.index) || e.index < 1 || typeof e.name !== 'string' || !e.name || typeof e.command !== 'string' || !e.command)) {
@@ -46,7 +52,7 @@ let stopped = false;
 let infrastructureFailed = false;
 const worker = '. "$1"; GATE_INDEX=$(($2-1)); GATE_WORKER_RESULT="$GATE_ATTEMPT_DIR/workers/$2.json"; gate_run "$3" bash -c "$4"';
 // Windows: the worker first records its MSYS pid, the key to its processes after it has exited,
-// then puts the caller's MSYS back, so noglob stays the worker shell's own (#1078).
+// then puts the caller's MSYS back, so the gate command never inherits noglob (#216).
 const windowsWorker = windows
   ? `printf '%s\\n' "$$" > "$GATE_ATTEMPT_DIR/workers/$2.msys-pid"; ${windows.restoreMsys(process.env)}${worker}`
   : '';
