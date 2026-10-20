@@ -597,6 +597,20 @@ function initialTeamSkillsLoad(repoRoot: string): Promise<Skill[]> {
 }
 
 /**
+ * Tests only: wait for every first team-skills load this process has started.
+ *
+ * `getTeamSkillsCached` starts its load in the background and returns, so a test that reads the
+ * catalog can end while the load is still before its `loadConfig`. If the fixture then removes
+ * the project folder, the late read finds no `.xezar/config.json`, falls back to the default
+ * source and clones it from the network into whatever `HOME` the NEXT test has set — racing that
+ * test's own cleanup (`ENOTEMPTY`, CI run 39239763879). A fixture awaits this before it removes
+ * a folder a load may still read. A load that already finished settles at once.
+ */
+export async function __settleTeamSkillsLoadsForTests(): Promise<void> {
+  await Promise.all([...firstLoadByRoot.values()]);
+}
+
+/**
  * The current team-skill list for this project, straight from memory. The
  * first call per `repoRoot` kicks off an async background load (clone + list)
  * and returns immediately — the GUI refetches, so remote skills appear moments
