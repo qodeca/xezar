@@ -92,6 +92,27 @@ export const onboardingIssueFilingSchema = z.object({
 export type OnboardingIssueFiling = z.infer<typeof onboardingIssueFilingSchema>;
 
 /**
+ * The project's committed install record names a setup collection release older than this engine
+ * supports. Additive and nullable on purpose: a new `state` value would break a strict client that
+ * switches over `onboardingStateSchema`, so `state` keeps saying `set-up` (setup did finish) and
+ * this field says what is wrong with it.
+ *
+ * - `recordedVersion` — the release the install record names, verbatim.
+ * - `minimumVersion` — the oldest release this engine supports.
+ * - `upgradeGuideUrl` — the public guide that upgrades the setup collection. A re-check does NOT
+ *   upgrade it: it compares the project against what is installed, so it cannot clear this.
+ *
+ * `null` whenever the record is absent, names no version, or names one that cannot be read as
+ * `major.minor.patch` — an unreadable version is no evidence that the setup is old.
+ */
+export const onboardingOlderSetupSchema = z.object({
+  recordedVersion: z.string(),
+  minimumVersion: z.string(),
+  upgradeGuideUrl: z.string(),
+});
+export type OnboardingOlderSetup = z.infer<typeof onboardingOlderSetupSchema>;
+
+/**
  * `GET /api/v1/p/:projectId/onboarding` — everything the three surfaces read, for ONE project.
  *
  * Every optional-looking field is `.nullable()` rather than `.optional()` on purpose: a key
@@ -108,11 +129,13 @@ export const onboardingStatusSchema = z.object({
   unavailableReason: z.string().nullable(),
   /** False in hosted mode — setup still runs, but one step finishes on the owning machine. */
   localHandoff: z.boolean(),
-  /** True when the offer row should be shown: the identity changed, a baseline exists, it has
-   *  not been offered for this pair, and no check is running. Never true without a baseline. */
+  /** True when the offer row should be shown: it has not been offered for this pair, no check is
+   *  running, and either the identity changed against a baseline (`state: 'changed'`) or the
+   *  project is set up with an older setup collection (`state: 'set-up'` with `olderSetup`). Never
+   *  true without one of those two pieces of evidence. */
   offerPending: z.boolean(),
-  /** True when this identity was already offered — the Settings card says so, the row does not
-   *  come back. */
+  /** True when this identity was already offered for either of those reasons — the Settings card
+   *  says so, the row does not come back for this pair. */
   dismissed: z.boolean(),
   observed: onboardingIdentitySchema,
   lastOffered: onboardingStampSchema.nullable(),
@@ -123,6 +146,9 @@ export const onboardingStatusSchema = z.object({
   launch: onboardingLaunchSchema,
   /** Whether issue filing works in this project, and why not (#468). */
   issueFiling: onboardingIssueFilingSchema,
+  /** Set when the project's install record names a setup collection older than this engine
+   *  supports; `null` otherwise. See `onboardingOlderSetupSchema`. */
+  olderSetup: onboardingOlderSetupSchema.nullable(),
 });
 export type OnboardingStatus = z.infer<typeof onboardingStatusSchema>;
 

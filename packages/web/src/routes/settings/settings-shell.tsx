@@ -80,7 +80,7 @@ function SectionNav({
         data-slot="settings-nav-index"
         aria-current={activeId === null ? 'page' : undefined}
         className={cn(
-          'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors',
+          'flex scroll-mt-16 items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors',
           activeId === null
             ? 'bg-muted text-foreground'
             : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -96,7 +96,7 @@ function SectionNav({
           data-section={section.id}
           aria-current={section.id === activeId ? 'page' : undefined}
           className={cn(
-            'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors',
+            'flex scroll-mt-16 items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors',
             section.id === activeId
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',

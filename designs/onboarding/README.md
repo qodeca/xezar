@@ -156,6 +156,8 @@ Every state has its own sentence. All are drawn in [`states.html`](states.html).
 | **Unknown provenance** | Record missing, empty or unreadable | neutral | Provenance unknown | `contrast` **Set up this project** + the "cannot tell your own edits" note |
 | **Unavailable** | No agent backend detected | neutral | (state heading unchanged) | Disabled, with the reason as visible text wired by `aria-describedby` |
 | **Hosted / remote mode** | `capabilities.localHandoff` is false | neutral | (state heading unchanged) | Enabled, plus one note naming the part that finishes on the owning machine (OQ-2) |
+| **Older setup** | The install record names a setup older than this xezar supports (`olderSetup`, D-13) | `pending` | Setup needs an upgrade | `contrast` **Open the upgrade guide** (new tab) above `outline` **Re-check now** |
+| **Older setup, dismissed** | Older setup, and the offer was recorded for this pair | `pending` | Setup needs an upgrade | The same two actions + the "The notice is hidden, not the problem" note instead of the re-check note |
 | **Re-check running** | A check task for this project is active | `violet pulse` | Re-checking | **Open the task** |
 | **Loading** | The record has not answered yet | — | — | One muted line, "Loading project setup…". No skeleton and no false "Not set up yet" |
 | **Load error** | The record could not be read | — | Could not load project setup | `CenteredState tone="danger"` `heading="h2"`, the server message verbatim as the subtitle, one **Retry** |
@@ -168,6 +170,7 @@ Every state has its own sentence. All are drawn in [`states.html`](states.html).
 | **Engine changed** | Row with both versions inline | Same shape up, down and for a development build |
 | **Templates changed** | Row with both digests inline | Only when the engine version is unchanged |
 | **Both changed** | Row with one sentence and a link to Settings | Four identities do not fit one line at 375 px |
+| **Older setup** | Row naming both versions, **Open the upgrade guide** (new tab) and **Later** — no Re-check | `data-offer-state="older-setup"`. A re-check before the upgrade changes nothing (D-13). Later uses the same offered stamp |
 | **Starting** | **Starting…**, both buttons disabled | The cockpit's pending-label rule |
 | **Check running** | Replaced by a `violet pulse` line naming the task | Two clicks cannot start two checks |
 | **Dismissed** | Not rendered at all | The record holds the offered pair |
@@ -214,6 +217,9 @@ substitutions. A value that is not recorded prints `—`.
 | Body — dismissed | The last check finished against xezar {engine}. xezar {engine} is running now. You chose Later, so the notice above the page will not come back for this version. |
 | Heading — unknown provenance | Provenance unknown |
 | Body — unknown provenance | A record of earlier checks exists for this project and cannot be read, so nothing here can say what was checked or when. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own. |
+| Heading — older setup | Setup needs an upgrade |
+| Body — older setup | This project’s setup is version {recorded}, and this xezar needs {minimum} or later. Until it is upgraded, some tasks are refused because they ask for agents this xezar no longer supports. Follow the upgrade guide first — a re-check compares files but does not upgrade the setup. |
+| Button — older setup | Open the upgrade guide (an external-link icon, and `sr-only` " (opens in a new tab)") |
 | Heading — re-check running | Re-checking |
 | Body — re-check running | A task is comparing this project's files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview. |
 | Button — set up | Set up this project |
@@ -240,6 +246,7 @@ substitutions. A value that is not recorded prints `—`.
 | Ordinary task | **Setup starts an ordinary task.** It appears in Tasks with every other task, you can read what it did, and you can cancel it. Nothing runs on its own when xezar starts. |
 | Observed is not checked | **Observed is not checked.** "Last observed" is what is running now. Only a check that finished moves "Last successfully checked" — a partial or failed check leaves it where it was. |
 | Re-check is always here | **A re-check is always here.** Choosing Later hides the notice for this version only. It never turns the check off. |
+| Older setup, after Later | **The notice is hidden, not the problem.** Later hides the notice above the page until xezar changes. Some tasks stay refused until the setup is upgraded. |
 | Unknown provenance is not an error | **This is not an error.** The record is local scratch. Deleting it loses the history of checks and nothing else — xezar and your tasks work exactly as before. |
 
 **Deleted is not unreadable** (QA-2 of #497, and the one place this deck stated two rules). Deleting
@@ -259,6 +266,8 @@ accepted: a project that was checked, whose scratch file is then deleted, reads 
 | Engine changed | **xezar changed since this project was last checked** — {engine} now, {engine} then. A re-check compares this project's files against the pinned defaults and shows you the differences. |
 | Templates changed | **The setup templates changed since this project was last checked** — {templates} now, {templates} then. A re-check compares this project's files against the pinned defaults and shows you the differences. |
 | Both changed | **xezar and the setup templates changed since this project was last checked.** A re-check compares this project's files against the pinned defaults and shows you the differences. See the exact versions |
+| Older setup | **This project’s setup is older than this xezar supports** — it is version {recorded}, and this xezar needs {minimum} or later. Some tasks are refused until it is upgraded. |
+| Button — older setup | Open the upgrade guide (an external-link icon, and `sr-only` " (opens in a new tab)") |
 | Check running | **Re-checking this project** — open the task to answer its questions and accept its changes. |
 | Button | Re-check |
 | Button | Later |
@@ -266,7 +275,8 @@ accepted: a project that was checked, whose scratch file is then deleted, reads 
 
 The same sentence covers an upgrade, a downgrade and a development build. The words **update**,
 **upgrade** and **newer** never appear, because a downgrade and a development build are changes to
-inspect, not migration authority.
+inspect, not migration authority. The one exception is the older-setup row (D-13): a re-check cannot
+fix a setup older than xezar supports, so that row, and only that row, says "upgrade".
 
 ### 8.5 Toasts
 
@@ -444,7 +454,7 @@ Each is checkable by a tester without reading the code.
 | AC-03 | Starting xezar never creates a task, on any project, in any state of the record. |
 | AC-04 | With the record naming a different engine version, opening the project shows exactly one non-blocking row with exactly two actions, **Re-check** and **Later**, and the page below is fully usable. |
 | AC-05 | Pressing **Later**, then restarting xezar on the same version, shows no row. Settings still shows the change and a working **Re-check now**. |
-| AC-06 | A downgrade and a development build produce the same sentence shape as an upgrade. The words "update", "upgrade" and "newer" appear nowhere on either surface. |
+| AC-06 | A downgrade and a development build produce the same sentence shape as an upgrade. The words "update", "upgrade" and "newer" appear nowhere on either surface, except the older-setup warning (§ 7.1, § 7.2, § 8.4), which the owner approved on 2026-10-18 (D-13) because a re-check cannot fix it. |
 | AC-07 | Deleting `.local/xezar/onboarding-state.json` while xezar runs: the cockpit keeps working, no error page appears, Settings reads "Provenance unknown", and no offer row is shown. |
 | AC-08 | Corrupting that file to invalid JSON produces the same result as AC-07, plus at most one warning. Boot never fails. |
 | AC-09 | Making the file read-only: the offer row appears, **Later** removes it for the session, and a restart may show it once more. Nothing errors and no task starts. |
@@ -490,6 +500,7 @@ palette row.
 | A new project-scope settings section | `SETTINGS_SECTIONS` is the documented way to add one, and the status has to outlive the empty state. |
 | "Later" instead of naming the kept outcome | The owner's decision Q3 names both actions. OQ-6. |
 | A `<dl>` where the cockpit usually uses a settings field | Three label-value pairs are a description list. A settings field is for a control, and there is no control here. |
+| The older-setup warning says "upgrade" and links outside the cockpit, against AC-06 and § 8.4 | A setup older than xezar supports has tasks refused and a re-check cannot fix it, so the only honest action is the public upgrade guide. Owner decision D-13 (2026-10-18). |
 | `.setup-note` as a `card-2` block inside a card | That is the cockpit's own elevation rule (page → card → hint), spelled as a feature class rather than a new shared component. If a second feature needs it, promote it. |
 
 **Nothing new is added to the design system by this design**: no token, no primitive, no shared

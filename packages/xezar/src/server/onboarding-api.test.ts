@@ -7,7 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import { onboardingStatePath, resetOnboardingWarnings } from '../onboarding/state.ts';
-import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
+import {
+  BUNDLED_TEMPLATES_DIGEST,
+  MINIMUM_SETUP_VERSION,
+  ONBOARDING_WORKFLOW_ID,
+  SETUP_UPGRADE_GUIDE_URL,
+} from '../onboarding/status.ts';
 import { watchSetupCompletion } from '../onboarding/watch.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -140,6 +145,38 @@ describe('the onboarding API', () => {
 
     // And it stays gone across a reload — the anti-nag rule the whole feature rests on.
     expect((await get()).offerPending).toBe(false);
+  });
+
+  it('warns about an older setup collection, offers it once, and lets Later hide it (UI ↔ MCP parity)', async () => {
+    const writeInstall = (version: unknown) =>
+      writeFileSync(
+        join(repoRoot, '.xezar', 'onboarding.json'),
+        JSON.stringify({ version, skill: 'xez-onboard-opinionated', date: '2026-09-27T09:11:23Z' }),
+        'utf8',
+      );
+    writeInstall('3.0.3');
+    const older = await get();
+    expect(older).toMatchObject({
+      state: 'set-up',
+      offerPending: true,
+      dismissed: false,
+      olderSetup: { recordedVersion: '3.0.3', minimumVersion: MINIMUM_SETUP_VERSION, upgradeGuideUrl: SETUP_UPGRADE_GUIDE_URL },
+    });
+
+    const res = await apiRequest(app, '/api/v1/onboarding/offered', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(OBSERVED),
+    });
+    expect(res.status).toBe(200);
+    const after = await get();
+    expect(after).toMatchObject({ state: 'set-up', offerPending: false, dismissed: true });
+    // Later hides the row; the warning itself stays on the answer for the Settings card.
+    expect(after.olderSetup).not.toBeNull();
+
+    // Upgrading the setup collection clears it on the next read — no re-check, no restart.
+    writeInstall('3.2.1');
+    expect(await get()).toMatchObject({ state: 'set-up', olderSetup: null, offerPending: false, dismissed: false });
   });
 
   it('answers `conflict` and writes nothing when the caller’s identity has moved on', async () => {
