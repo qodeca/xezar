@@ -78,6 +78,9 @@ const STEP_KEYS = new Set([
   "timeout",
 ]);
 const ON_FAIL_KEYS = new Set(["retry", "max"]);
+// The runners the engine floor (0.30.0, compat.json) runs. pi and OpenCode are gone (#204): a step
+// that names either stops the engine at start, and the upgrade merge keeps a hand-added line (#211).
+const ENGINE_RUNNERS = new Set(["claude", "codex", "qwen"]);
 const FILE_KEYS = new Set(["name", "description", "steps", "skills"]);
 
 // Maintained project roles require the shared contract; custom skills remain standalone.
@@ -453,6 +456,9 @@ function checkWorkflow(file, doc) {
     if (!step.id) err(at, "missing an id");
     if (ids.indexOf(step.id) !== index) err(at, "duplicate step id");
 
+    if (step.runner !== undefined && !ENGINE_RUNNERS.has(step.runner)) {
+      err(at, `names runner "${step.runner}", which the engine no longer runs; use ${[...ENGINE_RUNNERS].join(", ")}, or leave the runner to routing (the xezar guide page "Moving from pi or OpenCode to Qwen Code")`);
+    }
     const isCheck = Boolean(step.command);
     const isAgent = Boolean(step.prompt || step.skill);
     if (isCheck === isAgent) {

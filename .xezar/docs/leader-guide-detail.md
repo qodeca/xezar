@@ -38,7 +38,7 @@ where the two seem to differ, the guide wins and the difference is a finding for
   every other open PR must update its branch and re-run its checks before it may merge. With
   several PRs a day that loop runs the full CI again and again for nothing (one project counted 19
   update-branch cycles before it turned its queue on). A queue tests each PR on top of the ones
-  ahead of it, once, so `gh pr merge --auto` replaces the loop.
+  ahead of it, once, so one queued merge replaces the loop.
 
 ## Owner-only decisions
 
