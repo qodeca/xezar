@@ -1,6 +1,6 @@
 # The project's own MCP servers for Codex runs. The engine gives a Codex run only the servers this
 # file declares, and Codex reads it only once the project is trusted. An MCP server runs outside
-# Codex's sandbox, so `enabled_tools` is the limit: ad-hoc browsing, never uploads or page scripts.
+# Codex's sandbox, so `enabled_tools` is the limit: ad-hoc browsing and the viewport, never uploads or page scripts.
 [mcp_servers.chrome-devtools]
 command = "npx"
 args = ["-y", "chrome-devtools-mcp@1.10.1", "--isolated", "--headless"]
@@ -14,4 +14,6 @@ enabled_tools = [
   "list_console_messages", "get_console_message", "list_network_requests", "get_network_request",
   "click", "fill", "fill_form", "hover", "press_key", "type_text", "wait_for", "handle_dialog",
   "resize_page", "get_css_styles",
+  # resize_page cannot make a headless window 375px wide; emulate sets the viewport (#177).
+  "emulate",
 ]

@@ -16,6 +16,10 @@ steps:
     name: Report the checkout
     command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
+  - id: prepare
+    name: Check the pull request out for review
+    command: "bash .local/xezar/cache/kit/checks/review-run.sh prepare"
+    resultScope: routine
   - id: review
     name: Review
     prompt: "{{task}} Report independence as confirmed, not confirmed or unknown, from the author the launch text names; never confirmed without that text."

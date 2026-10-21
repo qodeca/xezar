@@ -27,8 +27,8 @@
 # ONE EXCEPTION, SCOPED TO THE REVIEWER'S OWN VERDICT (DECISIONS.md, D13). A JSON label request on a
 # pull request that carries `"verdict":{"role":"qa"|"design-review","head":"<40-char sha>"}` may add
 # that role's approval label and lift that role's own gate label, and nothing else:
-#   qa             add qa-approved,     remove needs-qa
-#   design-review  add design-approved, remove needs-design
+#   qa             add qa-approved,     remove needs-qa,     and qa-failed when the PR carries it
+#   design-review  add design-approved, remove needs-design, and design-failed when the PR carries it
 # and only when `head` is the PR's current head, this worktree reviewed exactly that head
 # (`review-run.sh checkout`), and its tracked files are unchanged (`review-run.sh verify-unchanged`).
 # The role is not the request's word: it must be the `verdictRole` the engine froze for THIS step
@@ -39,6 +39,10 @@
 # acceptance steps declare no qa or design-review role, so they move no approval label; anything
 # unreadable is refused. A gate label is lifted only together with its approval label, in the
 # same request: `remove:["needs-qa"]` without `add:["qa-approved"]` is refused.
+# The role's failed label is lifted the same way, only on its PASS (#171): a design review that
+# failed once and later passed would otherwise keep `design-failed`, which lib/project-policy.mjs
+# refuses, so the PR could never merge through the proper path. A failed label the PR does not carry
+# is left out of the edit, because gh refuses to remove a label the repository does not define.
 #
 # Exit: gh's own status on a run, 1 on a refusal, 2 on usage.
 set -uo pipefail
@@ -51,6 +55,9 @@ VERDICT_ADD_qa="qa-approved"
 VERDICT_REMOVE_qa="needs-qa"
 VERDICT_ADD_design_review="design-approved"
 VERDICT_REMOVE_design_review="needs-design"
+# The role's own failed label, lifted only together with its approval label (#171).
+VERDICT_CLEAR_qa="qa-failed"
+VERDICT_CLEAR_design_review="design-failed"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
@@ -61,6 +68,7 @@ verdict_head=""
 verdict_used=""
 verdict_added=""
 verdict_removed=""
+verdict_cleared=""
 from_json=""
 
 usage() {
@@ -211,7 +219,14 @@ case "$action" in
         --remove)
           if [ -n "$verdict_role" ] && [ "$label" = "$(own_label REMOVE)" ]; then
             verdict_used=1
-            verdict_removed=1
+            verdict_removed="$label"
+          elif [ -n "$verdict_role" ] && [ "$label" = "$(own_label CLEAR)" ]; then
+            # Added below, after the verdict checks, and only when the PR carries it (#171).
+            verdict_used=1
+            verdict_removed="$label"
+            verdict_cleared="$label"
+            shift 2
+            continue
           elif has_word "$label" "$NEVER_REMOVE"; then
             refuse "\"$label\" blocks a merge; a reviewer lifts only its own gate label, with a verdict request (D13)"
           fi
@@ -224,12 +239,20 @@ case "$action" in
     if [ -n "$verdict_used" ]; then
       [ "$kind" = pr ] || refuse "a verdict label goes on a pull request"
       [ -z "$verdict_removed" ] || [ -n "$verdict_added" ] ||
-        refuse "\"$(own_label REMOVE)\" is lifted only together with \"$(own_label ADD)\" in the same request (D13)"
+        refuse "\"$verdict_removed\" is lifted only together with \"$(own_label ADD)\" in the same request (D13)"
       current="$(gh pr view "$number" --repo "$repo" --json headRefOid --jq .headRefOid 2>/dev/null)" || current=""
       [ "$current" = "$verdict_head" ] || refuse "the PR's head is ${current:-unknown}, not the reviewed $verdict_head; the verdict is void"
       bash "$SCRIPT_DIR/review-run.sh" verify-unchanged >/dev/null || refuse "this worktree's tracked files or HEAD changed during the review"
       reviewed="$(git rev-parse HEAD 2>/dev/null)"
       [ "$reviewed" = "$verdict_head" ] || refuse "this worktree reviewed ${reviewed:-nothing}, not $verdict_head; check the PR out with review-run.sh checkout first"
+      if [ -n "$verdict_cleared" ]; then
+        carried="$(gh pr view "$number" --repo "$repo" --json labels --jq '.labels[].name' 2>/dev/null)" || refuse "could not read the PR's labels"
+        if printf '%s\n' "$carried" | tr -d '\r' | grep -qxF "$verdict_cleared"; then
+          args+=(--remove-label "$verdict_cleared")
+        else
+          echo "gh-write.sh: the PR does not carry \"$verdict_cleared\"; nothing to lift"
+        fi
+      fi
     fi
     gh "$kind" edit "$number" --repo "$repo" "${args[@]}"
     ;;

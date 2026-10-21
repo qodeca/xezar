@@ -35,6 +35,11 @@ export const GIT_BASH_MISSING =
 /** A starting process may be dated slightly before `spawnedAt`, which is read after spawn returns. */
 export const SPAWN_CLOCK_SLACK_MS = 1000;
 const TOOL_TIMEOUT_MS = 5000;
+/** PowerShell and CIM can take longer than TOOL_TIMEOUT_MS to start on a loaded machine, as on a CI
+ *  runner with four gates at once: the second read of the Windows table, after a first that returned
+ *  nothing (a timeout or a failed start), and every kill script get this limit instead. A kill
+ *  checks each process identity first, so a slower one cannot kill the wrong process. */
+const LOADED_TIMEOUT_MS = 20000;
 const PS_MAX_BUFFER = 1024 * 1024;
 const TABLE_MAX_BUFFER = 16 * 1024 * 1024;
 const KILL_MAX_BUFFER = 1024 * 1024;
@@ -103,17 +108,6 @@ export function gitRoot({ env = process.env, exists = existsSync } = {}) {
   return candidates.find(isGitBashRoot) ?? null;
 }
 
-/**
- * The worker script's first command: MSYS exactly as the caller had it, or unset (#1078). noglob is
- * for the worker's own bash.exe – it keeps the MSYS runtime from globbing the worker's command
- * line – and must not reach the gate command: with noglob inherited, Git's sh stops reading quotes
- * and splits a quoted path with a space (#1023), which failed the #1023 test in every gate run.
- */
-export function restoreMsys(env) {
-  const msys = envGet(env, 'MSYS');
-  return msys === undefined ? 'unset MSYS; ' : `export MSYS='${msys.replaceAll("'", "'\\''")}'; `;
-}
-
 /** A copy of env with "noglob" in MSYS (value kept, one key): otherwise the MSYS runtime globs an unquoted `*`. */
 export function withNoglob(env) {
   const msys = envGet(env, 'MSYS') ?? '';
@@ -121,6 +115,17 @@ export function withNoglob(env) {
   for (const key of Object.keys(next)) if (key.toUpperCase() === 'MSYS') delete next[key];
   next.MSYS = /(^|\s)noglob(\s|$)/.test(msys) ? msys : msys ? `${msys} noglob` : 'noglob';
   return next;
+}
+
+/**
+ * The shell text that puts the caller's MSYS back inside a worker (#216): `unset MSYS; `, or
+ * `export MSYS='<value>'; `. `noglob` is for the worker's own command line only; a gate command
+ * that inherits it runs a Git `sh` that no longer reads quotes, so a quoted path with a space
+ * splits. The engine's check step does the same (qodeca/xezar#1023, #1078).
+ */
+export function restoreMsys(env) {
+  const msys = envGet(env, 'MSYS');
+  return msys === undefined ? 'unset MSYS; ' : `export MSYS='${String(msys).replaceAll("'", "'\\''")}'; `;
 }
 
 /**
@@ -346,7 +351,8 @@ export async function stopTree(root, tools, { killRoot = false, run = defaultRun
     // Windows table is the one place the worker's processes still show.
     const knowsGroup = Number.isSafeInteger(root.msysPid) && root.msysPid > 0;
     if (!killRoot && knowsGroup && psText !== null && msysMembers(msysRows, root.msysPid).length === 0) return { ok: true, killed: 0 };
-    const tableText = await run(tools.powershell, powershellArgs(TABLE_SCRIPT), { maxBuffer: TABLE_MAX_BUFFER, timeoutMs: TOOL_TIMEOUT_MS });
+    let tableText = await run(tools.powershell, powershellArgs(TABLE_SCRIPT), { maxBuffer: TABLE_MAX_BUFFER, timeoutMs: TOOL_TIMEOUT_MS });
+    if (tableText === null) tableText = await run(tools.powershell, powershellArgs(TABLE_SCRIPT), { maxBuffer: TABLE_MAX_BUFFER, timeoutMs: LOADED_TIMEOUT_MS });
     if (tableText === null) return { ok: false, killed: 0, reason: 'the Windows process table could not be read' };
     const targets = validTargets(treeTargets({ msysRows, winRows: parseWindowsTable(tableText), root }));
     let killed = 0;
@@ -354,7 +360,7 @@ export async function stopTree(root, tools, { killRoot = false, run = defaultRun
     let unran = false;
     for (let from = 0; from < targets.length; from += KILL_BATCH) {
       const batch = targets.slice(from, from + KILL_BATCH);
-      const text = await run(tools.powershell, powershellArgs(killScript(batch)), { maxBuffer: KILL_MAX_BUFFER, timeoutMs: TOOL_TIMEOUT_MS });
+      const text = await run(tools.powershell, powershellArgs(killScript(batch)), { maxBuffer: KILL_MAX_BUFFER, timeoutMs: LOADED_TIMEOUT_MS });
       if (text === null) { unran = true; continue; }
       for (const [pid, outcome] of parseKillOutcomes(text, new Set(batch.map((t) => t.pid)))) {
         if (outcome === 'killed') killed += 1;

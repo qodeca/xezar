@@ -186,8 +186,14 @@ if [ "$IS_WORKTREE" -eq 1 ]; then
     # own worktree and branch. A pull request from before worktree mode is a
     # leader-coordinated migration, not something a run decides for itself — see
     # `.xezar/skills/xezar-review-response.md`.
+    #
+    # One state is not another branch: a read-only review whose `prepare` step checked its PR's
+    # head out DETACHED (#225). It writes no branch, so nothing is lost on reclaim, and every write
+    # runs this preflight in strict mode, where a detached HEAD is still refused.
     expected="$(expected_task_branch)"
-    if [ "$BRANCH" != "$expected" ]; then
+    if [ "$BRANCH" = "HEAD" ] && [ "$MODE" = "allow-root" ]; then
+      info "detached HEAD accepted: this workflow is read-only, and a review checks its PR out detached"
+    elif [ "$BRANCH" != "$expected" ]; then
       fail branch.owned-by-run "branch is \"$BRANCH\" but this worktree is run $leaf, whose branch is \"$expected\". Xezar restores only its own branch, so work on any other one is lost on reclaim. Resume the run that owns the branch instead of switching this one."
     fi
   fi
@@ -528,18 +534,25 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
     # Nothing is sealed until the list reads. Sealing here would record a pass whose security
     # requirement was decided by a failure to look.
     fail evidence.gate-list-readable "the canonical gate list could not be read (repo-gates.sh --list --json exited $gate_list_rc, or its output could not be parsed), so whether this attempt must carry a security result could not be measured. An unmeasured requirement is not an absent one. Run bash .xezar/checks/repo-gates.sh --list --json and fix what it reports."
-  elif seal_digest="$(node "$SCRIPT_DIR/lib/gate-results.mjs" seal \
+  elif
+    # The seal's three facts only read the checkout, so they are taken at the same time
+    # (lib/gate-record.sh, gate_facts_capture; #132 speed bar). Each is what its `$(…)` gave.
+    gate_facts_capture \
+      seal_tree_sha head_tree_sha \
+      seal_tree_fp tree_fingerprint \
+      seal_deps_fp deps_fingerprint
+    seal_digest="$(node "$SCRIPT_DIR/lib/gate-results.mjs" seal \
     --manifest "$manifest" \
     --gates-root "$(task_gates_dir)" \
     --json "$(_gate_json \
       "headSha=$HEAD_SHA" \
-      "treeSha=$(head_tree_sha)" \
+      "treeSha=$seal_tree_sha" \
       "branch=$BRANCH" \
       "commandListId=$command_list_id" \
       "securityGate=$security_gate" \
       "installGate=$install_gate" \
-      "treeFingerprint=$(tree_fingerprint)" \
-      "depsFingerprint=$(deps_fingerprint)" \
+      "treeFingerprint=$seal_tree_fp" \
+      "depsFingerprint=$seal_deps_fp" \
       "dirty:j=$dirty")")"; then
     info "gate evidence sealed  $HEAD_SHA"
     info "result digest         $seal_digest"

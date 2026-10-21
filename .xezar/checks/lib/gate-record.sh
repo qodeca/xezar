@@ -41,7 +41,49 @@ GATE_STDOUT_TAIL_PASS=3
 GATE_STDOUT_TAIL_FAIL=60
 
 _gate_iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-_gate_epoch_ms() { node -e 'process.stdout.write(String(Date.now()))'; }
+# Bash 5 has the clock built in (`EPOCHREALTIME`, seconds and six digits of microseconds, with the
+# locale's decimal mark); a node start costs about half a second on Windows. Older bash (macOS's
+# 3.2) has no such variable and asks node, as before.
+# The commit HEAD points at now, or nothing: the after-record's headSha.
+_gate_head_sha() {
+  ( cd "$TASK_CWD" && git rev-parse HEAD 2>/dev/null )
+}
+
+# gate_facts_capture VAR FUNCTION [VAR FUNCTION ...]
+# Runs each FUNCTION at the same time, in the background, and sets each VAR (in the caller's scope)
+# to what that function printed, trailing newlines removed – exactly what `VAR="$(FUNCTION)"`
+# gives, failures included: a function that fails or prints nothing leaves its VAR empty, as
+# the `$(…)` it replaces did. Every call it replaces only reads, so the order they run in cannot
+# change an answer. With no temporary folder they run one after another, as they used to.
+gate_facts_capture() {
+  local _gfc_dir _gfc_i _gfc_pids=() _gfc_args=("$@")
+  _gfc_dir="$(mktemp -d "${TMPDIR:-/tmp}/gate-facts.XXXXXX" 2>/dev/null)" || _gfc_dir=""
+  if [ -z "$_gfc_dir" ]; then
+    for ((_gfc_i = 0; _gfc_i < ${#_gfc_args[@]}; _gfc_i += 2)); do
+      printf -v "${_gfc_args[_gfc_i]}" '%s' "$("${_gfc_args[_gfc_i + 1]}")"
+    done
+    return 0
+  fi
+  for ((_gfc_i = 0; _gfc_i < ${#_gfc_args[@]}; _gfc_i += 2)); do
+    "${_gfc_args[_gfc_i + 1]}" >"$_gfc_dir/$_gfc_i" &
+    _gfc_pids+=("$!")
+  done
+  wait "${_gfc_pids[@]}" 2>/dev/null
+  for ((_gfc_i = 0; _gfc_i < ${#_gfc_args[@]}; _gfc_i += 2)); do
+    # `$(<file)` is bash's own read: no `cat` to start. The file always exists – the background
+    # redirection above created it before its function ran.
+    printf -v "${_gfc_args[_gfc_i]}" '%s' "$(<"$_gfc_dir/$_gfc_i")"
+  done
+  rm -rf "$_gfc_dir"
+}
+
+_gate_epoch_ms() {
+  local now="${EPOCHREALTIME:-}"
+  case "$now" in
+    [0-9]*[.,][0-9][0-9][0-9][0-9][0-9][0-9]) now="${now//[.,]/}"; printf '%s' "${now%???}" ;;
+    *) node -e 'process.stdout.write(String(Date.now()))' ;;
+  esac
+}
 
 # Build a JSON object from key=value arguments. Suffix a key with `:n` for a number or `:j` for
 # a raw JSON value. Doing this in node rather than by hand keeps a log path with a quote in it
@@ -113,14 +155,6 @@ gate_resolve_producer() {
 # A standalone attempt is uncertifiable by construction, twice over: its producer is `author`,
 # which sealing refuses, and it does not live under an evidence root, which verification refuses.
 # So the owner gets a verdict they can act on and nobody gets evidence they did not earn.
-_gate_claim_field() {
-  printf '%s' "$1" | node -e '
-    let raw = "";
-    process.stdin.on("data", (d) => (raw += d)).on("end", () => {
-      try { process.stdout.write(String(JSON.parse(raw)[process.argv[1]] ?? "")); } catch { process.exit(1); }
-    });' "$2"
-}
-
 gate_attempt_begin() {
   local required_json="$1" command_list_id="$2"
   local gates_root seq stamp claim
@@ -155,9 +189,20 @@ gate_attempt_begin() {
   # `reserve` claims `.sequences/<n>` with mkdir, which exactly one process can win.
   stamp="$(_gate_epoch_ms)"
   claim="$(node "$GATE_RESULTS_MJS" reserve --gates-root "$gates_root" --head "$HEAD_SHA" --stamp "$stamp" --pid "$$")" || return 1
-  seq="$(_gate_claim_field "$claim" sequence)"
-  GATE_ATTEMPT_ID="$(_gate_claim_field "$claim" attemptId)"
-  GATE_ATTEMPT_DIR="$(_gate_claim_field "$claim" attemptDir)"
+  # One node for the three fields (#132 speed bar), one per line. A field holding a line break is
+  # refused, so a field never spans or merges lines; the empty fields then stop the attempt below.
+  seq="" GATE_ATTEMPT_ID="" GATE_ATTEMPT_DIR=""
+  {
+    IFS= read -r seq && IFS= read -r GATE_ATTEMPT_ID && IFS= read -r GATE_ATTEMPT_DIR
+  } < <(printf '%s' "$claim" | node -e '
+    let raw = "";
+    process.stdin.on("data", (d) => (raw += d)).on("end", () => {
+      let c;
+      try { c = JSON.parse(raw); } catch { process.exit(1); }
+      const fields = ["sequence", "attemptId", "attemptDir"].map((k) => String(c[k] ?? ""));
+      if (fields.some((f) => /[\r\n]/.test(f))) process.exit(1);
+      process.stdout.write(fields.map((f) => `${f}\n`).join(""));
+    });' 2>/dev/null)
   [ -n "$GATE_ATTEMPT_ID" ] && [ -n "$GATE_ATTEMPT_DIR" ] || {
     printf 'gate-record: the attempt sequence could not be reserved\n' >&2; return 1;
   }
@@ -165,6 +210,17 @@ gate_attempt_begin() {
   GATE_INDEX=0
   GATE_STARTED_AT="$(_gate_iso_now)"
   GATE_STARTED_MS="$stamp"
+
+  # The five before-facts only read the checkout, so they are taken at the same time instead of
+  # one after another (#132 speed bar: together they start about thirty processes, and on Windows
+  # each start is about 0.1 s). Each value is exactly what its own `$(…)` gave before.
+  local tree_sha repo_json env_json tree_fp deps_fp
+  gate_facts_capture \
+    tree_sha head_tree_sha \
+    repo_json repo_identity \
+    env_json env_profile \
+    tree_fp tree_fingerprint \
+    deps_fp deps_fingerprint
 
   node "$GATE_RESULTS_MJS" begin --dir "$GATE_ATTEMPT_DIR" --json "$(_gate_json \
     "attemptId=$GATE_ATTEMPT_ID" \
@@ -179,13 +235,13 @@ gate_attempt_begin() {
     "baseRef=${GATE_BASE_REF:-$BASE_BRANCH}" \
     "baseSha=${GATE_BASE_SHA:-}" \
     "headSha=$HEAD_SHA" \
-    "treeSha=$(head_tree_sha)" \
+    "treeSha=$tree_sha" \
     "commandListId=$command_list_id" \
     "leaseWaitMs:n=${GATE_LEASE_WAIT_MS:-}" \
     "required:j=$required_json" \
-    "repo:j=$(repo_identity)" \
-    "environment:j=$(env_profile)" \
-    "before:j=$(_gate_json "headSha=$HEAD_SHA" "treeFingerprint=$(tree_fingerprint)" "depsFingerprint=$(deps_fingerprint)")" \
+    "repo:j=$repo_json" \
+    "environment:j=$env_json" \
+    "before:j=$(_gate_json "headSha=$HEAD_SHA" "treeFingerprint=$tree_fp" "depsFingerprint=$deps_fp")" \
     "startedAt=$GATE_STARTED_AT")" || return 1
 
   printf 'gate attempt   %s\n' "$GATE_ATTEMPT_ID"
@@ -200,6 +256,37 @@ _gate_slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//'
 }
 
+# _gate_slug_into VAR NAME: sets VAR to `_gate_slug NAME` without starting a process when NAME is
+# printable ASCII only (every gate name a project writes): the same lower case, each run of other
+# characters one `-`, one `-` off each end. Anything else – a tab, a newline, a non-ASCII letter,
+# where tr, sed and the locale decide – takes `_gate_slug` itself. Three processes a call, six
+# calls a gate run, about 0.1 s each on Windows (#132 speed bar). The character sets are spelled
+# out, never ranges: a range in a pattern follows the locale's collation.
+_gate_slug_into() {
+  local _gsi_name="$2" _gsi_out="" _gsi_c _gsi_i _gsi_dash=0
+  local _gsi_upper=ABCDEFGHIJKLMNOPQRSTUVWXYZ _gsi_lower=abcdefghijklmnopqrstuvwxyz _gsi_before _gsi_code
+  for ((_gsi_i = 0; _gsi_i < ${#_gsi_name}; _gsi_i++)); do
+    _gsi_c="${_gsi_name:_gsi_i:1}"
+    case "$_gsi_c" in
+      [abcdefghijklmnopqrstuvwxyz0123456789]) _gsi_out+="$_gsi_c"; _gsi_dash=0 ;;
+      [ABCDEFGHIJKLMNOPQRSTUVWXYZ])
+        _gsi_before="${_gsi_upper%%"$_gsi_c"*}"
+        _gsi_out+="${_gsi_lower:${#_gsi_before}:1}"; _gsi_dash=0 ;;
+      *)
+        # Any other printable ASCII character (codes 32 to 126) joins a run of `-`.
+        printf -v _gsi_code '%d' "'$_gsi_c"
+        if [ "$_gsi_code" -lt 32 ] || [ "$_gsi_code" -gt 126 ]; then
+          printf -v "$1" '%s' "$(_gate_slug "$_gsi_name")"
+          return
+        fi
+        [ "$_gsi_dash" -eq 1 ] || _gsi_out+="-"
+        _gsi_dash=1 ;;
+    esac
+  done
+  _gsi_out="${_gsi_out#-}"
+  printf -v "$1" '%s' "${_gsi_out%-}"
+}
+
 # Workers publish only their unique result. The parent is the sole aggregate writer.
 _gate_record_result() {
   if [ -n "${GATE_WORKER_RESULT:-}" ]; then
@@ -212,8 +299,9 @@ _gate_record_result() {
 # Reduce only after the scheduler has joined. Missing/malformed results are orchestration
 # failure: the caller must leave the attempt incomplete, not merely return a failed shell code.
 gate_collect_worker() {
-  local index="$1" name="$2" command="$3" entry expected_log
-  expected_log="$(printf '%02d-%s.log' "$index" "$(_gate_slug "$name")")"
+  local index="$1" name="$2" command="$3" entry expected_log slug
+  _gate_slug_into slug "$name"
+  printf -v expected_log '%02d-%s.log' "$index" "$slug"
   entry="$(node -e '
     const fs = require("node:fs");
     const [file, name, command, log, header] = process.argv.slice(1);
@@ -227,8 +315,13 @@ gate_collect_worker() {
         !Number.isFinite(Date.parse(e.endedAt)) || Date.parse(e.endedAt) < Date.parse(e.startedAt)) {
       throw Error("worker result identity/status/timing mismatch");
     }
-    process.stdout.write(JSON.stringify(e));
+    process.stdout.write(`${e.status}\n${JSON.stringify(e)}`);
   ' "$GATE_ATTEMPT_DIR/workers/$index.json" "$name" "bash -c $command" "$expected_log" "#xezar-gate-log $GATE_ATTEMPT_ID $name")" || return 1
+  # The validated status comes first, on its own line (JSON.stringify never writes a raw newline),
+  # and stays in GATE_WORKER_STATUS for repo-gates.sh: the stage checks after the install and the
+  # security gate read it there instead of starting node to read the same file again (#132).
+  GATE_WORKER_STATUS[index]="${entry%%$'\n'*}"
+  entry="${entry#*$'\n'}"
   # Render from validated durable evidence, not interleaved worker stdout. A broken
   # output sink is orchestration failure even when the underlying command passed.
   printf '\n=== %s ===\n%s\n--- log: %s/%s\n' "$name" "$entry" "$GATE_LOG_DIR" "$expected_log" || return 1
@@ -244,7 +337,7 @@ gate_run() {
   local slug log log_path header started ended status ran rc
 
   GATE_INDEX=$((GATE_INDEX + 1))
-  slug="$(_gate_slug "$name")"
+  _gate_slug_into slug "$name"
   log="$(printf '%02d-%s.log' "$GATE_INDEX" "$slug")"
   log_path="$GATE_LOG_DIR/$log"
   header="#xezar-gate-log $GATE_ATTEMPT_ID $name"
@@ -322,16 +415,23 @@ gate_note_skip() {
 # Publish the attempt. The result is derived inside `gate-results.mjs` from the recorded
 # outcomes — this function cannot declare a pass, it can only ask what the record adds up to.
 gate_attempt_complete() {
-  local ended result
+  local ended duration_ms result after_head after_tree after_deps
   ended="$(_gate_iso_now)"
+  # Measured before the after-facts, as it always was: the duration is the gates', not the record's.
+  duration_ms=$(( $(_gate_epoch_ms) - GATE_STARTED_MS ))
+  # The three after-facts are taken at the same time, as the before-facts are (gate_facts_capture).
+  gate_facts_capture \
+    after_head _gate_head_sha \
+    after_tree tree_fingerprint \
+    after_deps deps_fingerprint
   # The install gate's name comes from the list that ran (repo-gates.sh's GATE_NAMES), never from
   # the record: it is the one gate a verified-current skip may satisfy.
   result="$(node "$GATE_RESULTS_MJS" complete --dir "$GATE_ATTEMPT_DIR" --install-gate "${GATE_NAMES[0]:-}" --json "$(_gate_json \
     "endedAt=$ended" \
-    "durationMs:n=$(( $(_gate_epoch_ms) - GATE_STARTED_MS ))" \
-    "after:j=$(_gate_json "headSha=$( cd "$TASK_CWD" && git rev-parse HEAD 2>/dev/null )" \
-                          "treeFingerprint=$(tree_fingerprint)" \
-                          "depsFingerprint=$(deps_fingerprint)")")")" || return 1
+    "durationMs:n=$duration_ms" \
+    "after:j=$(_gate_json "headSha=$after_head" \
+                          "treeFingerprint=$after_tree" \
+                          "depsFingerprint=$after_deps")")")" || return 1
   printf '%s' "$result"
   [ "$result" = "passed" ]
 }

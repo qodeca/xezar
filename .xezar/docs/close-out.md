@@ -2,7 +2,9 @@
 
 ## Merging a pull request
 
-Required checks must be genuinely green on the PR you merge. Which path applies depends on
+Required checks must be genuinely green on the PR you merge. A merge the engine's merge tool
+refuses is a blocker to report, never a reason to merge another way: the two paths below apply
+only to a merge nothing refuses. Which path applies depends on
 whether the base branch has a GitHub merge queue (not the kit's `merge-queue` label). It has one
 when `gh api graphql -f query='query{repository(owner:"<owner>",name:"<repo>"){mergeQueue(branch:"<base>"){url}}}'`
 answers a non-null `mergeQueue`.

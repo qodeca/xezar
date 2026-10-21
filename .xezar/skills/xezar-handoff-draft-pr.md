@@ -9,6 +9,8 @@ Consume current checkpoint/late steering, then verify current evidence with work
 
 Inputs: sealed complete committed candidate and current steering. Output: one evidence-bound draft PR/handoff naming current head/base, CI identity and remaining work. No late source changes or duplicate PR; route repairs back to author and revalidation. When UI or the designs folder (`paths.designs` in `.xezar/pipeline/config.json`) is in scope, apply `needs-design` and link the design folder or the review comment in the PR body.
 
+**A design-only PR never closes its issue (#207).** When every changed file is under `paths.designs`, link the issue with `Refs #<n>` only, and never write close, closes, closed, fix, fixes, fixed, resolve, resolves or resolved next to `#<n>` – not even to say this PR does not close it: GitHub reads the word beside the number and closes the issue on merge, before any implementation exists. The implementation PR carries the closing keyword, and the merge policy refuses a design-only PR that closes an issue.
+
 A repair of an existing PR (`address-review-findings`, a conflict repair) pushes only through `.xezar/checks/push-check.sh --pr <n> --branch <the PR's headRefName>`, never `git push` or `worktree-git.sh push`: it pushes the sealed HEAD to that PR's own head branch after checking the seal, the live PR and the target. A refusal stops the handoff; report it and route the repair back, never push another way.
 
 A verification-only run – no commits over the base, passed by the evidence directory's `VERIFICATION` record – has no branch to push and no pull request to open. Push nothing and open nothing; report the verified revision, where the findings are posted, and the gate outcomes on this head.
