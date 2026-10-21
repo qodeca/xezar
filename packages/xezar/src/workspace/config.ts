@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { totalmem } from 'node:os';
 import { dirname } from 'node:path';
 import { z } from 'zod';
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
-import { uniqueTmpPath, writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { uniqueTmpPath, writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import {
   activeStateLayout,
@@ -647,6 +647,23 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
   assertXezarHomeWriteIsSandboxed(path);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileAtomicSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
+}
+
+/**
+ * The async twin of `atomicWriteJsonSync`, for a writer that READ the same file asynchronously.
+ *
+ * On Windows a rename cannot replace a file another handle still holds open, and the sync twin
+ * waits out that refusal with `Atomics.wait`, which blocks this process's event loop. An async
+ * read of the same file in this process (`fs.promises.readFile`: open, read and close are three
+ * separate steps, each resumed by the event loop) can then never close its handle, so every retry
+ * meets the same EPERM and the write fails after the whole budget — this process locking itself
+ * out. The async rename retry sleeps without blocking, so that read finishes and the next attempt
+ * lands.
+ */
+export async function atomicWriteJson(path: string, value: unknown): Promise<void> {
+  assertXezarHomeWriteIsSandboxed(path);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
 }
 
 /**

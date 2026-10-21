@@ -4,6 +4,8 @@ import {
   CLAIM_START_SLACK_MS,
   claimProcess,
   claimStartedAt,
+  CREATED_AT_SCRIPT,
+  createdAtFrom,
   primeClaimProcess,
   SAME_PROCESS_REMEMBERED_MS,
 } from './claim-start.ts';
@@ -36,6 +38,34 @@ describe('claimProcess (#963)', () => {
       expect(claimProcess(42, started, { platform: 'win32', createdAt: () => STARTED + 60_000 })).toBe('unknown');
     }
     expect(claimProcess(0, STARTED, { platform: 'win32', createdAt: () => STARTED + 60_000 })).toBe('unknown');
+  });
+
+  // CI run 39216917631 (Windows): a dead writer's pid answered alive to the signal-0 probe, the
+  // look then found no process with that pid, and the claim was kept as live – "live writer PID
+  // 6640" refused the next start. A look that finds no process is proof the writer is gone.
+  it('calls a pid with no process behind it at look time another process, never unknown', async () => {
+    expect(claimProcess(42, STARTED, { platform: 'win32', createdAt: () => 'gone' })).toBe('other');
+    __forgetClaimProcessesForTests();
+    await primeClaimProcess(43, STARTED, { platform: 'win32', run: async () => 'gone\r\n', powershell: 'powershell.exe' });
+    expect(claimProcess(43, STARTED, { platform: 'win32', mode: 'remembered' })).toBe('other');
+    __forgetClaimProcessesForTests();
+  });
+
+  it('GUARD: a start time it cannot read stays unknown, so a live writer is never reaped on a refusal', async () => {
+    expect(createdAtFrom('-')).toBeNull();
+    expect(createdAtFrom('')).toBeNull();
+    expect(createdAtFrom(`${fileTime(STARTED)}\r\n`)).toBe(STARTED);
+    __forgetClaimProcessesForTests();
+    await primeClaimProcess(44, STARTED, { platform: 'win32', run: async () => '-', powershell: 'powershell.exe' });
+    expect(claimProcess(44, STARTED, { platform: 'win32', mode: 'remembered' })).toBe('unknown');
+    __forgetClaimProcessesForTests();
+  });
+
+  it('GUARD: the look says gone only where no process has the pid, and - where it cannot read one', () => {
+    // The two answers come from different statements: a lookup that throws, and a start-time read
+    // that throws on a process that does exist.
+    expect(CREATED_AT_SCRIPT).toMatch(/GetProcessById\([^)]*\)\s*\}\s*catch\s*\{\s*'gone'/);
+    expect(CREATED_AT_SCRIPT).toMatch(/StartTime\.ToFileTimeUtc\(\)\s*\}\s*catch\s*\{\s*'-'\s*\}$/);
   });
 
   it('GUARD: a remembered check never looks on the calling thread: a miss keeps the pid answer and looks in the background', async () => {
