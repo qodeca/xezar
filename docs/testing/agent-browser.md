@@ -210,6 +210,13 @@ ignore only an already-closed-session error.
   profile unless the operator explicitly requested that profile.
 - Keep all operation targets local to the application under test. Do not enable
   a cloud provider or send credentials to a remote browser service.
+- Read the CLI's output from files, never through a pipe, when calling it from a program.
+  The first command of a session starts a background daemon, and on Windows that daemon
+  inherits the CLI's output handles: a caller waiting on a pipe (`execFileSync`, `$(…)`
+  capture) waits for the daemon, not the command, and times out although the command
+  succeeded. In this repository every spec calls the CLI through
+  `packages/web/e2e/agent-browser-cli.ts`, and `packages/web/src/e2e-agent-browser-cli.test.ts`
+  fails on a spec that calls it any other way.
 
 ## Running this repository's suite
 

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -8,6 +7,8 @@ import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { launch } from '../../src/platform/process-launch.ts';
+import { stopChildTree } from '../../src/platform/process-tree.ts';
 import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 // #238: `xezar serve` printed `cockpit → <url>` before it knew whether the bind worked. It
@@ -77,9 +78,25 @@ if (mode === 'at-bind') {
 const fixtureRoot = await mkdtemp(join(tmpdir(), 'xez-serve-race-'));
 const thiefPath = join(fixtureRoot, 'thief.mjs');
 await writeFile(thiefPath, THIEF, 'utf8');
+/** The clean-up of every `serve` child not yet cleaned up. A test that fails or times out can
+ *  leave its child running – its `bootServe` is still polling – so the folder is removed only
+ *  after each of these has run. */
+const cleanups = new Set<() => Promise<void>>();
 after(async () => {
+  await Promise.all([...cleanups].map((cleanup) => cleanup()));
   await rm(fixtureRoot, TEST_DIR_RM_OPTIONS);
 });
+
+/** True when `promise` settles within `ms`. The timer is cancelled either way, so a race that
+ *  is already decided never holds the event loop open. */
+async function within(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  const timer = new AbortController();
+  try {
+    return await Promise.race([promise.then(() => true, () => true), sleep(ms, false, { signal: timer.signal })]);
+  } finally {
+    timer.abort();
+  }
+}
 
 interface Boot {
   output: string;
@@ -94,17 +111,25 @@ interface Boot {
 /**
  * Boot `serve` with the thief preloaded, wait for a cockpit line or an exit, probe the printed
  * URL once, then stop the process by the PID this test started — never by pattern.
+ *
+ * Windows: the child starts through `launch` and stops through `stopChildTree`, which also stops
+ * what it started. `child.kill()` alone ends only `serve` there, and what it started lives on –
+ * tsx's own esbuild service among them, which inherits the stderr pipe this test reads. Such a
+ * leftover was seen stuck in its own exit with its handles still open: its pipe end kept this
+ * file's process alive with no time limit, and the boot folder it worked in could not be removed
+ * (EBUSY). So the child works outside the fixture, and this side closes its pipes, bounded.
  */
 async function bootServe(mode: 'after-probe' | 'at-bind', firstPort: number, span: number): Promise<Boot> {
   const dir = await mkdtemp(join(fixtureRoot, 'boot-'));
-  const child = spawn(
+  const child = launch(
     process.execPath,
     [
       '--import', tsxLoader, '--import', pathToFileURL(thiefPath).href,
       entry, 'serve', '--no-open', '--port', String(firstPort), '--repo', dir,
     ],
     {
-      cwd: dir,
+      // `--repo` names the project; the working folder is only what leftovers would pin.
+      cwd: packageRoot,
       env: {
         ...process.env,
         BOOT_RACE_MODE: mode,
@@ -126,8 +151,28 @@ async function bootServe(mode: 'after-probe' | 'at-bind', firstPort: number, spa
   child.stderr.on('data', (chunk: string) => { output += chunk; });
   let exitCode: number | null | undefined;
   const exited = once(child, 'exit').then(([code]) => { exitCode = code as number | null; });
+  // Both pipes end only when every process holding their write end – serve and anything that
+  // inherited it – is gone.
+  const pipesClosed = Promise.all([once(child.stdout, 'close'), once(child.stderr, 'close')]).then(() => {}, () => {});
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
+  let stopping: Promise<void> | undefined;
+  const cleanup = (): Promise<void> => (stopping ??= (async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      await stopChildTree(child, 'SIGTERM');
+      if (!(await within(exited, 10_000))) {
+        await stopChildTree(child, 'SIGKILL');
+        await within(exited, 10_000);
+      }
+    }
+    // Bounded: a leftover that never lets go of its pipe end must not keep this process alive.
+    await within(pipesClosed, 5_000);
+    child.stdout.destroy();
+    child.stderr.destroy();
+    process.off('exit', reap);
+    cleanups.delete(cleanup);
+  })());
+  cleanups.add(cleanup);
   try {
     const deadline = Date.now() + 60_000;
     while (!COCKPIT_LINE.test(output) && exitCode === undefined && Date.now() < deadline) await sleep(50);
@@ -148,15 +193,7 @@ async function bootServe(mode: 'after-probe' | 'at-bind', firstPort: number, spa
     }
     return { output, port, exitCode, health };
   } finally {
-    if (exitCode === undefined) {
-      child.kill('SIGTERM');
-      const stopped = await Promise.race([exited.then(() => true), sleep(10_000, false)]);
-      if (!stopped) {
-        child.kill('SIGKILL');
-        await exited;
-      }
-    }
-    process.off('exit', reap);
+    await cleanup();
   }
 }
 

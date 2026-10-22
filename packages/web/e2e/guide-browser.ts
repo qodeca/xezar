@@ -1,6 +1,5 @@
-import { execFileSync } from 'node:child_process'
-
 import { readTestEnv } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 
 /**
  * The ONE new browser-interaction helper for the guide-flow package (browser-test spec § Locator
@@ -44,7 +43,7 @@ function boxesEqual(a: Box, b: Box): boolean {
  * The failure's real transport was finally observed on 2026-09-19 (CI run 35451994733 on main,
  * 35451195569 on PR #702 and #706's neighbour, all red on guide-02's `--name Files` click and all
  * green on re-run): agent-browser writes that same `{"success":false,…,"error":"… covered by
- * …"}` JSON to STDOUT and exits 1, so it reaches this helper through `run()`'s `execFileSync`
+ * …"}` JSON to STDOUT and exits 1, so it reaches this helper through `run()`'s CLI-call
  * catch rather than its zero-exit `success:false` branch — and Node's own error message names only
  * the command. `cliFailureDetail` below now carries the CLI's payload into that message, which is
  * what makes this check read the phrase on BOTH failure shapes. The check still matches the
@@ -58,7 +57,8 @@ function isCoveredClickError(cause: unknown): boolean {
  * The CLI's own error text from a failure that exited NON-ZERO, for `run()`'s catch branch.
  *
  * agent-browser reports its failures as `{"success":false,"data":null,"error":"…"}` on STDOUT,
- * and it exits 1 while doing so — so that payload arrives as an `execFileSync` throw whose
+ * and it exits 1 while doing so — so that payload arrives as a `runAgentBrowserCli` throw (the
+ * same shape as an `execFileSync` throw) whose
  * `.message` is only "Command failed: <cmd>" and whose stdout sits on the error object. Throwing
  * the bare wrapper therefore LOST the CLI's own error text, which is why `isCoveredClickError`
  * matched nothing on the one failure it exists for and `clickRoleWhenStable` rethrew a covered
@@ -106,10 +106,9 @@ export class GuideBrowser {
   private run(args: string[]): Record<string, unknown> {
     let stdout: string
     try {
-      stdout = execFileSync(this.bin, ['--session', this.session, ...args, '--json'], {
-        encoding: 'utf8',
+      // Output through files, not pipes: see `agent-browser-cli.ts` (the Windows daemon hang).
+      stdout = runAgentBrowserCli(this.bin, ['--session', this.session, ...args, '--json'], {
         timeout: 60_000,
-        maxBuffer: 32 * 1024 * 1024,
       })
     } catch (cause) {
       throw new Error(`xezar e2e: agent-browser ${args.join(' ')} failed${cliFailureDetail(cause)}`, { cause })

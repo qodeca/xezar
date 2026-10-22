@@ -15,11 +15,12 @@ const RM_MAX_RETRIES = 10;
 const RM_RETRY_DELAY_MS = 100;
 
 /** `rmSync` options for removing a test's scratch directory. POSIX: the pre-#963
- *  `{ recursive, force }`. Windows adds Node's own retry: right after files were written, Windows
+ *  `{ recursive, force }`. Windows adds a retry: right after files were written, Windows
  *  can refuse the delete with `EPERM` while a delete-pending handle or a file scanner lets go, even
- *  when no process holds the directory. Node retries EBUSY, EMFILE, ENFILE, ENOTEMPTY and EPERM
- *  with a linear backoff of `retryDelay` ms per try (fs.rmSync docs) – about 6.6 s at most, then
- *  the error surfaces as before. */
+ *  when no process holds the directory. EBUSY, EMFILE, ENFILE, ENOTEMPTY and EPERM are retried
+ *  with a linear backoff of `retryDelay` ms per try (fs.rmSync docs) – about 5.5 s at most, then
+ *  the error surfaces as before. Node's own rmSync does not honour this on Windows (Node 24 skips
+ *  "access denied" and does not pause), so `scripts/test-local-state.mjs` supplies the retry. */
 export const TEST_DIR_RM_OPTIONS: Readonly<RmOptions> = onWindows
   ? { recursive: true, force: true, maxRetries: RM_MAX_RETRIES, retryDelay: RM_RETRY_DELAY_MS }
   : { recursive: true, force: true };
