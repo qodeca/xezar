@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -64,6 +65,16 @@ const GIT_HARDENING_ARGS = [
   '-c',
   'protocol.file.allow=user',
 ];
+/**
+ * Long paths on for every git here, whatever the machine's own Git config says. The cache folder
+ * is named after the source (`bareDirFor`), and a Windows local source spells its whole path into
+ * that name, so in a deep project the clone's own `objects/pack/pack-<hash>.idx` passes the
+ * 260-character limit and Git for Windows fails with "Filename too long" unless `core.longpaths`
+ * is on. Turning it on here keeps every cache folder name as it is. It cannot help once the clone
+ * folder's OWN path is too long: Git for Windows then refuses the repository from about 225
+ * characters ("'$GIT_DIR' too big"). Git on Linux and macOS ignores the setting.
+ */
+const GIT_LONG_PATH_ARGS = ['-c', 'core.longpaths=true'];
 const GIT_HARDENING_ENV = {
   GIT_ALLOW_PROTOCOL: 'https:http:ssh:git:file',
   GIT_TERMINAL_PROMPT: '0',
@@ -119,7 +130,7 @@ function git(
     let guard: ReturnType<typeof setTimeout> | undefined;
     const child = launchFile(
       'git',
-      [...GIT_HARDENING_ARGS, ...args],
+      [...GIT_HARDENING_ARGS, ...GIT_LONG_PATH_ARGS, ...args],
       {
         cwd,
         // Kept even though the `timeout` option is gone: `killSignal` is also what execFile uses
@@ -234,8 +245,33 @@ export function isPinnedSha(ref: string): boolean {
  * Stable cache directory name: the last two path segments, `owner__name`,
  * under the layout's cache root (`~/.cache/xez/skills` globally,
  * `<project>/.local/xezar/cache/skills` in single-project mode).
+ *
+ * The name is load-bearing for three things: the same source finds the same clone after a
+ * restart (no re-clone), the URL shapes of one repo share one clone, and in the global layout
+ * every project (and every installed xezar version) on the machine shares it. So every name is
+ * kept byte for byte as it always was, with one exception.
+ *
+ * A Windows drive path spelled with backslashes (`C:\a\b\repo`) splits into ONE segment, so its
+ * name spelled the whole source path. In a deep project that put the clone folder itself past
+ * what Git for Windows accepts ("'$GIT_DIR' too big", from about 225 characters), which
+ * `core.longpaths` cannot lift. Such a name, when longer than `MAX_CACHE_KEY_LENGTH`, becomes a
+ * short readable tail of the source plus a fixed-length hash of the old name: two sources share a
+ * clone exactly when they did before, and the name no longer grows with the source. A URL, an
+ * `owner/name` and a POSIX path keep their names on every OS. The clone under the old name is
+ * left where it is, as this module leaves every cache folder (nothing here prunes).
  */
 export function bareDirFor(repo: string): string {
+  return join(xezCacheDir(), 'skills', cacheKeyFor(repo));
+}
+
+/** The longest name a Windows drive source keeps verbatim (see `bareDirFor`). */
+export const MAX_CACHE_KEY_LENGTH = 40;
+/** Readable characters kept from the source's last folder in a shortened name. */
+const CACHE_KEY_TAIL_LENGTH = 20;
+/** Hex characters of the sha-256 of the old name: 48 bits, plenty for one machine's sources. */
+const CACHE_KEY_HASH_LENGTH = 12;
+
+function cacheKeyFor(repo: string): string {
   const trimmed = repo
     .replace(/\/+$/, '')
     .replace(/\.git$/, '')
@@ -243,7 +279,11 @@ export function bareDirFor(repo: string): string {
     .replace(/^~\//, '');
   const segments = trimmed.split(/[/:]/).filter(Boolean).map(sanitizeSegment);
   const key = segments.slice(-2).join('__') || 'skills';
-  return join(xezCacheDir(), 'skills', key);
+  if (!isDrivePath(repo) || key.length <= MAX_CACHE_KEY_LENGTH) return key;
+  // Backslash too, for the readable part only: the hash keeps the old identity.
+  const last = trimmed.split(/[/\\:]/).filter(Boolean).map(sanitizeSegment).pop() ?? 'skills';
+  const hash = createHash('sha256').update(key).digest('hex').slice(0, CACHE_KEY_HASH_LENGTH);
+  return `${last.slice(0, CACHE_KEY_TAIL_LENGTH)}-${hash}`;
 }
 
 function sanitizeSegment(s: string): string {
