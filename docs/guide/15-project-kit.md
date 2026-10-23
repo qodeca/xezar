@@ -111,7 +111,35 @@ xezar records which reviewed revision of the setup templates it bundles, but onl
 
 xezar also bundles its own setup prompt as a fallback, so setup still runs offline or without a team-skills source. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result. It installs no pipeline.
 
-xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which needs xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to their pi and OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt; the kit's [upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists the steps. If old pi or OpenCode tasks remain, delete them with the xezar you run now, before you install 0.30.0 – see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
+### Routing and account limits
+
+A project the kit onboards keeps its model and lane routing in `.xezar/routing.json`; its schema is
+`.xezar/routing.schema.json`. The leader reads it with `node .xezar/checks/route.mjs`:
+
+| Command | What it does |
+| --- | --- |
+| `node .xezar/checks/route.mjs --check` | Validates the file. |
+| `node .xezar/checks/route.mjs --rows` | Lists the classification rows, without lane data. |
+| `node .xezar/checks/route.mjs <row id>` | Prints that row's lane order. |
+| `node .xezar/checks/route.mjs --table` | Prints a view for people. |
+| `--file <path>` | Reads another file. Only for onboarding, before the first merge; the output is marked `source=unmerged`. |
+
+The kit also keeps an account-limits table that records each runner and login as `ok`, `unknown` or
+`out`, with its reset time; the kit's routing guide tells the leader when to read it. xezar reports
+the same plan-limit status itself: a person sees it in
+[Settings → Agent accounts](10-settings-reference.md#to-read-and-refresh-plan-limits), and a leader
+reads it with `project_config` `read_quota` (see
+[MCP project leader](13-mcp-leader.md#to-read-quota-before-dispatch)).
+
+### Supported kit versions
+
+xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which
+needs xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to
+their pi and OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt;
+the kit's [upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists
+the steps. If old pi or OpenCode tasks remain in the task history, delete them with the version of
+xezar you used before, or change their `runner` and `backend` values – see
+[Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md#4-change-xezars-stored-values).
 
 ## Related settings / env / config
 

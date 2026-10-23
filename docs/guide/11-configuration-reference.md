@@ -113,6 +113,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | Variable | Effect |
 | --- | --- |
 | `XEZ_REMOTE=1` | Hosted-mode capabilities; hides local-machine handoffs. |
+| `XEZ_ALLOWED_HOSTS=cockpit.example.com` | Hosted mode only: extra public host names the cockpit answers to, comma-separated (exact match, case-insensitive, port ignored). Loopback, IP addresses and the names `xezar server-install` recorded always pass; any other name is refused with a 403. Set it when you run hosted mode without the installer recording your domain. Empty by default; local mode ignores it. See [Remote access](14-remote-access.md#to-protect-the-public-endpoint). |
 | `XEZ_BROWSE_ROOT`, `XEZ_PROJECTS_DIR` | Seeds for the two stored folder settings above. |
 | `XEZ_HOME` | Global state directory; empty means `~/.xezar`. Not consulted for settings in the single-project layout. |
 | `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. The start port is `-p/--port`, then the port pinned for this project (`xezar projects port <id> <port>`), then this variable, then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
@@ -135,8 +136,9 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_HIDE_TOKEN_USAGE=1`, `XEZ_HIDE_COST=1` | Hide the corresponding cockpit metrics; telemetry is still collected. Restart after changing. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both token counts and cost. |
 | `XEZ_NO_BANNER=1` | Suppress the team-skills terminal banner for `serve`. |
+| `XEZ_UPDATE_CHECK=0` | Skip the check for a newer xezar on npm at `xezar serve` startup (on by default). Nothing else changes: the cockpit just never shows the update-available notice. |
 | `XEZ_FOLLOWUPS=1` | Inbox default on; the stored `followups` choice wins. |
-| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (off by default, exact `1`). Read live (since 0.17.0; #678), no restart: turning it on starts the poller and opens the routes, turning it off stops the poller and closes them, each observed the next time xezar consults the flag. |
+| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (off by default, exact `1`). Read live, no restart: turning it on starts the poller and opens the routes, turning it off stops the poller and closes them, each observed the next time xezar consults the flag. |
 | `XEZ_TITLE_UPDATES=0` | Disable live title refresh unless project `liveTitleUpdates` overrides it. |
 | `XEZ_AUTONAME=0` | Disable all LLM naming, including creation-time names. |
 | `XEZ_REVIEW_GATE=1` | Default review gate on for changed non-autonomous runs; project setting wins. |

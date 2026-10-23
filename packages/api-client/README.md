@@ -12,10 +12,9 @@ and this package is how anything else talks to it — the cockpit UI is just its
 workspace (the cockpit bundles it, the service's tests import it) and will be
 released once its surface settles. Every shape it hands out is now inferred from a
 zod schema in `@qodeca/xezar-contract`: the hand-written `dto/*` mirror this barrel
-used to carry is gone. A few response interfaces are still declared by hand in the
-service's own `server.ts` (the four `/projects` routes), but they no longer live here —
-`contract-parity.workspace.test.ts` pins each one to its contract schema in both
-directions.
+used to carry is gone, and so are the last hand-written response interfaces in the
+service's own `server.ts`: the four `/projects` responses are now the contract's inferred
+types, which `server.ts` re-exports.
 
 ## Use
 

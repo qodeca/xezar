@@ -2,6 +2,8 @@
 
 Use the CLI to start the cockpit, run a task in the terminal, scaffold a project kit, sign an agent tool in, manage registered projects, connect a leader agent or keep several check runs from competing. This page describes the commands and flags accepted by the [CLI entry point](../../packages/xezar/src/index.ts).
 
+Every command except `mcp`, `lease` and `state-names` – so `serve`, `run`, `init`, `projects`, `accounts` and `providers` among them – refuses to start while a saved setting or task record still names the removed pi or OpenCode backend, and lists each file and field to change. See [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
+
 ## To start the cockpit: `serve`
 
 ```sh

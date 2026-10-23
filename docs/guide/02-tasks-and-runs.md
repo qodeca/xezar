@@ -38,6 +38,16 @@ Open the thread, type in the composer and choose the send (arrow) button. Use it
 
 ![Task thread with agent messages and tool activity](../screenshots/0.18.0/task-thread-dark-1280.png)
 
+## To dictate a message
+
+Choose **Dictation** in the composer to speak instead of typing. The button appears only when your browser offers speech recognition – Chrome, Edge and Safari do, Firefox does not.
+
+1. Choose **Dictation**. The first time, the browser asks for permission to use your microphone; allow it for the cockpit's address.
+2. Speak. The composer shows a timer and the text heard so far.
+3. Choose **Insert transcription** to put the text into your message and edit it, **Insert transcription and send** to send it at once, or **Cancel dictation** to discard it.
+
+Recognition uses your browser's language setting, and the browser does it, not xezar: some browsers send the audio to their maker's speech service. Browsers allow the microphone only on an HTTPS address or on this machine's own address. If the browser refuses, xezar shows `Dictation failed — not-allowed`; allow the microphone in the browser's site settings and try again.
+
 ## To manage the queue and edit a queued prompt
 
 A queued task's thread shows its queue position. Use the pencil button (**Edit the prompt**) on the initial prompt while it is still queued. You can also add messages, which are folded into the prompt before the run starts, and edit or remove those queued messages. These controls stop being queued-prompt edits once execution begins.
@@ -97,6 +107,18 @@ Local terminal handoff depends on local-machine capability; it is unavailable in
 ## To read Notes (handoff)
 
 Choose **Notes** in the task header or action menu. It renders the task's handoff Markdown, including progress and resume notes when the agent writes them. An unstarted task may show “No notes yet”. Read these notes alongside the transcript when resuming work.
+
+## Keyboard shortcuts
+
+| Keys | What it does | Where |
+| --- | --- | --- |
+| C | Open **New task**. | Anywhere, while the cursor is not in a text field. |
+| Ctrl+K (⌘K on a Mac) | Open or close the command palette. | Anywhere. |
+| Enter | Send the message. | In the composer. |
+| Shift+Enter | Start a new line. | In the composer. |
+| Ctrl+Enter (⌘+Enter on a Mac) | Send the message. | In the composer. |
+| Alt+A (Option+A on a Mac) | Reply “Yes, approved.” | In a thread whose task is waiting for you, while the cursor is not in a text field. |
+| Alt+C (Option+C on a Mac) | Reply “Continue.” | In a thread whose task is waiting for you, while the cursor is not in a text field. |
 
 ## Related settings / env / config
 
