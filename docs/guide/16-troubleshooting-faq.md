@@ -131,4 +131,4 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 
 Next: [Audit trail](17-audit-trail.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

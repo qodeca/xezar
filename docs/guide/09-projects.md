@@ -120,4 +120,4 @@ This mode does not change hosted-mode behaviour: a cockpit reached through `xeza
 
 Next: [Settings reference](10-settings-reference.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

@@ -172,4 +172,4 @@ For a workspace reset, remove the whole `~/.xezar/` directory, or the directory 
 
 Next: [Tasks and runs](02-tasks-and-runs.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

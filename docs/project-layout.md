@@ -89,4 +89,4 @@ release has run.
 See [local data and testing](testing/local-data.md) for the complete runtime,
 QA and test-artifact inventory.
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.
