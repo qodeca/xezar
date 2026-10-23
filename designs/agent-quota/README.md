@@ -2,8 +2,13 @@
 
 > **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
 
-Status: **Draft** – mockup for #867 step S4, waiting for the owner's look (D34) and then the first
-`design-review`. Nothing here changes `packages/web`.
+Status: **Implemented with deviations (PR #889)** – shipped as #867 S5 (commit `2927f27f`); where
+the cockpit differs from these mockups is recorded in
+[known-gaps.md G-49](../../docs/design-system/known-gaps.md#g-49-the-plan-limits-cockpit-differs-from-its-mockup-where-the-merged-contract-is-slimmer).
+Shipped before design approval; approved after the fact by the owner on 2026-10-23.
+
+Original status: **Draft** – mockup for #867 step S4, waiting for the owner's look (D34) and then the
+first `design-review`. Nothing here changes `packages/web`.
 
 Start with [index.html](index.html). Pages: [the pane](accounts.html), [the chip](chip.html),
 [every state](states.html), [phone](phone.html). Every page links

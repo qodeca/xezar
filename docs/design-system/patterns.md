@@ -40,6 +40,11 @@ Never add a nav link in the shell or the palette by hand.
 Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `routes/inbox.tsx`, `routes/skills.tsx`,
 `routes/workflows/workflows.tsx`, `routes/settings/settings-shell.tsx`.
 
+Two spellings of this header exist: the hand-written one below and the shared `PageHeader`
+component (components.md §2 PageHeader), which Automations and Compare render. Which one is the
+rule for new work is an open owner decision, recorded as [known-gaps.md](known-gaps.md) G-50; until
+it is made, match the page you are next to.
+
 The rule (7 of 14 headers):
 
 ```
