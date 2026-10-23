@@ -252,8 +252,7 @@ reader, and team skills load from a deep project on Windows again.
   id passed the liveness probe but its start time could not be read, the old claim still counted;
   xezar now tells "no such process" apart from "start time unknown". Merging into the agent
   accounts file now writes asynchronously, so a concurrent read can close its file and the Windows
-  rename retry no longer fails with `EPERM`. Five other flaky tests now wait for the state they
-  check instead of a fixed sleep or a moving layout. (#1132)
+  rename retry no longer fails with `EPERM`. (#1132)
 
 ## 🔧 Changed
 
@@ -319,7 +318,9 @@ reader, and team skills load from a deep project on Windows again.
 - 📝 **The docs describe Qwen Code as the third backend.** The user guide, `AGENTS.md` and the
   Qwen Code rerun notes were brought in line with 0.30.0, including Qwen Code's Windows leader
   limit. (#1090, #1091, #1092)
-- 📝 **SDLC.md and the leader guide record the finished `develop` cut-over.** (#1103)
+- 📝 **SDLC.md and the leader guide record the finished `develop` cut-over.** The "until the
+  cut-over" wording is gone, the guards row names both protected branches and the `main` ruleset,
+  and a checkout with a stale `origin/HEAD` is told to run `git remote set-head origin -a`. (#1103)
 
 ## 🚀 CI/CD & Infrastructure
 
@@ -381,6 +382,10 @@ reader, and team skills load from a deep project on Windows again.
   never retries a Windows access-denied error and does not wait between tries, so hundreds of
   tests failed in clean-up. The retry the test bootstrap already gave Node 22 now applies to every
   Node version on Windows. (#1135)
+- 🚀 **Five more tests that failed at random in CI now wait for what they check.** The in-place
+  auto-resume test waits for the lease hand-backs, the project-config fixture lets background
+  team-skills loads finish before it removes folders, and three browser tests wait for a stable
+  layout or the right status dot instead of a fixed sleep or a moving target. (#1132)
 - 🚀 **The project kit is upgraded to Xezar Skills 3.2.1.** The repository's own setup record now
   names 3.2.1, so its cockpit no longer asks for a setup upgrade; the run report is in
   `.xezar/upgrade-reports/3.2.1.md`. (#1131)
