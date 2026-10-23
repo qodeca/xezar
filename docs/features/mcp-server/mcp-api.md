@@ -53,12 +53,19 @@ certification; that is the [client acceptance record](mcp-client-acceptance-reco
 
 - **Transport.** JSON-RPC 2.0, newline-framed, on the stdio of `xezar mcp`: a bridge that forwards
   each call over the project's local socket to the running `xezar serve`
-  ([D-01](mcp-d01-transport-decision.md)). The bridge is hand-rolled, with no MCP SDK dependency
+  ([D-01](mcp-d01-transport-decision.md)). On Linux and macOS that is a Unix socket; on Windows it
+  is an authenticated named pipe whose name changes at every start
+  ([#963](https://github.com/qodeca/xezar/issues/963), `packages/xezar/src/mcp/ipc.ts`, `pipe-endpoint.ts`). The bridge is hand-rolled, with no MCP SDK dependency
   ([D-09 B-35](mcp-d09-limits-retention-packaging-decision.md)).
 - **Methods.** `initialize`, `ping`, `tools/list` and `tools/call`. Any other method answers
   `-32601` (`packages/xezar/src/mcp/protocol.ts`).
 - **Protocol revisions.** `2025-11-25` and `2025-06-18`. The bridge echoes the client's revision when
-  it supports it, and otherwise offers the newest.
+  it supports it, and otherwise offers the newest. The current MCP revision, `2026-07-28`
+  ([versioning page](https://modelcontextprotocol.io/specification/versioning), checked 2026-10-23),
+  is deliberately not negotiated: Claude Code refuses to deliver a channel push over a connection
+  on that revision, so a Claude Code leader would attach and never be reached
+  (`CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION` in `packages/xezar/src/mcp/protocol.ts`, pinned by
+  `protocol.test.ts`).
 - **Capabilities.** `{ tools: { listChanged: false } }` and nothing else. The tool list is fixed for
   the life of the process.
 - **Tools.** Eleven in total: the bridge's own `health`, plus ten from the registry, which run inside

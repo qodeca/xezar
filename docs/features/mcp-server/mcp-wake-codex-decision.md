@@ -6,7 +6,7 @@
 > A-19/A-23 real-model acceptance is recorded in the [DoD record](mcp-definition-of-done-record.md); a
 > same-revision cross-client run was not done.
 
-> **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See the leader findings, § 11 (`leader-dogfooding-2026-09-13.md`, removed).
+> **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. Qwen Code became a pushed leader client in 0.30.0 ([#1045](https://github.com/qodeca/xezar/issues/1045)) – each event arrives as a message from the xezar process its session started – except on Windows, where it has no push and reads with `leader_events` (#1086). This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See the leader findings, § 11 (`leader-dogfooding-2026-09-13.md`, removed).
 
 Decision date: **2026-09-13**. Part of [#374](https://github.com/qodeca/xezar/issues/374)
 and [#73](https://github.com/qodeca/xezar/issues/73). Source revision:
@@ -308,7 +308,7 @@ checks this record's links, evidence hashes, request counts and diff. Full gates
 sealing and the draft PR belong to the subsequent workflow stages; the PR body must
 say `Part of #374` and `Part of #73`, not closing keywords.
 
-Dogfooding observations, at the evidence levels required by `.xezar/docs/dogfooding.md`:
+Dogfooding observations, at the evidence levels required by `.xezar/docs/dogfooding.md` (removed):
 **observed** wrapper override and Unix path-length failure; **real-client/fixture-tested**
 WebSocket proxy wake and title overhead; **unknown** managed standalone bootstrap
 and real-model behavior. Checking the transport's framing resolved a prior apparent

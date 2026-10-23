@@ -1,10 +1,11 @@
 # Single-project mode – the cockpit surface
 
-**Status:** Approved – design review PASS WITH FOLLOW-UPS on PR #604 (`design-approved`); NB-1
-through NB-5 each carry a disposition in § Design review below. Partly implemented: the cockpit
-slice merged as PR #611; PR #612 carries the four copy items #611 deferred, judged by a scoped
-design review (PASS, `design-approved`, § Design review below). Both statuses become
-**Implemented** once #612 merges. Authored 2026-09-17 by the `design`
+**Status:** Implemented with deviations (PRs #611, #612) – both merged (commits `6e2b9354`,
+`4b955fbc`); the five accepted places where the cockpit differs from these mockups are
+[known-gaps.md G-47](../../docs/design-system/known-gaps.md#g-47-single-project-modes-cockpit-differs-from-its-mockup-in-five-accepted-places).
+Before that: Approved – design review PASS WITH FOLLOW-UPS on PR #604 (`design-approved`); NB-1
+through NB-5 each carry a disposition in § Design review below; PR #612's four copy items passed a
+scoped design review (PASS, `design-approved`, § Design review below). Authored 2026-09-17 by the `design`
 workflow (`xezar-ux-design`, authoring mode) for the cockpit slice (PR4) of
 [qodeca/xezar#600](https://github.com/qodeca/xezar/issues/600).
 

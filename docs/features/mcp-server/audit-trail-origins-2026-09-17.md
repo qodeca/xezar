@@ -267,7 +267,7 @@ The families for tests and acceptance are F1–F10 as named in the tables. F8 al
 The parity test (PR 2) makes the inventory the authority and not the tool annotation:
 
 1. Every entry in `TOOL_ACTION_COVERAGE` has exactly one inventory class. **Verified source** (`packages/xezar/src/mcp/tools/api-coverage.testkit.ts:28`).
-2. Every non-GET route in the built app route table (the same source `packages/xezar/src/server/bc-route-inventory.test.ts` reads) has a mutation descriptor or a read reason.
+2. Every non-GET route in the built app route table (the same source `packages/xezar/src/server/bc-route-inventory.test.ts` read; that test was removed in `5459cc68`, and today `packages/xezar/src/mcp/audit-inventory.test.ts` reads the route table from `app.routes` itself) has a mutation descriptor or a read reason.
 3. Every mutation row has an MCP mapping and either an HTTP route or an explicit `ui: none`.
 4. An empty inventory, an empty route table or an empty MCP coverage map fails the test. It is never read as "no auditable mutations".
 

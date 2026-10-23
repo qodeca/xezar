@@ -2,6 +2,11 @@
 
 > **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
 
+> **Status – complete; Qwen Code shipped in 0.30.0.** This is the parity proof behind the release
+> ([#1041](https://github.com/qodeca/xezar/issues/1041)). The raw run files are in
+> [qwen-code-parity-2026-10-16/](qwen-code-parity-2026-10-16/). Behaviour after 0.30.0 may differ;
+> the user guide (`docs/guide/13-mcp-leader.md`) is the current source.
+
 Date: 2026-10-16. Issue: #1042 (part of #1041). Qwen Code versions seen: **0.25.2** on every run;
 **0.22.3** once, refused by the version gate (accounts item, below).
 

@@ -77,7 +77,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: no outside-click dismiss; focus starts on the cancel action.
 - **Rules**: DO title it as a question (`Delete this task?`), state the consequence, add `There is no undo.` when true, and word the cancel as the kept outcome (`Keep it`). DO tint a destructive action with `className={buttonVariants({ variant: "danger" })}`, never a copied class string. DO return focus to the opener when the dialog is opened from state rather than from an `AlertDialogTrigger` (`onCloseAutoFocus`; settings use `useReturnFocus`). DO NOT use it for a non-destructive form.
 - **Accessibility**: `role="alertdialog"` from Radix.
-- **Where used**: 8 files (`compare-variants.tsx`, `plan-review.tsx`, `settings/accounts-section.tsx`, `settings/remove-project.tsx`, `settings/worktrees-panel.tsx`, `task-thread/link-safety-dialog.tsx`, `task-thread/run-header.tsx`, `workflows/workflows.tsx`).
+- **Where used**: 9 files (`compare-variants.tsx`, `plan-review.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/remove-project.tsx`, `settings/worktrees-panel.tsx`, `task-thread/link-safety-dialog.tsx`, `task-thread/run-header.tsx`, `workflows/workflows.tsx`).
 
 ### Sheet
 
@@ -119,10 +119,10 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11, kept with a reason, folded into G-20's 2026-09-17 disposition since `Select` still has zero importers). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11 is retired, and #453 B1 deleted the unused `Select`). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. New search fields use `Input` with a leading icon; G-12 is fixed (every search route does), and the remaining hand-spelled wrapper duplication across four routes is tracked as G-42, filed as #598.
-- **Where used**: 19 files.
+- **Where used**: 20 files (read 2026-10-23).
 
 ### Textarea
 
@@ -141,7 +141,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Switch
 
 - **Purpose**: on/off preference.
-- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default` (track `h-4.5 w-8` / `h-3.5 w-6`); track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
+- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default` (track `h-3.5 w-6` / `h-4.5 w-8`); track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
 - **States**: checked/unchecked, focus-visible ring, disabled 50%.
 - **Rules**: DO save on change and toast the new state (`Live title updates on`). DO put the visible label in a `SettingsField` title.
 - **Accessibility**: `role="switch"` and `aria-checked` from Radix; label via `aria-label` or `aria-labelledby`. The root IS the visible track, so the 44 px phone target is a centred `before:size-tap` overlay on it rather than a 44 px pill; it is released at `md:`.
@@ -178,7 +178,12 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### AppShell
 
 - **Purpose**: the presentational shell: fixed sidebar plus one scrolling main region. The sidebar is navigation only (#546): tasks live on the Tasks pages, never in the sidebar.
-- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
+- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`, and five small parts other files reuse:
+  - `NavBadge` – the violet count (`data-slot="nav-badge"`, look under Badges below). A polite `role="status"` region by default; `live={false}` drops the region and keeps the `sr-only` words. Imported by `project-groups.tsx`.
+  - `VersionChip` – the footer's version (`data-slot="version-chip"`, `min-h-chip rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground`); a pulsing `pending` `StatusDot` and `data-update-available="true"` when a newer version exists, and a `title` that always carries the whole version. Its `truncate` span is G-28.
+  - `SkillsUpdateMarker` – the Skills row's update dot: a `size-1.5` violet `StatusDot` plus `sr-only` "Skills update available" inside a `role="status"` wrapper (`data-slot="nav-update-marker"`). Imported by `project-groups.tsx`.
+  - `MissingProjectBadge` – the danger chip "folder not found" (`data-slot="project-missing"`, `min-h-chip rounded-full bg-danger px-2 py-px text-[10px] font-medium text-danger-foreground`). Imported by `command-palette.tsx` and `other-projects.tsx`, so a missing project reads the same everywhere.
+  - `tasksNeedYou(count, scope)` – the one sentence for the attention count ("1 task needs you", "2 tasks need you across all projects"), used by the phone menu button's name, the `attention-live` announcement and the badges' titles, here and in `project-groups.tsx`. Copy changes go through it.
 - **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `channel` (development-build badge), `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject` (hides Add project), `singleProjectRoot` (the single-project mode badge, #600), `banner`, `projectGroups` (replaces the flat nav).
 - **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar` and renders the same sidebar content.
 - **Sidebar order**: brand row → New task (+ Add project) → `<nav aria-label="Main" class="min-h-0 flex-1 overflow-y-auto overscroll-contain …">`, which fills the column and scrolls on a short window → footer. With project groups the nav is replaced by the pinned All tasks link and the scrolling groups.
@@ -225,12 +230,22 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Accessibility**: the backdrop is `aria-hidden` and `pointer-events-none`; twinkles are `motion-safe:animate-pulse`.
 - **Where used**: 39 files.
 
+### PageHeader
+
+- **Purpose**: the desktop page heading as a shared component; the shell's phone top bar supplies the heading below `md`. Its actions wrap instead of clipping.
+- **Source**: `packages/web/src/components/centered-state.tsx` (it lives beside `CenteredState`, not in a file of its own). Exports `PageHeader`.
+- **Props**: `title` (required), `children` (actions, tabs, search), `className`, `titleClassName`.
+- **Look**: `<header data-slot="page-header" class="sticky top-0 z-10 hidden min-h-14 flex-wrap items-center gap-row border-b border-border bg-background px-4 py-2 md:flex md:px-section">`; title `<h1 class="min-w-0 flex-1 text-base font-semibold break-words">`.
+- **Rules**: pass `className="flex"` to keep the header on a phone (the two-row variant, patterns.md §3). Pass `titleClassName="sr-only md:not-sr-only"` when a header kept on a phone would repeat the top bar word for word. Most pages still spell the same header by hand rather than render this component; which spelling is the rule is open (G-50).
+- **Accessibility**: one `h1` per page; the header is opaque, so content scrolled under it does not show through.
+- **Where used**: 2 files (`routes/automations/automations.tsx`, `routes/compare-variants.tsx`).
+
 ### StatusDot
 
 - **Purpose**: the 7px dot, the design system's single carrier of status colour.
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
-- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
+- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot.
 - **Where used**: 16 files.
 
 ### Pill
@@ -329,7 +344,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/reference-chip.tsx`. Exports `ReferenceChip`, `useCloseReferenceCard`.
 - **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`. Below `md` a link chip keeps its 24 px look and gets a centred 44 px `::before` hit area (`PHONE_HIT_AREA`); callers set it on a 44 px line (`CHIP_SLOT` in `routes/tasks-overview.tsx`) so two chips' hit areas never overlap. An inert chip is not a target and gets none.
 - **States**: inert (non-http URL), unknown status, loading (`Checking GitHub…`), unavailable, not found, conflicting (warning triangle + `Resolve conflicts` action), open card (150ms open, 120ms close; never on touch).
-- **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel.
+- **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel. Known gap: the `dialog` form has no accessible name (G-31, a WCAG 4.1.2 failure).
 - **Where used**: 3 files.
 
 ### ReferenceConflictAction
@@ -544,3 +559,42 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: remembers the last project-scoped location for the next bare-root launch. Renders nothing.
 - **Source**: `packages/web/src/components/last-location-controller.tsx`.
 - **Where used**: 1 file.
+
+## 3. Route-owned shared parts
+
+These parts are reused across routes but live in a route module or in `lib/`, not in
+`src/components/`, so `design-system-drift.test.ts` does not ask for a coverage row. Reuse them;
+do not copy them. Moving one into `src/components/` makes it a shared component, which then needs
+its `coverage.md` row in the same commit.
+
+### SearchField
+
+- **Purpose**: the search box of both task tables: the `Input` primitive with a leading `SearchIcon`, so its phone target, focus ring and iOS text size are the primitive's.
+- **Source**: `packages/web/src/routes/tasks-overview.tsx`, exported `SearchField`. Props `value`, `onChange`, `placeholder`, `label` (the accessible name – a placeholder is not a label), `className`.
+- **Look**: `relative w-full` wrapper; icon `absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground`; `Input` with `pl-8 md:text-[13px]`.
+- **Rules**: it spreads nothing else onto `Input`, so a search that needs a `data-slot` spells the wrapper by hand today (G-42).
+- **Where used**: 2 files (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`).
+
+### ListViewTabs
+
+- **Purpose**: the Active / Archived switch above both task tables.
+- **Source**: `packages/web/src/routes/tasks-overview.tsx`, exported `ListViewTabs`. Props `view`, `onSelect`, `counts` (omit to show none; a zero count is never printed).
+- **Look**: track `inline-flex gap-0.5 rounded-md bg-muted p-0.75`; button `h-7 min-h-tap rounded-[7px] px-3 text-[12.5px] font-medium text-muted-foreground md:min-h-0`; active `bg-card font-semibold text-foreground shadow-xs`; counts `font-mono text-[11px] tabular-nums`.
+- **Accessibility**: toggle buttons with `aria-pressed`, not a tablist – they filter one list in place rather than switch panels (`data-slot="overview-tab"`, `data-view`).
+- **Where used**: 2 files (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`).
+
+### SettingsField
+
+- **Purpose**: one labelled settings row – title, one-line hint, then the control(s) – so every settings section reads as one surface.
+- **Source**: `packages/web/src/routes/settings/settings-field.tsx`. Props `title`, `hint`, `children`.
+- **Look**: `<section class="flex flex-col gap-stack">`; title `h2 text-sm font-semibold text-foreground`; hint `text-[13px] text-muted-foreground`. See patterns.md §8.
+- **Rules**: DO reuse it rather than add a private field wrapper (the retired G-13 was three such copies).
+- **Where used**: 12 files in `routes/settings/` (read 2026-10-23).
+
+### useLeaveGuard
+
+- **Purpose**: holds a page in place while it has unsaved edits and asks before the reader leaves – one confirm, whatever the screen renders for it ([#1120](https://github.com/qodeca/xezar/pull/1120)).
+- **Source**: `packages/web/src/lib/use-leave-guard.ts`. Exports `useLeaveGuard(dirty, onAttempt)`, `useGuardedNavigate(navigate)` and `requestLeave(proceed)`.
+- **Behaviour**: while `dirty` is true it catches in-app link clicks (capture phase, before React Router), programmatic navigation that goes through `useGuardedNavigate` or `requestLeave`, Back and Forward (through a sentinel history entry), and tab close or reload (the browser's own `beforeunload` prompt). One guard is active at a time; a screen with several drafts arms once with their combined `dirty`. Disarming leaves the history as it was.
+- **Rules**: DO render an `AlertDialog` for `onAttempt` whose destructive action runs `proceed()` and whose cancel keeps editing. DO send any new programmatic navigation (a shortcut, a palette action) through `useGuardedNavigate`, or it skips the guard.
+- **Where used**: `routes/settings/agent-config-section.tsx` (the guard) and `components/command-palette.tsx` (guarded navigation).

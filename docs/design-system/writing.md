@@ -16,7 +16,7 @@ source. Where usage is split, the rule is the majority form and the minority is 
 | Clauses are joined with a spaced em dash ` — `. | 334 lines. "Disconnected — reconnecting", "Copy failed — drag the button instead." (`bookmarklets-section.tsx`). Note: the repository's docs use en dashes; the UI uses em dashes. Follow the surface you are writing for. |
 | User-supplied names are wrapped in curly quotes `“ ”`; apostrophes are curly `’`. | `Remove “{label}”?` (`accounts-section.tsx`), `No tasks match “{needle}”.` (`tasks-overview.tsx`), "This xezar doesn’t serve a project by that id." |
 | No Oxford comma. | 25 to 2. "Theme, accent and density." (`settings/registry.tsx`), "Claude Code, Codex or Qwen Code" (`mcp-capabilities.tsx`). |
-| Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). |
+| Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). The "doesn’t" quoted in the row above is one of the minority, recorded in known-gaps G-15; it shows the curly apostrophe, not a contraction to copy. |
 
 ## 2. Voice
 
@@ -44,13 +44,13 @@ The one question heading is the `/new` hero: "What should the agent work on?"
 - Pending state replaces the label with the present participle and `…`: "Starting…", "Saving…",
   "Adding…", "Sending…", "Planning…", "Committing…", "Cloning…", "Updating…".
 - Toggles state the next state: "Hide details" / "Show details", "Hide folders" / "Browse…".
-- Dismiss buttons name the kept outcome: "Keep it" (6 sites), "Keep comparing",
+- Dismiss buttons name the kept outcome: "Keep it" (7 sites in 6 files, read 2026-10-23), "Keep comparing",
   "Keep the existing chain" over a plain "Cancel" (1 site, a non-destructive dialog). "Keep the
   file" was listed here until #453 B7 replaced it with "Keep it"; `design-debt-b7.test.tsx`
   asserts the old string is gone, so do not reintroduce it. Counts read 2026-09-17.
 - Destructive verbs are explicit: "Delete", "Remove from list", "Cancel the run", "Discard".
 - No "OK", no visible "Close" (the close button's `sr-only` text is "Close").
-- Retry: "Retry" (5 sites) over "Try again" (3 sites).
+- Retry: "Retry" (at least 8 button labels) over "Try again" (1 site, `routes/github/github.tsx`, known-gaps G-15). Counts read 2026-10-23.
 
 ## 5. Empty states
 

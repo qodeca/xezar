@@ -160,7 +160,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/ui/sheet.tsx` | Sheet | components.md §1 Sheet | Documented |
 | `packages/web/src/components/ui/skeleton.tsx` | Skeleton | components.md §1 Skeleton | Documented |
 | `packages/web/src/components/ui/switch.tsx` | Switch | components.md §1 Switch | Documented |
-| `packages/web/src/components/ui/tabs.tsx` | Tabs | components.md §1 Tabs | Documented |
+| `packages/web/src/components/ui/tabs.tsx` | Tabs | components.md §1 Tabs | Documented with known gap (G-20: no importer since #819 PR 9) |
 | `packages/web/src/components/ui/textarea.tsx` | Textarea | components.md §1 Textarea | Documented (G-07 retired) |
 | `packages/web/src/components/ui/toaster.tsx` | Toaster | components.md §1 Toaster | Documented with known gap (G-16 wording; the danger tone's ink now clears AA) |
 | `packages/web/src/components/ui/tooltip.tsx` | Tooltip | components.md §1 Tooltip | Documented |
@@ -173,12 +173,14 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/agent-quota-chip.tsx` | AgentQuotaChip | components.md §2 AgentQuotaChip; patterns.md §2, §9 | Documented (G-49: mockup departures from the slimmer contract) |
 | `packages/web/src/components/app-shell-container.tsx` | AppShellContainer | components.md §2 AppShellContainer | Documented |
 | `packages/web/src/components/app-shell.tsx` | AppShell | components.md §2 AppShell | Documented with known gap (G-14) |
+| `packages/web/src/components/app-shell.tsx` | NavBadge, VersionChip, SkillsUpdateMarker, MissingProjectBadge, tasksNeedYou | components.md §2 AppShell, Source | Documented with known gap (G-28: the version chip truncates) |
 | `packages/web/src/components/app-shell.tsx` | BrandTile development-build badge (private, #442) | components.md §2 AppShell, Brand tile and development-build badge; decisions.md D-08 | Documented |
 | `packages/web/src/components/app-shell.tsx` | All tasks needs-you badge, phone menu-button badge and the one `attention-live` region (#attention) | components.md §2 AppShell, Badges; patterns.md §2; writing.md | Documented |
 | `packages/web/src/components/app-shell.tsx` | AttentionStaleNote, the index-stale line under All tasks (private) | components.md §2 AppShell, Badges; patterns.md §2; writing.md | Documented |
 | `packages/web/src/components/app-shell.tsx` | ModeBadge single-project mode badge (private, #600) | components.md §2 AppShell, Single-project mode badge; `designs/single-project-mode/` §7 | Documented |
 | `packages/web/src/components/appearance-provider.tsx` | AppearanceProvider | components.md §2 AppearanceProvider | Not applicable – context only, no markup (components.md §2 AppearanceProvider). |
 | `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented (G-05 retired) |
+| `packages/web/src/components/centered-state.tsx` | PageHeader | components.md §2 PageHeader; patterns.md §3 | Documented with known gap (G-50: most pages spell the header by hand) |
 | `packages/web/src/components/clone-project-dialog.tsx` | CloneProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
 | `packages/web/src/components/code-editor.tsx` | CodeEditor | components.md §2 CodeEditor | Documented (G-44 retired) |
 | `packages/web/src/components/command-palette.tsx` | CommandPalette | components.md §2 CommandPalette | Documented with known gap (G-14) |
@@ -205,7 +207,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |
 | `packages/web/src/components/provider-banner-container.tsx` | ProviderBannerContainer | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
 | `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented (G-44 retired) |
-| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented |
+| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented with known gap (G-31: the `dialog` form has no accessible name) |
 | `packages/web/src/components/reference-conflict-action.tsx` | ReferenceConflictAction | components.md §2 ReferenceConflictAction | Documented |
 | `packages/web/src/components/reference-status.tsx` | ReferenceStatus registry | components.md §2 ReferenceStatus registry | Not applicable – a registry of status → tone/label; rendered by ReferenceChip (components.md §2 ReferenceStatus registry). |
 | `packages/web/src/components/route-error-boundary.tsx` | RouteErrorBoundary | components.md §2 RouteErrorBoundary | Documented |

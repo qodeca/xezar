@@ -2,8 +2,9 @@
 
 > **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the design as it was, not current behaviour.
 
-**Status: Approved.** Design review PASS WITH FOLLOW-UPS (§ 20); every finding has a disposition.
-Static mockups only — the product code lands in the P2 implementation PR.
+**Status: Implemented (PR #497).** The P2 implementation merged as commit `c702fdd9`. Before that:
+Approved – design review PASS WITH FOLLOW-UPS (§ 20); every finding has a disposition.
+Static mockups only — the product code is in `packages/web` and `packages/xezar/src/onboarding/`.
 Covers **P2** of [qodeca/xezar#464](https://github.com/qodeca/xezar/issues/464).
 Date: 2026-09-16. Author: the kit `design` workflow (`xezar-ux-design`, authoring mode).
 
