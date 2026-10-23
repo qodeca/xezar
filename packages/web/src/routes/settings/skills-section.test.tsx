@@ -31,9 +31,11 @@ import { bareDirFor, skillsCatalogVersions } from '../../../../xezar/src/skills-
 import { projectStateLayout, setActiveStateLayout } from '../../../../xezar/src/state-layout'
 
 /** Fixture git, never the developer's own config: `tag.gpgSign` and friends turn a plain `git tag`
- *  into a signed one and the fixture then fails on one machine and not another. */
+ *  into a signed one and the fixture then fails on one machine and not another. Long paths stay on,
+ *  as in xezar's own skills git: the bare clone below lands where `bareDirFor` says, and in a deep
+ *  checkout on Windows that passes 260 characters. */
 function gitFixture(args: string[], cwd: string): void {
-  execFileSync('git', args, {
+  execFileSync('git', ['-c', 'core.longpaths=true', ...args], {
     cwd,
     stdio: 'ignore',
     env: {
