@@ -39,6 +39,29 @@ Stop the process that owns the project before starting a replacement. Do not del
 
 The pi and OpenCode backends were removed. xezar lists each file and field that still names one and changes nothing itself. Change each value to `qwen`, `claude` or `codex`, or remove it, then start xezar again. [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md) shows each step.
 
+### On Windows
+
+Each entry below starts with the exact text xezar shows.
+
+#### “Git Bash was not found. Install Git for Windows (it includes Git Bash) and make sure git.exe is on PATH; WSL's bash.exe is never used.”
+
+A workflow check step runs in the Git Bash that comes with Git for Windows, and xezar could not find one. Install the full [Git for Windows](https://gitforwindows.org/) (not MinGit), make sure `git.exe` is on `PATH` in the terminal that starts xezar, then start xezar again. The `bash.exe` that Windows Subsystem for Linux (WSL) puts on `PATH` is never used, so having it does not help.
+
+#### “xezar's pipe for project … refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.”
+
+Your agent's MCP bridge (`xezar mcp`) could not connect to the cockpit, usually because the cockpit was started as administrator and the agent was not. Stop the cockpit, start it again from a terminal that is not elevated, and run the agent as the same Windows user.
+
+#### “Git Bash could not start inside Codex's Windows sandbox (CreateFileMapping, Win32 error 5; …)”
+
+Codex's Windows sandbox can stop Git Bash from starting. On a read-only step that has a `bashAllowlist`, xezar turns the sandbox off once for the rest of that step, the allowlist still checks every shell command, file edits stay refused, and the task shows a note. In these cases the step fails instead, and the message says why:
+
+| The message continues with | What to do |
+| --- | --- |
+| “… and it still crashed after xezar turned the sandbox off for this step.” | Run the step with another agent. |
+| “… XEZ_CODEX_SANDBOX_FALLBACK=0 keeps the sandbox, so the step stops here.” | Unset `XEZ_CODEX_SANDBOX_FALLBACK`, or run the step with another agent. |
+| “… XEZ_CODEX_NETWORK=0 asks for the sandbox on every step, so xezar does not turn it off.” | Unset `XEZ_CODEX_NETWORK`, or run the step with another agent. |
+| “… This read-only step has no bashAllowlist, so nothing would keep it read-only without the sandbox; give the step a bashAllowlist, or run it with another agent.” | Add a `bashAllowlist` to the step (see [Agent backends](04-agent-backends.md#to-control-tool-access-per-backend)), or run it with another agent. |
+
 ### GitHub actions say “gh CLI not found”
 
 The error says ``gh CLI not found — install it and run `gh auth login` ``. Install the GitHub CLI on the machine running xezar and sign in there. A `GITHUB_TOKEN` in that process's environment can supply credentials to `gh`; it does not replace the executable. For a draft PR, the related error is `gh not found — install the GitHub CLI and run …, or merge the branch locally`.
@@ -65,7 +88,7 @@ This is a checkout build command. The published package is meant to include the 
 
 xezar keeps its run state on disk and has no xezar cloud service. It launches [agent backends](04-agent-backends.md) and passes them your task and working directory. Those agent CLIs communicate with their configured model providers; prompts and code an agent reads can therefore leave your machine. Check the provider and account you use before giving it sensitive work. “Local cockpit” is not a promise of offline model execution.
 
-xezar itself also makes network requests. By default it loads the `qodeca/xezar-skills` team catalog from GitHub, checks npm for a newer xezar version, and can check and automatically update tracked installations of those skills. GitHub features use `gh` to communicate with GitHub. These are separate from the agent's model traffic; the skills updater is not the only network activity.
+xezar itself also makes network requests. By default it loads the `qodeca/xezar-skills` team catalog from GitHub, checks npm for a newer xezar version, and can check and automatically update tracked installations of those skills. GitHub features use `gh` to communicate with GitHub. These are separate from the agent's model traffic; the skills updater is not the only network activity. Set `XEZ_UPDATE_CHECK=0` to skip the check for a newer xezar.
 
 To disable automatic skill **application**, turn off **Update xezar-skills automatically** in global **Settings → Skills**. Alternatively, set `XEZ_SKILLS_AUTO_UPDATE=0` when no stored `skillsAutoUpdate` override is set; a stored value wins. Read-only update detection and team-catalog loading are separate, so this flag is not an offline switch. An explicit `skillsRepos: []` in project `.xezar/config.json` disables that project's team catalog.
 
@@ -103,9 +126,9 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 - `--port`, `--repo`: select the starting port and project; `--output lines` and `--log-level debug` show more of what the cockpit is doing in the terminal. See the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
 - Global **Settings → Resources**: `resources.autoResumeOnUsageLimit` in `~/.xezar/config.json`.
 - Global **Settings → Skills**: `skillsAutoUpdate`, which overrides `XEZ_SKILLS_AUTO_UPDATE` when stored.
-- `XEZ_HOME`, `XEZ_HIDE_TOKEN_USAGE`, `XEZ_HIDE_COST`, `XEZ_HIDE_TOKEN_METRICS`, `XEZ_DRY_RUN`: [environment contract](../../.env.example).
+- `XEZ_HOME`, `XEZ_HIDE_TOKEN_USAGE`, `XEZ_HIDE_COST`, `XEZ_HIDE_TOKEN_METRICS`, `XEZ_DRY_RUN`, `XEZ_UPDATE_CHECK`, `XEZ_CODEX_SANDBOX_FALLBACK`: [environment contract](../../.env.example).
 - [Security policy](../../SECURITY.md) and [project layout](../project-layout.md): boundaries and state locations.
 
-Next: [User guide index](README.md)
+Next: [Audit trail](17-audit-trail.md)
 
 Describes xezar 0.30.0.

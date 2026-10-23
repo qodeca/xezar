@@ -74,3 +74,14 @@ remove it:
 ## 5. Check it works
 
 Start xezar, open a new task, pick **qwen** as the runner and your model, and run a small task.
+
+## Related settings / env / config
+
+- [Agent backends](04-agent-backends.md#to-set-up-qwen-code): how xezar runs Qwen Code.
+- [CLI reference](12-cli-reference.md): which commands refuse to start while a stored value names a removed backend.
+- [Configuration reference](11-configuration-reference.md): `defaultRunner`, `defaultModels` and the other stored keys.
+- `QWEN_HOME`: Qwen Code's own settings folder, when it is not `~/.qwen/`. See the [environment contract](../../.env.example).
+
+Next: [User guide index](README.md)
+
+Describes xezar 0.30.0.

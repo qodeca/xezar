@@ -2,12 +2,9 @@
 
 Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar without administrator rights; attaching to a running Codex session is not available there yet.
 
-## Before setup: check that the running build carries leader delivery
+## Before setup
 
-The published npm package has carried the leader door since 0.15.0: `leader_events` actions `attach` and `status`, and pushed project events. A cockpit running an older build does not have it, so check the running cockpit's capabilities before relying on the steps below:
-
-1. In **Settings → MCP connection**, confirm that **Connection status** and **Attach leader** are present; or connect the MCP bridge, call `health` and `discover_project`, then confirm that `leader_events` accepts action `status`.
-2. If `status` is an unknown action, or the settings card has no attachment control, that running build predates 0.15.0 and cannot complete the instructions below. Update to 0.15.0 or later, restart the cockpit and start a new client session.
+Requires xezar 0.30.0 or later; run `xezar --version` to check, and see [Getting started](01-getting-started.md#to-upgrade) to upgrade.
 
 `discover_project` establishes which project and effective capabilities this MCP session is bound to. `leader_events` `status` is the authoritative check for this session's attachment and push capability.
 
@@ -53,7 +50,7 @@ Then verify attachment and push capability:
 
 ### Claude Code
 
-**Prerequisites.** Run Claude Code and the cockpit on the same machine. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. On Team or Enterprise plans, an administrator with the Owner role can enable Channels under **Admin settings → Claude Code → Channels** or set `channelsEnabled: true` in **Admin Settings → Claude Code → Managed settings**; see [Enterprise controls](https://code.claude.com/docs/en/channels.md) and [server-managed settings](https://code.claude.com/docs/en/server-managed-settings.md). Restart Claude Code afterwards. Pull with `leader_events` when Channels are unavailable.
+**Prerequisites.** Run Claude Code and the cockpit on the same machine. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. On Team or Enterprise plans, an administrator with the Owner role can enable Channels under **Organization settings → Claude Code → Channels**, or set `channelsEnabled: true` in managed settings; see [Enterprise controls](https://code.claude.com/docs/en/channels.md) and [server-managed settings](https://code.claude.com/docs/en/server-managed-settings.md). Restart Claude Code afterwards. Pull with `leader_events` when Channels are unavailable.
 
 **Register `xezar mcp`.** From the project root, local scope keeps the entry outside the repository:
 
@@ -77,26 +74,10 @@ launcher that kit installs at the project root, `scripts/xezar-leader.sh`, or by
 kit's own variable, not xezar's: its session-start hook loads the leader guide only when
 `XEZAR_LEADER=1` is set, so every other Claude Code session in the project stays ordinary.
 
-That kit-onboarded project keeps its model and lane routing in `.xezar/routing.json`; its schema is
-`.xezar/routing.schema.json`. The leader reads it with `node .xezar/checks/route.mjs`: `--check`
-validates the file, `--rows` lists classification rows without lane data,
-`node .xezar/checks/route.mjs <row id>` prints that row's lane order, and `--table` prints a human
-view. `--file <path>` is only for onboarding before the first
-merge, and labels its output `source=unmerged`. The kit's account-limits table records each runner/login pair as `ok`,
-`unknown`, or `out`, with its reset time; the leader reads it as described in the kit's routing
-guide, and it will supply xezar's agent-quota status when that
-status ships.
-
-xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which needs
-xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to their pi and
-OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt; the kit's
-[upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists the steps. If old pi or OpenCode tasks remain, delete them with the
-xezar you run now, before you install 0.30.0 – see [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md).
-
-From 0.19.0, `xezar lease gates --probe` is the supported check for gate serialisation: it prints one
-JSON line such as `{"lease":{"gates":true},"slots":1}` and exits 0 when the lease is available.
-Non-zero exit or a different output means the installed xezar has no gate lease. Parse that JSON and
-ignore unrecognised keys; the human-readable `usage:` text is not a contract.
+That kit-onboarded project also keeps its model routing in `.xezar/routing.json`, and needs
+xezar-skills 3.2.0 or later; the commands the leader uses to read it, and the supported kit
+versions, are in [Project kit](15-project-kit.md#routing-and-account-limits). To check that the
+installed xezar can serialise check runs, see [`lease gates --probe`](12-cli-reference.md#to-check-that-the-lease-is-there---probe).
 
 **First contact.** Call `health`, then `discover_project`. Call `leader_events` with action `attach` and a fresh operation ID, then action `status`. Check `self.attached`, `canPush` and any blocker; this is **attached**, not yet **delivery verified**.
 
@@ -111,15 +92,13 @@ ignore unrecognised keys; the human-readable `usage:` text is not a contract.
 
 `channels not enabled by org policy` is fixed by setting `channelsEnabled: true` as above and restarting Claude Code.
 
-This was checked in isolated sessions of Claude Code 2.1.278 and 2.1.280 (a synthetic API-key mode with a dummy key and a scripted model endpoint, not a real account; a xezar cockpit in a scratch project): both registered the channel and received every pushed event, idle and after a `stop` and a new `attach`, with the bridge started from the published package or from a source checkout. On 2026-09-23, a real claude.ai organisation login was also checked: delivery was red with the policy off and green after an Owner enabled it and the session restarted. A real Console API-key account, a personal claude.ai subscription login outside an organisation, and Remote Control have not yet been checked.
-
 **Restart and compaction recovery.** After a cockpit restart, call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor. After a client restart or context compaction, also begin with `read` and no cursor. Page with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile current task state, and acknowledge only the processed cursor. Historical counters do not prove current delivery.
 
 **Tips and tricks.** Start the cockpit before the new Claude Code session so the bridge can advertise the channel. A `claude-code-bridge-too-old` blocker means the client must restart the current bridge. A `claude-code-push-unconfirmed` blocker does not mean the row was lost: inspect the session and journal, then acknowledge only after the event has been handled. A `claude-code-push-not-seen` blocker is stronger: xezar pushed events more than five minutes ago and the session has kept calling other xezar tools since without reading or acknowledging them, so the pushes are most likely not reaching the conversation. A session that reads its events with `leader_events` `read` is never reported this way for the events that read returned; read every page while `hasMore` is true, because a read that answers a gap or stops before a pushed event does not count as having seen it. Read the events with `leader_events` `read`, then use the debug-file check above to see why.
 
 ### Qwen Code
 
-**Prerequisites.** Run Qwen Code 0.25.2 or newer and the cockpit on the same machine, with a model provider already set up in Qwen Code. On Linux and macOS, pushed events use Qwen Code's own cross-session messaging, which is on by default from 0.25.2: xezar needs no flag and changes none of your Qwen Code settings. **On Windows, Qwen Code has no push** (up to 0.25.2): it opens no inbox there, and no setting changes this. A Windows leader reads its events with `leader_events` `read` and acknowledges each one with `ack` (#1086).
+**Prerequisites.** Run Qwen Code 0.25.2 or newer and the cockpit on the same machine, with a model provider already set up in Qwen Code. On Linux and macOS, pushed events use Qwen Code's own cross-session messaging, which is on by default from 0.25.2: xezar needs no flag and changes none of your Qwen Code settings. **On Windows, Qwen Code has no push** (up to 0.25.2): it opens no inbox there, and no setting changes this. A Windows leader reads its events with `leader_events` `read` and acknowledges each one with `ack`.
 
 **Register `xezar mcp`.** From the project root, add the server to the project's `.qwen/settings.json`:
 
@@ -351,14 +330,15 @@ If a config file cannot be read at all — a syntax error, a permission problem 
 starts. It says so once in the task's transcript rather than failing, and for Claude Code it starts
 with no project MCP servers until the file is fixed.
 
-## To understand the limits
+## Known limits
 
 - The client and cockpit must be on the same machine, and MCP is unavailable in hosted mode. An HTTP URL for a remote cockpit is not an MCP endpoint.
 - One client owns the project at a time. There is no **Force takeover** or **Disconnect other client** control. End the owning client normally before connecting another.
 - Attachment targets an existing client session. It does not start a leader agent process or establish GitHub authorization.
 - A blocked or unconfirmed push is not proof that the model acted. Read the status and journal, then verify resulting task state.
 - A xezar-launched task is never the leader, on any backend: Codex's per-thread isolation disables xezar's bridge, home MCP servers, plugins and apps, and Claude Code and Qwen Code tasks have their own seam that switches the `xezar` entry off for that one client. Configure the leader in your own client session. See "To keep your leader while tasks run in the same folder".
-- Setup commands here match the shipped settings guidance. Vendor-client behavior has not been newly live-tested for this guide; Codex's explicit `--remote unix://` path remains conditional because the recorded evidence is mixed.
+- Claude Code push delivery has been confirmed with a claude.ai organization login, once an Owner enabled Channels. It has not yet been confirmed with a Console API-key account, a personal claude.ai subscription outside an organization, or Remote Control.
+- The setup commands on this page follow each client's own documentation; client behavior can change between client releases. For Codex, the explicit `--remote unix://` connection is needed in some setups and not in others.
 
 ## Related settings / env / config
 
