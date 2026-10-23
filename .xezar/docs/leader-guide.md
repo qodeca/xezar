@@ -82,7 +82,7 @@ caught only by the morning report; that cost was accepted knowingly, so do not t
 - Separate a **direction question** from a **verified defect**: different answers, different people.
 - Report the moment the work is done. Do **not** hold a review, a label or a comment back for a
   green run — say plainly that checks are still pending instead.
-- **Merging is the exception that keeps its gate.** Required checks must be genuinely green, and no label that `.xezar/checks/lib/project-policy.mjs` refuses may be on the PR: before the merge tool, run `gh pr view <n> --json labels,files,closingIssuesReferences | node .xezar/checks/lib/project-policy.mjs` in the main checkout, and anything but `{"passed":true}` is a refusal – it also refuses a design-only PR that would close its issue (#207). **A merge-time routing ban is yours to check, because no script can:** a commit names no lane, so before the merge tool read every `globalBans` entry with `"checkedAt": "merge"` in `.xezar/routing.json` and hold it against your own dispatch records, which name the lane of every task that pushed to the PR. Today that is `qwen-write-claude-review`: a PR a Qwen lane wrote or repaired merges only after a review on a Claude lane, `claude/sonnet` first, or on `codex/gpt-6-astra`; until one exists, the merge is a blocker – dispatch that review (#206). **A merge the engine refuses is a blocker, never a detour:** when the engine's merge tool (`handoff_git`, action `merge` or `merge_state`) refuses a PR, stop and report the refusal with its reason – never merge that PR with `gh pr merge`, a merge queue or any other path instead. Only a merge nothing refuses goes ahead: with a GitHub merge queue on the base branch, it goes through the queue (`gh pr merge --auto`), never update-branch in a loop (`.xezar/docs/close-out.md`). **Approval labels belong to the step that earned them, never to you:** never apply or remove `qa-approved`, `design-approved`, `needs-qa` or `needs-design` yourself, by `gh` or any script. A passing verdict whose own label write was refused is not a pass – dispatch the next lane the routing allows, or stop and report the refusal.
+- **Merging is the exception that keeps its gate.** Required checks must be genuinely green, and no label that `.xezar/checks/lib/project-policy.mjs` refuses may be on the PR: before the merge tool, run `gh pr view <n> --json labels,files,closingIssuesReferences | node .xezar/checks/lib/project-policy.mjs` in the main checkout, and anything but `{"passed":true}` is a refusal – it also refuses a design-only PR that would close its issue (#207). **A merge-time routing ban is yours to check, because no script can:** a commit names no lane, so before the merge tool read every `globalBans` entry with `"checkedAt": "merge"` in `.xezar/routing.json` and hold it against your own dispatch records, which name the lane of every task that pushed to the PR. Today that is `qwen-write-claude-review`: a PR a Qwen lane wrote or repaired merges only after a review on a Claude lane, `claude/sonnet` first; `codex/gpt-6-astra` is reserved for the `generated-images`, `diagrams` and `security-review` rows, so `route.mjs` offers it for no review row. Until that review exists, the merge is a blocker – dispatch that review (#206). **A merge the engine refuses is a blocker, never a detour:** when the engine's merge tool (`handoff_git`, action `merge` or `merge_state`) or the policy check refuses a PR, stop and report the refusal with its reason – never merge that PR by `gh pr merge`, a merge queue or any other path instead. Only a merge nothing refuses goes ahead, through the engine's merge tool or `gh pr merge` (the owner allows both here: `SDLC.md` § Deviations from the core): with a GitHub merge queue on the base branch, it goes through the queue (`gh pr merge --auto`), never update-branch in a loop (`.xezar/docs/close-out.md`). **Approval labels belong to the step that earned them, never to you:** never apply or remove `qa-approved`, `design-approved`, `needs-qa` or `needs-design` yourself, by `gh` or any script. A passing verdict whose own label write was refused is not a pass – dispatch the next lane the routing allows, or stop and report the refusal.
 
 ## What to log where, and the honesty rule
 
@@ -153,6 +153,8 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
   once and moves to `develop`: `git fetch` never refreshes `origin/HEAD`, and the config guard and
   routing compare `baseBranch` against it. A checkout whose `origin/HEAD` still names `main` fails
   those checks until it runs that command.
+- Hotfixes are done by hand, from `main` (`SDLC.md` § Hotfix): the kit's `hotfix` workflow is not
+  used here, because it branches from `develop`.
 - The gate, in order: `npm ci`, the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`,
   `npm run build`, `npm run test:package`, then the repository checks. One command runs it, in the
   foreground: `bash .xezar/checks/repo-gates.sh`. No lint command exists.
@@ -167,8 +169,9 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 
 ## Task lifecycle stages
 
-1. **Intake and triage** — an issue gets one category, one priority and one risk label;
-   `needs-design` when UI is in scope.
+1. **Intake and triage** — an issue gets one category, one priority and one risk label, and at
+   least one platform label (`windows`, `linux`, `macos`; none means intake is unfinished, never
+   "all systems" – `SDLC.md` § Extra project rules); `needs-design` when UI is in scope.
 2. **Design** (flagged work only) — `design` while under review, then `design-approved` or `design-failed`.
 3. **Implementation** — a task branch in its own worktree; `in-progress` marks the claim; the gate runs.
 4. **Pull request** — opened draft, marked ready after the gate is green.
@@ -193,16 +196,8 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
 
 ## Release runbook
 
-The owner authorises every release; a release go is an owner-only decision. Full steps: `docs/publishing.md`.
-1. Everything for the release is on `develop` with a green CI run — proof: the run on that sha.
-2. `release` workflow: its `changelog` step folds the `changelog.d/` fragments into `CHANGELOG.md`,
-   then the candidate is gated — proof: its evidence and the candidate sha.
-3. The changelog pull request merges into `develop`; `promote/v<version>`, cut at that merge commit,
-   merges into `main` with a merge commit — proof: `main`'s head has two parents.
-4. The owner dispatches **Actions → Release** on `main` with the bump — proof: a green `Release` run
-   (green means published; there is no npm token, trusted publishing only).
-5. Merge the `release/v<version>` bump pull request the bot opens (merge commit) — proof: `main`
-   names the new version.
-6. Back-merge: `backmerge/v<version>` into `develop` (merge commit) — proof:
-   `git rev-list --count origin/develop..origin/main` is 0.
-7. Verify — proof: `npm view @qodeca/xezar version` and the `v<version>` tag at the released commit.
+The release go is the owner's (owner-only decision 1). The steps and the proof each one needs are
+in `docs/publishing.md` § Cutting a release and § Verifying a release: the `release` workflow's
+`changelog` step folds the `changelog.d/` fragments, `promote/v<version>` merges into `main`, the
+**Actions → Release** run publishes (after the go, an agent may dispatch it: `SDLC.md` § Deviations
+from the core), and `backmerge/v<version>` brings `main` back into `develop`.
