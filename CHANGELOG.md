@@ -1,3 +1,398 @@
+# 0.31.0 (2026-10-23)
+
+## Highlights
+
+A safety and reliability release. A hosted cockpit now checks the `Host` name, keeps
+machine-level settings local and refuses to be framed by other sites, and health no longer
+carries remote credentials – two of these change what a remote request may do, so read Breaking
+before you upgrade a hosted install. Every way xezar stops a task now also stops the programs the
+task started, start-up never deletes task work it has no record of, and an agent that quits early
+no longer takes the server down. The cockpit is easier to read and use with a keyboard or screen
+reader, and team skills load from a deep project on Windows again.
+
+## 💥 Breaking
+
+- 💥 **`GET /api/v1/health` is same-origin only.** It no longer sends open CORS or
+  private-network headers, and the `health` WebSocket topic is readable only by the cockpit's own
+  connection, so a script in a browser page on another origin can no longer read health. A
+  native client (`curl`, the MCP bridge) is unaffected. `repo.remote` drops a user name and
+  password embedded in the URL, and in hosted mode `repo.root` is the folder name only. Read
+  health from a native client or from the cockpit's own origin. (#1111)
+- 💥 **A hosted cockpit refuses what it used to accept from a remote request.** In hosted mode a
+  `Host` name that is not loopback, an IP address, a name `xezar server-install` recorded or a
+  name in the new `XEZ_ALLOWED_HOSTS` gets a `403`; `PUT /api/v1/workspace/config` answers `409`
+  and saves nothing when it names `browseRoot`, `projectsDir`, `agentEnvPassthrough` or
+  `cli.instance`; and `GET /api/v1/fs/browse` ignores `showHidden=1`. Local mode is unchanged. To
+  keep a hosted cockpit reachable under an unrecorded name, list it in `XEZ_ALLOWED_HOSTS` or
+  re-run `xezar server-install --domain`; change the four settings on the machine that runs the
+  cockpit. (#1116)
+
+## 🔒 Security
+
+- 🔒 **Dependency updates for published advisories.** `npm audit fix` moves `smol-toml` to 1.9.1
+  (runtime dependency of the CLI), and the cockpit's `streamdown` moves to 2.7.0 (same major),
+  which no longer depends on `mermaid`; the cockpit never rendered diagrams, and with it go
+  `katex`, `dompurify` and 106 other packages. `npm audit --omit=dev` now reports nothing. (#1113)
+- 🔒 **vitest and `@vitest/coverage-v8` move to 4.1.11** (same major), the first release with the
+  fix for a file-read advisory in `@vitest/mocker`. Development only; `npm audit` now reports nothing.
+  (#1113)
+- 🔒 **The cockpit refuses to be shown inside a frame on another site.** Every HTML page the
+  service sends – the cockpit itself and the built-in recovery page – now carries
+  `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`. Nothing else in
+  the page policy changes, API answers are untouched, and a hosted cockpit behind a reverse proxy
+  works as before. (#1110)
+- 🔒 **Health and repository answers no longer carry remote credentials, and health is
+  same-origin only.** A remote URL with a user name and password or token embedded in it is
+  sent and shown without them everywhere the service reports it (health, the repository view,
+  the MCP tools), while a plain SSH account such as `git@` is kept. In hosted mode health's
+  `repo.root` is the folder name only, matching `repoRoot`. `GET /api/v1/health` stops sending
+  open CORS and private-network headers, which only the retired bookmarklet probe needed.
+  The `health` WebSocket topic is now readable only by the cockpit's own connection, for the
+  same reason. (#1111)
+- 🔒 **A hosted cockpit checks the `Host` name too.** Hosted mode used to accept any `Host`
+  header, while the installers keep the cockpit on loopback behind a local proxy. It now serves a
+  non-loopback name only when it is an IP address, a public name `xezar server-install` recorded
+  on this machine (the entered domain, or an ngrok-assigned name for an ngrok install without one),
+  or a name listed in the new `XEZ_ALLOWED_HOSTS`. Any other name is refused with a 403 that says
+  how to allow it, and logged once. Installs that recorded their domain keep working without a
+  reinstall; a hosted setup the installer did not record lists its public name in
+  `XEZ_ALLOWED_HOSTS`. (#1116)
+- 🔒 **A hosted cockpit keeps machine-level settings local.** In hosted mode, saving the folder
+  the project picker may browse, the folder new checkouts land in, the environment variables
+  passed to agents, or the instance mode is refused with a `409` and nothing is saved, as editing
+  agent configuration already was. Display and resource settings stay editable. The folder picker
+  no longer lists hidden folders in hosted mode. (#1116)
+- 🔒 **Hosted settings screens show the locked settings read-only.** In hosted mode, Global
+  settings → Projects (browse and checkout folders), Resources (extra variables agents receive)
+  and Terminal (instance mode) show the current value in a read-only field with the reason on
+  screen, instead of an editable field the server would refuse. The MCP `set_workspace_config`
+  description says the same keys are refused in hosted mode. (#1116)
+- 🔒 **A page under a refused address explains itself.** In hosted mode, a non-API page requested
+  under a name the cockpit does not serve gets a small self-contained `403` page that names the
+  refused name and how to allow it, instead of a cockpit that cannot load its data. On a phone,
+  a long locked folder path now wraps instead of being cut off. (#1116)
+- 🔒 **Read-only steps now check git against an explicit list of reading subcommands.** The shared
+  read-only command check (Codex and Qwen Code) refuses any git subcommand or global option it has
+  not reviewed, and refuses the options and modes of the reviewed ones that run another program,
+  write a file or change repository state. Ordinary reads such as `git status`, `git diff`,
+  `git log`, `git grep`, `git branch --list` and `git config --get` keep working; the bundled hook
+  programs are rebuilt with the new check. (#1109)
+
+## ✨ Features
+
+- ✨ **xezar warns when a project's setup collection is too old for it.** A project whose
+  `.xezar/onboarding.json` names a `qodeca/xezar-skills` release older than 3.2.0 still reads as set
+  up, but Settings → Project setup now says "Setup needs an upgrade", one notice above the page
+  links the collection's upgrade guide (Later hides it for the running versions), and
+  `discover_project` tells a project leader the same. The setup status gains the additive, nullable
+  `olderSetup` field (`recordedVersion`, `minimumVersion`, `upgradeGuideUrl`) on
+  `GET /api/v1/onboarding` and in `discover_project.onboarding`; `state` keeps its five values. A
+  missing or unreadable version is never called old. (#1119)
+
+## 🐛 Fixes
+
+- 🐛 **The cockpit now tells you about waiting tasks in every project, not only the one on
+  screen.** The sidebar's "needs you" badges for other projects used to freeze, a collapsed project
+  showed no badge at all, and browser notifications fired only for the project the tab opened in.
+  All of them – plus a new count on "All tasks" and a `(n)` prefix in the browser tab title – now
+  read one workspace-wide count that the live event stream keeps current for every project. The
+  count also includes tasks older than a project's newest 200, which the cross-project task index
+  now counts on the server (`GET /api/v1/workspace/runs-index` gains additive `attention`,
+  `unreadable` and `registryUnreadable` fields, so an unreadable registry or project is no longer
+  answered as an empty, all-is-well index).
+  If that index cannot be read, the current project still counts from its own task list and one
+  line under "All tasks" says the other counts may be out of date, instead of them dropping to
+  zero. On a phone the menu button carries the same count. Notifications now name the project:
+  "Storefront — task needs you". The live connection also recovers on its own
+  when it goes silent, refreshes the cross-project task list after activity settles (at least
+  every two seconds while it does not), and ignores a malformed status update instead of caching
+  it. (#1117)
+- 🐛 **Alt+A and Alt+C quick replies only fire while the agent is waiting.** A running, queued or
+  review thread keeps its composer enabled, and the shortcut there used to message the agent
+  without being asked to. (#1120)
+- 🐛 **Screen readers hear a task's status change.** The run header now has one polite status
+  region that says "Task status: needs you" (or the new word) when the status moves, and stays
+  silent when a task is opened. (#1120)
+- 🐛 **A long live transcript no longer loses items after you load earlier history.** When the
+  live tail is compacted, the thread keeps its older pages only if the new tail reaches them;
+  otherwise it keeps the tail alone, and "Load earlier items" walks back through every skipped
+  item in order. (#1120)
+- 🐛 **A tab left open across an upgrade recovers by itself.** When a page's code file from the
+  old build is gone, the cockpit reloads once (guarded so a real outage cannot loop), and the
+  error page's Retry now reloads instead of repeating the failure. (#1120)
+- 🐛 **The Tasks page says when it is loading or could not load.** It used to stay blank until
+  the list answered, and blank for good when it failed; a failed "Archive finished" now shows the
+  server's message too. (#1120)
+- 🐛 **The ask card is readable and keyboard-friendly in the light theme.** "The agent is asking"
+  is no longer pale lime on white, a picked option shows a check mark, and after you answer, focus
+  lands on the answer summary instead of the top of the page. (#1120)
+- 🐛 **Agent config edits are no longer thrown away without asking.** "Reload from disk", opening
+  another file or agent, and leaving the page – by a link, Back or Forward, or the ⌘K palette –
+  now confirm first when the open file has unsaved edits, and closing or reloading the tab asks too. A newer copy fetched in the background no longer replaces
+  your draft. (#1120)
+- 🐛 **Screen readers hear the composer's choices.** The runner, model, variants, base branch and
+  project pills now say both the setting and its value ("Model: sonnet"), and the `/` and `@`
+  suggestion list is announced as you move through it and when Enter inserts one. (#1120)
+- 🐛 **On a phone the top bar says which project and which settings you are in.** A quiet line
+  above the page name shows the project, and Global settings is titled as such instead of plain
+  "Settings". A page outside the menu, such as New task, shows its own name. (#1120)
+- 🐛 **A greyed-out composer control says why on screen.** The model, variants, Worktree and
+  Autonomous controls used to explain a disabled state only in a hover tooltip, which a phone or a
+  keyboard never shows; a short reason now sits beside them. (#1120)
+- 🐛 **Switching projects no longer sends the old page's requests to the new project.** The
+  project scope now changes only when the new project's page is actually shown, so the page you
+  are leaving can no longer fetch, or cache answers, under the project you are opening. (#1120)
+- 🐛 **Links in rendered Markdown are readable in the light theme.** Transcript, GitHub and skill
+  links were pale lime on white (about 1.3:1); they now use the text colour with an underline. The
+  dark theme is unchanged. (#1120)
+- 🐛 **No more pale lime text in the light theme.** Selected-item check marks, the Workflows drop
+  hint and the MCP "completed" mark now use the text colour on white, as links already do; the dark
+  theme keeps the lime. (#1120)
+- 🐛 **Readable green, red and violet text in the light theme.** Diff counts, check words, failed
+  states and reference chips were too pale on white (2.5–3.8:1); the light theme now uses darker
+  shades of the same colours (5.7–6.0:1), with white text on the red and violet badges and buttons.
+  The dark theme is unchanged. (#1120)
+- 🐛 **A headless `xezar run` no longer cancels the recovery of other tasks.** It marked every
+  queued, running or waiting task in the project as failed, so the next `xezar serve` had nothing
+  to resume and dropped the list of programs those tasks had started without stopping them. A
+  headless run now touches only the task it creates. (#1115)
+- 🐛 **A queued task keeps its own system prompt across a restart.** A task's extra system prompt
+  (automations set one) was saved only when the task started, so a task still waiting in the queue
+  when xezar restarted ran with the project default instead. It is now saved when the task is
+  created. (#1115)
+- 🐛 **A monitoring session no longer stays open forever.** A session that reports it is still
+  watching background work is woken up to 40 times; after the last wake-up nothing could end it
+  except a person typing. It now closes after the usual idle timeout once the wake-ups run out.
+  (#1115)
+- 🐛 **Worktree clean-up no longer removes the working copy of a task that was just continued.** The
+  clean-up picks every old finished worktree first and removes them one at a time; a task
+  continued in between lost its isolated working copy (Git worktree). Each removal now checks
+  again that the task is still finished and not running, and a Continue that arrives during a
+  removal waits for it and then restores the working copy before it starts. (#1115)
+- 🐛 **A check step that reads its input no longer hangs.** A workflow check ran with an open input
+  that nothing ever wrote to or closed, so a command that asks a question or reads its input waited
+  forever. A check step now has no input at all, on Linux, macOS and Windows (Git Bash). (#1115)
+- 🐛 **A restart no longer finishes a task whose remaining steps never ran.** A Continue after a
+  mid-workflow failure hands the later steps over only when its turn ends with `XEZ:DONE`; when it
+  stopped to wait for an answer and xezar restarted, recovery settled it as `done` or `review` and
+  skipped the remaining checks and reviews. It now fails the task with the same reason a live close
+  gives, and the task can still be continued. (#1115)
+- 🐛 **A Continue on Codex no longer counts the earlier turns' tokens twice.** Codex reports the
+  whole conversation's running total, and a resumed Continue stored that figure as its own, so the
+  task's token total included every earlier turn on that conversation again. It now stores only
+  what its own turn spent, as the first run of a step already did. (#1115)
+- 🐛 **A long agent session no longer grows the cockpit's memory with its stderr and tool calls.**
+  The Claude Code, Codex and Qwen Code runners kept every byte the CLI wrote to stderr and a copy
+  of every tool call's full input, though only the last three stderr lines are ever read and
+  nothing read the copies. They now keep the newest 64 KB of stderr and no tool-call copies; tool
+  calls still stream as events, and failure messages read as before. (#1114)
+- 🐛 **The memory limit on Windows no longer counts programs that are not the task's.** Windows
+  keeps a process's parent id after the parent exits, so a long-running program whose parent had
+  died before the agent got the same id was counted as the agent's child – and toward its memory
+  limit. The live usage now counts only processes that started after the agent did, and counts
+  nothing once the agent's own id names a different, later program. (#1114)
+- 🐛 **One stuck process-table read no longer switches off usage sampling for good.** A `ps` or
+  PowerShell read that never returned left the sampler busy for the rest of the server's life,
+  which also stopped the memory limit. Each read is now bounded at 10 seconds, and the next
+  sample runs as usual. (#1114)
+- 🐛 **A long task's process record no longer fills up and stops recording.** The record xezar
+  keeps of a task's programs on Windows and macOS, to stop them at a cancel or a pause, held at
+  most 2,048 entries and never dropped programs that had exited, so a long task that ran
+  thousands of short commands stopped recording new ones. A full record now forgets programs no
+  read has shown alive for a minute – never the task's own agent process – and keeps proof for
+  any live program one of them started. (#1114)
+- 🐛 **An agent that exits before reading a large first message no longer stops `xezar serve`.**
+  When Claude Code or Qwen Code quit before reading a prompt larger than the pipe buffer, the
+  failed write to its input took down the whole server and every running task. The step now fails
+  on its own with the agent's exit code and error output, and a note records the failed write. A
+  Windows pid file that cannot be removed when a shell exits is also left behind quietly instead
+  of throwing. (#1106)
+- 🐛 **Team skills load from a deep project on Windows again.** In a deep project, the skills cache
+  clone went past the 260-character Windows path limit, so the clone failed with "Filename too
+  long" and the team skills never arrived. xezar now turns on Git's long-path support for its own
+  skills commands, whatever the machine's Git config says. A team skills source given as a Windows
+  drive path (`C:\…` or `C:/…`) also gets a short cache folder name when its old name was longer
+  than 40 characters, because Git for Windows refuses a clone folder whose own path is too long.
+  Such a source is cloned once more the next time its skills are loaded or listed, which needs the
+  network: offline, that source's team skills are missing until a clone succeeds. Its old cache
+  folder stays on disk unused. Every other source – `owner/name`, a URL, a Linux or macOS path –
+  keeps its cache folder exactly as it was. (#1134)
+- 🐛 **Every way xezar stops a task now also stops the programs the task started.** Before, only a
+  cancel, a memory-limit pause and a step's time limit did; a session closed after inactivity, a
+  session the user closed with Finish, an autonomous turn closed at its nudge limit (a read-only
+  step's finish included), an agent error, and an agent program that xezar had to stop because it
+  did not exit after its session closed left a background program such as a dev server running. A
+  task whose agent finishes on its own is still left alone. (#943, #1124)
+- 🐛 **"Open in default app" works when xezar runs inside WSL.** An image from the diff pane went to
+  `xdg-open`, which has no desktop inside WSL; it now opens through Windows Explorer with the
+  Windows path, the same way "Open in → file manager" already did. (#1118)
+- 🐛 **The "take over interactively" line in a task's header now resumes on the right account.**
+  The cockpit built it itself, without quoting the folder and without the session's account, so a
+  folder with a space broke it and a task run under a second account resumed nothing. The server
+  now builds it (`GET /runs/:id/resume-command`) with the same builder as the terminal launcher
+  and its no-terminal fallback, quoted for the host's shell (`cd /d "…"` on Windows) and carrying
+  the account. In hosted mode the line drops the folder and is not offered when it needs a named
+  account. (#1118)
+- 🐛 **A Qwen Code leader receives pushed events when the temp folder is deep.** The receipt
+  socket xezar opens for each push lived in the temp folder, and a deep `TMPDIR` made its path
+  longer than a Unix socket allows, so every push failed. It now moves to `/tmp` only when the
+  temp folder is too deep for it; Windows is unchanged. (#1112)
+- 🐛 **Starting xezar no longer deletes task work it has no record of.** The start-up cleanup of
+  task folders now does what worktree retention does: it removes a folder only when Git shows it
+  is a clean worktree on a branch, and it always keeps the task's branch. A folder with
+  uncommitted or untracked changes, a detached checkout or one Git does not know is left in place
+  and named in the boot output. (#1108)
+- 🐛 **One unreadable record in `runs.json` no longer empties the task history.** Every record
+  that still reads is kept, the unreadable original is copied to
+  `.local/xezar/backups/runs.json.bak` before the next save, a warning names what was dropped, and
+  that start skips the task-folder cleanup entirely.
+  The cross-project task search reads each project's `runs.json` the same way, record by record,
+  so one bad row no longer hides that project's tasks. (#1108)
+- 🐛 **A dead writer's claim on a port no longer counts as live on Windows.** When a reused process
+  id passed the liveness probe but its start time could not be read, the old claim still counted;
+  xezar now tells "no such process" apart from "start time unknown". Merging into the agent
+  accounts file now writes asynchronously, so a concurrent read can close its file and the Windows
+  rename retry no longer fails with `EPERM`. Five other flaky tests now wait for the state they
+  check instead of a fixed sleep or a moving layout. (#1132)
+
+## 🔧 Changed
+
+- 🔧 **The bundled setup templates pin moves to Xezar Skills 3.2.1 (`b86ddf0`).** 3.2.0 is the first
+  release that works with xezar 0.30.0. A project last checked against the 3.0.3 pin (`ec856f8`) is
+  offered one re-check; a re-check does not upgrade an older setup collection. (#1119)
+- 🔧 **A bookmarklet no longer starts a task by itself.** Every bookmarklet link now fills in the
+  task form, shows a short notice, and waits for you to press Start. The "One-click launch
+  (auto-submit)" option is gone from Settings → Bookmarklets. Bookmarks saved with that option keep
+  working, with no error: they fill the form the same way and wait for Start. (#1122)
+- 🔧 **A Continue refused because the engine still holds the task now carries a stable code.** The
+  `409` from `POST /runs/:id/continue` adds `code: "run_still_active"` beside its unchanged
+  message, and the cockpit and the MCP `execution_control` tool retry on that code instead of
+  matching the sentence, so rewording the message can no longer break the short retry after an
+  idle session closes. (#1118)
+
+## 📝 Specs & Documentation
+
+- 📝 **The security policy, the server-install guides and the release docs match the code and the
+  current settings.** `SECURITY.md` lists the new boundaries: the frame refusal, the hosted `Host`
+  name check, the `409` for machine-level settings in hosted mode and the removal of credentials
+  from remote URLs. The Ubuntu guide warns that a proxy on the same host must overwrite or strip
+  `X-Xezar-User`, says when `XEZ_ALLOWED_HOSTS` is needed, and documents `--yes` and
+  `XEZ_DRY_RUN=1` for the installer. `docs/publishing.md` describes the `production` environment's
+  reviewer and branch limits, the release-tag ruleset and npm's current unpublish policy, and
+  `SDLC.md` records four owner decisions as deviations from the core (#1138).
+- 📝 **The user guide catches up with what ships.** Windows gets a step-by-step checklist with the
+  exact long-path commands and its own troubleshooting entries; the guide now covers keyboard
+  shortcuts, composer dictation, `XEZ_ALLOWED_HOSTS`, `XEZ_UPDATE_CHECK` and the cockpit's refusal
+  to be framed by other sites. The kit's routing notes live once, on the Project kit page, and the
+  0.15.0/0.16.0 upgrade notes moved from the README to `docs/upgrading.md` (#1141).
+- 📝 **The process documents describe the `develop`/`main` branch model.** `develop` is the default
+  and base branch for every pull request; `main` holds released work and takes only promotion,
+  version-bump and hotfix pull requests, merged with a merge commit and followed by a back-merge.
+  `SDLC.md`, `CONTRIBUTING.md` and `docs/publishing.md` carry the model and the release order.
+  (qodeca/xezar-skills#248, #1099)
+- 📝 **The agent instruction files match the code again.** `AGENT_PROTOCOL.md` describes how each
+  backend isolates MCP, stops its process and runs on Windows; the platform rules moved to their own
+  `packages/xezar/src/platform/AGENTS.md`, and the root `AGENTS.md` starts with how to validate a
+  change (#1139).
+- 📝 **Feature records, research notes and the design system are up to date.** Feature and design
+  records show their real status, the Qwen Code research is marked as shipped, and the design system
+  documents its missing components, the WCAG 2.2 focus and target rules, and three new known gaps (#1143).
+- 📝 **The testing docs have an index and name the known Windows gaps.** `docs/testing/README.md`
+  lists every suite with its command, prerequisites, operating systems, CI job, time limits and how
+  to read a failure, and says which local Windows failures are expected until #1136 and #1137
+  close. Stale claims in the browser, harness and coverage-gap pages were corrected (#1142).
+- 📝 **The `.xezar/` kit's local pages are current again.** Codex now gets the kit's working rules
+  from `.xezar/AGENTS.md` (`.xezar/CLAUDE.md` imports it), the leader guide asks for a platform
+  label at intake, no longer offers a reserved lane for reviews, says hotfixes are done by hand and
+  points to `docs/publishing.md` for the release steps, the 3.2.1 upgrade report records that the
+  `emulate` grant was applied, and the local-patch register folds its two-branch entries into one (#1140).
+- 📝 **SDLC.md now holds the whole delivery process in one file.** A shared core (version 1.0, the
+  same text in every project that uses it) plus this project's profile. It adds rules for untrusted
+  input, agent permissions and guards, test quality, flaky tests, agent sessions, release and
+  after-release steps. (#1097)
+- 📝 **SDLC.md has platform labels and labeling rules.** Issues and pull requests carry `windows`,
+  `linux` or `macos` for the systems a change was found or verified on, with rules for WSL, the
+  bug-report environment block and release-label clean-up. (#1093)
+- 📝 **No current text still names pi or OpenCode.** The README, its architecture diagram, the
+  leader and MCP requirements and the settings inventory now name Claude Code, Codex and Qwen
+  Code. (#1095)
+- 📝 **The docs describe Qwen Code as the third backend.** The user guide, `AGENTS.md` and the
+  Qwen Code rerun notes were brought in line with 0.30.0, including Qwen Code's Windows leader
+  limit. (#1090, #1091, #1092)
+- 📝 **SDLC.md and the leader guide record the finished `develop` cut-over.** (#1103)
+
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **CI and the nightly mutation gate are ready for a `develop` default branch.** CI now runs
+  for pull requests and pushes on `develop` as well as `main`. A new **PR source guard** workflow
+  lets only this repository's `promote/*`, `release/v*` and `hotfix/*` branches target `main` while
+  another branch is the default; it reruns when a pull request is retargeted, and checks nothing
+  under the trunk model. The nightly follows the repository's default
+  branch instead of a hard-coded `main`, and compares its survivors with the last `main` run on the
+  night the default branch moves. (qodeca/xezar-skills#248, #1098)
+- 🚀 **The Release workflow builds and publishes in separate jobs.** A read-only `build` job
+  installs, tests, builds and packs the release tarball; the `publish` job (environment
+  `production`, the only holder of the npm identity) installs nothing, checks the tarball's
+  SHA-256 and publishes exactly those bytes with provenance. The tag and GitHub Release are now
+  created right after the publish and before the version-bump PR, and the run summary reports
+  each of the three from its own step's outcome. (#1113)
+- 🚀 **CI and the local test environment run one pinned, checksum-verified agent-browser.** The
+  release and the SHA-256 of each asset live in `scripts/agent-browser-pin.sh`, read by the
+  `ui-e2e` job, `scripts/test-env-up.sh` and the install snippets in the testing docs. None of
+  them installs `latest`; a binary runs only when it matches (cached copies included), with
+  `sha256sum`, `shasum` or `openssl`, whichever the machine has. The CI browser cache is keyed on
+  the pin. (#1113)
+- 🚀 **CI also runs for `release/**` maintenance branches**, on pull requests and pushes, so a
+  fix bound for a patch line is verified before the Release workflow ships it. (#1113)
+- 🚀 **The npm package ships only the scripts the CLI runs.** `@qodeca/xezar` now carries the two
+  dry-run mocks and the two bundled tool-policy hooks from `scripts/`, not the build, release and
+  test helpers beside them (12 files down to 4). (#1113)
+- 🚀 **Dependabot proposes weekly dependency updates into `develop`.** npm (all workspaces) and the
+  pinned workflow actions, minor and patch grouped into one pull request per ecosystem, majors
+  on their own, each version at least a week old. (#1113)
+- 🚀 **The nightly mutation run finishes again.** Since mid-September two to four of its nine jobs
+  hit the five-hour limit every night, so no night produced a score: the work had grown to about
+  35 runner-hours and the jobs were balanced on month-old estimates. Jobs are now planned on
+  measured minutes per file, as many as needed to keep each well under the limit (18 today), and
+  each job records its own timings so the plan can be refreshed from any night, even one cut short.
+  The Qwen Code adapter's source check no longer trips over the mutation tool's own code, which had
+  stopped one job before it started. Scope and the 80 % floor are unchanged. (#443, #1123)
+- 🚀 **The read-only command lock is mutation-tested every night.** The lock and Qwen Code's tool
+  policy now run beside the nightly gate with their own 68 % floor, in the same verdict and the same
+  tracking issue. (#1123)
+- 🚀 **Tests that wait on a clock now wait on what happened.** The push-delivery "nothing was
+  pushed twice" checks wait for counted heartbeats instead of fixed sleeps, and the lock and
+  child-exit timing checks assert that no wait happened instead of reading elapsed time, so a busy
+  machine can neither hide a regression nor fail a healthy run. Every route the server registers
+  must now be marked local-only or classified for hosted mode, so a new route cannot skip that
+  decision; each Qwen Code setting that can widen a read-only step is pinned on its own; the
+  Claude Code blocker texts are checked against the exact strings the code sends; and the test
+  suite no longer leaves temporary Qwen Code homes behind. A separate mutation run
+  (`npm run test:mutation:lock`) now covers the read-only command lock and the Qwen Code tool
+  policy, with its own scope apart from the MCP gate's. (#1112)
+- 🚀 **The browser suite runs on Windows.** The `agent-browser` background process kept the
+  command's output pipe open, so every browser command waited for its time limit and every spec
+  failed. The e2e helpers now read the command's output from files, and a guard test keeps every
+  call on that path. (#1135)
+- 🚀 **A stuck test can no longer hang the Windows unit gate.** `serve-port-race.test.ts` stops
+  each `serve` it starts together with everything that `serve` started, with a bounded clean-up,
+  and `test:unit` gives each file at most ten minutes. (#1135)
+- 🚀 **Test folders are removed reliably on Windows with Node 24.** Node 24's own `rmSync` retry
+  never retries a Windows access-denied error and does not wait between tries, so hundreds of
+  tests failed in clean-up. The retry the test bootstrap already gave Node 22 now applies to every
+  Node version on Windows. (#1135)
+- 🚀 **The project kit is upgraded to Xezar Skills 3.2.1.** The repository's own setup record now
+  names 3.2.1, so its cockpit no longer asks for a setup upgrade; the run report is in
+  `.xezar/upgrade-reports/3.2.1.md`. (#1131)
+- 🚀 **The kit's base branch is `develop`.** `.xezar/config.json`, the pipeline config and the
+  onboarding record name `develop` as the base and `main` as the released branch. (#1100)
+- 🚀 **The kit's leader guide, release skill, labels and trust-boundary notes match the
+  repository.** They describe the `develop`/`main` model and the current release path. (#1107)
+- 🚀 **The kit no longer describes pi or OpenCode as current backends.** A local patch carries the
+  upstream wording, so the next kit upgrade merges cleanly. (#1096)
+
+---
+
 # 0.30.0 (2026-10-17)
 
 ## Highlights
