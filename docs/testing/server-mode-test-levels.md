@@ -13,7 +13,9 @@ meant to be read together.
 
 The table was recovered from the frozen evidence file
 `.local/xezar-tasks/245daf3a-82da-4b6c-b981-ebcdb73cd923/server-mode-test-spec.md`
-§ "Risk to cheapest test level" (14 rows), then re-verified against `main` at `681bf457`
+§ "Risk to cheapest test level" (14 rows) – a historical, local-only file that lived in one
+machine's ignored `.local/` folder and is not in the repository, so it cannot be opened from a
+checkout, so the table below is now the only record. It was re-verified against `main` at `681bf457`
 (2026-09-20). Every row is kept; none was dropped or re-derived. The frozen copy cited bare
 file names and line numbers; this committed copy names **repo-relative paths**, because the
 doc-check test below resolves them, and it names the committed suite for the rows the frozen

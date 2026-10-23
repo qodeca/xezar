@@ -19,6 +19,11 @@ appears in section 4 as supporting evidence only – it never drives the ranking
 no gate protects outranks a behaviour that a suite covers but CI never runs, and both outrank a
 file with a low percentage that nothing depends on.
 
+**Section numbers are labels, not a sequence.** There is no section 8 and no 10.7: both were
+removed, and the rest were not renumbered because code and other documents cite sections by number
+(§ 10.3 and § 10.13 in the Stryker configs, § 10.8 in `docs/publishing.md`, § 10.12 in `ci.yml`).
+For how to run each suite, see the [testing index](README.md).
+
 **How to read the evidence.** Claims marked *measured* come from a command that was run or a test
 file that was opened and read. Claims marked *inferred* are judgements about likelihood and blast
 radius – second-guess those freely. Absence is scoped: "no test found for X in the suites
@@ -40,7 +45,9 @@ The three risks this audit opened with are closed (#60/#128, #120, #43/#62). The
 ## 2. What "the suites" means
 
 File counts re-counted on `79b7361`, 2026-10-19 (the 2026-09-15 count at `bb271fc` read 272, 173,
-2, 4, 14 and 5).
+2, 4, 14 and 5). A spot check at `00b37e6d` (2026-10-23) found 470 server and 210 cockpit test
+files; every other row was unchanged. The table keeps the 2026-10-19 numbers so it stays one dated
+measurement.
 
 | Suite | Command | Runner | Runs in CI? | Size (measured) |
 |---|---|---|---|---|
@@ -86,7 +93,7 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
 | `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). `test:server-mode` additionally exercises the built CLI with `--repo`, `--bind-host`, `--no-open` and OS-assigned ports | C |
 | `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
-| **unknown command → exit 1 + help** | none | the `default` arm of `src/index.ts` not exercised by any spawn found | **N** |
+| **unknown command → exit 1 + help** | packaged e2e | `test/e2e/package-audit.test.ts:122` spawns `no-such-command` from the packed tarball and asserts it writes no audit record; neither the exit code nor the help text is asserted | **P** |
 | `mcp` bridge subcommand | server unit (child process) | `src/mcp/cli.test.ts` | C |
 | npm package surface: bins, `exports`, tarball contents | packaged e2e + build | `test/e2e/package-exports.test.ts`; `scripts/check-pack.mjs` via `npm run build` | C |
 
@@ -133,7 +140,7 @@ HTTP API.
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
 | MCP leader (`mcpLeaderRoutes`) | server unit | `server/mcp-leader-topic.test.ts`, `mcp/push-delivery.test.ts` | C |
-| Two-project product composition (registry, lazy contexts, route aliases, workspace cap, runs index, SSE stamping, disposal/re-add) wired together in one built cockpit | saved deterministic harness, not a unit suite | `scripts/multi-project-harness.mjs` (`npm run test:multi-project`), unit-level PID-ownership coverage at `test/unit/multi-project-harness.test.ts`; see `docs/testing/multi-project-harness.md` | C (composition), **P** for cross-project MCP — a project registered after boot never gets its own MCP socket today (issue #557); the harness proves MCP independence for the boot project only and reports B's session honestly rather than asserting a false pass |
+| Two-project product composition (registry, lazy contexts, route aliases, workspace cap, runs index, SSE stamping, disposal/re-add) wired together in one built cockpit | saved deterministic harness, not a unit suite | `scripts/multi-project-harness.mjs` (`npm run test:multi-project`), unit-level PID-ownership coverage at `test/unit/multi-project-harness.test.ts`; see `docs/testing/multi-project-harness.md` | C, including cross-project MCP – since #557 (closed 2026-09-18) a project registered after boot gets its own MCP socket, and the harness asserts that B's door answers as B, stops answering once B is removed, and answers again after B is re-added (`multi-project-harness.md` § B's MCP door) |
 | The `serve` wiring that gives `followProjectDoors` its real lifecycle (`index.ts`'s `onContexts` hook opens each late-built project's own MCP socket through `open`, and shutdown closes every door) (#557) | saved deterministic harness, not a unit suite | `scripts/multi-project-harness.mjs` (`npm run test:multi-project`) is the only suite that exercises this wiring; the lifecycle itself (build/dispose ordering, retiring, `onOpened`) is unit-tested in `mcp/project-doors.test.ts` | C — run in CI by the `multi-project` job in `.github/workflows/ci.yml` (12-minute bound; runtime ceiling stated in `docs/testing/multi-project-harness.md`) |
 | A late-built project B's runs join the cross-project runs index AND the one open workspace SSE stream (each stamped with B's own project id) without disturbing project A; removing B tears its context down (index drops B's row, its route 404s, A's own rows and stream keep flowing); re-adding B on the same slug rebuilds a fresh store whose events resume on the SAME already-open stream rather than being silently swallowed by a stale attach entry | server unit, in-process (not the saved harness above, which only smoke-tests wiring) | `server/multi-project-composition.test.ts` — one route-level A/B lifecycle test; red-proved by removing the stream's `project-removed` detach/unsubscribe step, which makes the re-added B's events vanish instead of arriving | C |
 | A project id re-registered against a DIFFERENT root outside the removal route (a second process, a hand-edited `~/.xezar/config.json`, a test seeding the registry directly) resolves the NEXT scoped request to the current root, not the cached one — found live by the QA of PR #589 (case E) as an `ENOENT` under the old, deleted `dataDir` | server unit, in-process | `server/project-context-registry-drift.test.ts` — reuses the same slug across two different roots (no removal route call in between); red-proved by reverting `project-context.ts`'s on-access registry re-check, which serves the old, deleted root instead of the new one (#591) | C |
@@ -151,7 +158,7 @@ HTTP API.
 | Task thread rendering, markdown, scroll | cockpit unit + browser e2e | `routes/task-thread/task-thread.test.tsx:138`; `e2e/task-thread.e2e.ts:128` | C |
 | Changes tab (tree, per-file ±) | cockpit unit + browser e2e | `routes/task-git/task-changes.test.tsx:154` | C |
 | Files tab | cockpit unit + browser e2e | `routes/task-git/task-files.test.tsx:119` | C |
-| Commits tab (`/tasks/:id/commits[/:sha]`) | cockpit unit + browser e2e | `routes/task-git/task-commits.test.tsx:142-296` mounts the route (list, deep link, 409 reason, empty, loading) since #49; `e2e/commit-list.e2e.ts:166,174` exercises `CommitList` virtualization | C |
+| Commits tab (`/tasks/:id/commits[/:sha]`) | cockpit unit + browser e2e | `routes/task-git/task-commits.test.tsx:142-295` mounts the route (list, deep link, 409 reason, empty, loading) since #49; `e2e/commit-list.e2e.ts:166,174` exercises `CommitList` virtualization | C |
 | Variant compare and pick | cockpit unit + browser e2e | `routes/compare-variants.test.tsx:121`; `e2e/variants-compare.e2e.ts:193` | C |
 | Repo git tabs (diff, commits, branches) | cockpit unit + browser e2e | `routes/repo-git/repo-git.test.tsx:150`; `e2e/repo-git.e2e.ts:54` | C |
 | GitHub issues and PRs | cockpit unit + browser e2e | `routes/github/github.test.tsx:302`; `e2e/github.e2e.ts:78` | C |
@@ -191,7 +198,7 @@ HTTP API.
 | `runContinuation` keeps step tools (the second `ActiveRun` site) | server unit | `workflows/continuation-tools.test.ts:50` | C |
 | `maxParallel` across projects, and `refresh()` raising it | server unit | `workspace-semaphore.test.ts:134,264,475` | C |
 | Message delivery into a live run | server unit (indirect) | `workflows/run.test.ts`; no direct unit test of `deliverMessage` by name | C |
-| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:26-84` covers the recovered flag; `run-continue-nudge-cap.test.ts` pins the #613 bounds (the 3-re-prompt cap of a Continue-gated turn and the idle-turn stop at both sites) | C |
+| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:27-83` covers the recovered flag; `run-continue-nudge-cap.test.ts` pins the #613 bounds (the 3-re-prompt cap of a Continue-gated turn and the idle-turn stop at both sites) | C |
 | Legacy `runs.json` shapes still parse (`claude-cli`, absent optional fields) | server unit | `runs/store.test.ts:1754-1821` | C |
 | NDJSON history paging and live cursor replay | server unit | `runs/event-history.test.ts:69,200` | C |
 | Task-diff anchoring (`resolveTaskDiffBase`) | server unit | `src/git-diff-base.test.ts` | C |
@@ -462,7 +469,7 @@ numbers are at `79b7361`.
 | `core/qwen-model-catalog.ts` | **0.0 %** | **0.0 %** | both functions: `discoverQwenModels` and `qwenModelOptions` (the person's default first, duplicates dropped, local endpoints marked). `server.ts` imports the module, but `models-api.test.ts` injects its own discovery, so nothing ever calls either |
 | `core/qwen-run-config.ts` | 93.0 % | 76.2 % | `qwenDefaultSystemSettingsPath` (38–40), `qwenRunEnv` (229), and `realDir`'s fallback for a path that does not resolve (244) |
 | `core/qwen-settings.ts` | 97.5 % | 76.1 % | an endpoint URL that does not parse (`isLocalEndpoint`, 165) and settings text that is not JSONC (`parseJsonc`, 181) |
-| `core/qwen-tool-policy.ts` | 94.6 % | 87.4 % | the exec tool allowed on a step with an unrestricted shell (188), a policy whose `bash.mode` is unknown (228), and an `mcp__<server>__<tool>` name's other spellings (`mcpSpellings`, 242–243). The file is also in the nightly mutation scope with a 71 % floor (10.13) |
+| `core/qwen-tool-policy.ts` | 94.6 % | 87.4 % | the exec tool allowed on a step with an unrestricted shell (188), a policy whose `bash.mode` is unknown (228), and an `mcp__<server>__<tool>` name's other spellings (`mcpSpellings`, 242–243). The file is also in the nightly mutation scope with a 68 % floor (10.13) |
 | `core/qwen-ui-mapper.ts` | 91.0 % | 80.8 % | a permission denial for a tool still open or never seen (291–303), and the stop reason for `error_max_turns`, `error_during_execution` and an unknown result subtype (347–351) |
 | `mcp/qwen-messaging.ts` | 97.3 % | 84.4 % | a receipt line that is not a control record (225), and the success path of `writeAndClose` – connect, write, close (251–252) |
 | `mcp/adapters/qwen-code.ts` | 96.7 % | 87.8 % | a wait that is already cancelled when it starts (`abortableSleep`, 78–79) |
@@ -510,8 +517,9 @@ epic #42, and every child issue maps back to exactly one row.
 
 **All twenty child issues are closed, and this table has been re-audited against them.** Each row
 below was checked by reading the closing commit and the test file it added, not by looking at a
-percentage. Eighteen rows are struck through because a test now covers the behaviour the row
-names; two (R9, R11) are struck only in part, and say which part survives.
+percentage. Nineteen rows are struck through because a test now covers the behaviour the row
+names; one (R11) is struck only in part, and says which part survives. R9 was closed in part at
+first and fully later, by `guide-07-github-automations.e2e.ts`.
 
 Two warnings that outlived the audit, because they are what this table is *for*:
 
@@ -532,29 +540,30 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | ~~R6~~ | ~~`backend-detect.ts` probes only asserted for `pi`~~ — **closed** | fixed by #45: every agent CLI is probed by name, with a timeout, and with the missing/non-zero case parameterised over all five binaries | `core/backend-detect.test.ts:115-131,141-155,176-207` | #45 |
 | ~~R7~~ | ~~`workflows/load.ts` at 40 % branches~~ — **closed** | fixed by #46: per-file degradation and built-in restoration both asserted | `workflows/load.test.ts:47,61,70,87,115` (degradation), `:180,199,216` (built-ins come back) | #46 |
 | ~~R8~~ | ~~`handoff.ts` at 36.4 % branches~~ — **closed** | fixed by #47: the marker vocabulary and every parser branch (case, indentation, fenced code, truncated payload) are read directly, so the 100 % is backed by assertions. A co-located test file existed at `e437c24` as well — the original "none found" reading was simply wrong | `handoff.test.ts:61-168` (markers), `:170-304` (journal); BC §8 | #47 |
-| ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed in part** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. What survives is the BROWSER-level flow — `automations.e2e.ts:55-58` self-skips without `XEZ_AUTOMATIONS=1`, and that variable appears in neither `scripts/e2e.sh` nor `ci.yml` | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice | #48 |
-| ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-296`; `routes.test.tsx:206-207` | #49 |
-| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed in part** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx` itself is still absent from the report, so its own logic — the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` precedence and the missing-`#root` throw (`main.tsx:19-27`) — has no test found in the suites examined | `app.test.tsx:175,193,209,241,254,270` | #50 |
+| ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. The BROWSER-level flow followed: `guide-07-github-automations.e2e.ts` boots its own fixture with `XEZ_AUTOMATIONS=1` (`:80`) and drives create → enable → execution log in the `ui-e2e` CI job. `automations.e2e.ts:55-58` still self-skips without that variable, so its browser-level preview step stays ungated; the unit level covers preview | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice; `guide-07-github-automations.e2e.ts:80,130` | #48 |
+| ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-295`; `routes.test.tsx:206-207` | #49 |
+| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed in part** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx` itself is still absent from the report, so its own logic — the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` precedence in `resolveApiBase()` (`main.tsx:20-23`) and the missing-`#root` throw (`main.tsx:30-31`) — has no test found in the suites examined | `app.test.tsx:175,193,209,241,254,270` | #50 |
 | ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51 | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
 | ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
 | ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
 | ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
 | ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts` | #56 |
 | ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
-| ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite. The planner's 57.6 % branches is still the lowest number in the file table above, so the row is worth re-reading before anyone edits that module | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
+| ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
 | ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts` (via `execute`), the `runContinuation` case and its four guards | #59 |
 
 ---
 
 ## 6. Gate structure, not just missing tests
 
-**~~Covered by a suite CI never executes.~~ — closed by #128.** The browser e2e layer's 35 specs
+**~~Covered by a suite CI never executes.~~ — closed by #128.** The browser e2e layer's specs
 now run in CI as their own `ui-e2e` job, so a cockpit journey in section 3.3 whose only evidence is
 an `e2e/*.e2e.ts` file is gated after all. (The commits tab used to be the clearest example of one;
-since #49 it has a cockpit unit test as well, so it is no longer an example of anything.) One
-exception survives: the enabled automations flow (R9) sits behind `XEZ_AUTOMATIONS=1`, which
-neither `scripts/e2e.sh` nor the CI job sets, so that spec self-skips and the BROWSER-level flow
-stays ungated — the unit-level flow does run.
+since #49 it has a cockpit unit test as well, so it is no longer an example of anything.) The one
+exception this paragraph used to name, the enabled automations flow (R9), is gated too:
+`guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture. Only
+`automations.e2e.ts`'s browser-level preview step still self-skips, because neither
+`scripts/e2e.sh` nor the CI job sets that variable for the shared instance.
 
 **Covered only by manual QA.** `SDLC.md` § The QA gate states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
@@ -587,8 +596,8 @@ itself is gone: it was removed together with the §2 route inventory it checked.
 These were uncovered by the audit and are deliberately **not** child issues.
 
 1. ~~**CI job name is misleading.**~~ **Resolved by #128.** The job is now named "Typecheck, unit
-   tests, build, and package" (`ci.yml:29`), and the browser suite runs in its own `ui-e2e` job
-   (`ci.yml:87-88`). The lesson survives: a job name that promises coverage it does not deliver is
+   tests, build, and package" (job id `verify` in `ci.yml`), and the browser suite runs in its own
+   job (job id `ui-e2e`, "Cockpit browser e2e"). The lesson survives: a job name that promises coverage it does not deliver is
    why the gap went unnoticed.
 2. ~~**`docs/testing/local-data.md:75` is now stale.**~~ **Resolved.** That line now reads "One
    report producer is configured: `npm run test:coverage` writes the v8 coverage report to
@@ -635,14 +644,16 @@ These were uncovered by the audit and are deliberately **not** child issues.
   is unguarded.
 - Test claims: every test cited was opened and read, or located by grep and then opened. Filenames
   alone were never treated as evidence of coverage.
-- **Git history is not usable as regression evidence in this checkout.** As audited on
-  2026-09-09, `git log` held 39 commits, all dated 2026-09-07 to 2026-09-09, beginning with `1f729a7 chore: import cezar upstream
+- **Dated 2026-09-09 – kept as history, no longer true.** The repository now has its own long
+  history, so `git log -S` and `git merge-base --is-ancestor` are usable regression evidence. The
+  observation as recorded then: **Git history is not usable as regression evidence in this
+  checkout.** As audited on 2026-09-09, `git log` held 39 commits, all dated 2026-09-07 to 2026-09-09, beginning with `1f729a7 chore: import cezar upstream
   baseline`. `git log --grep=fix -i` returns 13 commits; `--grep=regress -i` returns none. The
   incident numbers cited throughout `AGENTS.md` (#810, #811, #661, #591, #751, #694, #426, #430,
   #472) do not resolve against `qodeca/xezar`; they are pre-rename issue numbers from the predecessor
   repository. The incidents are real and closed there – they were used as prose evidence
   for the ranking, not as commits in this repository.
-- The thirteen `fix` commits that do exist cluster into three themes: test-gate and worktree
+- (Dated 2026-09-09, as above.) The thirteen `fix` commits that existed then cluster into three themes: test-gate and worktree
   isolation (3), release and CI mechanics (3), and cockpit behaviour (3). Two of those three themes
   are about the test infrastructure itself, which is consistent with the gaps ranked above.
 
@@ -952,8 +963,7 @@ floor now. What was left uncovered in `service.ts` and why: the `closed` answer 
 `index.ts`, the unregistered-directory answer (`status: 'not-registered'`) is held by `cli.test.ts:199` in a child process
 (10.4), and was not duplicated.
 
-Done in #352, recorded in 10.9; the later measurements are in 10.10 and 10.11. CI adoption remains
-separate work.
+Done in #352, recorded in 10.9; the later measurements are in 10.10 and 10.11.
 
 ### 10.8 The nightly gate: Stryker over the MCP code
 
@@ -963,7 +973,7 @@ and its reasons: `packages/xezar/stryker.config.mjs`.
 
 **Read this first: it is scheduled nightly against the default branch on GitHub Actions** (`develop`
 since 2026-10-18, `main` before it; GitHub runs a schedule on the default branch) (`.github/workflows/mutation.yml`,
-#433, added 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
+#377, added by #433 on 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
 release path. From 2026-09-12 until #433 it ran nowhere automatically. Before that it was a
 **release** gate – the `release` and `release-prep` workflows ran it as their first check step,
 before anything was authored – and that step was removed (#378). The first manual run on
@@ -1335,7 +1345,8 @@ after #450. `bridge.ts` is at 81.87 % here, superseding 10.9’s ranking and its
 10.10’s 84.4 %. The historical tables above retain their dates; quote this table only for this
 revision.
 
-Paths below are relative to `packages/xezar/`. Scope is the root `package.json` command:
+Paths below are relative to `packages/xezar/`. Scope at that revision was the root `package.json`
+command as it stood then (it no longer includes the pi file):
 `src/mcp/**` plus `scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`.
 
 | File | Lines % | Branches % |
@@ -1449,10 +1460,10 @@ to falsify each risk (#547 AC-1).
 | --- | --- | --- | --- | --- |
 | Local loopback | `origin-guard`, `host-guard`, `capabilities`: Host rebinding, Origin, forwarded-header controls, health-only non-credentialed CORS | `ws.test`: native/same-authority trusted; Vite trusted with browser vouch, health-only without; foreign origins refused | `sse-headers`, `workspace-events`, `route-parity` | Existing local browser suite; does not establish hosted behavior |
 | Hosted (`XEZ_REMOTE=1` or non-loopback bind) | `local-handoff-routes`: non-empty registration-derived inventory, every guarded route and alias returns 409 before local effects; source parity rejects an untagged inline refusal. `origin-guard`, `health-forge`, `agent-config-api`, `agent-profiles-api`: Origin, CORS and conditional disclosure | `ws.test`: real-socket pre-handshake 403 for absent, foreign, forged loopback and same-authority Origins under both mode selectors; local controls unchanged | Existing in-process suites plus the built-CLI harness below | `client`, `global-events`, `run-events`, `queries` unit suites pin included HTTP/SSE credentials and zero remote browser WebSockets; no hosted real-browser claim |
-| Hosted through authenticated fixture proxy | `test:server-mode`: built CLI, Basic Auth on, missing/wrong credentials denied before forwarding; canonical Host and overwritten forwarding metadata; direct-backend controls; forbidden writes leave runs unchanged, authenticated same-/no-Origin controls create dry-run runs; documented port precedence (`--port` beats `XEZ_PORT`, `XEZ_PORT` decides with no flag) | Proxy forwards authenticated upgrades; backend refuses all tested Origins. Anonymous/wrong credentials receive 401 | Workspace, project and run streams authenticate, expose no-buffer/no-transform headers, yield a complete frame within 3s, reconnect and abort cleanly | POSIX-only for 0.16.0. Saved local reverse proxy; no real nginx/ngrok, TLS, public-network or browser proof |
+| Hosted through authenticated fixture proxy | `test:server-mode`: built CLI, Basic Auth on, missing/wrong credentials denied before forwarding; canonical Host and overwritten forwarding metadata; direct-backend controls; forbidden writes leave runs unchanged, authenticated same-/no-Origin controls create dry-run runs; documented port precedence (`--port` beats `XEZ_PORT`, `XEZ_PORT` decides with no flag) | Proxy forwards authenticated upgrades; backend refuses all tested Origins. Anonymous/wrong credentials receive 401 | Workspace, project and run streams authenticate, expose no-buffer/no-transform headers, yield a complete frame within 3s, reconnect and abort cleanly | POSIX and Windows: Windows support came with #963 (`d68a982f`), through the product's process-table layer; CI runs it on Linux only. Saved local reverse proxy; no real nginx/ngrok, TLS, public-network or browser proof |
 | Real Ubuntu/ngrok install | Unknown in this package; operator's authentication and private backend reachability require live installation verification | Unknown platform proxy behavior | Unknown public TLS/proxy buffering | SM1 does not certify an installation; SM2 reconciled the user-facing doc claims (below) but did not run a real install — live platform status stays unknown |
 
-Registration metadata identifies the existing handler guards; valid fixtures reach hosted 409 while validation and missing-run 404 precedence stay unchanged. Conditional provider-connect and home-config reads retain their existing route policy. The direct-backend control deliberately shows that hosted mode has no built-in authentication: the backend port must remain private. Runtime state and agent homes belong to a fresh ignored `.local/server-mode-*` fixture; teardown closes streams and the proxy, terminates the saved child PID and awaits its `exit` event, then ends the exact process group that child leads (every CLI is spawned `detached`, so its descendants — the background team-skills clone, a run's dry-run agent — share that group) and removes the fixture only once `kill(-pgid, 0)` answers ESRCH (#876). It never searches by process name. Missing builds, early exits, incomplete streams, unavailable sockets/platform support or incomplete cleanup fail the command; no skip is a pass.
+Registration metadata identifies the existing handler guards; valid fixtures reach hosted 409 while validation and missing-run 404 precedence stay unchanged. Conditional provider-connect and home-config reads retain their existing route policy. The direct-backend control deliberately shows that hosted mode has no built-in authentication: the backend port must remain private. Runtime state and agent homes belong to a fresh ignored `.local/server-mode-*` fixture; teardown closes streams and the proxy, terminates the saved child PID and awaits its `exit` event, then ends what that child started and removes the fixture only once nothing it started is left (#876). On POSIX that is the exact process group the child leads (every CLI is spawned `detached`, so its descendants — the background team-skills clone, a run's dry-run agent — share that group), and the check is `kill(-pgid, 0)` answering ESRCH. Windows has no process groups, so the harness loads the product's own process-table layer from the build (`dist/platform/process-table.js` and `table-then-kill.js`, #963): it finds the child's descendants by parent and creation time in one process-table read, kills them by identity, and requires a fresh read to show none. It never searches by process name. Missing builds, early exits, incomplete streams, unavailable sockets/platform support or incomplete cleanup fail the command; no skip is a pass.
 
 **SM2 doc-claim reconciliation (#547).** `packages/xezar/src/server-install/hosted-docs.test.ts` pins two claims that had drifted from behavior: `docs/guide/14-remote-access.md` no longer states an unconditional "starting at port 4321" (a normal launch actually prefers the project's saved port, then `XEZ_PORT`, then the port it last listened on, before 4321), and `docs/server-install/macosx-ngrok.md` / `README.md` explicitly disclose that the installer's "identity" step never probes the public basic-auth gate — it only polls ngrok's local `:4040` API for a public URL. The matching source overclaim is fixed too: `macosx-ngrok.ts`'s install success message used to say "basic-auth enforced at the ngrok edge" as if that had been checked; it now says basic-auth was configured but not probed through the tunnel, pinned by `macosx-ngrok.test.ts`. No real nginx/ngrok/TLS install was run to produce this reconciliation — it aligns documentation with already-verified automated behavior, nothing more.
 
@@ -1462,7 +1473,7 @@ Registration metadata identifies the existing handler guards; valid fixtures rea
 
 ### Reuse for #306 QA (no browser required)
 
-1. Use a POSIX checkout with Node 22+ and run `npm ci`.
+1. Use a checkout on Linux, macOS or Windows with Node 22+ and run `npm ci`.
 2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
 3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
 4. Run it again to check fresh homes, OS-assigned ports and cleanup.
@@ -1485,7 +1496,7 @@ a duplicate is exactly the kind of copy that goes stale.
 | --- | --- | --- |
 | 1 (#533) | G1, G2, G3, G10 | `leader-event-delivery-matrix.test.ts`, `leader-delivery-regressions.test.ts`, `stale-write.test.ts` / `tools/stale-write-tools.test.ts`, `echo-guard.test.ts` / `operation-receipts.test.ts` |
 | 2 (#542) | G7, G8, G9 | `engine-leader-incidents.test.ts`, `event-catalog.test.ts` |
-| 3 (this slice) | G4, G5, G6, G11, G12 | `leader-delivery.test.ts` (G4, owner-switch fencing and Claude Code's live-transport follow), `tools/leader-events.test.ts` (G5 ack epoch boundary, G6 restart/epoch-reuse recovery), `test/integration/mcp-real-model.test.ts` (G11, the shared acceptance judge hardened against a decoy tool call), `gap-group-inventory.test.ts` (G12) |
+| 3 (#570) | G4, G5, G6, G11, G12 | `leader-delivery.test.ts` (G4, owner-switch fencing and Claude Code's live-transport follow), `tools/leader-events.test.ts` (G5 ack epoch boundary, G6 restart/epoch-reuse recovery), `test/integration/mcp-real-model.test.ts` (G11, the shared acceptance judge hardened against a decoy tool call), `gap-group-inventory.test.ts` (G12) |
 
 Every group's status is therefore re-derivable by running `gap-group-inventory.test.ts` rather than
 trusting this table after the next slice lands.
@@ -1493,8 +1504,7 @@ trusting this table after the next slice lands.
 ## Repository validation guidance
 
 `npm run test:coverage` measures the four vitest projects with the v8 provider and writes to
-`.local/coverage/`. It is a **measurement, not a gate** – it is absent from the canonical list in
-`AGENTS.md` § Validation, CI does
+`.local/coverage/`. It is a **measurement, not a gate** – the gate (`bash .xezar/checks/repo-gates.sh`) does not run it, CI does
 not run it, and it sees neither the node:test suites nor the browser suite, so a module the
 packaged-CLI tests exercise still reads as uncovered there. Before concluding that a behaviour is
 tested, identify the suite that actually covers it and check whether high line coverage sits on
@@ -1506,7 +1516,7 @@ every pull request. A PR on the MCP scope must also show each new test failing a
 Neither half passes alone. Its slower counterpart is
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
 `npm test` or by per-PR CI because a full run takes hours. **It runs nightly against the default branch** (`develop` since 2026-10-18, `main` before it) in
-`.github/workflows/mutation.yml` (#377), split across as many jobs as its measured minutes need (18
+`.github/workflows/mutation.yml` (#377, added by #433), split across as many jobs as its measured minutes need (18
 on 2026-10-19, #443), whose counts are summed before the one floor is applied, and a red
 night files or updates a `mutation-nightly` issue, which also gets a
 note when new survivors appear on a green night. Same scope,
