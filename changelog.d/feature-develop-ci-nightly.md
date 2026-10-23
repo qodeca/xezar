@@ -6,4 +6,4 @@
   another branch is the default; it reruns when a pull request is retargeted, and checks nothing
   under the trunk model. The nightly follows the repository's default
   branch instead of a hard-coded `main`, and compares its survivors with the last `main` run on the
-  night the default branch moves. (qodeca/xezar-skills#248)
+  night the default branch moves. (qodeca/xezar-skills#248, #1098)

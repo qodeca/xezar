@@ -16,6 +16,13 @@ The allowed headings are the changelog's own: `## Highlights`, `## 💥 Breaking
 `## 🚀 CI/CD & Infrastructure` and `## 👥 Contributors`. A fragment carries bullets and their
 wrapped continuation lines and nothing else; a heading outside that set is refused.
 
+Every bullet ends with its pull request's number in brackets, `(#668)`, as in the example. When
+the bullet also cites an issue, the pull request's number comes last: `(#443, #1123)`. Add the
+number as soon as the pull request exists. The fragment check does not look for it, but the
+release fold copies each bullet verbatim, and the release step's verification then fails when a
+merged pull request's number is missing from the new section. A change that breaks a surface in `../BACKWARD_COMPATIBILITY.md`
+also gets a bullet under `## 💥 Breaking`, even when its main entry sits in another group.
+
 Why fragments: `CHANGELOG.md` is append-only at the top, so every open pull request edits the same
 lines and the first merge makes every other pull request conflict — and a content conflict stops
 GitHub from running CI on it at all. No two branches ever touch the same fragment bytes.

@@ -5,4 +5,4 @@
   failed write to its input took down the whole server and every running task. The step now fails
   on its own with the agent's exit code and error output, and a note records the failed write. A
   Windows pid file that cannot be removed when a shell exits is also left behind quietly instead
-  of throwing.
+  of throwing. (#1106)

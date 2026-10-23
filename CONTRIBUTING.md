@@ -27,7 +27,8 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
    two-project harnesses), so you do not have to.
    It also repeats the validation steps on Linux with Node 22 and on Windows and macOS with Node 22
    and 24. The Windows and macOS legs on Node 22 and 24 are required checks; the Linux Node 22 leg
-   must pass, and the current-LTS legs are informational canaries.
+   runs on every pull request but is informational, not required, and so are the current-LTS
+   canary legs.
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
 5. Open a pull request against `develop`. `main` holds released work only and takes release
    pull requests, never feature work.
@@ -201,9 +202,9 @@ own instruction file as a capability is allowed; asking users to adopt Xezar's k
 ## Commits and pull requests
 
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
-`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests are squash-merged, so the title becomes the commit on `develop`.
+`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests into `develop` are squash-merged, so the title becomes the commit on `develop`. Release pull requests – promotion, version bump, hotfix and back-merge – use a merge commit instead (`SDLC.md` § Branches).
 
-A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a bullet to a file under [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md` (two pull requests editing its `# Unreleased` section conflict on every merge); a maintainer will write it otherwise.
+A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. A user-visible change gets a bullet in a file under [`changelog.d/`](changelog.d/README.md), ending with the pull request's number; that is the only way into the changelog. Do not edit `CHANGELOG.md` itself: two pull requests editing its `# Unreleased` section conflict on every merge, and the changelog check refuses a direct edit. A maintainer writes the fragment if you do not.
 
 ## The human path
 

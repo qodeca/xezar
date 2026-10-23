@@ -112,8 +112,10 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the
   shipped pi scripts, the OpenCode "Attach leader" form and the `client-needs-address` refusal code.
   Skills in `.opencode/skills/` are no longer found. Stored data is not converted. *Symptom:* while
-  any saved setting or task record still names `pi` or `opencode`, `xezar serve` and `xezar run`
-  exit with code 1 and list each file and field. *Way forward:* change each value to `qwen`,
+  any saved setting or task record still names `pi` or `opencode`, every command that saves
+  settings or records – `xezar serve`, `run`, `init`, `projects`, `accounts` and `providers`;
+  all but `mcp` and `lease` – exits with code 1 and lists each file and field, and the cockpit
+  does not open such a project. *Way forward:* change each value to `qwen`,
   `claude` or `codex`, or remove it; the guide page "Moving from pi or OpenCode to Qwen Code"
   (`docs/guide/18-moving-from-pi-or-opencode.md`) shows how to move model providers. The owner
   waived the §8 deprecation release for this change (#1041, #1046).

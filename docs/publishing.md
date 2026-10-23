@@ -4,8 +4,9 @@ Xezar ships as one public npm package, **`@qodeca/xezar`**, published from
 [`qodeca/xezar`](https://github.com/qodeca/xezar). It provides two commands, `xezar` and `xez`.
 
 Nothing publishes automatically. There is no preview channel, no `develop` channel and no
-nightly: the only path to the registry is the `Release` workflow, which a maintainer dispatches
-by hand. `develop` is a branch, not a channel: it is the default branch every pull request
+nightly: the only path to the registry is the `Release` workflow, dispatched by a maintainer or,
+after the owner's go, by the release agent (`SDLC.md` § Deviations from the core). Either way the
+publish job waits for a person's approval on the `production` environment. `develop` is a branch, not a channel: it is the default branch every pull request
 targets, and `main` holds released work only (`SDLC.md`).
 
 ---
@@ -58,9 +59,17 @@ The workflow filename is matched exactly, so **renaming `.github/workflows/relea
 publishing** until the publisher is updated. That is the point: the authorisation is tied to one
 named file, not to the repository as a whole.
 
-Recommended alongside it: add a required reviewer to the `production` environment at
-<https://github.com/qodeca/xezar/settings/environments>, so every publish pauses for a human
-before it touches the registry.
+The `production` environment
+(<https://github.com/qodeca/xezar/settings/environments>) has a required reviewer, so every
+publish pauses for a person before it touches the registry, and its deployment branches are
+limited to `main` and `release/*.x` – maintenance branches such as `release/0.30.x`. The Actions
+bot's `release/v<version>` version-bump branches do not match, so the publish job cannot run from
+one of them. Keep both settings if you recreate the environment.
+
+Release tags are protected by the tag ruleset "release tags: never moved or deleted": once a
+`v*` tag exists, nobody but a repository admin can move or delete it. Creating a tag is not
+limited, because the Release workflow creates its tag through the GitHub API and GitHub does not
+accept the GitHub Actions app as a bypass actor in a repository ruleset.
 
 ### The bootstrap exception
 
@@ -84,25 +93,31 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    pull request into `develop`, then promote it: cut `promote/v<version>` at the changelog merge
    commit and merge it into `main` with a merge commit (never squash). Work merged into `develop`
    after the changelog commit waits for the next release. The release skill
-   (`.xezar/skills/xezar-release-publish.md`) carries the exact commands. **The MCP mutation
-   gate is no longer part of this path, and a release does not wait on it.** It ran as the
-   `release` / `release-prep` workflows' first check step until 2026-09-12; that step is gone,
-   because a nearly four-hour measurement whose only repair is a stronger test in somebody else's
-   PR must not hold a finished release. **It runs nightly against the default branch (`develop`)** instead
-   (`.github/workflows/mutation.yml`, #377): read the latest run, or the open `mutation-nightly`
-   issue, if you want the current score before you cut. A survivor is a weak test to fix in its
-   own PR, not a reason to hold a release that passed the full canonical gate and QA. The nightly
-   workflow holds no npm credential and no publish command, and
-   `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it moved, and the
-   unchanged 80 % floor:
+   (`.xezar/skills/xezar-release-publish.md`) carries the exact commands.
+
+   Before you promote, run the generic-instructions guard
+   (`packages/xezar/src/release/generic-instructions.test.ts`) and the `check:pack`
+   packed-archive scan (the last leg of `npm run build`) on the release candidate – the changelog
+   merge commit you are about to promote. Both must be green. Put their results, the candidate SHA
+   and the fresh archive-scan output in the body of the promotion pull request
+   (`promote/v<version>`), the one that carries that commit into `main`.
+
+   The nightly mutation gate is not part of this path, and a release does not wait on it. Read
+   the latest run of `.github/workflows/mutation.yml`, or the open `mutation-nightly` issue, if
+   you want the current score before you cut. A survivor is a weak test to fix in its own PR, not
+   a reason to hold a release that passed the full canonical gate and QA.
+
+   History: the mutation gate ran as the `release` / `release-prep` workflows' first check step
+   until 2026-09-12, then moved to a nightly run against the default branch (#377), because a
+   nearly four-hour measurement whose only repair is a stronger test in somebody else's PR must
+   not hold a finished release. The nightly workflow holds no npm credential and no publish
+   command, and `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it
+   moved, and the unchanged 80 % floor:
    [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
-   The generic-instructions guard (`packages/xezar/src/release/generic-instructions.test.ts`)
-   and the `check:pack` packed-archive scan — the last leg of `npm run build`, added by
-   [PR #481](https://github.com/qodeca/xezar/pull/481) and merged 2026-09-16 — must both be green
-   on the release candidate; include their results, the candidate SHA and the fresh archive scan
-   evidence in the release PR.
-2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
-   maintenance branch – never `develop`) and the bump:
+   The `check:pack` scan was added by [PR #481](https://github.com/qodeca/xezar/pull/481), merged
+   2026-09-16.
+2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a
+   `release/<major>.<minor>.x` maintenance branch – never `develop`) and the bump:
 
    | Bump | What it publishes |
    |---|---|
@@ -112,7 +127,7 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 3. The `build` job then, in order: installs, runs `typecheck` + `npm test` + `test:unit`, builds,
    runs the packaged-CLI E2E (`test:package` — it packs the real tarball, installs it into an
    isolated consumer and runs the CLI from it), stamps the version and packs the release tarball.
-   The `publish` job (it waits for the `production` approval when reviewers are set) publishes
+   The `publish` job (it waits for the `production` approval) publishes
    exactly that tarball to npm with `--tag latest` and `--provenance`, and right after that
    creates the `v<version>` tag and GitHub Release at the released commit. The run summary lists
    each of the three – npm, tag and Release, bump PR – with what its own step really did.
@@ -130,7 +145,9 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    bump or hotfix – is followed by one, or the next promotion is out of date.
 
 A **hotfix** ships one urgent fix without the unreleased work on `develop`, and only with the
-owner's explicit authorization: a `hotfix/<name>` branch from `main` carrying the fix and its
+owner's explicit authorization. It is made by hand – the kit's `hotfix` workflow targets
+`develop` and is not used here (`SDLC.md` § Deviations from the core): a `hotfix/<name>` branch
+from `main` carrying the fix and its
 folded changelog section, merged into `main` with a merge commit, then steps 2–5 with
 `bump=patch`. The release skill carries the commands.
 
@@ -195,8 +212,12 @@ than as the verdict.
 ## Recovering from a partial failure
 
 **Published versions are immutable.** Never try to republish the same version, and never
-`npm unpublish` to "retry" — unpublishing is allowed only within 72 hours, is refused outright
-once anything depends on the version, and permanently burns the version number either way.
+`npm unpublish` to "retry". npm's
+[unpublish policy](https://docs.npmjs.com/policies/unpublish) allows it within 72 hours of
+publishing when no other package in the public registry depends on it, and after that only when
+no package depends on it, it had fewer than 300 downloads in the last week and it has a single
+owner. Either way the version number is burned: a `package@version` that was used once can never
+be published again.
 
 First, find out what actually happened:
 
