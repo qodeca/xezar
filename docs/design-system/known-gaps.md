@@ -291,21 +291,21 @@ is gone says so and keeps its line so the history reads.
 - **Differs**: the same desktop page header is written two ways. Seven route files spell it by hand (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `routes/inbox.tsx`, `routes/skills.tsx`, `routes/skills-loading.tsx`, `routes/workflows/workflows.tsx`, `routes/settings/settings-shell.tsx`), mostly as `sticky top-0 z-10 hidden h-14 … gap-3 … md:flex md:px-section` – the form [patterns.md](patterns.md) §3 calls "the rule". Two render the shared `PageHeader` (`components/centered-state.tsx`, `data-slot="page-header"`: `min-h-14 flex-wrap … gap-row … px-4 py-2`) – Automations and Compare. The Tasks header already borrows `PageHeader`'s wrap and padding by hand (#625). The two differ in height (`h-14` against `min-h-14`), wrapping, gap (`gap-3` against `gap-row`) and vertical padding.
 - **Rule**: **not decided – an owner decision.** Either the hand spelling stays the rule and `PageHeader` is the variant for headers kept on a phone, or `PageHeader` becomes the one header and the seven hand spellings migrate. Until then, copy the spelling of the page you are next to and say which in the PR.
 - **Fix**: after the decision, migrate one way and update patterns.md §3 and components.md PageHeader together.
-- **Status (2026-10-23, docs audit)**: recorded, not filed. Read from source only.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – the rule is an owner decision that has not been made; recorded by a docs audit, read from source only.
 
 ### G-51 The violet accent's focus ring is below 3:1
 
 - **Differs**: the focus ring is `ring-ring/50` (half strength). Under the default lime accent it reaches about 4.3:1 on the dark `--background` and 3.4:1 on white in the light theme. `:root[data-accent='violet']` repoints `--ring` to `--violet`, and at half strength that is about **2.2:1** on white (light, `#5d50de`) and **2.4:1** on `#0d0d0d` (dark, `#8f86e8`) – below the 3:1 WCAG 2.2 success criterion 1.4.11 (Non-text Contrast, AA) asks of a focus indicator. Token math (alpha blend, then the WCAG contrast formula), not a browser measurement.
 - **Rule**: a focus indicator is at least 3:1 against what is next to it, in both themes and every accent ([foundations.md](foundations.md) rules, [theming.md](theming.md) Accent).
 - **Fix**: give the violet accent its own ring value, or draw the ring at full strength under violet; then measure every accent and theme in the browser.
-- **Status (2026-10-23, docs audit)**: recorded, not filed.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – recorded by a docs audit from token math; the fix needs a browser measurement of every accent and theme first.
 
 ### G-52 The text-field border is 1.19:1 (unverified)
 
 - **Differs**: `Input` and `Textarea` draw their edge with `border-input`. `--input` is `#ebebeb` on a white card in light (**1.19:1**) and `#262626` on `#171717` / `#0d0d0d` in dark (about 1.2–1.3:1). Token math only; not measured in the browser.
 - **Rule**: open question. WCAG 1.4.11 asks 3:1 for the visual information needed to **identify** a control. If the placeholder, the label and the field's position already identify it, a faint border may pass; if the border is the only thing that shows where to type, it fails. Which is true needs a rendered check of the real forms.
 - **Fix**: first answer the question above with screenshots of a settings form and the `/new` composer in both themes; then either record why the border may stay faint or darken `--input`.
-- **Status (2026-10-23, docs audit)**: recorded, unverified.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – recorded by a docs audit from token math; whether it fails at all is the open question above, answered only by a rendered check.
 
 ## Comment vs code
 
