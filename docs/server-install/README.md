@@ -23,6 +23,21 @@ xezar server-deploy    --platform <id>   # redeploy a new version (reload the se
 xezar server-uninstall --platform <id>   # reverse it
 ```
 
+Two ways to run it without the questions:
+
+- `--yes` accepts the safe default of every question and skips the optional
+  steps (domain and HTTPS, autostart). On `ubuntu-vps` it runs a privileged
+  command through `sudo` only when `sudo` needs no password; otherwise it
+  prints the command for you to run as root, and stops (or skips a skippable
+  step) when the check after it fails. It also stops
+  with a message at a question that has no safe default, such as the cockpit
+  password.
+- `XEZ_DRY_RUN=1` previews the run: it walks every step and prints what it
+  would do (`DRY RUN — would run: …`) without running or changing anything on
+  the system; only xezar's own install record is saved, marked as a preview.
+  A preview never overwrites a real install's record, and a real run that
+  finds a preview record starts from a clean slate.
+
 ## Available providers
 
 | Provider | `--platform` | Public front | Identity | Autostart | Guide |

@@ -7,10 +7,10 @@
   `discover_project` tells a project leader the same. The setup status gains the additive, nullable
   `olderSetup` field (`recordedVersion`, `minimumVersion`, `upgradeGuideUrl`) on
   `GET /api/v1/onboarding` and in `discover_project.onboarding`; `state` keeps its five values. A
-  missing or unreadable version is never called old.
+  missing or unreadable version is never called old. (#1119)
 
 ## 🔧 Changed
 
 - 🔧 **The bundled setup templates pin moves to Xezar Skills 3.2.1 (`b86ddf0`).** 3.2.0 is the first
   release that works with xezar 0.30.0. A project last checked against the 3.0.3 pin (`ec856f8`) is
-  offered one re-check; a re-check does not upgrade an older setup collection.
+  offered one re-check; a re-check does not upgrade an older setup collection. (#1119)

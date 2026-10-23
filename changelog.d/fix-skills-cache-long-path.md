@@ -9,4 +9,4 @@
   Such a source is cloned once more the next time its skills are loaded or listed, which needs the
   network: offline, that source's team skills are missing until a clone succeeds. Its old cache
   folder stays on disk unused. Every other source – `owner/name`, a URL, a Linux or macOS path –
-  keeps its cache folder exactly as it was.
+  keeps its cache folder exactly as it was. (#1134)

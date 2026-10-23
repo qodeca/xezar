@@ -44,9 +44,9 @@ the diff to the security-review row. The risk is not removed; it is made visible
   change what the leader is told at every start, resume and compaction.
 - **The leader launcher.** `scripts/xezar-leader.sh` starts Claude Code with
   `--dangerously-load-development-channels` for the `xezar` server and exports `XEZAR_LEADER=1`;
-  `scripts/xezar-leader-settings.json` is the leader's permission to run `gh pr merge`. Neither
-  file is in a machine list yet (not the kit's, not `security.trustBoundaries`), so a reviewer
-  routes a change to them to the security-review row by hand.
+  `scripts/xezar-leader-settings.json` is the leader's permission to run `gh pr merge`. Both
+  files are listed in `security.trustBoundaries` in `.xezar/pipeline/config.json`, so a change
+  to either is routed to the security-review row automatically.
 - **Configuration every run trusts.** `.xezar/config.json` (the base branch),
   `.xezar/pipeline/config.json` (the gate commands, `deploy.*`, `ci.requiredChecks`),
   `.xezar/workflows/`, `.xezar/checks/` with `documented-output.allowlist.json`,

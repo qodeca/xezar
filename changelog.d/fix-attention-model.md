@@ -15,4 +15,4 @@
   "Storefront — task needs you". The live connection also recovers on its own
   when it goes silent, refreshes the cross-project task list after activity settles (at least
   every two seconds while it does not), and ignores a malformed status update instead of caching
-  it.
+  it. (#1117)

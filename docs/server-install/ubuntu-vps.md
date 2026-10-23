@@ -80,6 +80,20 @@ For each root action you're asked:
 
 Your choice is remembered for the rest of the run.
 
+### Running without questions, or as a preview
+
+- `--yes` accepts the safe default of every question and skips the optional
+  steps (domain and HTTPS, autostart). A privileged command runs through `sudo`
+  only when `sudo` needs no password; otherwise it is printed for you to run as
+  root, and the run stops (or skips a skippable step) when the check after it
+  fails. A question with no safe default, such as the cockpit password, stops
+  the run with a message.
+- `XEZ_DRY_RUN=1 xezar server-install --platform ubuntu-vps` previews the
+  install: every step prints what it would do (`DRY RUN — would run: …`) and
+  nothing is run or changed on the system; only xezar's own install record is
+  saved, marked as a preview. A preview never overwrites a real install's
+  record, and a real run that finds a preview record starts from a clean slate.
+
 ---
 
 ## The box already has a reverse proxy (Dokploy, Coolify, Caddy…)
@@ -106,6 +120,31 @@ internet ──HTTPS──► your proxy (Traefik/Caddy/nginx) ──► xezar (
 > basic-auth is that gate; with `--external-proxy` there is none, and anyone who
 > can reach the bound host:port can run agents on your box. Put auth on the proxy
 > and keep the port off the public internet (ufw / cloud firewall).
+
+> ⚠️ **Your proxy must overwrite or strip `X-Xezar-User`.** In hosted mode xezar
+> takes the user name for its audit trail from the `X-Xezar-User` request header
+> whenever the request arrives from loopback (`127.0.0.1` or `::1`) – which is
+> where a proxy on the same host connects from. The bundled nginx always
+> overwrites that header with the logged-in Basic-Auth name; your own proxy
+> must do the same, or remove the header, or any client can write any name
+> into the trail. xezar records it as "asserted by proxy", never as a verified
+> identity. A proxy in a container that reaches xezar over the docker bridge is
+> not a loopback peer, so xezar ignores the header from it. To remove it:
+>
+> - **Caddy** – inside the `reverse_proxy` block: `header_up -X-Xezar-User`.
+> - **Traefik** – a `headers` middleware that sets it to an empty string, which
+>   removes it: `customRequestHeaders: { X-Xezar-User: "" }`.
+> - **nginx** – `proxy_set_header X-Xezar-User $remote_user;` (overwrite with
+>   the authenticated name) or `proxy_set_header X-Xezar-User "";` (remove).
+
+> **Without `--domain`, list your public name in `XEZ_ALLOWED_HOSTS`.** A hosted
+> cockpit answers only loopback names, IP addresses, a domain the installer
+> recorded, and names in `XEZ_ALLOWED_HOSTS`; any other `Host` gets a `403`.
+> An `--external-proxy` install with `--domain` records that domain. Without it,
+> add `Environment=XEZ_ALLOWED_HOSTS=xezar.example.com` (comma-separated, exact
+> names) to the service in a systemd drop-in – `systemctl --user edit xezar`, or
+> `sudo systemctl edit xezar` for a system unit – and restart it, or re-run the
+> installer with `--domain`. See [Remote access](../guide/14-remote-access.md).
 
 ### Which `--bind-host`?
 

@@ -1,7 +1,15 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-18.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-23.
+
+## The nightly mutation run is not reliably green yet
+
+[#443](https://github.com/qodeca/xezar/issues/443), the tracking issue for the nightly mutation
+gate (`.github/workflows/mutation.yml`), is still open. #1123 re-planned the jobs and added the read-only lock
+scope on 2026-10-20; since then the runs on 2026-10-21 and 2026-10-22 passed, and the runs on
+2026-10-20 and 2026-10-23 failed.
+Read the latest run or #443 for the current state before relying on a score.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
@@ -31,6 +39,11 @@ exception, a leader extension script, was deleted with its backend (#1046).
 The test scripts `packages/xezar/scripts/mock-claude.mjs` and
 `packages/xezar/scripts/multi-project-harness.mjs` cannot import the platform layer, so each
 carries its own short Windows retry around the rename.
+
+`packages/xezar/scripts/mock-qwen.mjs` writes its mock verdict packet with a plain
+`renameSync` and no Windows retry. It ships in the npm package (it is the `XEZ_DRY_RUN` stand-in
+for Qwen Code), so unlike the two above it reaches users. The write is best effort: a failure is
+swallowed, not reported.
 
 `agent-config/files.ts` is not on this list: its plain `rename` is a deliberate, permanent
 exception.

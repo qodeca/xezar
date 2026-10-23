@@ -5,4 +5,4 @@
   not reviewed, and refuses the options and modes of the reviewed ones that run another program,
   write a file or change repository state. Ordinary reads such as `git status`, `git diff`,
   `git log`, `git grep`, `git branch --list` and `git config --get` keep working; the bundled hook
-  programs are rebuilt with the new check.
+  programs are rebuilt with the new check. (#1109)
