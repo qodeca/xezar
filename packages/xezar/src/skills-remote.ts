@@ -70,9 +70,10 @@ const GIT_HARDENING_ARGS = [
  * is named after the source (`bareDirFor`), and a Windows local source spells its whole path into
  * that name, so in a deep project the clone's own `objects/pack/pack-<hash>.idx` passes the
  * 260-character limit and Git for Windows fails with "Filename too long" unless `core.longpaths`
- * is on. Turning it on here keeps every cache folder name as it is. It cannot help once the clone
- * folder's OWN path is too long: Git for Windows then refuses the repository from about 225
- * characters ("'$GIT_DIR' too big"). Git on Linux and macOS ignores the setting.
+ * is on. It cannot help once the clone folder's OWN path is too long: Git for Windows then
+ * refuses the repository from about 225 characters ("'$GIT_DIR' too big"). For that case a long
+ * Windows drive source gets a short cache folder name (`bareDirFor`). Git on Linux and macOS
+ * ignores the setting.
  */
 const GIT_LONG_PATH_ARGS = ['-c', 'core.longpaths=true'];
 const GIT_HARDENING_ENV = {
