@@ -60,8 +60,8 @@ export interface TopicOptions {
    *  `WsUpgradeVerdict`). Defaults to `false` — the safe default that makes the
    *  topic-safety invariant mechanical: a topic carrying run/repo/PR content is
    *  legible only to the cockpit itself unless a publisher explicitly opts in.
-   *  Set `true` only for data already safe for any local page (e.g. `health`,
-   *  the CORS-open discovery payload). */
+   *  Set `true` only for data already safe for any local page — no paths,
+   *  repository identity or run content. No built-in topic sets it today. */
   loopbackReadable?: boolean;
 }
 

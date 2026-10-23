@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { acquireFileLock } from '../core/file-lock.ts';
 import type { PrivateDirResult } from '../platform/private-dir.ts';
+import { socketTempRoot } from '../platform/socket-dir.ts';
 import { mcpSocketDir } from './ipc.ts';
 import { pipeHello } from './pipe-auth.ts';
 import { newPipeKey, newPipeName, pipeFiles, readPipeEndpoint, readPipeMarker, writePipeFiles, type PipeEndpoint } from './pipe-endpoint.ts';
@@ -50,7 +51,8 @@ const foreignEndpoint = (): PipeEndpoint => ({ v: 1, pipeName: newPipeName(), ke
 describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
   beforeEach(() => {
     home = realpathSync.native(mkdtempSync(join(tmpdir(), 'xez-pipe-any-')));
-    sockets = realpathSync.native(mkdtempSync(join(tmpdir(), 'xps-')));
+    // Socket files go below this folder, so it must leave room for a Unix socket path from any checkout.
+    sockets = realpathSync.native(mkdtempSync(join(socketTempRoot('/xps-XXXXXX/0123456789ab.sock'.length), 'xps-')));
     env = { XEZ_HOME: home };
     project.root = join(home, 'alpha');
     mkdirSync(project.root);

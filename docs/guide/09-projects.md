@@ -46,6 +46,8 @@ xezar projects tag PROJECT_ID storefront api
 
 Run `xezar projects tag PROJECT_ID` with no tags to clear them. Tags group projects; they do not move their files or combine their task histories.
 
+To pin the port a project's cockpit starts from, run `xezar projects port PROJECT_ID 4400`; run it without a port to clear the pin. See [Which port a project starts from](12-cli-reference.md#which-port-a-project-starts-from).
+
 ## To see work across projects in All tasks
 
 Open **All tasks**. Search across projects, filter the list, and choose grouping by project, tag, status, or workflow. Switch between **Active** and **Archived**, then open a task to return to its own project.
@@ -112,10 +114,10 @@ This mode does not change hosted-mode behaviour: a cockpit reached through `xeza
 - **Global settings → Projects**: registry, tags, caps, browse root, and checkout root.
 - `~/.xezar/config.json`: `projects[]` and workspace resource limits; `XEZ_HOME` selects a different workspace home.
 - `XEZ_BROWSE_ROOT` / `XEZ_PROJECTS_DIR`: set browse/checkout locations **before the first start**. Startup registration saves these defaults into workspace config; change them afterwards in **Global settings → Projects**, not by changing the variables.
-- `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag operations, including the CLI mutations. It also disables Max parallel edits, cloning, and folder browsing. Startup registration still happens for `serve`, `run`, and even `xezar projects`.
+- `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag/port operations, including the CLI mutations. It also disables Max parallel edits, cloning, and folder browsing. Startup registration still happens for `serve`, `run`, and even `xezar projects`.
 - `--single-project`: moves the project's xezar setup into its own `.xezar/` folder; see [single-project mode](#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
 Next: [Settings reference](10-settings-reference.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

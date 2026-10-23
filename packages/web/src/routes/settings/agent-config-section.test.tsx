@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { Link, MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
@@ -67,10 +68,24 @@ function serve(listing: AgentConfigListing, fileContent = '{"a":1}') {
   )
 }
 
-function renderSection() {
+function renderSection(client = createQueryClient()) {
+  // Under a router, as in the app: the section's leave guard navigates.
   return render(
-    <QueryClientProvider client={createQueryClient()}>
-      <AgentConfigSection />
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/settings/agent-config']}>
+        <Routes>
+          <Route
+            path="/settings/agent-config"
+            element={
+              <>
+                <Link to="/settings/appearance">Appearance</Link>
+                <AgentConfigSection />
+              </>
+            }
+          />
+          <Route path="/settings/appearance" element={<p>Appearance page</p>} />
+        </Routes>
+      </MemoryRouter>
       <Toaster />
     </QueryClientProvider>,
   )
@@ -160,6 +175,22 @@ describe('AgentConfigSection', () => {
     await waitFor(() => expect(document.querySelector('[data-slot="agent-config-user-mcp"]')).toBeNull())
   })
 
+  it('breaks a long user-state path instead of widening the phone pane', async () => {
+    // A macOS home can be a long /var/folders/… path with no break opportunity; jsdom has no
+    // layout, so this pins the class the B3 browser matrix measures at 375 px.
+    const path = '/var/folders/j5/99w8pwxn1pg9pwjcym9ytb640000gn/T/xezar-e2e-b3-AbCdEf/.xez-home/.claude.json'
+    serve({
+      editable: true,
+      files: [fileOf({ id: 'claude.project.mcp', label: '.mcp.json', kind: 'mcp', holdsMcp: true })],
+      userMcp: { path, servers: [], readable: true },
+    })
+    renderSection()
+    await waitFor(() => expect(screen.getByText('.mcp.json')).toBeTruthy())
+    const shown = document.querySelector('[data-slot="agent-config-user-mcp-path"]')
+    expect(shown?.textContent).toBe(path)
+    expect(shown?.className.split(/\s+/)).toContain('break-all')
+  })
+
   it('a file selection never survives an agent switch', async () => {
     serve({
       editable: true,
@@ -216,5 +247,166 @@ describe('AgentConfigSection', () => {
     fireEvent.change(editor, { target: { value: '{"a":2}' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(screen.getByText(/Saved/)).toBeTruthy())
+  })
+})
+
+describe('AgentConfigSection — unsaved edits are never discarded silently', () => {
+  const json = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
+  const LISTING: AgentConfigListing = {
+    editable: true,
+    files: [
+      fileOf({ id: 'claude.project.settings', label: '.claude/settings.json' }),
+      fileOf({ id: 'claude.local.settings', label: '.claude/settings.local.json', scope: 'local' }),
+    ],
+    userMcp: null,
+  }
+  /** Disk holds `disk`; a PUT answers 409 whenever its version is not the disk's. */
+  function serveDisk(disk: { content: string; version: string }) {
+    const puts: unknown[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        if (url.endsWith('/api/v1/health')) return json(HEALTH)
+        if (url.endsWith('/api/v1/agent-config')) return json(LISTING)
+        if (url.includes('/api/v1/agent-config/') && method === 'GET') {
+          return json({ id: 'x', path: '/repo/x', exists: true, ...disk })
+        }
+        if (url.includes('/api/v1/agent-config/') && method === 'PUT') {
+          const body = JSON.parse(String(init?.body)) as { version: string }
+          puts.push(body)
+          if (body.version !== disk.version) return json({ error: 'changed on disk' }, 409)
+          return json({ id: 'x', path: '/repo/x', exists: true, content: '{"saved":1}', version: 'v9' })
+        }
+        return json({ error: 'unexpected' }, 500)
+      }),
+    )
+    return puts
+  }
+  const openEditor = async (label = '.claude/settings.json') => {
+    fireEvent.click(await screen.findByText(label))
+    return (await screen.findByLabelText(`${label} contents`)) as HTMLTextAreaElement
+  }
+
+  it('Reload from disk asks before replacing the draft; Keep it keeps it, Discard reloads', async () => {
+    const disk = { content: '{"a":1}', version: 'v1' }
+    serveDisk(disk)
+    renderSection()
+    const editor = await openEditor()
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    disk.content = '{"theirs":1}'
+    disk.version = 'v2'
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload from disk' }))
+
+    let dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Discard your edits to “.claude/settings.json”?')).toBeTruthy()
+    // Reloading stays on the file, so the action is a plain Discard.
+    expect(within(dialog).queryByRole('button', { name: 'Discard and leave' })).toBeNull()
+    expect(within(dialog).getByText(/There is no undo\./)).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect((screen.getByLabelText('.claude/settings.json contents') as HTMLTextAreaElement).value).toBe('{"mine":1}')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload from disk' }))
+    dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }))
+    await waitFor(() =>
+      expect((screen.getByLabelText('.claude/settings.json contents') as HTMLTextAreaElement).value).toBe('{"theirs":1}'),
+    )
+    expect(document.querySelector('[data-slot="agent-config-conflict"]')).toBeNull()
+  })
+
+  it('Reload from disk with nothing edited reloads at once, no confirm', async () => {
+    const disk = { content: '{"a":1}', version: 'v1' }
+    serveDisk(disk)
+    renderSection()
+    const editor = await openEditor()
+    // Edit, provoke the conflict, then put the text back: nothing left to lose.
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    disk.version = 'v2'
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await screen.findByRole('button', { name: 'Reload from disk' })
+    fireEvent.change(editor, { target: { value: '{"a":1}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Reload from disk' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('a background refetch with a newer copy neither replaces the draft nor lends Save its version', async () => {
+    const disk = { content: '{"a":1}', version: 'v1' }
+    const puts = serveDisk(disk)
+    const client = createQueryClient()
+    renderSection(client)
+    const editor = await openEditor()
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    disk.content = '{"theirs":1}'
+    disk.version = 'v2'
+    await act(async () => {
+      await client.refetchQueries({ type: 'active' })
+      // Let the refetched copy render (and any effect it triggers run) before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(editor.value).toBe('{"mine":1}')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    // Saved against the version the edits started from, so the server reports the conflict.
+    await screen.findByRole('button', { name: 'Reload from disk' })
+    expect(puts).toEqual([{ content: '{"mine":1}', version: 'v1' }])
+  })
+
+  it('opening another file with unsaved edits asks first', async () => {
+    serveDisk({ content: '{"a":1}', version: 'v1' })
+    renderSection()
+    const editor = await openEditor()
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    fireEvent.click(screen.getByText('.claude/settings.local.json'))
+    let dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect((screen.getByLabelText('.claude/settings.json contents') as HTMLTextAreaElement).value).toBe('{"mine":1}')
+
+    fireEvent.click(agentTab('qwen'))
+    dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+
+    fireEvent.click(screen.getByText('.claude/settings.local.json'))
+    dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard and leave' }))
+    expect(await screen.findByLabelText('.claude/settings.local.json contents')).toBeTruthy()
+  })
+
+  it('leaving the page through a link with unsaved edits asks first, and Discard goes there', async () => {
+    serveDisk({ content: '{"a":1}', version: 'v1' })
+    renderSection()
+    const editor = await openEditor()
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Appearance' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(screen.queryByText('Appearance page')).toBeNull()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard and leave' }))
+    expect(await screen.findByText('Appearance page')).toBeTruthy()
+  })
+
+  it('without edits a link leaves at once, and closing the tab is not held up', async () => {
+    serveDisk({ content: '{"a":1}', version: 'v1' })
+    renderSection()
+    await openEditor()
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(false)
+    fireEvent.click(screen.getByRole('link', { name: 'Appearance' }))
+    expect(await screen.findByText('Appearance page')).toBeTruthy()
+  })
+
+  it('closing the tab with unsaved edits asks the browser to confirm', async () => {
+    serveDisk({ content: '{"a":1}', version: 'v1' })
+    renderSection()
+    const editor = await openEditor()
+    fireEvent.change(editor, { target: { value: '{"mine":1}' } })
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
   })
 })

@@ -101,9 +101,9 @@ Its keys and defaults are listed in the [Configuration reference](11-configurati
 
 A software project on GitHub can add a full agent delivery pipeline: a project leader on Claude Code, workflows with their role skills, gates, labels and branch protection. Most projects do not need one, and xezar works without it.
 
-The pipeline comes from xezar-skills 3.0.3, the default team-skills source (`qodeca/xezar-skills`). Its `xez-onboard-opinionated` skill installs it: run [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional), or start the skill from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md). It works on clean GitHub projects with a Claude Code leader, and stops without writing anything on any other project.
+The pipeline comes from xezar-skills, the default team-skills source (`qodeca/xezar-skills`). Its `xez-onboard-opinionated` skill installs it: run [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional), or start the skill from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md). It works on clean GitHub projects with a Claude Code leader, and stops without writing anything on any other project.
 
-Setup itself uses the public `xez-onboard-opinionated` skill (Xezar Skills 3.0.3) from your team-skills source; it is the only setup xezar offers. A project it has finished carries its install record, `.xezar/onboarding.json`, and xezar reports any project with that record as set up – also when the skill ran outside the cockpit – without offering first-time setup or prompting for a re-check (Re-check now stays available). xezar records which release of the setup templates it bundles, but only to know when to offer a re-check; it does not load the skill at that release. A project last checked against an older kit is offered one re-check, which runs the 3.0.3 onboarding; older kits' own setup skills are no longer started.
+Setup itself uses the public `xez-onboard-opinionated` skill from your team-skills source; it is the only setup xezar offers. A project it has finished carries its install record, `.xezar/onboarding.json`, and xezar reports any project with that record as set up – also when the skill ran outside the cockpit – without offering first-time setup or prompting for a re-check (Re-check now stays available). When that record names a kit older than 3.2.0, xezar still reports the project as set up, but Settings → Project setup reads “Setup needs an upgrade” and one notice above the page links the kit's upgrade guide; Later hides that notice for the xezar and templates you run now, and `discover_project` tells a project leader the same. xezar records which release of the setup templates it bundles, but only to know when to offer a re-check; it does not load the skill at that release. A project last checked against an older kit is offered one re-check, which runs the onboarding skill from your team-skills source; older kits' own setup skills are no longer started. A re-check checks the setup; it does not upgrade an older kit – run the kit's upgrade prompt for that.
 
 The kit it installs has 38 workflows under `.xezar/workflows/`, each with its role skill under `.xezar/skills/`, plus the project's checks, `.xezar/routing.json` for model and lane routing, and the pipeline configuration under `.xezar/pipeline/`. The kit, not xezar, owns the shape of those files. After setup they are ordinary project files that you review and version with the rest of the project.
 
@@ -111,7 +111,35 @@ xezar records which reviewed revision of the setup templates it bundles, but onl
 
 xezar also bundles its own setup prompt as a fallback, so setup still runs offline or without a team-skills source. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result. It installs no pipeline.
 
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project still on kit 2.x moves to 3.0.3 first; the kit's [upgrade notes](https://github.com/qodeca/xezar-skills/blob/main/UPGRADE_NOTES.md) list the steps.
+### Routing and account limits
+
+A project the kit onboards keeps its model and lane routing in `.xezar/routing.json`; its schema is
+`.xezar/routing.schema.json`. The leader reads it with `node .xezar/checks/route.mjs`:
+
+| Command | What it does |
+| --- | --- |
+| `node .xezar/checks/route.mjs --check` | Validates the file. |
+| `node .xezar/checks/route.mjs --rows` | Lists the classification rows, without lane data. |
+| `node .xezar/checks/route.mjs <row id>` | Prints that row's lane order. |
+| `node .xezar/checks/route.mjs --table` | Prints a view for people. |
+| `--file <path>` | Reads another file. Only for onboarding, before the first merge; the output is marked `source=unmerged`. |
+
+The kit also keeps an account-limits table that records each runner and login as `ok`, `unknown` or
+`out`, with its reset time; the kit's routing guide tells the leader when to read it. xezar reports
+the same plan-limit status itself: a person sees it in
+[Settings → Agent accounts](10-settings-reference.md#to-read-and-refresh-plan-limits), and a leader
+reads it with `project_config` `read_quota` (see
+[MCP project leader](13-mcp-leader.md#to-read-quota-before-dispatch)).
+
+### Supported kit versions
+
+xezar supports projects onboarded with xezar-skills 3.2.0 or later (current release 3.2.1), which
+needs xezar 0.30.0 or later. Older kits are not supported: xezar 0.30.0 refuses tasks routed to
+their pi and OpenCode lanes. A project on an older kit upgrades first with the kit's upgrade prompt;
+the kit's [upgrade guide](https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md) lists
+the steps. If old pi or OpenCode tasks remain in the task history, delete them with the version of
+xezar you used before, or change their `runner` and `backend` values – see
+[Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md#4-change-xezars-stored-values).
 
 ## Related settings / env / config
 
@@ -123,4 +151,4 @@ xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.1
 
 Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

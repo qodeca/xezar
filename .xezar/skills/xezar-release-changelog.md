@@ -46,9 +46,10 @@ Cross-check both lists: every first-parent commit on `<base>` since the tag (non
 
 - `chore(release): v…` manifest bumps opened by the Release workflow;
 - changelog-only PRs (`docs: record … in the changelog`, or a diff touching only CHANGELOG.md or `changelog.d/`);
-- any PR whose number already appears in a dated section of CHANGELOG.md (a lagging tag must not double-record).
+- any PR whose number already appears in a dated section of CHANGELOG.md (a lagging tag must not double-record);
+- any PR whose merge commit added a file under `changelog.d/` (`git diff-tree --no-commit-id -r --diff-filter=A --name-only <merge sha> -- changelog.d/`): its fragment already supplies the bullet, and the fold below carries it verbatim. Still count the PR in the cross-check above, and still report a fragment bullet that names no PR number as a finding.
 
-If nothing remains, write `nothing to release since <tag>: <reason>` to `BLOCKED` in the evidence dir and stop. Readiness will refuse and the workflow ends before the gates.
+If nothing remains and `changelog.d/` holds no fragment to fold, write `nothing to release since <tag>: <reason>` to `BLOCKED` in the evidence dir and stop. Readiness will refuse and the workflow ends before the gates.
 
 ## 3. Group and write
 

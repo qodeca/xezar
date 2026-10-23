@@ -15,16 +15,15 @@ import {
   runIdParamSchema,
   type ApiRun,
   type GithubPrMergeState,
+  engineOwnsRun,
 } from '@qodeca/xezar-contract';
-import { hc } from 'hono/client';
 import { z } from 'zod';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
-import type { AppType } from '../../server/app-type.ts';
 import { ownRun, ownershipScope } from '../resource-ownership.ts';
-import type { ServiceDispatch } from '../service-adapter.ts';
+import { inProcessClient, serviceErrorMessage, type ServiceDispatch } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -76,21 +75,7 @@ import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolCo
  */
 type HandoffContext = McpToolContext & { readonly service?: ServiceDispatch };
 
-const IN_PROCESS_BASE = 'http://127.0.0.1';
-
-/** The typed client over the service's own route table, exactly as #89's adapter builds it. */
-const buildClient = (service: ServiceDispatch) =>
-  hc<AppType>(IN_PROCESS_BASE, {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', '127.0.0.1');
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  });
-
-type ScopedApi = ReturnType<typeof buildClient>['api']['v1']['p'][':projectId'];
+type ScopedApi = ReturnType<typeof inProcessClient>['api']['v1']['p'][':projectId'];
 
 /** One service answer: the status and the parsed JSON body (undefined when there was none). */
 interface Answer {
@@ -105,8 +90,7 @@ const settle = async (pending: Promise<Response>): Promise<Answer> => {
 
 /** The service's own refusal sentence, verbatim. */
 function serviceError(answer: Answer): string {
-  const body = answer.body as { error?: unknown } | undefined;
-  return typeof body?.error === 'string' ? body.error : `service answered ${answer.status}`;
+  return serviceErrorMessage(answer.body, answer.status);
 }
 
 // ---- the input -----------------------------------------------------------------------------
@@ -231,8 +215,6 @@ const serviceRefusal = (action: Input['action'], res: Answer, extra: Record<stri
 export const NO_TASK = 'No such task in this project.';
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree';
 
-/** "Active" as the engine means it — `review` is parked, not active (git-actions.ts `isActive`). */
-const isActive = (status: ApiRun['status']): boolean => status === 'running' || status === 'queued' || status === 'waiting';
 
 /** The next legitimate action after a quality blocker. It offers no waiver, to anyone (A-22). */
 export const QUALITY_BLOCKER_NEXT_ACTION =
@@ -308,7 +290,7 @@ class Handoff {
     service: ServiceDispatch,
     private readonly project: McpToolContext['project'],
   ) {
-    this.api = buildClient(service).api.v1.p[':projectId'];
+    this.api = inProcessClient(service).api.v1.p[':projectId'];
     this.projectId = project.id;
   }
 
@@ -419,7 +401,7 @@ class Handoff {
         { task },
       );
     }
-    if (isActive(run.status)) {
+    if (engineOwnsRun(run.status)) {
       return policyRefusal('create_pr', 'Create PR unavailable — the run is still active; wait for the review gate', {
         task,
       });

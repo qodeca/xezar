@@ -8,11 +8,13 @@ Tracked by [#116](https://github.com/qodeca/xezar/issues/116) (Phase 8 of [epic 
 This page links every record of the closed inventory,
 [`mcp-ui-action-inventory.md`](mcp-ui-action-inventory.md), to the acceptance cases that prove it.
 It makes Definition of Done clause 1 measurable: coverage is judged against that inventory's
-143 records, never against a count of tools or endpoints.
+records, never against a count of tools or endpoints. The current record and `covered` counts are
+not quoted here, because they grow with the inventory: the generated tables below are the source,
+and the A-05 block of `acceptance-parity.test.ts` pins both counts.
 
 ## How to read it
 
-- **Record → cases** lists every record with status `covered` (all 91), plus the `global` records a
+- **Record → cases** lists every record with status `covered`, plus the `global` records a
   case exercises as a refusal. A case marked **(BLOCKED)** would be named here but not passing; none
   is today (see [What is blocked](#what-is-blocked)).
 - **Case → records** lists every case in

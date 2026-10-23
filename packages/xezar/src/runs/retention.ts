@@ -48,6 +48,8 @@ export function selectReclaimableWorktrees(runs: readonly RunRecord[], keep: num
  *  enforcer stays easy to test and never imports the concrete store. */
 export interface RetentionStore {
   listRuns(): RunRecord[];
+  /** The record as it is NOW — re-read right before each removal (see `reclaimWorktrees`). */
+  getRun(id: string): RunRecord | undefined;
   updateRun(id: string, patch: { worktreeReclaimedAt?: string }): unknown;
 }
 
@@ -116,6 +118,15 @@ export interface ReclaimOptions {
    * wants: they have no lifecycle to lose mid-sweep.
    */
   shouldStop?: () => boolean;
+  /**
+   * Reserve one run for removal, against the caller's live runs (`RunManager.reserveForReclaim`):
+   * `undefined` when the run is queued, starting or running there — a Continue holds its run
+   * before the record leaves `done` — else a release, called once the removal and its stamp are
+   * done. Asked synchronously right after the record check, so nothing can start the run in
+   * between, and a Continue that arrives while the reservation stands waits for the release.
+   * Absent means "nothing is live", which holds for the boot sweeps that run before recovery.
+   */
+  reserve?: (runId: string) => (() => void) | undefined;
 }
 
 /** Reclaim looks up no automation, so that half of the ownership scope refuses everything. */
@@ -188,8 +199,17 @@ export async function reclaimWorktrees(
     // and the caller's ownership can end between any two of them. Returning what was already
     // reclaimed is honest — those directories really are gone.
     if (shouldStop()) break;
+    // Re-checked right before each removal, not only at selection: every earlier removal is an
+    // await, and a Continue may have reopened this run since — removing its worktree then pulls
+    // the working copy out from under a live task.
+    const current = store.getRun(id);
+    if (!current || !isReclaimable(current)) continue;
     const run = byId.get(id);
-    if (!run?.worktreePath) continue;
+    if (!run?.worktreePath || run.worktreePath !== current.worktreePath) continue;
+    // Same tick as the check above: a run the caller holds is skipped, and once reserved a
+    // Continue of it waits for the release below — the two never overlap.
+    const release = opts.reserve ? opts.reserve(id) : () => undefined;
+    if (!release) continue;
     try {
       await remove(repoRoot, run.worktreePath);
       if (existsSync(run.worktreePath)) continue; // reclaim failed; retry next pass
@@ -197,6 +217,8 @@ export async function reclaimWorktrees(
       reclaimed.push(id);
     } catch {
       // best-effort: never let retention crash a terminal transition or startup.
+    } finally {
+      release();
     }
   }
   return reclaimed;

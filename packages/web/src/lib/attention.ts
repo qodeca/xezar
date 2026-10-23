@@ -143,6 +143,6 @@ export function deriveAttention(run: AttentionInput): Attention {
  * only): a failed run is worth a notification, but in the list it belongs under Recent with its
  * outcome rather than in the pile of things you can act on. See `lib/task-groups.ts`.
  */
-export function wantsAttention(run: RunRecord): boolean {
+export function wantsAttention(run: AttentionInput): boolean {
   return ATTENTION_RANK[deriveAttention(run).bucket] <= ATTENTION_RANK.waiting
 }

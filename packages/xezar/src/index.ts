@@ -14,7 +14,7 @@ import {
 } from './core/provider-auth.ts';
 import { applyProviderEnablement } from './core/provider-availability.ts';
 import { runUnderGateLease } from './core/gate-lease.ts';
-import { pruneOrphans } from './git-worktree.ts';
+import { pruneOrphans, type OrphanSweep } from './git-worktree.ts';
 import { getRepoInfo } from './server/git.ts';
 import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from './config.ts';
 import { reclaimWorktrees } from './runs/retention.ts';
@@ -60,6 +60,7 @@ import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { startLongPathNotice } from './platform/long-paths.ts';
 import { pathWithLoginShell } from './platform/login-shell-path.ts';
+import { browserLaunch } from './platform/desktop-open.ts';
 import { launchCmd, launchDetached } from './platform/process-launch.ts';
 import { portTaken } from './platform/port-taken.ts';
 import { exitAfterStoppingTrees, onShutdownSignals } from './platform/shutdown-signals.ts';
@@ -984,13 +985,20 @@ async function serveCommand(
   const repo = await getRepoInfo(repoRoot);
   const probedAt = Date.now();
 
-  // Startup reconcile (spec 006): sweep worktrees whose run no longer exists.
+  // Startup reconcile (spec 006): reclaim clean task folders whose run no longer exists (branch
+  // kept). Skipped when runs.json did not load cleanly: a partial run list is not a list of what
+  // xezar no longer needs.
   if (repo) {
-    const orphans = await pruneOrphans(repoRoot, new Set(store.listRuns().map((r) => r.id))).catch(
-      () => [] as string[],
-    );
-    if (orphans.length > 0) {
-      console.log(`  cleaned ${orphans.length} orphaned worktree(s): ${orphans.map((id) => id.slice(0, 8)).join(', ')}`);
+    const orphans = store.loadedCleanly
+      ? await pruneOrphans(repoRoot, new Set(store.listRuns().map((r) => r.id))).catch(
+          () => ({ removed: [], kept: [] }) as OrphanSweep,
+        )
+      : { removed: [], kept: [] };
+    if (orphans.removed.length > 0) {
+      console.log(`  cleaned ${orphans.removed.length} orphaned worktree(s), branch kept: ${orphans.removed.map((id) => id.slice(0, 8)).join(', ')}`);
+    }
+    if (orphans.kept.length > 0) {
+      console.log(`  left ${orphans.kept.length} orphaned worktree(s) with work of their own in place: ${orphans.kept.map((id) => id.slice(0, 8)).join(', ')}`);
     }
     // Count-based worktree retention (#483): reclaim finished worktrees beyond
     // the keep-limit (directory only — `xez/<id8>` branch kept, so recoverable).
@@ -1475,7 +1483,10 @@ async function runCommand(
     }
   }
 
-  const store = openStore(repoRoot);
+  // `keepLive`: every other queued, running or waiting run stays as it is on disk, for the next
+  // `serve` to recover. Without it this store marked them all failed and its first save wrote
+  // that, and `serve` then dropped their saved process lists without stopping what they left.
+  const store = openStore(repoRoot, { keepLive: true });
   // Headless tasks still appear in the cockpit later, so persist the same
   // task-local recovery event when a credential expires after the preflight.
   const providerRuntimeAuth = new ProviderRuntimeAuthObserver(providerAuth, () => {});
@@ -1484,7 +1495,7 @@ async function runCommand(
   // 2.5) — one refreshed semaphore, even with just one manager in play.
   const semaphore = new WorkspaceSemaphore();
   await semaphore.refresh();
-  const manager = new RunManager(store, repoRoot, { semaphore });
+  const manager = new RunManager(store, repoRoot, { semaphore, ownRunsOnly: true });
 
   // The stdout transcript is the DEFAULT and is unchanged (the backward-compatibility promise).
   // `--quiet` — a flag that did not exist before this release, so nothing that works today
@@ -1831,13 +1842,14 @@ function openUrl(url: string): void {
     // listen for it and answer false, so it can never hard-crash the process while
     // the cockpit is already serving. The URL is printed above, so a browser-less
     // host just doesn't auto-open.
-    if (process.platform === 'win32') {
+    const launch = browserLaunch(url);
+    if (launch.via === 'cmd') {
       // cmd.exe only through `launchCmd`, which refuses a URL the command processor
       // would reinterpret (#963).
-      void launchCmd(['/c', 'start', '', url]);
+      void launchCmd(launch.args);
       return;
     }
-    void launchDetached(process.platform === 'darwin' ? 'open' : 'xdg-open', [url]);
+    void launchDetached(launch.bin, launch.args);
   } catch {
     // the printed URL is enough
   }

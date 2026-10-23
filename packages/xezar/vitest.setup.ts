@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach } from 'vitest'
-// Each worker needs the Node 22 Windows rmSync retry this shared bootstrap installs (#963).
+// Each worker needs the Windows rmSync retry this shared bootstrap installs (#963).
 import '../../scripts/test-local-state.mjs'
 
 // Nothing in this suite may write to the developer's own `~/.xezar`. Most cases pin
@@ -59,7 +59,9 @@ delete process.env.ANTHROPIC_MODEL
 // READS that home for provider status, model discovery and every Qwen run (#1044). Unpinned, a case
 // would answer from the developer's own Qwen setup and pass or fail with it. Every worker gets an
 // empty sandbox home instead; a case that needs a configured one writes its own and pins it.
-process.env.QWEN_HOME = mkdtempSync(join(realpathSync(tmpdir()), 'xez-vitest-qwen-home-'))
+// Removed with the sandbox home below, so a run leaves no Qwen home behind per test file.
+const sandboxQwenHome = mkdtempSync(join(realpathSync(tmpdir()), 'xez-vitest-qwen-home-'))
+process.env.QWEN_HOME = sandboxQwenHome
 
 // Windows: a bare program name finds only `.exe` and `.com` files here – what Node itself found
 // before #963. The product also finds npm's `.cmd` shims, correctly, because that is how codex
@@ -81,4 +83,5 @@ beforeEach(pinSandboxHome)
 afterEach(pinSandboxHome)
 afterAll(() => {
   rmSync(sandboxHome, { recursive: true, force: true })
+  rmSync(sandboxQwenHome, { recursive: true, force: true })
 })

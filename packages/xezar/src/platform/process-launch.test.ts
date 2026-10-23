@@ -12,6 +12,7 @@ import {
   launchFile,
   launchFileAsync,
   launchFileSync,
+  launchMsys,
   type LaunchFileCallback,
 } from './process-launch.ts';
 
@@ -36,6 +37,20 @@ vi.mock('node:child_process', async (importOriginal) => {
       return child();
     }),
     execFileSync: vi.fn(() => 'sync-out'),
+  };
+});
+
+// Off by default: every other test sees the real file system.
+const fsFakes = vi.hoisted(() => ({ psExists: false, rmError: null as NodeJS.ErrnoException | null }));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: vi.fn((path: import('node:fs').PathLike) => (fsFakes.psExists && String(path).endsWith('ps.exe')) || actual.existsSync(path)),
+    rmSync: vi.fn((...args: Parameters<typeof actual.rmSync>) => {
+      if (fsFakes.rmError && String(args[0]).includes('xez-msys-')) throw fsFakes.rmError;
+      return actual.rmSync(...args);
+    }),
   };
 });
 
@@ -450,5 +465,19 @@ describe('launchCmd (D22, SEC-7)', () => {
       'XEZ_CMD_TOO_LONG',
     );
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('launchMsys pid-file cleanup', () => {
+  it('does not throw from the exit listener when the pid file cannot be removed', () => {
+    fsFakes.psExists = true;
+    fsFakes.rmError = Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' });
+    try {
+      const child = launchMsys('C:\\Program Files\\Git\\bin\\bash.exe', 'true', { stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as EventEmitter;
+      expect(() => child.emit('exit', 0, null)).not.toThrow();
+    } finally {
+      fsFakes.psExists = false;
+      fsFakes.rmError = null;
+    }
   });
 });

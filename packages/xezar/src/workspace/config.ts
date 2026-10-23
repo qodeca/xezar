@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { totalmem } from 'node:os';
 import { dirname } from 'node:path';
 import { z } from 'zod';
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
-import { uniqueTmpPath, writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { uniqueTmpPath, writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import {
   activeStateLayout,
@@ -546,17 +546,43 @@ async function loadWorkspaceConfigBackup(path: string): Promise<WorkspaceConfig 
  * `mergeWriteWorkspaceConfig` for why resolving it twice is a data-loss bug.
  */
 export async function loadWorkspaceConfig(path: string = workspaceConfigPath()): Promise<WorkspaceConfig> {
+  return (await loadWorkspaceConfigChecked(path)).config;
+}
+
+/**
+ * `loadWorkspaceConfig`, plus whether it had to fall back to the defaults because the file
+ * EXISTS but could not be read or parsed (and no backup restored it). Never throws either.
+ *
+ * `degraded: false` for a missing file — that is the zero-config default, not a fault — and for
+ * a backup restore, which recovered the real registry. A reader that reports "no projects" to a
+ * person uses this to say "could not read the registry" instead.
+ */
+export async function loadWorkspaceConfigChecked(
+  path: string = workspaceConfigPath(),
+): Promise<{ config: WorkspaceConfig; degraded: boolean }> {
   let raw: string | null = null;
+  let unreadable = false;
   try {
     raw = await readFile(path, 'utf8');
-  } catch {
-    // missing/unreadable — the backup below is the next chance
+  } catch (error) {
+    // missing/unreadable — the backup below is the next chance. Only a MISSING file is the
+    // silent zero-config case; any other read failure is a registry we could not look at.
+    unreadable = (error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT';
   }
+  const loaded = await loadWorkspaceConfigFrom(path, raw);
+  // Defaults handed back for a file that exists (empty, corrupt) or that could not be read.
+  return { config: loaded.value, degraded: !loaded.ok && (unreadable || raw !== null) };
+}
+
+async function loadWorkspaceConfigFrom(
+  path: string,
+  raw: string | null,
+): Promise<{ value: WorkspaceConfig; ok: boolean }> {
   if (raw !== null && raw.trim() !== '') {
     const parsed = parseWorkspaceConfig(raw);
     if (parsed) {
       warnedStates.delete(path);
-      return parsed;
+      return { value: parsed, ok: true };
     }
   }
   const restored = await loadWorkspaceConfigBackup(path);
@@ -567,14 +593,14 @@ export async function loadWorkspaceConfig(path: string = workspaceConfigPath()):
       raw,
       `[xez] workspace config ${path} ${cause} — restored ${restored.projects.length} project(s) from ${workspaceConfigBackupPath(path)}`,
     );
-    return restored;
+    return { value: restored, ok: true };
   }
   if (raw === null) {
     warnedStates.delete(path);
-    return defaultWorkspaceConfig();
+    return { value: defaultWorkspaceConfig(), ok: false };
   }
   warnOncePerState(path, raw, `[xez] workspace config ${path} is corrupt — using defaults (registry rebuilds)`);
-  return defaultWorkspaceConfig();
+  return { value: defaultWorkspaceConfig(), ok: false };
 }
 
 /**
@@ -621,6 +647,23 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
   assertXezarHomeWriteIsSandboxed(path);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileAtomicSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
+}
+
+/**
+ * The async twin of `atomicWriteJsonSync`, for a writer that READ the same file asynchronously.
+ *
+ * On Windows a rename cannot replace a file another handle still holds open, and the sync twin
+ * waits out that refusal with `Atomics.wait`, which blocks this process's event loop. An async
+ * read of the same file in this process (`fs.promises.readFile`: open, read and close are three
+ * separate steps, each resumed by the event loop) can then never close its handle, so every retry
+ * meets the same EPERM and the write fails after the whole budget — this process locking itself
+ * out. The async rename retry sleeps without blocking, so that read finishes and the next attempt
+ * lands.
+ */
+export async function atomicWriteJson(path: string, value: unknown): Promise<void> {
+  assertXezarHomeWriteIsSandboxed(path);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
 }
 
 /**

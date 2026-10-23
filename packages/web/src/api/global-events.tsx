@@ -4,7 +4,9 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore, t
 import { applyProviderStatusRow, parseProviderStatusEventRow } from '@/lib/provider-status'
 import {
   applyRunDeleted,
+  applyRunDeletedToIndex,
   applyRunEvent,
+  applyRunToIndex,
   createUsageStore,
   EMPTY_USAGE,
   mergeRun,
@@ -25,6 +27,7 @@ import type {
   HealthResponse,
   ProcessUsage,
   ProviderStatusResponse,
+  RunsIndexResponse,
 } from '@qodeca/xezar-api-client'
 
 /**
@@ -42,7 +45,9 @@ import type {
  * Multi-project (spec, step 3.1): the one stream carries EVERY project's events, each stamped
  * with its owner. This layer unwraps the envelope (events.ts) and applies only the active
  * project's events — the mounted scope's, or the boot project's when unscoped — so the caches
- * (which are keyed by that same scope, queries.ts) never see another project's data. One
+ * (which are keyed by that same scope, queries.ts) never see another project's data. The one
+ * exception is the workspace-level runs index, which spans every project by design: every
+ * project's run news patches it, and it feeds the workspace attention model. One
  * connection for the whole workspace, not one per project: same per-origin socket-budget
  * argument as ever, and a project switch changes the filter, not the socket.
  *
@@ -58,11 +63,35 @@ const SSE_URL = apiPath('/workspace/events')
  *  the same reason the constructor is read off `globalThis` below. */
 const CLOSED = 2
 
+/** `EventSource.OPEN`, spelled as the literal for the same reason. */
+const OPEN = 1
+
 /** How long to wait before rebuilding a stream the browser gave up on. Long enough that a server
  *  restart isn't hammered while it boots, short enough that the cockpit is live again before the
  *  reader notices. Only reached in the permanent-failure case: an ordinary drop is EventSource's
  *  own retry, which we neither can nor should replace. */
 const REOPEN_DELAY_MS = 3_000
+
+/**
+ * Liveness watchdog: how long the stream may stay completely silent before it is treated as
+ * dead. The server pings every 15 s (server.ts, `/workspace/events`), so this is three missed
+ * pings — one late ping must not trip it.
+ *
+ * Why it exists: a sleeping laptop, a network change or a proxy can leave the socket half-open —
+ * the TCP connection is gone but `readyState` still says OPEN, so no `error` ever fires and none
+ * of the reopen paths below run. The cockpit then looks live and shows old state; the attention
+ * badges and the notifications freeze with it. Same doctrine as `run-events.ts` (#424) and the
+ * WebSocket heartbeat in `ws.ts`.
+ *
+ * Unlike the run transcript's watchdog this one also acts while the tab is hidden: the hidden tab
+ * is exactly when browser notifications matter, and SSE frames keep arriving there (only timers
+ * are throttled, which at worst makes the check later). A frozen tab runs no timer at all, and the
+ * visibility handler covers its return.
+ */
+const SILENCE_LIMIT_MS = 45_000
+
+/** How often the watchdog compares the last frame's time against the limit. */
+const SILENCE_CHECK_MS = 10_000
 
 /** Everything the stream is allowed to say. An unknown name never reaches `parseGlobalEvent`,
  *  because SSE only delivers named events to a matching listener in the first place. */
@@ -111,8 +140,22 @@ export function onWorkspaceEvent(
  * The debounce is what keeps that honest. One run emits many events (started, step, usage,
  * finished), and a workspace of forty projects emits them from everywhere at once; without it a
  * busy minute would be a refetch per event. One request per quiet moment is the whole point.
+ *
+ * A TRUE debounce (every event restarts the quiet-period timer) with a max wait. The old timer
+ * was a throttle — the first event armed it and later ones were ignored — so a steady stream of
+ * token updates refetched every 400 ms, and the refetch could land mid-burst, before the event
+ * that mattered. The max wait is what keeps a debounce honest under a stream that never goes
+ * quiet: a long-running agent still refreshes the index at least every two seconds.
+ *
+ * Immediacy does not depend on this timer: the attention fields of a row the index already holds
+ * are patched in place from the event itself (`applyRunToIndex`).
+ *
+ * PERF: since the workspace attention model is always mounted, this refetch now runs whenever a
+ * run event arrives, not only while the global Tasks page is open. The max wait bounds it to one
+ * slim request per two seconds during continuous activity.
  */
 const RUNS_INDEX_REFRESH_DEBOUNCE_MS = 400
+const RUNS_INDEX_REFRESH_MAX_WAIT_MS = 2_000
 
 /** Built per mount, not module-level: a pending timer holds the `queryClient` it will write to,
  *  and one that outlives its provider would invalidate a cache nobody is reading. `cancel` runs
@@ -122,18 +165,28 @@ function createRunsIndexRefresher(queryClient: QueryClient): {
   cancel: () => void
 } {
   let pending: ReturnType<typeof setTimeout> | undefined
+  // When the first event of the current burst arrived; undefined while nothing is pending.
+  let burstStartedAt: number | undefined
+  const flush = (): void => {
+    pending = undefined
+    burstStartedAt = undefined
+    void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.runsIndex })
+  }
   return {
     onEvent(event) {
       if (event.type !== 'run' && event.type !== 'run-deleted') return
-      if (pending !== undefined) return
-      pending = setTimeout(() => {
-        pending = undefined
-        void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.runsIndex })
-      }, RUNS_INDEX_REFRESH_DEBOUNCE_MS)
+      const now = Date.now()
+      burstStartedAt ??= now
+      clearTimeout(pending)
+      // Never later than the burst's max-wait deadline, so continuous events cannot postpone the
+      // refresh forever.
+      const untilDeadline = burstStartedAt + RUNS_INDEX_REFRESH_MAX_WAIT_MS - now
+      pending = setTimeout(flush, Math.max(0, Math.min(RUNS_INDEX_REFRESH_DEBOUNCE_MS, untilDeadline)))
     },
     cancel() {
       clearTimeout(pending)
       pending = undefined
+      burstStartedAt = undefined
     },
   }
 }
@@ -196,6 +249,26 @@ function isTerminalRunStatus(status: ApiRun['status']): boolean {
  */
 function activeProject(queryClient: QueryClient): string | undefined {
   return getApiScope() ?? (queryClient.getQueryData(queryKeys.health) as HealthResponse | undefined)?.bootProject
+}
+
+/**
+ * Fold any project's run news into the cross-project index, in place.
+ *
+ * This is what keeps the workspace attention model (`lib/workspace-attention.ts`) live for every
+ * project, not only the one on screen: the sidebar badges of other projects, the "All tasks"
+ * badge, the tab title and the browser notifications all read this one cache. The patch is the
+ * immediate half; `createRunsIndexRefresher` schedules the authoritative refetch beside it.
+ */
+function applyToRunsIndex(queryClient: QueryClient, project: string, event: GlobalEvent): void {
+  if (event.type === 'run') {
+    queryClient.setQueryData<RunsIndexResponse>(workspaceQueryKeys.runsIndex, (index) =>
+      applyRunToIndex(index, project, event.run),
+    )
+  } else if (event.type === 'run-deleted') {
+    queryClient.setQueryData<RunsIndexResponse>(workspaceQueryKeys.runsIndex, (index) =>
+      applyRunDeletedToIndex(index, project, event.id),
+    )
+  }
 }
 
 /** Fold one stream message into the cache. The reducers it calls are pure and table-tested in
@@ -285,6 +358,11 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
     let disposed = false
     let providerStatusRefetching = false
     let providerStatusDirty = false
+    let lastFrameAt = Date.now()
+    // Any frame at all — data, workspace news or the keep-alive — proves the socket delivers.
+    const heard = (): void => {
+      lastFrameAt = Date.now()
+    }
 
     const refetchUncachedProviderStatus = (): void => {
       providerStatusRefetching = true
@@ -316,6 +394,12 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
       // Remote cockpits commonly sit behind HTTP Basic Auth. EventSource supports an explicit
       // credentials mode (unlike WebSocket), so keep every automatic reconnect authenticated.
       source = new Source(url, { withCredentials: true })
+      // A fresh socket resets the clock, so it is not judged silent before its first frame.
+      lastFrameAt = Date.now()
+      source.addEventListener('open', heard)
+      for (const name of [...EVENT_NAMES, ...WORKSPACE_EVENT_NAMES, 'agent-quota', 'provider-status']) {
+        source.addEventListener(name, heard)
+      }
 
       source.addEventListener('open', () => {
         // Not the first one: at boot the queries are fetching anyway, and invalidating them here
@@ -334,10 +418,12 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
           // for. Dropping those events left the global Tasks page entirely poll-driven: a title
           // the namer had rewritten stayed stale until the next tick, and the tick does not run
           // in a background tab, so coming back to one showed yesterday's rows until a reload.
+          if (parsed.project !== null) applyToRunsIndex(queryClient, parsed.project, parsed.event)
           runsIndexRefresher.onEvent(parsed.event)
           // Another project's news patches nothing SCOPED: this scope's caches hold this
-          // project's data only, and the reconcile-on-switch (3.2's provider swap) refetches
-          // the rest. `ping` (project null) always passes — liveness is not project-owned.
+          // project's data only. Opening another project mounts its own queries, which fetch on
+          // mount, and everything cross-project reads the index patched above. `ping` (project
+          // null) always passes — liveness is not project-owned.
           if (parsed.project !== null && parsed.project !== activeProject(queryClient)) return
           applyGlobalEvent(queryClient, usage, parsed.event)
         })
@@ -440,6 +526,18 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
       connect()
     }
 
+    // The liveness watchdog (see SILENCE_LIMIT_MS). On silence it replaces the socket; the new
+    // one's `open` is a reconnect, so `reconcile()` refetches whatever the dead one missed.
+    // OPEN only — that is the half-open case nothing else catches. CONNECTING is the browser's
+    // own retry, which this module never races, and CLOSED already has its owners: the error
+    // handler's reopen, the visibility handler, and pageshow after a deliberate pagehide.
+    const watchdog = setInterval(() => {
+      if (disposed || reopenTimer !== undefined) return
+      if (source?.readyState !== OPEN) return
+      if (Date.now() - lastFrameAt <= SILENCE_LIMIT_MS) return
+      connect()
+    }, SILENCE_CHECK_MS)
+
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('pagehide', onPageHide)
     window.addEventListener('pageshow', onPageShow)
@@ -448,6 +546,7 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
     return () => {
       disposed = true
       clearTimeout(reopenTimer)
+      clearInterval(watchdog)
       runsIndexRefresher.cancel()
       document.removeEventListener('visibilitychange', onVisibilityChange)
       window.removeEventListener('pagehide', onPageHide)

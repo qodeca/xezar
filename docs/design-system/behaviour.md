@@ -21,6 +21,14 @@ Focus rules:
 - The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none`, everywhere: eight `components/ui`
   primitives and 78 sites outside `components/ui`. The dialog and sheet close buttons were the last two on the older
   focus-on-anything ring and now carry this one (counts read on 2026-09-18).
+- The ring must reach **3:1 against the colours next to it** (WCAG 2.2 success criterion 1.4.11,
+  Non-text Contrast, level AA). The default ring passes; the violet accent's ring does not (about
+  2.2:1 light, 2.4:1 dark, G-51). A new focus style is measured, not assumed.
+- **A focused control is never hidden** (WCAG 2.2 success criterion 2.4.11, Focus Not Obscured
+  (Minimum), level AA): at least part of it stays visible. The cockpit has three things that can
+  cover a focused control – the sticky page and run headers, the composer dock at the bottom of a
+  thread, and toasts. Tab through a page that has them and check that the focused control is not
+  fully under any of them; G-32 is a known case on the phone run header.
 - A hover-revealed control MUST also reveal on `focus-visible` (`focus-visible:opacity-100`) and on
   `no-hover:` devices. A zero-width hidden control stays focusable; never `hidden` it.
 - Dialogs and sheets trap focus through Radix; the mobile drawer button is a real `SheetTrigger` so closing
@@ -37,8 +45,9 @@ Focus rules:
 
 ## 2. Announcements
 
-- Polite live regions: 13 – 12 literal `aria-live="polite"` attributes plus the conditional
-  `aria-live` in `mcp-connection-section.tsx`; none assertive (re-counted 2026-09-20, #752 L-4).
+- Explicit polite live regions: 16 – 15 literal `aria-live="polite"` attributes plus the conditional
+  `aria-live` in `mcp-connection-section.tsx`; none assertive (re-counted 2026-10-19). Every `role="status"`
+  is polite as well, without the attribute.
   Examples: the composer dictation transcript,
   the thread history loader (`sr-only`), the MCP connection status and operations, the skills update card,
   the skill-catalog announcer (`sr-only`, `settings/skills-section.tsx`), the GitHub merge box.
@@ -46,17 +55,24 @@ Focus rules:
   re-announces the whole sentence on every tick — the skill-catalog block announced itself once a
   minute for the life of the page (#752, L-1) — so the age stays on screen, outside the region, and
   a short `sr-only` announcer carries the state word.
-- An `sr-only` announcer is `role="status" aria-live="polite" aria-atomic="true"` — the shape
-  `components/app-shell.tsx` already uses. `aria-atomic` matters most where the region is ONE text
+- An `sr-only` announcer is `role="status" aria-atomic="true"`, with no `aria-live` — the role is
+  polite already, and Radix exempts an `aria-live` element from a modal's background hiding, which would
+  expose it behind dialogs (`NavBadge`, `components/app-shell.tsx`). New ones: the run header's status
+  announcer and the composer's `composer-accepted`. `aria-atomic` matters most where the region is ONE text
   node covering several things (the skill-catalog announcer joins one sentence per source): without
   it, what a reader announces on a partial change is undefined.
-- `role="status"`: 29 sites (toasts, the running spinner, monitoring schedule lines, the provider status
+- `role="status"`: 38 sites (re-counted 2026-10-19) (toasts, the running spinner, monitoring schedule lines, the provider status
   banner, the dictation bar). `role="alert"`: 22 sites (inline errors, the provider auth banner, the route
   error boundary and the MCP leader refusal line).
 - `aria-busy`: the thread history boundary and the "Plan first" radio while planning.
 - Status dots that stand alone get `role="img"` and `aria-label` from `attention.label`; the unread marker
   is `aria-label="unread"`.
 - Counts that change are announced politely through the region that owns them; never through an alert.
+- A task's status change is announced once, by the run header's `StatusAnnouncer`
+  (`data-slot="run-status-announcer"`, `routes/task-thread/run-header.tsx`): one persistent `sr-only`
+  `role="status" aria-atomic="true"` span that says "Task status: {attention.label}" only after the label
+  changed – silent on open and on a switch to another run. The pill, the paused hint and the ask card stay
+  plain text and never get a region of their own.
 
 Rule: a changed count or a background completion is announced politely. An error the user must act on
 is `role="alert"`. A toast is `role="status"`.
@@ -84,7 +100,16 @@ is `role="alert"`. A toast is `role="status"`.
   (or a centred `before:size-tap` overlay where the control's visible size is the design — the switch track,
   the dialog and sheet close glyphs) and release it at `md:`. A density-scaled `h-11` / `size-11` is 38.5 px at
   compact and 33 px at ultra, so it is a shape, not a floor; route-level controls still spelling it that way
-  convert in their own batches. The touch pin is `size-7` (#453 B4).
+  convert in their own batches. The pin (`PinToggle`) is `size-5` on a desktop mouse and wears the
+  `min-h-tap min-w-tap` floor below `md` and on `no-hover:` devices (`components/pin-toggle.tsx`).
+- Dragging: every action done by dragging also works with a single click or tap (WCAG 2.2 success
+  criterion 2.5.7, Dragging Movements, level AA). A keyboard path alone does not meet it. The
+  cockpit drags in two places – the sidebar's resize handle and the Workflows builder's skill drop
+  zone – and neither has been checked against this rule (unverified, 2026-10-23).
+- Sign-in: the cockpit has no sign-in of its own; agent logins happen in the agents' own tools. If
+  a design adds one, it must not make the person solve, recall or retype something to get in
+  (WCAG 2.2 success criterion 3.3.8, Accessible Authentication (Minimum), level AA): allow paste
+  and password managers, and offer copy for any code it shows.
 
 ## 4. Motion
 
@@ -112,4 +137,5 @@ new duration without a reason in a comment.
 - Overlay scrims (`bg-black/50`, `bg-black/80`) are theme-agnostic by design and allowed only in `ui/` and
   `zoomable-image.tsx`.
 - `color-scheme` follows the theme so native controls and scrollbars match.
+- One light-only variant exists, `light:` (`@custom-variant light` in `styles/index.css`), and it has one use: `light:text-foreground` beside `text-primary` wherever the accent would be text or a state mark on white (the retired G-23). It is CSS, not a theme read. Nothing else may use it; a new accent-ink site takes it or is listed as decorative in `src/light-accent-ink.test.ts`.
 - A component that must know the resolved theme (Shiki, the theme toggle icon) reads `useTheme()`.

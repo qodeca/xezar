@@ -10,7 +10,8 @@ Rules that follow from this page:
 - MUST use a token for every colour. Raw hex is allowed only inside `index.css` (design guardian rule `no-raw-hex-colors`).
 - MUST use `--pending-strong` for amber text. `--pending` is a fill for dots and spinners only (guardian rule `no-amber-text`).
 - MUST NOT use `bg-white`, `bg-black`, `text-white` or `text-black` outside `src/components/ui/` and `zoomable-image.tsx` (guardian rule `no-raw-black-white`).
-- MUST NOT write a `dark:` variant. The tokens already flip (guardian rule `no-dark-variant`).
+- MUST NOT write a `dark:` variant. The tokens already flip (guardian rule `no-dark-variant`). The one sanctioned theme variant is `light:` (`@custom-variant light` in `index.css`), used only as `light:text-foreground` beside `text-primary` where the accent would be text on white; see [behaviour.md](behaviour.md) §5. Nothing else may use it.
+- MUST give a focus indicator at least 3:1 against the colours next to it (WCAG 2.2 success criterion 1.4.11, Non-text Contrast, level AA). The ring is `ring-ring/50`, so measure the ring at half strength over its real surface. The violet accent's ring misses this today (G-51).
 - MUST NOT write `var(--token, fallback)` for a design token. A missing token is a bug to fix, not to hide. The one exception is a runtime-injected variable that may be absent: `var(--kb, 0px)` (`lib/keyboard-inset.ts`), `var(--diff-sticky-top, 0px)` (`components/diff/diff-view.tsx`) and `var(--page-header-h, …)` (`lib/page-header-offset.ts`, the sticky page header's measured height; its fallback is the constant that page used before it was measured) carry a fallback on purpose.
 
 ## 1. Colour tokens
@@ -43,19 +44,19 @@ token has no utility and is read with `var(--name)`.
 | `--accent-lime` | `#a8f372` | same | The stable name of the brand lime. Never used directly; `--primary` points at it. | – |
 | `--primary` | `var(--accent-lime)` | same | The active accent: primary button, checked switch, text selection, the ghost-code caret. Settings → Appearance can repoint it (see [theming.md](theming.md)). | `bg-primary`, `text-primary` |
 | `--primary-foreground` | `#0d0d0d` | same | Ink on `--primary`. | `text-primary-foreground` |
-| `--violet` | `#8f86e8` | same | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. | `bg-violet`, `text-violet` |
-| `--violet-foreground` | `#0d0d0d` | same | Ink on `--violet` — and, under the violet accent, on every primary surface: `--primary-foreground` resolves to this token, so it inks every primary Button, the selected facet chip and the facet checkbox, not just the Inbox count badge (10.5px). Near-black in both themes: white on this violet is 3.1:1, the near-black 6.2:1 — which is also what makes the two accents ink their primary the same way. | `text-violet-foreground` |
-| `--ring` | `#a8f372` | `#171717` | Focus ring colour. Used as `ring-ring/50`. | `ring-ring` |
+| `--violet` | `#8f86e8` | `#5d50de` | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. Light darkens it at the same hue so it reads as small text: 5.7:1 on white, 5.3:1 on `--muted` (the dark value was 3.1:1 on white, G-23). | `bg-violet`, `text-violet` |
+| `--violet-foreground` | `#0d0d0d` | `#ffffff` | Ink on `--violet` — and, under the violet accent, on every primary surface: `--primary-foreground` resolves to this token, so it inks every primary Button, the selected facet chip and the facet checkbox, not just the Inbox count badge (10.5px). Near-black in dark (6.2:1; white is 3.1:1 on `#8f86e8`); white in light, where the darker violet takes white at 5.7:1 and near-black at only 3.4:1. | `text-violet-foreground` |
+| `--ring` | `#a8f372` | `#171717` | Focus ring colour. Used as `ring-ring/50`, so what a reader sees is half strength over the surface: about 4.3:1 (lime on `--background`, dark) and 3.4:1 (`#171717` on white, light), both above the 3:1 a focus indicator needs (WCAG 1.4.11). The violet accent repoints it to `--violet`, which at half strength is about 2.2:1 light and 2.4:1 dark (G-51). | `ring-ring` |
 | `--grad` | `linear-gradient(135deg, #b4f372 12%, #eefb63 58%, #bc9aff 100%)` | same | Brand gradient (lime → yellow → violet). Read with `var(--grad)`. | – |
 
 ### 1.3 Status
 
 | Token | Dark | Light | Meaning | Utility |
 | --- | --- | --- | --- | --- |
-| `--danger` | `#ef4444` | same | Failed, destructive, deletions. | `bg-danger`, `text-danger` |
-| `--danger-foreground` | `var(--danger-ink)` | same | Ink on `--danger` (the destructive button, the danger toast). Points at `--danger-ink` because white on this red is 3.8:1. | `text-danger-foreground` |
-| `--danger-ink` | `#0d0d0d` | same | Near-black ink on `--danger` (about 5.1:1; white is 3.8:1). Does not follow the accent, unlike `--primary-foreground`. `--danger-foreground` now points at it, so every label printed on the red reads; the development-build badge keeps naming it directly (decisions.md D-08). | `text-danger-ink` |
-| `--success` | `#10b981` | same | Done, passed, additions. | `bg-success`, `text-success` |
+| `--danger` | `#ef4444` | `#c61111` | Failed, destructive, deletions. Light darkens it at the same hue so it reads as small text: 6.0:1 on white, 5.6:1 on `--muted` (the dark value was 3.8:1 on white, G-23). | `bg-danger`, `text-danger` |
+| `--danger-foreground` | `var(--danger-ink)` | same | Ink on `--danger` (the destructive button, the danger toast). Points at `--danger-ink`, so it is near-black on the dark red and white on the light red. | `text-danger-foreground` |
+| `--danger-ink` | `#0d0d0d` | `#ffffff` | Ink on `--danger`: near-black in dark (about 5.1:1; white is 3.8:1 on `#ef4444`), white in light (6.0:1 on `#c61111`; near-black is 3.2:1). Does not follow the accent, unlike `--primary-foreground`. `--danger-foreground` points at it, so every label printed on the red reads; the development-build badge keeps naming it directly (decisions.md D-08). | `text-danger-ink` |
+| `--success` | `#10b981` | `#0a7350` | Done, passed, additions. Light darkens it at the same hue so it reads as small text: 5.9:1 on white, 5.5:1 on `--muted` (the dark value was 2.5:1 on white, G-23). | `bg-success`, `text-success` |
 | `--pending` | `#fbbf24` | same | Waiting, scheduled, in progress. Fill only: dots and spinners. Never text. | `bg-pending` |
 | `--pending-strong` | `#fbbf24` | `#b45309` | The ink version of pending. Amber-700 on light so it stays readable. | `text-pending-strong` |
 | `--info` | `#93c5fd` | `#1d4ed8` | Waiting on a person (a PR that needs review). Ink only. The only blue in the cockpit. | `text-info`, `border-info` |
@@ -204,7 +205,8 @@ Converting either row to `md:min-h-chip` would keep the identical 24 px value �
 pixel, not density-scaled – so the raw spelling is kept on purpose rather than for a functional reason: it is
 what the `no-arbitrary-spacing` allowlist scans for, and the token spelling would drop the row from the
 allowlist's count without removing the hand-typed floor it exists to track. The two rows widen to the
-44 px WCAG 2.2 SC 2.5.5 phone target by different mechanisms: the picker pill spells it directly
+44 px phone target by different mechanisms. 44 px is house policy, taken from WCAG 2.2 SC 2.5.5 (Target
+Size (Enhanced), level AAA); the AA minimum is SC 2.5.8 at 24 × 24 CSS px. The mechanisms: the picker pill spells it directly
 (`max-md:min-h-tap`, `components/picker-pill.tsx:28`), while the reference chip stays 24 px and instead
 gets a centred `::before` overlay that is `tap` tall and released at `md:` (`before:h-tap … md:before:hidden`,
 `components/reference-chip.tsx:71`) – the Switch's recipe for a control that must keep its visual height.

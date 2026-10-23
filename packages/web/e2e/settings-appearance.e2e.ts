@@ -229,7 +229,12 @@ describe('settings → appearance against the live dry-run server', () => {
       browser.waitForFunction(`document.querySelector('${density}') !== null`)
       const segmentHeights: Record<string, number> = {}
       for (const active of values) {
-        browser.click(`${density} [data-value="${active}"]`)
+        // Through `selectDensity`, never a bare click: each density changes the spacing every box
+        // on this narrow page is sized by, and the evaluate below scrolls the control to the
+        // centre, so the option moves between one iteration and the next. A bare click aimed at
+        // the old box landed nowhere and the density stamp never came (CI runs 39333516944,
+        // 39341386995, 39349405315, 39353056665 – `wait --fn … density === 'compact'` / `=== undefined`).
+        await selectDensity(active)
         browser.waitForFunction(
           active === 'comfortable'
             ? `document.documentElement.dataset.density === undefined`
@@ -262,7 +267,8 @@ describe('settings → appearance against the live dry-run server', () => {
       browser.screenshot(`${artifactsDir}/settings-appearance-density-375.png`)
     } finally {
       browser.setViewport(DESKTOP.width, DESKTOP.height)
-      browser.click(`${density} [data-value="comfortable"]`)
+      // The viewport just changed, so the layout under the control is moving here too.
+      await selectDensity('comfortable')
       browser.waitForFunction(`document.documentElement.dataset.density === undefined`)
       await waitForServerAppearance((a) => a.density === 'comfortable')
     }

@@ -668,7 +668,7 @@ describe('the bookmarklet panel (spec 011)', () => {
     expect(document.body.textContent).not.toContain('no skills yet')
   })
 
-  it('is a first-class Settings page that generates protected links and auto-arms per-skill links only', async () => {
+  it('is a first-class Settings page that generates fill-only protected links', async () => {
     serve()
     renderAt('/settings/bookmarklets')
 
@@ -686,14 +686,9 @@ describe('the bookmarklet panel (spec 011)', () => {
       expect(decodeURIComponent(link.getAttribute('href') ?? '')).toContain('auto=0&key=sekret')
     }
 
-    // Auto-submit arms the per-skill links; the generic launcher stays prefill-only.
-    fireEvent.click(document.querySelector('[data-slot="bm-auto"]')!)
-    await waitFor(() => {
-      const first = document.querySelector('[data-slot="bm-list"] [data-slot="bm-link"]')
-      expect(decodeURIComponent(first?.getAttribute('href') ?? '')).toContain('auto=1&key=sekret')
-    })
-    const generic = document.querySelector('[data-slot="bm-generic"] [data-slot="bm-link"]')
-    expect(decodeURIComponent(generic?.getAttribute('href') ?? '')).toContain('auto=0&key=sekret')
+    // No one-click option any more (owner decision 2026-10-19): nothing can arm auto=1.
+    expect(document.querySelector('[data-slot="bm-auto"]')).toBeNull()
+    expect(document.body.textContent).not.toContain('One-click launch')
   })
 
   it('filters the per-skill rows and copies a link to the clipboard', async () => {

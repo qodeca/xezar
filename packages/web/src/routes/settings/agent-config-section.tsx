@@ -6,11 +6,23 @@ import { useAgentConfig, useAgentConfigFile, useHealth, usePutAgentConfigFile } 
 import type { AgentConfigFile, AgentConfigListing, Runner } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { CodeEditor } from '@/components/code-editor'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { availableRunners } from '@/routes/new-task-form'
+import { useLeaveGuard } from '@/lib/use-leave-guard'
 import { cn } from '@/lib/utils'
+import { useReturnFocus } from './remove-project'
 import { AGENT_DESCRIPTORS, descriptorFor, type AgentDescriptor } from './agent-descriptors'
 
 /**
@@ -67,10 +79,26 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const agent = descriptorFor(agentId)
   const selected = listing.files.find((f) => f.id === selectedId) ?? null
+  // The open editor's unsaved edits. Switching file or agent unmounts that editor, and leaving
+  // the page unmounts the whole section, so each of those asks first while this is true.
+  const [dirty, setDirty] = useState(false)
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null)
+  const guarded = (action: () => void) => {
+    if (dirty) setPendingLeave(() => action)
+    else action()
+  }
+  useLeaveGuard(dirty, (proceed) => setPendingLeave(() => proceed))
 
   const pickAgent = (id: Runner) => {
-    setAgentId(id)
-    setSelectedId(null) // a file selection never survives an agent switch
+    if (id === agentId) return
+    guarded(() => {
+      setAgentId(id)
+      setSelectedId(null) // a file selection never survives an agent switch
+    })
+  }
+  const pickFile = (id: string) => {
+    if (id === selectedId) return
+    guarded(() => setSelectedId(id))
   }
 
   return (
@@ -123,13 +151,13 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
             agent={agent}
             listing={listing}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={pickFile}
           />
         </nav>
 
         <div data-slot="agent-config-editor-pane">
           {selected ? (
-            <FileEditor key={selected.id} file={selected} />
+            <FileEditor key={selected.id} file={selected} onDirtyChange={setDirty} />
           ) : (
             <div className="flex h-full min-h-40 items-center justify-center rounded-md border border-dashed border-border text-[13px] text-soft-foreground">
               Select a config file to view or edit it.
@@ -137,7 +165,72 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
           )}
         </div>
       </div>
+
+      <DiscardEditsDialog
+        open={pendingLeave !== null}
+        leaving
+        fileLabel={selected?.label}
+        onKeep={() => setPendingLeave(null)}
+        onDiscard={() => {
+          const proceed = pendingLeave
+          setPendingLeave(null)
+          // The editor that held the edits unmounts on the way out; drop its flag first so the
+          // leave guard is not still armed for the navigation it is about to allow.
+          setDirty(false)
+          proceed?.()
+        }}
+      />
     </div>
+  )
+}
+
+/**
+ * The destructive confirm (patterns.md § 7) in front of anything that throws away the open
+ * file's unsaved edits: reloading it from disk, opening another file or agent, or leaving the
+ * page. Focus returns to whatever opened it.
+ *
+ * @param props.open - Whether the confirm is showing.
+ * @param props.leaving - Whether discarding also leaves the file (changes the action's words).
+ * @param props.fileLabel - The file whose edits are at stake, named in the title.
+ * @param props.onKeep - Dismiss and keep editing.
+ * @param props.onDiscard - Throw the edits away and carry on.
+ * @returns The alert dialog.
+ */
+export function DiscardEditsDialog({
+  open,
+  leaving = false,
+  fileLabel,
+  onKeep,
+  onDiscard,
+}: {
+  open: boolean
+  /** The discard also leaves the file (a link, Back, the palette, another file or agent), so the
+   *  action says so: "Discard and leave". Reloading from disk stays on the file: "Discard". */
+  leaving?: boolean
+  fileLabel: string | undefined
+  onKeep: () => void
+  onDiscard: () => void
+}) {
+  const returnFocus = useReturnFocus(open)
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => (next ? undefined : onKeep())}>
+      <AlertDialogContent onCloseAutoFocus={returnFocus}>
+        <AlertDialogHeader className="min-w-0">
+          <AlertDialogTitle className="break-words">
+            {fileLabel === undefined ? 'Discard your edits to this file?' : `Discard your edits to “${fileLabel}”?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Your unsaved changes to this file are lost. There is no undo.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep it</AlertDialogCancel>
+          <AlertDialogAction className={buttonVariants({ variant: 'danger' })} onClick={onDiscard}>
+            {leaving ? 'Discard and leave' : 'Discard'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -203,7 +296,14 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
     <div data-slot="agent-config-user-mcp" className="mt-3">
       <h4 className="mb-1 text-[12px] font-semibold">User &amp; local scopes</h4>
       <p className="mb-2 text-[12px] text-soft-foreground">
-        Managed by <code className="font-mono">claude mcp add</code> in {userMcp.path} — xezar does not edit
+        {/* The path is the user's real home path – on macOS a long, unbreakable `/var/folders/…` or
+            `/Users/<name>/…` string that would hold the pane wider than a 375 px phone. It breaks
+            anywhere, like the skill path in SkillDetail. */}
+        Managed by <code className="font-mono">claude mcp add</code> in{' '}
+        <code data-slot="agent-config-user-mcp-path" className="font-mono break-all">
+          {userMcp.path}
+        </code>{' '}
+        — xezar does not edit
         Claude’s state file.
       </p>
       {userMcp.readable ? (
@@ -227,34 +327,69 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
   )
 }
 
-export function FileEditor({ file }: { file: AgentConfigFile }) {
+/**
+ * One agent config file: the raw editor, Save / Revert, and the conflict recovery.
+ *
+ * The draft is pinned to the server copy it started from (`base`). While there are unsaved edits
+ * a newer copy from a background refetch replaces neither the draft nor the version Save sends,
+ * so a file changed on disk meanwhile surfaces as the 409 conflict instead of being overwritten
+ * or silently swapped in. "Reload from disk" with unsaved edits asks first.
+ *
+ * @param props.file - The listing entry for the file.
+ * @param props.onDirtyChange - Told whenever "has unsaved edits" flips, and `false` on unmount.
+ * @returns The editor block.
+ */
+export function FileEditor({
+  file,
+  onDirtyChange,
+}: {
+  file: AgentConfigFile
+  onDirtyChange?: (dirty: boolean) => void
+}) {
   const fileQuery = useAgentConfigFile(file.id)
   const put = usePutAgentConfigFile(file.id)
+  const [base, setBase] = useState<{ content: string; version: string | null } | null>(null)
   const [draft, setDraft] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
   const [formatError, setFormatError] = useState<string | null>(null)
+  const [confirmReload, setConfirmReload] = useState(false)
 
-  // Seed the draft from the server contents; re-seed when the file's version changes underneath.
-  const loadedVersion = fileQuery.data?.version ?? null
+  const data = fileQuery.data
+  const dirty = base !== null && draft !== null && draft !== base.content
+  // Adopt a new server copy only while nothing is being edited – adjusted during render rather
+  // than in an effect, so the editor never paints one frame of the stale copy.
+  if (data && !dirty && (base === null || base.version !== data.version || base.content !== data.content)) {
+    setBase({ content: data.content, version: data.version })
+    setDraft(null)
+    setConflict(false)
+    setFormatError(null)
+  }
+
   useEffect(() => {
-    if (fileQuery.data) {
-      setDraft(fileQuery.data.content)
-      setConflict(false)
-      setFormatError(null)
-    }
-  }, [fileQuery.data?.version, fileQuery.data])
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
-  const content = draft ?? fileQuery.data?.content ?? ''
-  const dirty = fileQuery.data ? content !== fileQuery.data.content : false
+  const content = draft ?? base?.content ?? data?.content ?? ''
   const canWrite = file.writable
+
+  const reloadFromDisk = async () => {
+    const fresh = await fileQuery.refetch()
+    if (!fresh.data) return
+    setBase({ content: fresh.data.content, version: fresh.data.version })
+    setDraft(null)
+    setConflict(false)
+    setFormatError(null)
+  }
 
   const save = () => {
     setFormatError(null)
     setConflict(false)
     put.mutate(
-      { content, version: loadedVersion },
+      { content, version: base?.version ?? null },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          setBase({ content: result.content, version: result.version })
           setDraft(null)
           toast(`${file.exists ? 'Saved' : 'Created'} ${file.label}`)
         },
@@ -318,7 +453,11 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           className="flex items-center justify-between gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[12px]"
         >
           <span>The file changed on disk since you opened it.</span>
-          <Button size="sm" variant="outline" onClick={() => void fileQuery.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => (dirty ? setConfirmReload(true) : void reloadFromDisk())}
+          >
             Reload from disk
           </Button>
         </div>
@@ -340,6 +479,16 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           {dirty && <span className="text-[12px] text-soft-foreground">Unsaved changes</span>}
         </div>
       )}
+
+      <DiscardEditsDialog
+        open={confirmReload}
+        fileLabel={file.label}
+        onKeep={() => setConfirmReload(false)}
+        onDiscard={() => {
+          setConfirmReload(false)
+          void reloadFromDisk()
+        }}
+      />
     </div>
   )
 }

@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // `packages/xezar/mutation/aggregate.mjs` is what makes the sharded schedule (#377,
 // `.github/workflows/mutation.yml`) the SAME gate the release path used to run: it sums the status
@@ -26,23 +30,27 @@ type AggregateResult = {
   perFile: { path: string; counts: Counts; score: number | null }[];
   perShard: { shard: number; counts: Counts; metrics: Metrics }[];
 };
+type LockResult = Omit<AggregateResult, 'perShard'>;
 type AggregateModule = {
+  LOCK_CONFIG: string;
+  LOCK_REPORT: string;
   emptyCounts: () => Counts;
   addCounts: (a: Counts, b: Counts) => Counts;
   metrics: (counts: Counts) => Metrics;
   normaliseFileKey: (key: string, root?: string) => string;
   countReport: (report: unknown, root?: string) => Map<string, Counts>;
-  breakThreshold: (root?: string) => Promise<number>;
+  breakThreshold: (root?: string, config?: string) => Promise<number>;
   shardArtifact: (shard: number) => string;
   aggregate: (options: {
     readReport: (shard: number) => unknown;
     shards?: number;
     root?: string;
   }) => Promise<AggregateResult>;
-  renderMarkdown: (result: AggregateResult, context?: { runUrl?: string; ref?: string; sha?: string }) => string;
+  aggregateLock: (options: { readReport: () => unknown; root?: string }) => Promise<LockResult>;
+  renderMarkdown: (result: AggregateResult, context?: { runUrl?: string; ref?: string; sha?: string }, lock?: LockResult) => string;
+  main: (args: string[], env?: Record<string, string>) => Promise<{ exitCode: number; markdown: string }>;
 };
 type ShardsModule = {
-  DEFAULT_SHARDS: number;
   mutationShardPlan: (count?: number, root?: string) => Promise<{ globs: string[]; files: ScopeFile[]; shards: Shard[] }>;
 };
 
@@ -51,7 +59,7 @@ const load = async <T>(script: string): Promise<T> =>
 
 const agg = await load<AggregateModule>('aggregate.mjs');
 const shards = await load<ShardsModule>('shards.mjs');
-const plan = await shards.mutationShardPlan(shards.DEFAULT_SHARDS, REPO_ROOT);
+const plan = await shards.mutationShardPlan(undefined, REPO_ROOT);
 
 /** A Stryker JSON report for one shard: `spread` mutant statuses over the files it owns. */
 function reportFor(files: string[], perFile: Counts): unknown {
@@ -130,7 +138,7 @@ describe('summing the shards into one verdict (#377)', () => {
     expect(result.problems).toEqual([]);
     expect(result.ok).toBe(true);
     expect(result.metrics.score).toBe(90);
-    expect(result.perShard).toHaveLength(shards.DEFAULT_SHARDS);
+    expect(result.perShard).toHaveLength(plan.shards.length);
     expect(result.perFile.length).toBe(plan.files.length);
     expect(agg.renderMarkdown(result)).toContain('PASSED');
   });
@@ -267,6 +275,86 @@ describe('summing the shards into one verdict (#377)', () => {
 
   it('names the artifact each shard uploads, which is how the report job finds them', () => {
     expect(agg.shardArtifact(1)).toBe('mutation-report-1');
-    expect(agg.shardArtifact(shards.DEFAULT_SHARDS)).toBe(`mutation-report-${shards.DEFAULT_SHARDS}`);
+    expect(agg.shardArtifact(plan.shards.length)).toBe(`mutation-report-${plan.shards.length}`);
   });
 });
+
+describe('the read-only lock scope in the same verdict', () => {
+  const LOCK_FILES = ['packages/xezar/src/core/qwen-tool-policy.ts', 'packages/xezar/src/core/read-only-lock.ts'];
+  const lockReport = (perFile: Counts, files = LOCK_FILES) => reportFor(files, perFile);
+
+  it('reads its own floor out of its own config, which is not the MCP gate’s', async () => {
+    const config = await import(pathToFileURL(join(REPO_ROOT, agg.LOCK_CONFIG)).href);
+    const floor = await agg.breakThreshold(REPO_ROOT, agg.LOCK_CONFIG);
+    expect(floor).toBe(config.default.thresholds.break);
+    expect(floor).toBe(68);
+    expect(config.default.mutate).toEqual(LOCK_FILES.slice().reverse());
+  });
+
+  it('passes a report that names both files and clears the floor, and fails one under it', async () => {
+    const healthyLock = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 72, Survived: 28 }), root: REPO_ROOT });
+    expect(healthyLock.problems).toEqual([]);
+    expect(healthyLock.metrics.score).toBe(72);
+    const below = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 60, Survived: 40 }), root: REPO_ROOT });
+    expect(below.ok).toBe(false);
+    expect(below.problems.join('\n')).toMatch(/read-only lock: mutation score 60\.00 % is below its 68 % floor/);
+  });
+
+  it('fails closed: a missing, an empty, a partial or a foreign report is not a measurement', async () => {
+    const missing = await agg.aggregateLock({ readReport: () => { throw new Error('ENOENT'); }, root: REPO_ROOT });
+    expect(missing.problems).toEqual(['read-only lock: no usable report (ENOENT)']);
+    // The empty-input control: `{ files: {} }` parses, tests nothing, and must not read as a pass.
+    const empty = await agg.aggregateLock({ readReport: () => ({ files: {} }), root: REPO_ROOT });
+    expect(empty.ok).toBe(false);
+    expect(empty.problems).toContain('read-only lock: no mutants were tested');
+    const partial = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 10 }, [LOCK_FILES[1]!]), root: REPO_ROOT });
+    expect(partial.problems).toEqual([`read-only lock: ${LOCK_FILES[0]} is in its scope but the report does not name it`]);
+    const foreign = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 10 }, [...LOCK_FILES, 'packages/xezar/src/mcp/ipc.ts']), root: REPO_ROOT });
+    expect(foreign.problems).toEqual([`read-only lock: the report names packages/xezar/src/mcp/ipc.ts, which is not in ${agg.LOCK_CONFIG}`]);
+  });
+
+  it('turns the whole night red when only the lock scope is under its floor', async () => {
+    const mcp = await agg.aggregate({ readReport: healthy, root: REPO_ROOT });
+    const lock = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 1, Survived: 9 }), root: REPO_ROOT });
+    expect(mcp.ok).toBe(true);
+    const markdown = agg.renderMarkdown(mcp, {}, lock);
+    expect(markdown).toContain('MCP mutation gate — FAILED');
+    expect(markdown).toContain('read-only lock: mutation score 10.00 % is below its 68 % floor');
+    expect(markdown).toContain('### Read-only lock scope');
+    expect(markdown).toContain('`core/read-only-lock.ts`');
+    // The control: the same MCP result with a healthy lock scope passes.
+    const fine = await agg.aggregateLock({ readReport: () => lockReport({ Killed: 9, Survived: 1 }), root: REPO_ROOT });
+    expect(agg.renderMarkdown(mcp, {}, fine)).toContain('MCP mutation gate — PASSED');
+  });
+
+  describe('the CLI the report job runs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-mutation-aggregate-'));
+    afterAll(async () => {
+      await rm(dir, TEST_DIR_RM_OPTIONS);
+    });
+    for (const shard of plan.shards) {
+      mkdirSync(join(dir, 'shards', agg.shardArtifact(shard.index)), { recursive: true });
+      writeFileSync(join(dir, 'shards', agg.shardArtifact(shard.index), 'report.json'), JSON.stringify(healthy(shard.index)));
+    }
+    mkdirSync(join(dir, 'lock'), { recursive: true });
+
+    it('always holds the lock scope too — no flag to forget, a missing report is red', async () => {
+      const { exitCode, markdown } = await main(['--reports', join(dir, 'shards'), '--lock-report', join(dir, 'lock', 'report.json')]);
+      expect(markdown).toContain('read-only lock: no usable report');
+      expect(exitCode).toBe(1);
+      // Without the flag it looks where the workflow downloads the artifact, and still checks.
+      expect(agg.LOCK_REPORT).toBe('.local/mutation/lock-report/report.json');
+    });
+
+    it('passes when every shard and the lock scope cleared their floors, and writes the summary', async () => {
+      writeFileSync(join(dir, 'lock', 'report.json'), JSON.stringify(lockReport({ Killed: 9, Survived: 1 })));
+      const out = join(dir, 'summary.md');
+      const { exitCode, markdown } = await main(['--reports', join(dir, 'shards'), '--lock-report', join(dir, 'lock', 'report.json'), '--out', out]);
+      expect(markdown).toContain('MCP mutation gate — PASSED');
+      expect(exitCode).toBe(0);
+      expect((await import('node:fs')).readFileSync(out, 'utf8')).toBe(markdown);
+    });
+  });
+});
+
+const main = (args: string[]) => agg.main(args, {});

@@ -10,7 +10,7 @@ import { loadWorkflows } from '../workflows/load.ts';
  * "Can this project file a tracker issue?" — discovered, never configured (#468, step 3).
  *
  * Issue filing is a task that selects an issue-filing skill and publishes through the GitHub CLI.
- * A project set up by the 3.0.3 onboarding files through its own kit role (in `.xezar/skills/`),
+ * A project set up by the onboarding files through its own kit role (in `.xezar/skills/`),
  * usually by way of its `issue-filing` workflow; any other project uses the shared
  * `xez-issue-create` skill. Both are found by the `-issue-create` naming convention the cockpit's
  * "New issue" already follows (`web/src/routes/github/new-issue-task.ts`), so no shipped string
@@ -33,7 +33,7 @@ export const ISSUE_FILING_SKILL = 'xez-issue-create';
 /** The naming convention an issue-filing skill follows: the shared skill and a project's own role. */
 export const ISSUE_CREATE_SUFFIX = 'issue-create';
 
-/** The 3.0.3 onboarding kit's workflow that files one issue through the project's own role. */
+/** The onboarding kit's workflow that files one issue through the project's own role. */
 export const ISSUE_FILING_WORKFLOW = 'issue-filing';
 
 /** Nearer copies first, the order skill discovery itself follows: the project, the team, the user. */
@@ -62,7 +62,7 @@ const REMOTE_REASON: Record<Exclude<IssueFilingFacts['remote'], 'github'>, strin
   other: 'This repository’s remote is not on GitHub; issue filing needs a github.com remote.',
 };
 
-const SKILL_MISSING_REASON = `No issue-filing skill is in this project’s skills: neither ${ISSUE_FILING_SKILL}, nor a project role whose name ends in -${ISSUE_CREATE_SUFFIX}, nor an ${ISSUE_FILING_WORKFLOW} workflow. A person can import ${ISSUE_FILING_SKILL} on the Skills page, or set the project up with the 3.0.3 onboarding.`;
+const SKILL_MISSING_REASON = `No issue-filing skill is in this project’s skills: neither ${ISSUE_FILING_SKILL}, nor a project role whose name ends in -${ISSUE_CREATE_SUFFIX}, nor an ${ISSUE_FILING_WORKFLOW} workflow. A person can import ${ISSUE_FILING_SKILL} on the Skills page, or set the project up with guided setup.`;
 const SKILL_PENDING_REASON = `The shared skills collection is still loading, so whether ${ISSUE_FILING_SKILL} is present is not known yet. Check again shortly.`;
 
 /** The pure half: three facts in, the wire answer out. Every missing fact is named, not just the first. */

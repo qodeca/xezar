@@ -1,7 +1,15 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-17.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-23.
+
+## The nightly mutation run is not reliably green yet
+
+[#443](https://github.com/qodeca/xezar/issues/443), the tracking issue for the nightly mutation
+gate (`.github/workflows/mutation.yml`), is still open. #1123 re-planned the jobs and added the read-only lock
+scope on 2026-10-20; since then the runs on 2026-10-21 and 2026-10-22 passed, and the runs on
+2026-10-20 and 2026-10-23 failed.
+Read the latest run or #443 for the current state before relying on a score.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
@@ -32,6 +40,11 @@ The test scripts `packages/xezar/scripts/mock-claude.mjs` and
 `packages/xezar/scripts/multi-project-harness.mjs` cannot import the platform layer, so each
 carries its own short Windows retry around the rename.
 
+`packages/xezar/scripts/mock-qwen.mjs` writes its mock verdict packet with a plain
+`renameSync` and no Windows retry. It ships in the npm package (it is the `XEZ_DRY_RUN` stand-in
+for Qwen Code), so unlike the two above it reaches users. The write is best effort: a failure is
+swallowed, not reported.
+
 `agent-config/files.ts` is not on this list: its plain `rename` is a deliberate, permanent
 exception.
 
@@ -40,8 +53,9 @@ exception.
 [#677](https://github.com/qodeca/xezar/issues/677) closed after wave 1; the remaining schemas have
 no issue yet.
 
-Most request schemas have not moved yet: roughly forty are still declared in
-`packages/xezar/src/server/server.ts`. The two settings routes moved first (wave 1):
+About half have moved: roughly twenty routes in `packages/xezar/src/server/server.ts` validate
+with a contract schema, while about thirty schemas (some named, some written inline in the
+validator) are still declared there. The two settings routes moved first (wave 1):
 `PUT /config` and `PUT /workspace/config` validate with the contract's `setConfigInputSchema` /
 `setWorkspaceConfigInputSchema`, their `server.ts` copies are gone, and
 `contract-parity.requests.test.ts` pins each route against its schema in both directions.

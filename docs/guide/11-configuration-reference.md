@@ -82,7 +82,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `cli` | Optional terminal defaults for `xezar serve`: `output`, `color`, `logLevel` and `instance`. Each is absent until you choose it, and absence is a real third state — a stored value beats the matching environment variable (`XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL`, `XEZ_INSTANCE`), while an absent key follows it. A command-line flag beats both. Set them in global **Settings → Terminal**; a stored value xezar cannot make sense of degrades to absent with one warning naming the key. |
 | `composerDefaults` | Optional booleans `autonomous` and `worktree`, for New Task defaults. Each absent key inherits its exact `0`/`1` env seed; without one, Autonomous depends on the task source (skills default on, other sources off) and Worktree defaults on. Plan first, interactive skills and explicit task choices can alter those defaults. |
 | `disabledProviders` | Array of provider IDs (`claude`, `codex`, `qwen`), default `[]`. Machine-wide provider preferences; installation and sign-in status are separate. |
-| `agentDefaults` | Optional `runner` and `models` object (the four backend keys, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
+| `agentDefaults` | Optional `runner` and `models` object (`claude`, `codex` and `qwen`, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
 | `projects` | Registry array, default `[]`. Each row has `id`, absolute `root`, display `name`, `addedAt`, `lastOpenedAt`, `source` (`local` or `checkout`), optional `maxParallel` (1–16), optional `tags`, and its own optional `cli.port` — the port you pinned for that project with `xezar projects port`, which outranks `XEZ_PORT` and is never written by a start or by `--port`. A start may also record where that project's cockpit last listened; that is a hint for the next start, not a claim that anything is running. Invalid rows are dropped independently. |
 
 | `resources` key | Default and accepted values |
@@ -113,9 +113,10 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | Variable | Effect |
 | --- | --- |
 | `XEZ_REMOTE=1` | Hosted-mode capabilities; hides local-machine handoffs. |
+| `XEZ_ALLOWED_HOSTS=cockpit.example.com` | Hosted mode only: extra public host names the cockpit answers to, comma-separated (exact match, case-insensitive, port ignored). Loopback, IP addresses and the names `xezar server-install` recorded always pass; any other name is refused with a 403. Set it when you run hosted mode without the installer recording your domain. Empty by default; local mode ignores it. See [Remote access](14-remote-access.md#to-protect-the-public-endpoint). |
 | `XEZ_BROWSE_ROOT`, `XEZ_PROJECTS_DIR` | Seeds for the two stored folder settings above. |
 | `XEZ_HOME` | Global state directory; empty means `~/.xezar`. Not consulted for settings in the single-project layout. |
-| `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. Without `-p/--port` and without this variable the start port is the one pinned for this project (`xezar projects port <id> <port>`), then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
+| `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. The start port is `-p/--port`, then the port pinned for this project (`xezar projects port <id> <port>`), then this variable, then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
 | `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto` (the default), `lines` or `rich`. A saved `cli.output` overrides this variable; `--output` overrides both. |
 | `XEZ_COLOR=auto` | Colour: `auto` (the default), `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
 | `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
@@ -135,8 +136,9 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_HIDE_TOKEN_USAGE=1`, `XEZ_HIDE_COST=1` | Hide the corresponding cockpit metrics; telemetry is still collected. Restart after changing. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both token counts and cost. |
 | `XEZ_NO_BANNER=1` | Suppress the team-skills terminal banner for `serve`. |
+| `XEZ_UPDATE_CHECK=0` | Skip the check for a newer xezar on npm at `xezar serve` startup (on by default). Nothing else changes: the cockpit just never shows the update-available notice. |
 | `XEZ_FOLLOWUPS=1` | Inbox default on; the stored `followups` choice wins. |
-| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (off by default, exact `1`). Read live (since 0.17.0; #678), no restart: turning it on starts the poller and opens the routes, turning it off stops the poller and closes them, each observed the next time xezar consults the flag. |
+| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (off by default, exact `1`). Read live, no restart: turning it on starts the poller and opens the routes, turning it off stops the poller and closes them, each observed the next time xezar consults the flag. |
 | `XEZ_TITLE_UPDATES=0` | Disable live title refresh unless project `liveTitleUpdates` overrides it. |
 | `XEZ_AUTONAME=0` | Disable all LLM naming, including creation-time names. |
 | `XEZ_REVIEW_GATE=1` | Default review gate on for changed non-autonomous runs; project setting wins. |
@@ -169,4 +171,4 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 
 Next: [CLI reference](12-cli-reference.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

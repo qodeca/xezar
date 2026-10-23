@@ -39,6 +39,7 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
+import type { AttentionNotice } from '@/lib/workspace-attention'
 import { useIsDesktop } from '@/lib/use-desktop'
 // The xezar brand mark. A `public/` asset, not a bundled import: the service serves the
 // same file at this exact path (`GET /xezar.svg` — the favicon index.html points at), so
@@ -106,6 +107,13 @@ export type AppShellProps = {
    *  Navigation only (#546): neither shape lists tasks. Tasks live on the Tasks pages, and the
    *  command palette opens from the keyboard (⌘K / Ctrl+K) rather than from a sidebar control. */
   projectGroups?: ReactNode
+  /** The pinned "All tasks" link's badge: tasks that need you across every project, from the
+   *  workspace attention model. Null (the default) while unknown and zero both render no badge.
+   *  Only shown with `projectGroups`, which is the only time the link exists. */
+  allTasksAttentionCount?: number | null
+  /** Why the other projects' counts are incomplete (`AttentionNotice`): renders one status line
+   *  under All tasks. Null (the default) renders none. */
+  allTasksAttentionNotice?: AttentionNotice | null
   /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
    *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
@@ -118,6 +126,13 @@ export type AppShellProps = {
   agentQuota?: ReactNode
   /** The same chip's phone form, in the top bar's `mobile-status` slot. */
   agentQuotaCompact?: ReactNode
+  /** The project the current page belongs to, for the phone top bar's context line. Null on
+   *  Global settings (no project applies) and while the registry has not named it — the line is
+   *  then absent rather than guessed. The desktop shows the project in the sidebar instead. */
+  projectName?: string | null
+  /** The page's own name from the route map ("New task"), for the phone top bar when the page
+   *  belongs to no nav item. Without it the bar fell back to the product name. */
+  pageName?: string | null
 }
 
 /**
@@ -176,9 +191,13 @@ export function AppShell({
   singleProjectRoot = false,
   banner,
   projectGroups,
+  allTasksAttentionCount = null,
+  allTasksAttentionNotice = null,
   otherProjects,
   agentQuota,
   agentQuotaCompact,
+  projectName = null,
+  pageName = null,
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
@@ -240,6 +259,8 @@ export function AppShell({
     channel,
     toolsMenu,
     projectGroups,
+    allTasksAttentionCount,
+    allTasksAttentionNotice,
     otherProjects,
     agentQuota,
     singleProject,
@@ -254,16 +275,34 @@ export function AppShell({
         data-slot="app-shell"
         className="flex h-dvh overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       >
+        {/* THE one live region for "tasks need you" (#attention): a single change moves the
+            project group's badge, All tasks and the phone menu badge together, so those three are
+            silent and only this announces — once, with the workspace total. Always mounted, so
+            the first count is a change a screen reader hears. */}
+        <span data-slot="attention-live" role="status" aria-atomic="true" className="sr-only">
+          {allTasksAttentionCount ? tasksNeedYou(allTasksAttentionCount, ' across all projects') : ''}
+        </span>
         <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} />
         {/* The drawer keeps its fixed 264px: it is a full-height overlay on a phone, where
             there is no second column to trade width with and no pointer to drag a border. */}
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
-        <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
+        {/* `minmax(0,1fr)`, not the implicit `auto` track: an auto track grows to its widest child's
+            min-content, and the phone top bar's project line is one unbreakable string – a long
+            project name pushed every page past a 375 px viewport instead of truncating. */}
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_1fr_auto] overflow-hidden">
           <MobileTopBar
-            title={current?.label ?? 'xezar'}
+            // Global settings shares the Settings nav item, so the bare label could not tell the
+            // two areas apart on a phone — where the desktop's scope chip is hidden.
+            title={
+              isGlobalSettingsPath(pathname)
+                ? singleProjectRoot ? 'Workspace settings' : 'Global settings'
+                : (current?.label ?? pageName ?? 'xezar')
+            }
+            context={isGlobalSettingsPath(pathname) ? null : projectName}
             singleProjectRoot={singleProjectRoot}
             agentQuota={agentQuotaCompact}
+            attentionCount={allTasksAttentionCount}
           />
 
           {banner ? (
@@ -304,6 +343,8 @@ type NavProps = {
   channel: HealthResponse['channel'] | null
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
+  allTasksAttentionCount: number | null
+  allTasksAttentionNotice: AttentionNotice | null
   otherProjects?: ReactNode
   agentQuota?: ReactNode
   singleProject: boolean
@@ -492,6 +533,8 @@ function SidebarContent({
   channel,
   toolsMenu,
   projectGroups,
+  allTasksAttentionCount,
+  allTasksAttentionNotice,
   otherProjects,
   agentQuota,
   singleProject,
@@ -579,7 +622,8 @@ function SidebarContent({
               workspace: with one project the page would be that project's own Tasks table
               wearing a second name. */}
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
-            <AllTasksLink onNavigate={onNavigate} />
+            <AllTasksLink onNavigate={onNavigate} attentionCount={allTasksAttentionCount} />
+            <AttentionStaleNote notice={allTasksAttentionNotice} />
           </div>
           {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
@@ -681,7 +725,14 @@ function SidebarContent({
  * with the active `/p/<id>`, which is not a route. Its own icon (layers, not the per-project
  * checklist) so the two Tasks surfaces never read as the same button.
  */
-function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
+function AllTasksLink({
+  onNavigate,
+  attentionCount,
+}: {
+  onNavigate?: () => void
+  /** Tasks needing you across every project; null or 0 renders no badge (NavBadge's rule). */
+  attentionCount: number | null
+}) {
   const { pathname } = useLocation()
   const isActive = pathname === '/tasks'
   return (
@@ -704,6 +755,15 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
         aria-hidden="true"
       />
       All tasks
+      {/* The same violet "a person is wanted" count the project group headers carry, summed
+          over every project — the one place a collapsed group's news is visible at a glance. */}
+      <NavBadge
+        data-slot="all-tasks-attention"
+        live={false}
+        title={attentionCount ? tasksNeedYou(attentionCount, ' across all projects') : undefined}
+      >
+        {attentionCount}
+      </NavBadge>
     </RouterLink>
   )
 }
@@ -884,15 +944,28 @@ function ModeBadge() {
   )
 }
 
-/** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
+/** Whether a pathname is the global (workspace-wide) settings area, `/settings/global[/…]`. */
+function isGlobalSettingsPath(pathname: string): boolean {
+  return pathname === '/settings/global' || pathname.startsWith('/settings/global/')
+}
+
+/** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`.
+ *  `context` is the project the page belongs to, a quiet line above the page name, because on a
+ *  phone the sidebar that names it is behind the menu button. */
 function MobileTopBar({
   title,
+  context,
   singleProjectRoot,
   agentQuota,
+  attentionCount,
 }: {
   title: string
+  context?: string | null
   singleProjectRoot: boolean
   agentQuota?: ReactNode
+  /** Tasks needing you across the workspace. Below `md` the sidebar is a drawer, so without this
+   *  the phone shows no "needs you" signal until the drawer is opened. */
+  attentionCount: number | null
 }) {
   return (
     <header
@@ -908,14 +981,35 @@ function MobileTopBar({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open menu"
-            // 44px: the minimum touch target, overriding the 36px desktop icon-button size.
-            className="-ml-1.5 size-11"
+            aria-label={attentionCount ? `Open menu — ${tasksNeedYou(attentionCount)}` : 'Open menu'}
+            // 44px: the minimum touch target, overriding the 36px desktop icon-button size. It
+            // grows sideways (never below 44) only while it carries the count.
+            className={attentionCount ? '-ml-1.5 h-11 w-auto min-w-11 gap-1 px-2.5' : '-ml-1.5 size-11'}
           >
             <MenuIcon className="size-4" aria-hidden="true" />
+            {/* The count joins the button's name through aria-label; the shell's one live region
+                announces changes, so this copy stays silent. */}
+            {attentionCount ? (
+              <span
+                data-slot="menu-attention"
+                aria-hidden="true"
+                className="inline-flex min-h-chip items-center rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
+              >
+                {attentionCount}
+              </span>
+            ) : null}
           </Button>
         </SheetTrigger>
-        <span className="truncate text-[14.5px] font-semibold">{title}</span>
+        <div className="flex min-w-0 flex-col">
+          {context ? (
+            <span data-slot="mobile-context" className="truncate text-[11px] leading-tight text-soft-foreground">
+              {context}
+            </span>
+          ) : null}
+          <span data-slot="mobile-title" className="truncate text-[14.5px] leading-tight font-semibold">
+            {title}
+          </span>
+        </div>
         {/* SLOT — the run status dot / kebab land with the thread view (Step R3). The mode badge
             (#600) is its first occupant: below `md` the sidebar is a drawer, and the mode must be
             legible without opening it. */}
@@ -928,17 +1022,71 @@ function MobileTopBar({
   )
 }
 
-/** Keep the live owner mounted at zero; announce only the count, not the navigation.
+/**
+ * The one line under "All tasks" that says the other projects' counts are old, shown while the
+ * workspace task index cannot be refreshed. One sentence in one place rather than a marker per
+ * group: a word beside each header read as part of the branch name and repeated down the list.
+ * The current project's count is not covered by it — that one comes from its own live list.
+ *
+ * @param props.notice - Why the counts are incomplete (`lib/workspace-attention.ts`), or null.
+ * @returns The status line, or nothing when the counts are current.
+ */
+const ATTENTION_NOTICE_TEXT: Record<AttentionNotice, string> = {
+  'refresh-failed': 'Other projects’ counts could not be refreshed — they may be out of date.',
+  'not-loaded': 'Other projects’ counts could not be loaded — they are not shown.',
+  'partly-unreadable': 'Some projects’ tasks could not be read — their counts are not shown.',
+}
+
+function AttentionStaleNote({ notice }: { notice: AttentionNotice | null }) {
+  if (!notice) return null
+  return (
+    <p data-slot="attention-stale" role="status" className="px-2.5 pt-1 text-[11.5px] text-muted-foreground">
+      {/* Different facts, different sentences: an empty badge must never read as "nothing
+          waits" when the truth is "could not check". */}
+      {ATTENTION_NOTICE_TEXT[notice]}
+    </p>
+  )
+}
+
+/**
+ * "Tasks need you" in words, shared by every attention badge and the shell's live region.
+ *
+ * @param count - How many tasks need you.
+ * @param scope - Appended after "need you", e.g. " across all projects".
+ * @returns The sentence, e.g. "2 tasks need you across all projects".
+ */
+export function tasksNeedYou(count: number, scope = ''): string {
+  return `${count} task${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} you${scope}`
+}
+
+/**
+ * A violet "a person is wanted" count.
+ *
+ * Keep the live owner mounted at zero; announce only the count, not the navigation.
  * role=status is implicitly polite. Avoid redundant aria-live: Radix exempts that
  * attribute from modal background hiding, exposing the sidebar behind dialogs.
+ *
+ * `live={false}` keeps the words for the accessible name of the row it sits in but drops the
+ * live region — for counts that one change moves in several places at once (the attention
+ * badges), where the shell owns a single announcement instead.
  */
-export function NavBadge({ className, children, title, ...props }: React.ComponentProps<'span'>) {
+export function NavBadge({
+  className,
+  children,
+  title,
+  live = true,
+  ...props
+}: React.ComponentProps<'span'> & { live?: boolean }) {
   const visible = Boolean(children)
   return (
     <>
-      <span role="status" aria-atomic="true" className="sr-only">
-        {visible ? title ?? `Inbox: ${children}` : ''}
-      </span>
+      {live ? (
+        <span role="status" aria-atomic="true" className="sr-only">
+          {visible ? title ?? `Inbox: ${children}` : ''}
+        </span>
+      ) : visible ? (
+        <span className="sr-only">{` ${title ?? children}`}</span>
+      ) : null}
       {visible ? (
         <span data-slot="nav-badge" {...props} title={title} aria-hidden="true" className={cn('ml-auto inline-flex min-h-chip shrink-0 items-center rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground', className)}>{children}</span>
       ) : null}

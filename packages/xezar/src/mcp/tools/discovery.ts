@@ -398,11 +398,23 @@ export function discoveryText(discovery: McpDiscovery): string {
  * for it.
  */
 function onboardingLine(onboarding: OnboardingStatus): string {
+  const line = onboardingStateLine(onboarding);
+  return onboarding.olderSetup ? `${line} ${olderSetupSentence(onboarding.olderSetup)}` : line;
+}
+
+/** The older-setup warning (`onboarding.olderSetup`), as a fact plus who can act — the cockpit's
+ *  notice in the leader's words. A re-check is named as the step AFTER the upgrade, never instead of it. */
+function olderSetupSentence(older: NonNullable<OnboardingStatus['olderSetup']>): string {
+  return `This project's setup is version ${older.recordedVersion}; this xezar needs ${older.minimumVersion} or later, and until the setup is upgraded some tasks are refused because they ask for agents this xezar no longer supports. A person can follow the upgrade guide (${older.upgradeGuideUrl}) and then re-check; a re-check compares files but does not upgrade the setup.`;
+}
+
+function onboardingStateLine(onboarding: OnboardingStatus): string {
   switch (onboarding.state) {
     case 'checking':
       return `Setup: a check is running (task ${onboarding.checkingRunId ?? 'unknown'}).`;
     case 'set-up':
-      return `Setup: a check finished against xezar ${onboarding.lastChecked?.engineVersion} and setup templates ${onboarding.lastChecked?.kitDigest}.`;
+      if (!onboarding.lastChecked) return 'Setup: this project records a finished setup in its own files.';
+      return `Setup: a check finished against xezar ${onboarding.lastChecked.engineVersion} and setup templates ${onboarding.lastChecked.kitDigest}.`;
     case 'changed':
       return `Setup: the last finished check covered xezar ${onboarding.lastChecked?.engineVersion} and setup templates ${onboarding.lastChecked?.kitDigest}; xezar ${onboarding.observed.engineVersion} and templates ${onboarding.observed.kitDigest} are running now.${onboarding.offerPending ? ' The offer for this pair has not been made yet.' : ''}`;
     case 'unknown':

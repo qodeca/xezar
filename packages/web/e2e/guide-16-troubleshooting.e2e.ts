@@ -49,8 +49,14 @@ describe('guide 16 — troubleshooting and FAQ', () => {
     // Round-trip the toggle so this file leaves the shared server exactly as it found it
     // (browser-test-spec.md § Isolation rule) — an idempotent flip proves the control works
     // without depending on which state a prior file left it in.
-    browser.clickRole('switch', 'Update xezar-skills automatically')
-    browser.clickRole('switch', 'Update xezar-skills automatically')
+    //
+    // `clickRoleWhenStable`, never a bare `clickRole`: the Skills page is still laying out below
+    // the heading this waits for (its update status and catalog arrive after it), and a flip
+    // re-renders the section the switch sits in, so the switch can be moving or covered at the
+    // moment of a one-shot click. agent-browser then refuses it as "covered by
+    // <div.flex.flex-col inside div#root>" (CI run 39341386995). Same remedy guide-02 uses.
+    await browser.clickRoleWhenStable('switch', 'Update xezar-skills automatically')
+    await browser.clickRoleWhenStable('switch', 'Update xezar-skills automatically')
     expect(browser.hasRole('switch', 'Update xezar-skills automatically')).toBe(true)
   })
 

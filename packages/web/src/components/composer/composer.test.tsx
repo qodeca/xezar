@@ -375,6 +375,53 @@ describe('/ skills autocomplete (#380)', () => {
   })
 })
 
+describe('/ autocomplete on an ARIA 1.2 textbox (screen readers hear the suggestions)', () => {
+  const highlighted = () => document.querySelector('[data-slot="composer-menu-item"][aria-selected="true"]')
+
+  it('the textarea stays a multi-line textbox and controls the listbox only while it is open', async () => {
+    const { textarea } = renderComposer()
+    // No combobox role: that would announce a single-line picker, not a message field.
+    expect(textarea.getAttribute('role')).toBeNull()
+    expect(textarea.getAttribute('aria-expanded')).toBeNull()
+    expect(textarea.getAttribute('aria-autocomplete')).toBe('list')
+    expect(textarea.getAttribute('aria-controls')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Reply to the agent' })).toBe(textarea)
+
+    type(textarea, '/xe')
+    await screen.findByText('xez-fix')
+    const listbox = screen.getByRole('listbox', { name: 'Skills' })
+    await waitFor(() => expect(textarea.getAttribute('aria-controls')).toBe(listbox.id))
+    expect(listbox.id).not.toBe('')
+  })
+
+  it('aria-activedescendant follows the highlighted suggestion as the arrows move', async () => {
+    const { textarea } = renderComposer()
+    type(textarea, '/xe')
+    await screen.findByText('xez-fix')
+    await waitFor(() => expect(textarea.getAttribute('aria-activedescendant')).toBe(highlighted()?.id))
+    expect(highlighted()?.textContent).toContain('xez-fix')
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' })
+    await waitFor(() => expect(highlighted()?.textContent).toContain('xez-review'))
+    await waitFor(() => expect(textarea.getAttribute('aria-activedescendant')).toBe(highlighted()?.id))
+  })
+
+  it('Enter accepting a suggestion is announced, and the textbox stops pointing at the list', async () => {
+    const { textarea } = renderComposer()
+    type(textarea, 'run /xezf')
+    await screen.findByText('xez-fix')
+    const status = document.querySelector('[data-slot="composer-accepted"]') as HTMLElement
+    expect(status.getAttribute('role')).toBe('status')
+    expect(status.textContent).toBe('')
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(status.textContent).toBe('Inserted /xez-fix')
+    expect(textarea.getAttribute('aria-controls')).toBeNull()
+    expect(textarea.getAttribute('aria-activedescendant')).toBeNull()
+    // Typing on clears it, so the next acceptance of the same skill is said again.
+    type(textarea, 'run /xez-fix now')
+    expect(status.textContent).toBe('')
+  })
+})
+
 describe('/ autocomplete usage order and pick bump (#519)', () => {
   const menuNames = () =>
     [...document.querySelectorAll('[data-slot="composer-menu-item"]')].map(

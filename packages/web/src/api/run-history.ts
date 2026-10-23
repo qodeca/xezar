@@ -18,6 +18,58 @@ function orderedUnique(...groups: readonly RunEvent[][]): RunEvent[] {
   return [...bySeq.values()].sort((a, b) => a.seq - b.seq)
 }
 
+/**
+ * Folds a freshly fetched tail page into the retained history pages after live compaction.
+ *
+ * Compaction drops the live buffer, so every event between the newest retained page and the new
+ * tail exists only in the tail. Replacing the newest page in place (the old rule) kept the OLDER
+ * pages around it, and the transcript then showed them, a hole, and the tail – with "Load earlier"
+ * reading the oldest page's cursor, so the hole could never be filled. The rule now is
+ * contiguity, never a gap:
+ *
+ * - the tail reaches back to (or overlaps) the newest retained page → keep every retained page and
+ *   append the tail; the overlap is de-duplicated by seq when the pages are flattened;
+ * - otherwise → the tail alone. Its own `olderCursor` then drives "Load earlier", which walks back
+ *   through the skipped items in order, so nothing is unreachable.
+ *
+ * Older pages are trimmed from the front to `MAX_HISTORY_PAGES`, which keeps the first page's
+ * `olderCursor` the honest next step back.
+ *
+ * @param current - The infinite-query data before compaction (at least one page).
+ * @param latestPage - The cursorless tail page fetched for compaction.
+ * @returns The new infinite-query data, contiguous from its first page to the tail.
+ *
+ * @example
+ * ```ts
+ * queryClient.setQueryData(key, (current) => current ? compactedHistory(current, tail) : seed)
+ * ```
+ */
+export function compactedHistory(
+  current: InfiniteData<RunHistoryPage, string | undefined>,
+  latestPage: RunHistoryPage,
+): InfiniteData<RunHistoryPage, string | undefined> {
+  const newestRetained = current.pages.reduce<RunHistoryPage | undefined>(
+    (newest, page) => (newest === undefined || page.asOfSeq > newest.asOfSeq ? page : newest),
+    undefined,
+  )
+  const tailStart = latestPage.events[0]?.seq
+  // Seqs are integers, so `asOfSeq + 1` is the first event the retained pages cannot hold.
+  // An empty tail, or one with nothing older, is the whole story on its own.
+  const connects =
+    newestRetained !== undefined &&
+    tailStart !== undefined &&
+    latestPage.olderCursor !== undefined &&
+    tailStart <= newestRetained.asOfSeq + 1
+  if (!connects) return { pages: [latestPage], pageParams: [undefined] }
+  const pages = [...current.pages, latestPage]
+  const pageParams = [...current.pageParams, undefined]
+  while (pages.length > MAX_HISTORY_PAGES) {
+    pages.shift()
+    pageParams.shift()
+  }
+  return { pages, pageParams }
+}
+
 export interface RunHistoryState {
   visibleEvents: RunEvent[]
   currentEvents: RunEvent[]
@@ -80,24 +132,7 @@ export function useRunHistory(runId: string | undefined): RunHistoryState {
           ['run-history', scope, runId],
           (current) => {
             if (!current) return { pages: [latestPage], pageParams: [undefined] }
-            const pages = [...current.pages]
-            const pageParams = [...current.pageParams]
-            let latestIndex = -1
-            for (let index = 0; index < pages.length; index += 1) {
-              if (latestIndex === -1 || pages[index]!.asOfSeq > pages[latestIndex]!.asOfSeq) latestIndex = index
-            }
-            if (latestIndex >= 0 && pages[latestIndex]!.newerCursor === undefined) {
-              pages[latestIndex] = latestPage
-              pageParams[latestIndex] = undefined
-            } else {
-              pages.push(latestPage)
-              pageParams.push(undefined)
-            }
-            while (pages.length > MAX_HISTORY_PAGES) {
-              pages.shift()
-              pageParams.shift()
-            }
-            return { pages, pageParams }
+            return compactedHistory(current, latestPage)
           },
         )
       })

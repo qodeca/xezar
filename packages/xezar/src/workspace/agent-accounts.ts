@@ -8,7 +8,7 @@ import { supportsProfiles } from '../core/agent-profiles.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import { lookupSamePath } from '../platform/path-identity.ts';
-import { atomicWriteJsonSync } from './config.ts';
+import { atomicWriteJson, atomicWriteJsonSync } from './config.ts';
 
 /**
  * `~/.xezar/agent-accounts.json` — the agent-accounts store (spec `2026-07-29-agent-profiles.md`).
@@ -225,7 +225,10 @@ export async function mergeWriteAgentAccounts(
 ): Promise<AgentAccountStore> {
   const current = await loadAgentAccounts();
   const next = mutator(current) ?? current;
-  atomicWriteJsonSync(agentAccountsPath(), next);
+  // Async, never the sync twin: another merge-write or a route's `loadAgentAccounts` in this
+  // process may still hold the file open from its own async read, and on Windows a sync rename
+  // retry would block the very event loop that read needs to close it (`atomicWriteJson`).
+  await atomicWriteJson(agentAccountsPath(), next);
   return next;
 }
 

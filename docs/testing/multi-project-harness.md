@@ -4,7 +4,7 @@ This harness checks one built cockpit with two registered scratch Git repositori
 
 ## Run it
 
-1. Use Node 22+ with Git available. CI runs it on Linux only; on macOS and Windows it is not run regularly.
+1. Use Node 22+ with Git available. CI runs it on Linux only (the `multi-project` job); macOS is not run regularly, and on Windows it currently fails – see [On Windows](#on-windows).
 2. Run `npm run build:server`.
 3. Run `npm run test:multi-project`.
 4. Read the printed `result.json` path; logs and `state.json` are beside it.
@@ -13,7 +13,7 @@ This harness checks one built cockpit with two registered scratch Git repositori
 7. `NOT-RUN` is reserved for optional legs and is not currently emitted by this mandatory harness.
 8. Pass `-- --clean` to remove artifacts after a pass.
 
-The harness records each child PID before proceeding and tears down only those saved PIDs, escalating from `SIGTERM` to `SIGKILL` after a bounded wait. It removes `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`, and `XEZ_TASK_ID` from child environments. A failure retains the scratch directory.
+The harness records each child PID before proceeding and tears down only those saved PIDs, escalating from `SIGTERM` to `SIGKILL` after a bounded wait (`stopChild` in `packages/xezar/scripts/multi-project-harness.mjs`). The stop is root-only: it signals each saved process itself, not the processes that process started; [On Windows](#on-windows) says what that means there. It removes `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`, and `XEZ_TASK_ID` from child environments. A failure retains the scratch directory.
 
 The Worktree-OFF leg covers Xezar's deterministic dry-run launch path only. It does not reproduce issue #342's external-client configuration loading, replace the real-client acceptance suite, or cover browser project switching; those require the separately sliced follow-up tests.
 
@@ -79,3 +79,31 @@ the cockpit's own composer uses.
 Run it with a short `TMPDIR` (for example `TMPDIR=/tmp npm run test:multi-project`) when the default
 temporary directory is deep: the scratch home's socket path must fit the 104-byte local-socket limit
 on macOS, and a longer one makes A's MCP unavailable and the harness fail on A.
+
+## On Windows
+
+The harness fails on a local Windows run today ([#1137](https://github.com/qodeca/xezar/issues/1137)),
+and CI does not run it there. Two steps fail, one after the other:
+
+1. **The scratch folder keeps its short 8.3 name.** `main` builds the scratch folder from
+   `realpathSync(tmpdir())`, which on Windows can keep a short name such as `C:\Users\ABCDEF~1\…`,
+   while xezar stores the long spelling of a project root. The `entry.root === repoA` comparison
+   then fails. **Workaround:** point `TEMP` and `TMP` at a folder whose path has no short-name part,
+   for example in PowerShell:
+
+   ```powershell
+   New-Item -ItemType Directory -Force C:\xez-tmp | Out-Null
+   $env:TEMP = 'C:\xez-tmp'; $env:TMP = 'C:\xez-tmp'; npm run test:multi-project
+   ```
+
+2. **Renaming `repo-b` back fails with `EPERM`.** With a long-name `TEMP`, the next failure is
+   `renameRetrying` moving `repo-b.missing` back to `repo-b` for the "registered missing B" check.
+   #1137 suspects the running cockpit holds the folder; that is not proven. There is no workaround
+   yet, so a red run on Windows is expected until #1137 closes.
+
+**Teardown on Windows (inferred from the code, not measured).** `stopChild` calls
+`child.kill('SIGTERM')` and then `child.kill('SIGKILL')`. Windows has no catchable `SIGTERM`, so the
+first call already ends the saved process at once, and neither call reaches the processes it
+started. Such a process can outlive the harness and keep files in the scratch folder open, the
+pattern #1136 records for the serve tests. The harness checks only the saved PIDs, so it would not
+report that survivor.

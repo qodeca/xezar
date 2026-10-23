@@ -875,7 +875,7 @@ function LabelFilter({
                     style={labelChipStyle(colors[label])}
                   />
                   <span className="min-w-0 flex-1 truncate">{label}</span>
-                  {on ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" /> : null}
+                  {on ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary light:text-foreground" /> : null}
                 </CommandItem>
               )
             })}

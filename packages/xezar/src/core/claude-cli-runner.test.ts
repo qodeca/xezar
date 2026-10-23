@@ -629,6 +629,30 @@ describe('a signal xezar did not send', () => {
     });
   }, 15_000);
 
+  /** Bounded memory: a tool call streams as an event, and the result keeps no copy of its input. */
+  it('keeps no copy of tool-call inputs in the result', async () => {
+    const { fake, events, session } = startWithFakeChild();
+    const input = { file_path: 'notes.txt', content: 'x'.repeat(100_000) };
+    (fake.child.stdout as PassThrough).write(
+      `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Write', input }] } })}\n`,
+    );
+    fake.exit(0);
+
+    const result = await session.result;
+    expect(events).toContainEqual({ type: 'tool-call', id: 't1', tool: 'Write', input });
+    expect(result.toolCalls).toEqual([]);
+  }, 15_000);
+
+  /** GUARD — a bounded stderr still quotes the last three lines after a long, noisy session. */
+  it('quotes the last stderr lines after megabytes of earlier output', async () => {
+    const { fake, session } = startWithFakeChild();
+    for (let i = 0; i < 400; i++) (fake.child.stderr as PassThrough).write(`${'noise '.repeat(500)}\n`);
+    (fake.child.stderr as PassThrough).write('first\nsecond\nfatal: third\n');
+    fake.exit(2);
+
+    await expect(session.result).rejects.toThrow(/^claude CLI exited with code 2 — first \| second \| fatal: third$/);
+  }, 15_000);
+
   /** GUARD — exit 1 is an ordinary failure on Windows when xezar sent nothing. */
   it('still fails an exit 1 on Windows that xezar did not cause', async () => {
     await withPlatform('win32', async () => {
@@ -655,6 +679,27 @@ describe('a signal xezar did not send', () => {
         false,
       );
     });
+  }, 15_000);
+
+  /** #943: only the EOF watchdog's stop after `end()` asks the run manager to sweep; a cancel sweeps on its own path. */
+  it('marks a session the EOF watchdog stopped after close, and not an interrupted one', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let closed: ReturnType<typeof startWithFakeChild>;
+    try {
+      closed = startWithFakeChild();
+      closed.session.end();
+      vi.advanceTimersByTime(EOF_TERM_GRACE_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(closed.fake.signals).toEqual(['SIGTERM']);
+    closed.fake.exit(143);
+    expect((await closed.session.result).stoppedAfterClose).toBe(true);
+
+    const interrupted = startWithFakeChild();
+    interrupted.session.interrupt();
+    interrupted.fake.exit(143);
+    expect((await interrupted.session.result).stoppedAfterClose).toBeUndefined();
   }, 15_000);
 });
 
@@ -728,4 +773,27 @@ describe('waitForExit — a child that a signal already ended (#1070)', () => {
     const late = new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1_000));
     await expect(Promise.race([waitForExit(child as unknown as ChildProcessWithoutNullStreams), late])).resolves.toBeNull();
   });
+});
+
+describe('an agent that exits before it reads its first message', () => {
+  const stubBin = fileURLToPath(
+    new URL('./__fixtures__/process/exits-before-reading-stdin.mjs', import.meta.url),
+  );
+
+  it('fails the step with the exit and stderr instead of crashing on the failed stdin write', async () => {
+    const runner = new ClaudeCliRunner({ bin: stubBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    // Far larger than any pipe buffer, so the write is still pending when the agent exits.
+    const session = runner.startSession(
+      { userPrompt: 'x'.repeat(2_000_000), cwd: process.cwd() },
+      (event) => events.push(event),
+    );
+    const outcome = await session.result.then(
+      () => 'resolved',
+      (error: Error) => error.message,
+    );
+    expect(outcome).toMatch(/exited with code 1/);
+    expect(outcome).toMatch(/exited before reading its input/);
+    expect(events.some((e) => e.type === 'note' && e.message.startsWith('claude: stdin write failed:'))).toBe(true);
+  }, 15_000);
 });

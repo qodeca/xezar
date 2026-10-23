@@ -6,11 +6,16 @@ import {
   BUNDLED_TEMPLATES_DIGEST,
   deriveOnboardingStatus,
   hasAgentBackend,
+  isOlderSetupVersion,
+  MINIMUM_SETUP_VERSION,
   NO_BACKEND_REASON,
   observedIdentity,
   ONBOARDING_MODES,
   ONBOARDING_WORKFLOW_ID,
+  parseSetupVersion,
+  SETUP_UPGRADE_GUIDE_URL,
 } from './status.ts';
+import type { InstallRecord } from './install-record.ts';
 import { PROJECT_SETUP_WORKFLOW } from '../workflows/types.ts';
 
 /**
@@ -44,11 +49,13 @@ const ok = (record: OnboardingRead['record']): OnboardingRead => ({ status: 'ok'
 const absent: OnboardingRead = { status: 'absent', record: null };
 const corrupt: OnboardingRead = { status: 'corrupt', record: null };
 
-const INSTALLED = { skill: 'xez-onboard-opinionated', date: '2026-09-27T09:11:23Z' };
+/** An install record with no `version` — the shape older records have. */
+const INSTALLED: InstallRecord = { skill: 'xez-onboard-opinionated', date: '2026-09-27T09:11:23Z', version: null };
+const installedAt = (version: string | null): InstallRecord => ({ ...INSTALLED, version });
 
 const derive = (
   read: OnboardingRead,
-  over: { checks?: BackendCheck[]; localHandoff?: boolean; checkingRunId?: string | null; installRecord?: typeof INSTALLED | null } = {},
+  over: { checks?: BackendCheck[]; localHandoff?: boolean; checkingRunId?: string | null; installRecord?: InstallRecord | null } = {},
 ) =>
   deriveOnboardingStatus(read, {
     observed: OBSERVED,
@@ -60,8 +67,23 @@ const derive = (
   });
 
 describe('the bundled templates pin (0.20.0)', () => {
-  it('pins the 3.0.3 onboarding, not the retired xez-onboard revision', () => {
-    expect(BUNDLED_TEMPLATES_DIGEST).toBe('ec856f8');
+  it('pins the 3.2.1 onboarding (v3.2.1, b86ddf0), not 3.0.3 or the retired xez-onboard revision', () => {
+    expect(BUNDLED_TEMPLATES_DIGEST).toBe('b86ddf0');
+  });
+
+  it('a project last checked against the 3.0.3 pin is offered one re-check', () => {
+    const at = '2026-10-01T09:12:00.000Z';
+    const status = derive(
+      ok({
+        engineVersion: '0.15.0',
+        kitDigest: 'ec856f8',
+        lastOfferedAt: null,
+        lastCheckedAt: at,
+        checked: { engineVersion: '0.15.0', kitDigest: 'ec856f8', at },
+      }),
+    );
+    expect(status.state).toBe('changed');
+    expect(status.offerPending).toBe(true);
   });
 
   it('a project last checked against the old xez-onboard pin is offered one re-check', () => {
@@ -80,13 +102,13 @@ describe('the bundled templates pin (0.20.0)', () => {
     expect(status.launch.workflowId).toBe('project-setup');
   });
 
-  it('the launch definition runs the 3.0.3 onboarding skill, and only that one', () => {
+  it('the launch definition runs the onboarding skill, and only that one', () => {
     expect(PROJECT_SETUP_WORKFLOW.name).toBe(ONBOARDING_WORKFLOW_ID);
     expect(PROJECT_SETUP_WORKFLOW.steps.map((step) => step.skill)).toEqual(['xez-onboard-opinionated']);
   });
 });
 
-describe('the committed 3.0.3 install record', () => {
+describe('the committed install record', () => {
   it('a project onboarded outside the cockpit reads as set up, with no first-time or re-check offer', () => {
     const status = derive(absent, { installRecord: INSTALLED });
     expect(status.state).toBe('set-up');
@@ -109,6 +131,96 @@ describe('the committed 3.0.3 install record', () => {
     const at = '2026-09-14T09:12:00.000Z';
     const current = ok({ ...OBSERVED, lastOfferedAt: null, lastCheckedAt: at, checked: { ...OBSERVED, at } });
     expect(derive(current, { installRecord: null }).state).toBe('set-up');
+  });
+});
+
+describe('the setup version compare', () => {
+  it('reads strict major.minor.patch, with an optional pre-release and build', () => {
+    expect(parseSetupVersion('3.2.0')).toEqual({ core: [3, 2, 0], preRelease: false });
+    expect(parseSetupVersion('3.2.0-rc.1')).toEqual({ core: [3, 2, 0], preRelease: true });
+    expect(parseSetupVersion('3.2.0+build.7')).toEqual({ core: [3, 2, 0], preRelease: false });
+    for (const bad of ['', '3', '3.2', '3.2.0.1', 'v3.2.0', '03.2.0', '3.2.x', 'next', '3.2.0-']) {
+      expect(parseSetupVersion(bad), bad).toBeNull();
+    }
+  });
+
+  it('calls a populated, readable version older only when it is below the minimum', () => {
+    expect(MINIMUM_SETUP_VERSION).toBe('3.2.0');
+    expect(isOlderSetupVersion('3.0.3')).toBe(true);
+    expect(isOlderSetupVersion('3.1.0')).toBe(true);
+    expect(isOlderSetupVersion('2.9.9')).toBe(true);
+    expect(isOlderSetupVersion('3.2.0-rc.1')).toBe(true);
+    expect(isOlderSetupVersion('3.2.0')).toBe(false);
+    expect(isOlderSetupVersion('3.2.1')).toBe(false);
+    expect(isOlderSetupVersion('3.10.0')).toBe(false);
+    expect(isOlderSetupVersion('4.0.0')).toBe(false);
+  });
+
+  // Fail-open needs its empty case pinned (AGENTS.md § Changing a mechanism): an absent or
+  // unreadable version must read as "not known to be old", and the populated cases above prove
+  // the same function does say "old" when it has evidence — so the two cannot collapse into one.
+  it('never calls an absent, empty or unreadable version old', () => {
+    expect(isOlderSetupVersion(null)).toBe(false);
+    expect(isOlderSetupVersion('')).toBe(false);
+    expect(isOlderSetupVersion('next')).toBe(false);
+    expect(isOlderSetupVersion('3.1')).toBe(false);
+  });
+});
+
+describe('an install record from an older setup collection', () => {
+  it('stays set up, carries olderSetup, and offers the upgrade once', () => {
+    const status = derive(absent, { installRecord: installedAt('3.0.3') });
+    expect(status.state).toBe('set-up');
+    expect(status.olderSetup).toEqual({
+      recordedVersion: '3.0.3',
+      minimumVersion: '3.2.0',
+      upgradeGuideUrl: SETUP_UPGRADE_GUIDE_URL,
+    });
+    expect(status.offerPending).toBe(true);
+    expect(status.dismissed).toBe(false);
+  });
+
+  it('Later for this pair hides the offer, and the warning stays on the answer', () => {
+    const status = derive(
+      ok({ ...OBSERVED, lastOfferedAt: '2026-10-18T08:00:00.000Z', lastCheckedAt: null, checked: null }),
+      { installRecord: installedAt('3.1.0') },
+    );
+    expect(status.state).toBe('set-up');
+    expect(status.offerPending).toBe(false);
+    expect(status.dismissed).toBe(true);
+    expect(status.olderSetup?.recordedVersion).toBe('3.1.0');
+  });
+
+  it('a Later recorded for an older pair does not hide it for this one', () => {
+    const status = derive(
+      ok({ ...OLD, lastOfferedAt: '2026-10-01T08:00:00.000Z', lastCheckedAt: null, checked: null }),
+      { installRecord: installedAt('3.1.0') },
+    );
+    expect(status.offerPending).toBe(true);
+    expect(status.dismissed).toBe(false);
+  });
+
+  it('a running check replaces the offer, and the answer still says the setup is older', () => {
+    const status = derive(absent, { installRecord: installedAt('3.0.3'), checkingRunId: 'run-9' });
+    expect(status.state).toBe('checking');
+    expect(status.offerPending).toBe(false);
+    expect(status.dismissed).toBe(false);
+    expect(status.olderSetup?.recordedVersion).toBe('3.0.3');
+  });
+
+  it('a current, absent or unreadable version is unchanged: set up, no warning, no offer', () => {
+    for (const version of ['3.2.0', '3.2.1', null, 'next']) {
+      const status = derive(absent, { installRecord: installedAt(version) });
+      expect(status.state, String(version)).toBe('set-up');
+      expect(status.olderSetup, String(version)).toBeNull();
+      expect(status.offerPending, String(version)).toBe(false);
+      expect(status.dismissed, String(version)).toBe(false);
+    }
+  });
+
+  it('no install record means no warning, whatever the scratch record says', () => {
+    expect(derive(absent).olderSetup).toBeNull();
+    expect(derive(corrupt).olderSetup).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ABSENT_CLI_SETTINGS } from '@/api/client'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -574,6 +574,8 @@ describe('picker data flows', () => {
     const pill = document.querySelector('[data-slot="variants-pill"]') as HTMLButtonElement
     expect(pill.disabled).toBe(true)
     expect(pill.title).toContain('need a git repository')
+    // …and on screen, because a title never reaches a touch screen.
+    expect(document.querySelector('[data-slot="variants-pill-note"]')?.textContent).toBe('Variants need a git repository')
     expect(document.querySelector('[data-slot="base-pill"]')).toBeNull()
   })
 
@@ -1125,6 +1127,12 @@ describe('submit', () => {
     await waitFor(() =>
       expect((document.querySelector('[data-slot="variants-pill"]') as HTMLElement).textContent).toContain('×2'),
     )
+    // Variants force isolation: the Worktree toggle says why it cannot be unchecked.
+    const worktree = document.querySelector('[data-slot="worktree-toggle"]') as HTMLButtonElement
+    expect(worktree.disabled).toBe(true)
+    expect(document.getElementById(worktree.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      'Worktree always on with variants',
+    )
 
     fireEvent.change(textarea(), { target: { value: 'Race two attempts' } })
     await startTask()
@@ -1153,11 +1161,15 @@ describe('submit', () => {
     const modelPill = document.querySelector('[data-slot="model-pill"]') as HTMLElement
     expect(modelPill.textContent).toContain('native-sonnet')
     expect(modelPill.textContent).not.toContain('opus')
+    // Why it cannot be changed, as visible text tied to the pill.
+    const note = document.querySelector('[data-slot="model-pill-note"]') as HTMLElement
+    expect(note.textContent).toBe('Model set by the agent’s own settings')
+    expect(modelPill.getAttribute('aria-describedby')).toBe(note.id)
     expect(modelPill.tagName).toBe('SPAN')
     expect(modelPill.querySelector('svg')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Model:/u })).toBeNull()
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Runner' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Runner:/u }))
     const runnerOptions = await screen.findAllByRole('menuitemradio')
     fireEvent.click(runnerOptions.find((option) => option.textContent?.includes('Codex')) as HTMLElement)
     await waitFor(() => expect(modelPill.textContent).toContain('gpt-5.6-codex'))
@@ -1368,7 +1380,7 @@ describe('drafts and prefill', () => {
     first.unmount()
 
     renderNewTask('/new?skill=deploy&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fissues%2F5&auto=1&key=whatever')
-    // auto=1 with the WRONG key resolves to the blocked/prefill path — never a run.
+    // auto=1 only fills (owner decision 2026-10-19) — never a run.
     await pillReady('deploy')
     expect(textarea().value).toBe('https://github.com/o/r/issues/5')
     expect(requests.some((r) => r.method === 'POST' && r.url === '/api/v1/runs')).toBe(false)
@@ -1424,187 +1436,24 @@ describe('drafts and prefill', () => {
   })
 })
 
-// ---- bookmarklet auto-start (spec 011, Step 1.3 — legacy handleDeepLink parity) -----------------
+// ---- bookmarklet deep links (spec 011; fill-only since the owner decision of 2026-10-19) --------
 
-describe('bookmarklet auto-start', () => {
+describe('bookmarklet deep links fill the form and never start a task', () => {
   const runsPosted = () => requests.filter((r) => r.method === 'POST' && r.url === '/api/v1/runs')
   const keyFetched = () => requests.some((r) => r.method === 'GET' && r.url === '/api/v1/launch-key')
+  const FILLED = 'The link filled in the form — press Start to begin'
 
-  it('waits for provider status before a valid signed bookmarklet starts', async () => {
-    let release!: (response: Response) => void
-    serve({
-      providerStatus: () =>
-        new Promise<Response>((resolve) => {
-          release = resolve
-        }),
-    })
-    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-
-    await waitFor(() =>
-      expect(requests.some((request) => request.url === '/api/v1/providers/status')).toBe(true),
-    )
-    expect(keyFetched()).toBe(false)
-    expect(runsPosted()).toHaveLength(0)
-
-    release(
-      new Response(JSON.stringify(PROVIDERS_CONNECTED), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    )
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted()).toHaveLength(1)
-  })
-
-  it('waits for project config, then keeps an untouched project-default runner implicit', async () => {
-    const delayedConfig = deferredJson<ConfigResponse>()
-    const delayedProviders = deferredJson<ProviderStatusResponse>()
-    serve({
-      health: { ...HEALTH, defaultRunner: 'codex' },
-      config: delayedConfig.fetch,
-      providerStatus: delayedProviders.fetch,
-    })
-    const { client } = renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-
-    await waitFor(() => {
-      expect(requests.some((request) => request.url === '/api/v1/config')).toBe(true)
-      expect(requests.some((request) => request.url === '/api/v1/providers/status')).toBe(true)
-    })
-    await act(async () => {
-      delayedProviders.release(PROVIDERS_CONNECTED)
-      await Promise.resolve()
-    })
-    await waitFor(() =>
-      expect(client.getQueryState(workspaceQueryKeys.providerStatus)?.status).toBe('success'),
-    )
-    expect(keyFetched()).toBe(false)
-    expect(runsPosted()).toHaveLength(0)
-
-    delayedConfig.release(CONFIG)
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((request) => request.body)).toEqual([
-      {
-        task: 'hello',
-        steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
-      },
-    ])
-  })
-
-  it('waits for project config and sends a connected fallback when that default is unavailable', async () => {
-    const delayedConfig = deferredJson<ConfigResponse>()
-    const delayedProviders = deferredJson<ProviderStatusResponse>()
-    serve({ config: delayedConfig.fetch, providerStatus: delayedProviders.fetch })
-    const { client } = renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-
-    await waitFor(() => {
-      expect(requests.some((request) => request.url === '/api/v1/config')).toBe(true)
-      expect(requests.some((request) => request.url === '/api/v1/providers/status')).toBe(true)
-    })
-    await act(async () => {
-      delayedProviders.release(PROVIDERS_CONNECTED)
-      await Promise.resolve()
-    })
-    await waitFor(() =>
-      expect(client.getQueryState(workspaceQueryKeys.providerStatus)?.status).toBe('success'),
-    )
-    expect(keyFetched()).toBe(false)
-    expect(runsPosted()).toHaveLength(0)
-
-    delayedConfig.release({ ...CONFIG, defaultRunner: 'codex' })
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((request) => request.body)).toEqual([
-      {
-        task: 'hello',
-        steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
-        runner: 'claude',
-      },
-    ])
-  })
-
-  it('valid key + auto=1 + skill/ref → starts unattended with the exact legacy body, then the thread', async () => {
+  it('an old one-click link (auto=1 + the REAL key) only fills: hint, focus on Start, no run', async () => {
     serve()
     renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-
-    expect(keyFetched()).toBe(true)
-    // The body pin: Step 1.1's skill-source shape, nothing else on the wire — no model, no
-    // runner, no variants (legacy's bookmarklet start never sent them either).
-    expect(runsPosted().map((r) => r.body)).toEqual([
-      { task: 'hello', steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }] },
-    ])
-    expect(location()).toBe('/tasks/r1')
-    // Unattended starts do not rewrite the sticky lastTask (legacy parity).
-    expect(requests.some((r) => r.method === 'PUT' && r.url === '/api/v1/ui-state')).toBe(false)
-  })
-
-  it('uses an explicit connected fallback when the saved server default is disconnected', async () => {
-    serve({
-      providerStatus: {
-        providers: [
-          { provider: 'claude', status: 'disconnected', enabled: true },
-          { provider: 'codex', status: 'connected', enabled: true },
-          { provider: 'qwen', status: 'not-installed', enabled: true },
-        ],
-      },
-    })
-    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-
-    expect(runsPosted().map((request) => request.body)).toEqual([
-      {
-        task: 'hello',
-        steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
-        runner: 'codex',
-      },
-    ])
-  })
-
-  it('keeps the prefilled composer disabled and does not POST when none are connected', async () => {
-    serve({ providerStatus: PROVIDERS_NONE })
-    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-
-    await waitFor(() =>
-      expect(textarea().placeholder).toBe('Connect an agent provider before starting a task.'),
-    )
-    expect(textarea().value).toBe('hello')
-    expect(runsPosted()).toHaveLength(0)
-    expect(screen.getByRole('link', { name: 'Configure providers' })).toBeTruthy()
-  })
-
-  it('ref only (no skill) + valid key → quick-task, exactly like legacy', async () => {
-    serve()
-    renderNewTask('/new?ref=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((r) => r.body)).toEqual([{ task: 'hello', workflow: 'quick-task' }])
-  })
-
-  it('the legacy `task` alias for ref still auto-starts', async () => {
-    serve()
-    renderNewTask('/new?task=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((r) => r.body)).toEqual([{ task: 'hello', workflow: 'quick-task' }])
-  })
-
-  it('an unknown skill with a valid key STILL starts (legacy never validated it client-side)', async () => {
-    // The server notes `skill "…" not found — running with the plain prompt` and runs anyway
-    // (src/workflows/run.ts); blocking here would break saved bookmarklets legacy honored.
-    serve()
-    renderNewTask('/new?skill=ghost&ref=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((r) => r.body)).toEqual([
-      { task: 'hello', steps: [{ id: 'task', name: 'ghost', skill: 'ghost', prompt: '{{task}}' }] },
-    ])
-  })
-
-  it('wrong key + auto=1 → blocked: prefill, a toast, focus on Start, no run, key never rendered', async () => {
-    serve()
-    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=wrong')
     await pillReady('deploy')
-    await screen.findByText('Auto-start blocked (bad key) — review and press Start')
+    await screen.findByText(FILLED)
 
-    expect(keyFetched()).toBe(true)
-    expect(runsPosted()).toHaveLength(0)
     expect(textarea().value).toBe('hello')
+    expect(document.querySelector('[data-slot="auto-starting"]')).toBeNull()
+    expect(runsPosted()).toHaveLength(0)
+    expect(keyFetched()).toBe(false)
+    expect(location()).toBe('/new')
     expect(document.body.textContent).not.toContain('k-real')
     // Legacy focused the Run button so a bare Enter submits the reviewed form.
     await waitFor(() =>
@@ -1612,56 +1461,78 @@ describe('bookmarklet auto-start', () => {
     )
   })
 
-  it('missing key + auto=1 → the same blocked path', async () => {
+  it('the press on Start is what starts it, with the same body the link used to send', async () => {
     serve()
+    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
+    await pillReady('deploy')
+    await screen.findByText(FILLED)
+    expect(runsPosted()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start task' }))
+    await waitFor(() => expect(runsPosted()).toHaveLength(1))
+    expect(runsPosted()[0]?.body).toMatchObject({
+      task: 'hello',
+      steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
+    })
+  })
+
+  it('ref only and the legacy `task` alias fill quick-task with auto=1 too — no run', async () => {
+    serve()
+    const first = renderNewTask('/new?ref=hello&auto=1&key=k-real')
+    await pillReady()
+    await screen.findByText(FILLED)
+    expect(textarea().value).toBe('hello')
+    first.unmount()
+
+    renderNewTask('/new?task=again&auto=1&key=k-real')
+    await waitFor(() => expect(textarea().value).toBe('again'))
+    expect(runsPosted()).toHaveLength(0)
+  })
+
+  it('a wrong or missing key with auto=1 is no error — the same fill and hint', async () => {
+    serve()
+    const first = renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=wrong')
+    await pillReady('deploy')
+    await screen.findByText(FILLED)
+    first.unmount()
+
     renderNewTask('/new?skill=deploy&ref=hello&auto=1')
     await pillReady('deploy')
-    await screen.findByText('Auto-start blocked (bad key) — review and press Start')
-    expect(runsPosted()).toHaveLength(0)
     expect(textarea().value).toBe('hello')
+    expect(screen.queryByText(/Auto-start/)).toBeNull()
+    expect(runsPosted()).toHaveLength(0)
   })
 
-  it('valid key WITHOUT auto=1 → prefill + toast, the key is not even fetched', async () => {
-    serve()
-    renderNewTask('/new?skill=deploy&ref=hello&key=k-real')
-    await pillReady('deploy')
-    await screen.findByText('Prefilled from link — review and press Start')
-    expect(keyFetched()).toBe(false)
-    expect(runsPosted()).toHaveLength(0)
-    expect(textarea().value).toBe('hello')
-    expect(document.body.textContent).not.toContain('k-real')
-  })
-
-  it('the generic launcher link (auto=0&key=&ref=, no skill) prefills — never starts', async () => {
-    // Exactly what legacy `bookmarkletUrl('', false, key)` emits: auto=0 still carries the key.
+  it('the generic launcher link (auto=0&key=&ref=, no skill) fills — never starts', async () => {
     serve()
     renderNewTask('/new?auto=0&key=k-real&ref=hello')
     await pillReady()
-    await screen.findByText('Prefilled from link — review and press Start')
+    await screen.findByText(FILLED)
     expect(textarea().value).toBe('hello')
     expect(runsPosted()).toHaveLength(0)
     expect(keyFetched()).toBe(false)
   })
 
-  it('an unknown skill on the prefill path → honest toast + the legacy quick-task embedding', async () => {
+  it('an unknown skill, even with auto=1 and the real key → honest hint + the legacy quick-task embedding', async () => {
     serve()
-    renderNewTask('/new?skill=ghost&ref=hello')
-    await screen.findByText('Unknown skill "ghost" — prefilled for quick-task; review and press Start')
-    // Legacy initFromQuery verbatim: the intent goes into the text, quick-task resolves it.
+    renderNewTask('/new?skill=ghost&ref=hello&auto=1&key=k-real')
+    await screen.findByText(
+      'Unknown skill "ghost" — the link filled in the form for quick-task; press Start to begin',
+    )
     expect(textarea().value).toBe('Use the "ghost" skill on: hello')
-    // "quick-task" IS the empty picker now — the prefill lands on it by picking nothing.
     await pillReady()
     expect(sourcePill().getAttribute('data-source-kind')).toBe('none')
     expect(runsPosted()).toHaveLength(0)
   })
 
-  it('a failed unattended POST falls back to the prefilled composer with the reason', async () => {
-    serve({ createRun: { error: 'boom' }, createRunStatus: 500 })
+  it('keeps the filled composer disabled when no provider is connected', async () => {
+    serve({ providerStatus: PROVIDERS_NONE })
     renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-    await screen.findByText('Auto-start failed: boom — review and press Start')
-    expect(runsPosted()).toHaveLength(1)
+    await waitFor(() =>
+      expect(textarea().placeholder).toBe('Connect an agent provider before starting a task.'),
+    )
     expect(textarea().value).toBe('hello')
-    expect(location()).toBe('/new')
+    expect(runsPosted()).toHaveLength(0)
   })
 
   it('cleans the sensitive params from the URL immediately (legacy history.replaceState)', async () => {
@@ -1726,9 +1597,14 @@ describe('the Start | Plan first toggle', () => {
 
     // Off plan mode the toggle is interactive.
     expect(autonomous().disabled).toBe(false)
+    expect(document.querySelector('[data-slot="toggle-note"]')).toBeNull()
     fireEvent.click(planToggle())
     expect(autonomous().disabled).toBe(true)
     expect(autonomous().getAttribute('aria-checked')).toBe('false')
+    // The reason is on screen (a title never reaches a touch screen) and describes the toggle.
+    const noteId = autonomous().getAttribute('aria-describedby')
+    expect(noteId).not.toBeNull()
+    expect(document.getElementById(noteId!)?.textContent).toBe('Autonomous unavailable with Plan first')
   })
 
   it('persists in the draft store across unmount/remount', async () => {
@@ -2288,7 +2164,7 @@ describe('the composer runner pill carries the account', () => {
     await pickFrom(runnerPill()!, 'codex')
 
     // Codex has no second login, so the account group goes away and the pill is a runner again…
-    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('codex'))
+    await waitFor(() => expect(runnerPill()?.textContent?.trim()).toBe('Runner: codex'))
     fireEvent.change(textarea(), { target: { value: 'do the thing' } })
     await startTask()
     // …and nothing account-shaped reaches the wire.

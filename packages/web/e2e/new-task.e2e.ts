@@ -404,55 +404,44 @@ describe('the full-screen /new against a live dry-run server', () => {
   })
 })
 
-describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () => {
+describe('the bookmarklet contract on full /new loads (spec 011; fill-only since 2026-10-19)', () => {
   const runCount = async (): Promise<number> =>
     (await getJson<unknown[]>(`${baseUrl}/api/v1/runs`)).length
 
-  it('auto=1 with the REAL launch key starts a run unattended and lands in its thread', async () => {
-    // The documented on-disk contract: the server bakes this secret into the bookmarklets it
-    // generates; only a page holding it may start runs. Read it exactly where users can.
+  it('an old one-click link (auto=1 + the REAL launch key) only fills the form — no run', async () => {
+    // Owner decision 2026-10-19: a link never starts a task; the user presses Start. Bookmarklets
+    // saved before that still carry the real key, so drive exactly that link.
     const key = readFileSync(join(dataRoot, '.local/xezar/launch-key'), 'utf8').trim()
     expect(key).not.toBe('')
     const before = await runCount()
 
-    browser.goto(
-      `${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=${encodeURIComponent(key)}`,
-    )
-    // Unattended: no clicks from here — the cockpit takes us to the thread by itself.
-    browser.waitForFunction(`location.pathname.startsWith('${scoped('/tasks/')}')`)
-
-    const runId = (browser.evaluate(`location.pathname.split('/').pop()`) as string) ?? ''
-    const record = await getJson<{
-      task: string
-      workflowDef?: { steps?: Array<Record<string, unknown>> }
-    }>(`${baseUrl}/api/v1/runs/${runId}`)
-    expect(record.task).toBe('hello')
-    expect(record.workflowDef?.steps).toEqual([
-      expect.objectContaining({ id: 'task', name: 'lint-fix', skill: 'lint-fix', prompt: '{{task}}' }),
-    ])
-    expect(await runCount()).toBe(before + 1)
-  }, 90_000)
-
-  it('a wrong key only prefills — the composer, a toast, and NOT one run more', async () => {
-    const before = await runCount()
-
-    browser.goto(`${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=definitely-wrong`)
+    browser.goto(`${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=${encodeURIComponent(key)}`)
     browser.waitForFunction(`document.querySelector('[data-route="new"] [data-slot="composer"]') !== null`)
 
-    // Prefilled, blocked, and honest about it.
     expect(browser.evaluate(`document.querySelector('[data-slot="composer"] textarea').value`)).toBe('hello')
     browser.waitForFunction(
       `document.querySelector('[data-slot="source-pill"]')?.textContent.includes('lint-fix')`,
     )
     browser.waitForFunction(`document.querySelector('[data-slot="toast"]') !== null`)
-    expect(browser.text('[data-slot="toast"]')).toContain('Auto-start blocked')
-    browser.screenshot(`${artifactsDir}/new-task-bookmarklet-blocked.png`)
+    expect(browser.text('[data-slot="toast"]')).toContain('press Start to begin')
+    browser.screenshot(`${artifactsDir}/new-task-bookmarklet-filled.png`)
 
-    // The key (right or wrong) never survives in the URL, and no run started.
+    // The key never survives in the URL, the legacy flat `/new?…` landed on its scoped twin,
+    // and no run started.
     browser.waitForFunction(`location.search === ''`)
-    // The legacy flat `/new?…` the bookmarklet grammar guarantees landed on the scoped twin —
-    // the redirect the backward-compatibility promise's bookmarklet contract now rests on.
     expect(browser.url()).toBe(`${baseUrl}${scoped('/new')}`)
+    expect(await runCount()).toBe(before)
+  }, 90_000)
+
+  it('a wrong key is no error either — the same fill, and NOT one run more', async () => {
+    const before = await runCount()
+
+    browser.goto(`${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=definitely-wrong`)
+    browser.waitForFunction(`document.querySelector('[data-route="new"] [data-slot="composer"]') !== null`)
+    expect(browser.evaluate(`document.querySelector('[data-slot="composer"] textarea').value`)).toBe('hello')
+    browser.waitForFunction(`document.querySelector('[data-slot="toast"]') !== null`)
+    expect(browser.text('[data-slot="toast"]')).toContain('press Start to begin')
+    browser.waitForFunction(`location.search === ''`)
     expect(await runCount()).toBe(before)
   }, 90_000)
 

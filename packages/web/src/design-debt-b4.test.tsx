@@ -105,7 +105,7 @@ describe('A-03 pins and chips are 44 px phone targets, separate from the 24 px c
       expect(tokens, token).toContain(token)
     }
     render(<PickerPill slot="model-pill" ariaLabel="Model" label="opus" value="opus" options={[{ value: 'opus', label: 'opus' }]} onPick={() => {}} />)
-    expect(classes(screen.getByRole('button', { name: 'Model' }))).toEqual(expect.arrayContaining(tokens))
+    expect(classes(screen.getByRole('button', { name: /^Model:/u }))).toEqual(expect.arrayContaining(tokens))
   })
 
   it('a link reference chip keeps its 24 px look and owns a 44 px phone hit area', () => {

@@ -42,54 +42,38 @@ export const repoRoot = fileURLToPath(new URL('../../../', import.meta.url))
 export const STRYKER_CONFIG = 'packages/xezar/stryker.config.mjs'
 
 /**
- * Nine shards. Six was the original estimate; eight is what #443's first fix moved to — measured
- * against real cost on the very next scheduled run, eight was still not enough on its own.
- *
- * WHAT CHANGED (2026-09-17, run 35175010173 on `fdd5b4e`). PRs #533/#539/#541/#542 added many
- * broad "fragile MCP–leader" tests that each exercise several MCP modules together (event
- * journal, leader delivery, the event controller, the bridge). Under `coverageAnalysis: 'perTest'`
- * a mutant's cost is the number of tests Stryker must rerun to check it — `coveredBy.length` in
- * its own JSON report — and those broad tests attached themselves to nearly every file in the
- * scope, not just the ones with new test files of their own: `event-controller.ts` went from a
- * measured 32 003 covering-test-mutant pairs the previous complete night to 178 734 (5.6×) with
- * not one line of `event-controller.ts` or its own test file touched. Byte size — what shards were
- * balanced on — never moved, so the balancer kept shipping the old, now-wrong split: shard 6 was
- * still running when the workflow's 300-minute ceiling cancelled it (07:36:06Z), and two more
- * shards passed 4 hours. See `docs/testing/coverage-gaps.md` § 10.8 for the full measurement.
- *
- * WHAT CHANGED AGAIN (2026-09-17, run 35199363744, the eight-shard proof itself). Two of the seven
- * `estimatedPaths` files (carried-over, never re-measured) turned out to still be badly
- * under-counted: the shard holding `bridge.ts` alongside ~128k of otherwise-ordinary weight ran
- * 4h54m, against ~1h49m–2h55m for every shard with no `estimatedPaths` file in it, and the shard
- * holding `tools/task-create.ts` was still running when the 300-minute ceiling cancelled it. Both
- * are now weighted high enough (see `docs/testing/mcp-mutation-shard-weights.json`'s
- * `estimatedPaths` note) that `planShards`'s own heaviest-first packing puts each alone in its own
- * shard — the same mechanism that already isolates `event-controller.ts` — rather than by any
- * shard-pinning logic added here.
- *
- * THE FIX HAS TWO PARTS AGAIN, because either alone measured short: nine shards instead of eight,
- * and corrected weights for the two worst-offending `estimatedPaths` files plus smaller corrections
- * for the other five, all still back-calculated from the eight-shard run's own wall-clock time
- * (§ 10.8) rather than a real `coveredBy` sum, because neither `bridge.ts`'s nor `task-create.ts`'s
- * shard produced a report to sum from. `loadWeights` below is unchanged: it packs by MEASURED
- * per-file cost when the snapshot has an entry for a file, falling back to byte size only for a
- * file the snapshot has never seen (a genuinely new module). The resulting nine-shard split's
- * heaviest shard is `tools/task-create.ts` alone, an estimated 300 000 weight units — comfortably
- * under the ~482 000 units this run's own timing implies as twice the fair share, and every other
- * shard sits at roughly 227 000–228 000, well inside it too. More shards would shorten each job and
- * add one `npm ci` apiece; fewer would eat the headroom this incident showed is required.
+ * How many minutes of mutation testing one shard may be planned to hold. The weights below are
+ * measured CI minutes, so this is a wall-clock budget, and it is deliberately well under the
+ * mutants job's 300-minute ceiling in `.github/workflows/mutation.yml`
+ * (`src/mutation-shards.test.ts` pins the ratio): the same file measured up to half as slow again
+ * on another night's runner (`docs/testing/coverage-gaps.md` § 10.8, third incident), the
+ * snapshot is refreshed by hand and goes stale as tests grow, and each job also spends about six
+ * minutes on `npm ci`, instrumenting and the dry run.
  */
-export const DEFAULT_SHARDS = 9
+export const SHARD_BUDGET_MINUTES = 120
+
+/**
+ * The most shards the planner will ask for. A public repository's standard runners are free, but
+ * every shard is one more concurrent job and one more `npm ci`; reaching this cap is a reason to
+ * make the slowest tests cheaper, not to add jobs.
+ */
+export const MAX_SHARDS = 24
+
+/**
+ * The shard count when there is no snapshot to plan in minutes: a byte-size plan cannot be held to
+ * a minute budget, so it falls back to the count the last measured plan needed.
+ */
+export const FALLBACK_SHARDS = 18
 
 /** The committed, periodically-refreshed measured-cost snapshot `loadWeights` reads. */
 export const WEIGHTS_FILE = 'docs/testing/mcp-mutation-shard-weights.json'
 
 /**
- * Real per-file cost from the most recent snapshot, or `null` if none exists or it does not parse
- * — never a thrown error, because a missing or stale snapshot must degrade to the byte-size
- * balance this file used before it existed, not fail the plan. A file the snapshot has no entry
- * for (new since the snapshot was taken) is simply absent from the returned map; `planShards`
- * falls back to that file's own byte size, one file at a time.
+ * Measured per-file cost, in CI minutes, from the committed snapshot, or `null` if none exists or
+ * it does not parse — never a thrown error, because a missing or stale snapshot must degrade to the
+ * byte-size balance this file used before it existed, not fail the plan. A file the snapshot has no
+ * entry for (new since the snapshot was taken) is simply absent from the returned map;
+ * `planShards` gives it an estimate in the same unit (`fallbackWeights`).
  * @param {string} [root]
  * @returns {Map<string, number> | null}
  */
@@ -97,11 +81,36 @@ export function loadWeights(root = repoRoot) {
   try {
     const raw = JSON.parse(readFileSync(join(root, WEIGHTS_FILE), 'utf8'))
     if (!raw || typeof raw !== 'object' || !raw.weights || typeof raw.weights !== 'object') return null
-    const entries = Object.entries(raw.weights).filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+    const entries = Object.entries(raw.weights).filter(([, value]) => typeof value === 'number' && Number.isFinite(value) && value >= 0)
     return entries.length > 0 ? new Map(entries) : null
   } catch {
     return null
   }
+}
+
+/**
+ * Every scope file's packing weight, in ONE unit. A file the snapshot measured keeps its minutes; a
+ * file it never saw gets its byte size times the scope's own minutes-per-byte, taken over the files
+ * the snapshot did measure. Mixing raw bytes into a minute snapshot — what the planner did until
+ * #443's third incident — weighed a new 20 kB file like twenty thousand minutes or, the other way
+ * round, a minute snapshot like nothing at all; the scaled estimate is crude, but it is crude in
+ * the right unit. With no usable snapshot every file weighs its byte size, the pre-#443 balance.
+ * @param {{ path: string, size: number }[]} files
+ * @param {Map<string, number> | null} weights
+ * @returns {Map<string, number>}
+ */
+export function fallbackWeights(files, weights) {
+  const measured = weights ? files.filter((file) => weights.has(file.path)) : []
+  const measuredBytes = measured.reduce((sum, file) => sum + file.size, 0)
+  const measuredWeight = measured.reduce((sum, file) => sum + /** @type {number} */ (weights?.get(file.path)), 0)
+  const perByte = measuredBytes > 0 && measuredWeight > 0 ? measuredWeight / measuredBytes : null
+  return new Map(
+    files.map((file) => {
+      const known = weights?.get(file.path)
+      if (known !== undefined) return [file.path, known]
+      return [file.path, perByte === null ? file.size : file.size * perByte]
+    }),
+  )
 }
 
 /**
@@ -223,11 +232,10 @@ export function scopeFiles(globs, root = repoRoot) {
  * Assign every scope file to one of `count` shards, heaviest weight first into the lightest shard
  * so far. Deterministic: same input, same plan, on any machine.
  *
- * The packing weight is `weights.get(file.path)` when the snapshot has an entry for that file,
- * byte size otherwise. Byte size alone used to be the whole story; it is still the only signal
- * available for a file the snapshot has never measured, and `bytes` below is always the real byte
- * total regardless of which weight balanced the split. It only has to be roughly right — the
- * aggregate is correct whatever the split, an unlucky split only costs wall clock.
+ * The packing weight is `fallbackWeights`' — measured minutes, or a same-unit estimate for a file
+ * the snapshot has never measured — and `bytes` below is always the real byte total regardless of
+ * which weight balanced the split. It only has to be roughly right: the aggregate is correct
+ * whatever the split, and an unlucky split only costs wall clock.
  *
  * @param {{ path: string, size: number }[]} files
  * @param {number} count
@@ -235,7 +243,7 @@ export function scopeFiles(globs, root = repoRoot) {
  *   "balance on byte size alone", the pre-#443 behaviour.
  * @returns {{ index: number, files: string[], bytes: number, weight: number }[]}
  */
-export function planShards(files, count = DEFAULT_SHARDS, weights = null) {
+export function planShards(files, count, weights = null) {
   if (!Number.isInteger(count) || count < 1) {
     throw new Error(`shard count must be a positive integer, got ${count}`)
   }
@@ -252,7 +260,8 @@ export function planShards(files, count = DEFAULT_SHARDS, weights = null) {
     throw new Error(`a mutated path may not contain a comma (\`--mutate\` splits on it): ${unusable.map((f) => f.path).join(' ')}`)
   }
 
-  const weighted = files.map((file) => ({ ...file, weight: weights?.get(file.path) ?? file.size }))
+  const weightOf = fallbackWeights(files, weights)
+  const weighted = files.map((file) => ({ ...file, weight: /** @type {number} */ (weightOf.get(file.path)) }))
   const shards = Array.from({ length: count }, (_, i) => ({ index: i + 1, files: /** @type {string[]} */ ([]), bytes: 0, weight: 0 }))
   const heaviestFirst = [...weighted].sort((a, b) => b.weight - a.weight || (a.path < b.path ? -1 : 1))
   for (const file of heaviestFirst) {
@@ -267,17 +276,52 @@ export function planShards(files, count = DEFAULT_SHARDS, weights = null) {
 }
 
 /**
+ * Whether a plan keeps every shard inside `budget` minutes. A shard holding ONE file is exempt: a
+ * file cannot be split across jobs without losing the mutants that straddle the cut (Stryker keeps
+ * a mutant only when a `--mutate` range contains it whole), so the slowest file is the floor no
+ * shard count can go below — `src/mutation-shards.test.ts` holds that file to the job ceiling.
+ * @param {{ files: string[], weight: number }[]} shards
+ * @param {number} [budget]
+ */
+export function withinBudget(shards, budget = SHARD_BUDGET_MINUTES) {
+  return shards.every((shard) => shard.files.length === 1 || shard.weight <= budget)
+}
+
+/**
+ * The fewest shards that keep every multi-file shard inside `SHARD_BUDGET_MINUTES`, never more than
+ * `MAX_SHARDS` or the number of files. Derived, not configured: the scope and the measured minutes
+ * decide it, so a refreshed snapshot or a new file moves the count with no edit anywhere — a fixed
+ * count is what let 9 shards carry about 35 runner-hours (#443, third incident). With no snapshot
+ * there are no minutes to budget, and the count is `FALLBACK_SHARDS`.
+ * @param {{ path: string, size: number }[]} files
+ * @param {Map<string, number> | null} weights
+ * @returns {number}
+ */
+export function shardCount(files, weights) {
+  if (files.length === 0) return 1
+  const ceiling = Math.min(MAX_SHARDS, files.length)
+  if (!weights) return Math.min(FALLBACK_SHARDS, ceiling)
+  const total = [...fallbackWeights(files, weights).values()].reduce((sum, weight) => sum + weight, 0)
+  for (let count = Math.max(1, Math.ceil(total / SHARD_BUDGET_MINUTES)); count < ceiling; count += 1) {
+    if (withinBudget(planShards(files, count, weights))) return count
+  }
+  return ceiling
+}
+
+/**
  * The whole plan, ready for a GitHub Actions matrix. Reads `loadWeights(root)` itself so that the
  * `plan` job (building the matrix) and the `report` job (re-deriving the same plan to check
- * nothing is missing, in `aggregate.mjs`) always balance on the same committed snapshot — never
- * two different weight sources agreeing on shard COUNT but disagreeing on shard CONTENTS.
- * @param {number} [count]
+ * nothing is missing, in `aggregate.mjs`) always balance on the same committed snapshot and
+ * derive the same count — never two different weight sources agreeing on shard COUNT but
+ * disagreeing on shard CONTENTS.
+ * @param {number} [count] omitted: `shardCount`'s answer. Given: that many shards, for a hand run.
  * @param {string} [root]
  */
-export async function mutationShardPlan(count = DEFAULT_SHARDS, root = repoRoot) {
+export async function mutationShardPlan(count = undefined, root = repoRoot) {
   const globs = await mutateGlobs(root)
   const files = scopeFiles(globs, root)
-  return { globs, files, shards: planShards(files, count, loadWeights(root)) }
+  const weights = loadWeights(root)
+  return { globs, files, shards: planShards(files, count ?? shardCount(files, weights), weights) }
 }
 
 // CLI wiring. Everything it prints comes from the exported functions above, which is where the
@@ -285,8 +329,7 @@ export async function mutationShardPlan(count = DEFAULT_SHARDS, root = repoRoot)
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2)
   const countArg = args.indexOf('--shards')
-  const count = countArg === -1 ? DEFAULT_SHARDS : Number(args[countArg + 1])
-  const plan = await mutationShardPlan(count)
+  const plan = await mutationShardPlan(countArg === -1 ? undefined : Number(args[countArg + 1]))
 
   if (args.includes('--matrix')) {
     // `include:` entries for the matrix. `mutate` is what `--mutate` receives verbatim.
@@ -298,9 +341,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else {
     const total = plan.files.reduce((sum, f) => sum + f.size, 0)
     const weighted = loadWeights() !== null
-    process.stdout.write(`${plan.files.length} files, ${total} bytes, ${plan.shards.length} shards, balanced on ${weighted ? 'measured cost' : 'byte size'}\n`)
+    const unit = weighted ? 'min' : 'bytes'
+    process.stdout.write(
+      `${plan.files.length} files, ${total} bytes, ${plan.shards.length} shards, balanced on ${weighted ? `measured CI minutes (budget ${SHARD_BUDGET_MINUTES} min a shard)` : 'byte size'}\n`,
+    )
     for (const shard of plan.shards) {
-      process.stdout.write(`  shard ${shard.index}: ${shard.files.length} files, ${shard.bytes} bytes, weight ${shard.weight}\n`)
+      process.stdout.write(`  shard ${shard.index}: ${shard.files.length} files, ${shard.bytes} bytes, ${Math.round(shard.weight)} ${unit}\n`)
       for (const file of shard.files) process.stdout.write(`    ${file}\n`)
     }
   }

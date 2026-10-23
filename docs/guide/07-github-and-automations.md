@@ -28,7 +28,7 @@ Open a project with a **github.com** remote. GitHub Enterprise hosts do not enab
 3. Add the result you want to the instructions box, which starts with the item reference; xezar re-attaches that reference if you delete it. You can insert a [prompt template](08-inbox-notifications-templates.md#to-reuse-prompt-templates).
 4. Choose **Run agent on this issue** or **Run agent on this PR**, or press **⌘Enter / Ctrl+Enter**. Enter alone adds a line to the instructions.
 
-A selected workflow determines the steps; without one, selected skills become one step each, capped at eight, or xezar uses `quick-task` if none are selected. If the provider is unavailable, follow **Configure providers** before starting. See [Tasks and runs](02-tasks-and-runs.md) and [Workflows](05-workflows.md).
+A selected workflow determines the steps; without one, selected skills become one step each, capped at twelve, or xezar uses `quick-task` if none are selected. If the provider is unavailable, follow **Configure providers** before starting. See [Tasks and runs](02-tasks-and-runs.md) and [Workflows](05-workflows.md).
 
 Open the task's **Changes** view and choose **Create PR**. If the optional review gate is on and the task is at `review`, its review panel instead offers **Draft PR**. Both save the final changes, push the branch to `origin`, and create a draft targeting the task's base branch. **Create PR** is disabled while the task is active or GitHub is unavailable; publication requires a worktree and branch, so a task run with Worktree off is refused. Success marks the task **done**. Resolve any reported commit, push, or authentication error before trying again. Creating a draft does not merge it.
 
@@ -52,13 +52,12 @@ The task creates at most one new issue. It does not edit, comment on, relabel, r
 2. Drag **xezar (<repo>): this PR/issue** or a skill button to your browser's bookmarks bar. Use **Copy** to copy its bookmarklet URL.
 3. Keep this cockpit running. On a GitHub issue or PR page, click the saved bookmark.
 
-The generic launcher prefills the composer. Skill launchers can use **One-click launch (auto-submit)**; a valid launch key is required for auto-submit, and an invalid key only prefills the composer. Re-drag the buttons after changing that option. A bookmark points to the cockpit and project that generated it, so create it from the project you intend to use.
+Every launcher fills in the task form, and a short notice says the form was filled. Review the form and press **Start** – a bookmark never starts a task by itself. Bookmarks saved with the old **One-click launch (auto-submit)** option still work the same way: they fill the form and wait for **Start**. A bookmark points to the cockpit and project that generated it, so create it from the project you intend to use.
 
 ## To enable and test an automation
 
-Set this in the environment the running server reads; the flag is read live (since 0.17.0;
-#678), so turning it on starts the poller and opens the routes at the next automations action,
-with no restart. To start a server with automations enabled from the outset:
+Set this in the environment the running server reads; the flag is read live, so turning it on
+starts the poller and opens the routes at the next automations action, with no restart. To start a server with automations enabled from the outset:
 
 ```sh
 XEZ_AUTOMATIONS=1 xezar
@@ -85,9 +84,9 @@ Choose **View log** on the automation. Each record shows its result and time, an
 - **Settings → Agents**: providers, default agent/models, team skills, and base branch.
 - **Settings → Bookmarklets / Prompt templates**: launchers and reusable instructions.
 - `GITHUB_TOKEN`: optional token authentication for GitHub actions through `gh`.
-- `XEZ_AUTOMATIONS=1`: enables automations at server startup; there is no Automations switch in Resources.
+- `XEZ_AUTOMATIONS=1`: enables automations; it is read live from the environment of the running server, and there is no Automations switch in Resources.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
 Next: [Inbox, notifications, and prompt templates](08-inbox-notifications-templates.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

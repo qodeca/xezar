@@ -4,6 +4,7 @@ import { withPlatform } from '../../test/helpers/platform.ts';
 import { aggregateTreeUsage, parsePsOutput } from '../core/process-usage.ts';
 import {
   SPAWN_CLOCK_SLACK_MS,
+  OFF_THREAD_GRACE_MS,
   STOP_CLOCK_SLACK_MS,
   defaultTableRunner,
   descendantPids,
@@ -16,6 +17,7 @@ import {
   parseProcessRows,
   parseWindowsTable,
   readProcessTable,
+  runOffThread,
   signalPid,
   startTimeOf,
   systemPidFloor,
@@ -408,5 +410,38 @@ describe('startTimeOf', () => {
     expect(await startTimeOf(1234, { platform: 'freebsd', readText: async () => STAT })).toBeNull();
     expect(await startTimeOf(1234, { platform: 'win32', readText: async () => STAT })).toBeNull();
     expect(await startTimeOf(-1, { platform: 'linux', readText: async () => STAT })).toBeNull();
+  });
+});
+
+/** A Windows table read runs on a worker; one that never answers must not hold the read forever. */
+describe('runOffThread watchdog', () => {
+  afterEach(() => vi.useRealTimers());
+
+  function silentWorker() {
+    const worker = { once: vi.fn(() => worker), terminate: vi.fn(async () => 0) };
+    return worker;
+  }
+
+  it('ends a worker that never answers, OFF_THREAD_GRACE_MS past the bound, and settles null', async () => {
+    vi.useFakeTimers();
+    const worker = silentWorker();
+    let result: string | null | undefined;
+    void runOffThread('powershell.exe', [], { maxBuffer: 1, timeoutMs: 10_000 }, { createWorker: () => worker }).then((text) => {
+      result = text;
+    });
+    await vi.advanceTimersByTimeAsync(10_000 + OFF_THREAD_GRACE_MS - 1);
+    expect(result).toBeUndefined();
+    expect(worker.terminate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(result).toBeNull();
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets no watchdog for an unbounded read (GUARD)', async () => {
+    vi.useFakeTimers();
+    const worker = silentWorker();
+    void runOffThread('powershell.exe', [], { maxBuffer: 1 }, { createWorker: () => worker });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(worker.terminate).not.toHaveBeenCalled();
   });
 });

@@ -185,6 +185,9 @@ describe('guide 03 — worktrees and Git, a project with no Git repository', () 
   it('hides the Worktree toggle entirely and names the missing repository on the Git tab', async () => {
     browser.goto(`${baseUrl}/p/${bootProject}/new`)
     await browser.waitForRole('button', 'Start task')
+    // Until the repository answer arrives the composer assumes Git and shows the toggle; this
+    // note appears only once the cockpit knows there is no repository.
+    await browser.waitForText('no git repository detected')
     expect(browser.hasRole('checkbox', 'Worktree')).toBe(false)
 
     browser.goto(`${baseUrl}/p/${bootProject}/git`)

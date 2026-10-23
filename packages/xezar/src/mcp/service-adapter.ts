@@ -56,10 +56,16 @@ export interface ServiceDispatch {
 /** Any absolute origin works — the request never leaves the process. The `host` is what the
  *  request-origin guard (#426) checks, and an in-process call genuinely is this machine. No
  *  `Origin` header is sent, which is how every non-browser local caller already reaches the API. */
-const IN_PROCESS_BASE = 'http://127.0.0.1';
-const IN_PROCESS_HOST = '127.0.0.1';
+export const IN_PROCESS_BASE = 'http://127.0.0.1';
+export const IN_PROCESS_HOST = '127.0.0.1';
 
-const buildClient = (service: ServiceDispatch) =>
+/**
+ * The typed in-process client over the service's own chained route table. THE one construction:
+ * every MCP tool that reaches a route the adapter's closed table does not name yet builds its
+ * client here, so the loopback `host`, the absent `Origin` and the no-socket dispatch cannot
+ * drift between tools.
+ */
+export const inProcessClient = (service: ServiceDispatch) =>
   hc<AppType>(IN_PROCESS_BASE, {
     fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
@@ -69,6 +75,46 @@ const buildClient = (service: ServiceDispatch) =>
       return service.request(url, { ...init, headers });
     },
   });
+
+/** One mapped service answer. A refusal keeps the service's own status, message and body. */
+export type ServiceAnswer<T> =
+  | { ok: true; status: number; value: T }
+  | { ok: false; status: number; error: string; body?: unknown };
+
+/**
+ * Map the service's answer onto a result – THE one rule for every MCP tool.
+ *
+ * - A status in `success` with a JSON body is the value.
+ * - A listed `204 No Content` is a success with no value (`undefined`): the routes that answer 204
+ *   (`DELETE /automations/:id`) mean "done, nothing to say", and a 204 never has a body. A caller
+ *   lists 204 only for such a route.
+ * - Any other success status WITHOUT a JSON body is an error (502), not an `undefined` value:
+ *   "the service said nothing" and "the service said []" must never read the same to the leader.
+ * - Every other status is a refusal carrying the service's `{ error }` sentence and its body.
+ */
+export async function settleServiceAnswer<T>(pending: Promise<Response>, success: readonly number[]): Promise<ServiceAnswer<T>> {
+  const res = await pending;
+  const body: unknown = await res.json().catch(() => undefined);
+  if (success.includes(res.status)) {
+    if (res.status === 204) return { ok: true, status: 204, value: undefined as T };
+    if (body === undefined) return { ok: false, status: 502, error: `service answered ${res.status} without a body`, body };
+    return { ok: true, status: res.status, value: body as T };
+  }
+  return { ok: false, status: res.status, error: serviceErrorMessage(body, res.status), body };
+}
+
+/** `settleServiceAnswer` with the origin marker every adapter result carries. */
+export async function settleWithOrigin<T>(pending: Promise<Response>, success: readonly number[]): Promise<McpServiceResult<T>> {
+  return { ...(await settleServiceAnswer<T>(pending, success)), origin: MCP_ORIGIN };
+}
+
+/** The service's own refusal sentence, verbatim, or a status line when the body has none. */
+export function serviceErrorMessage(body: unknown, status: number): string {
+  if (body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string') {
+    return (body as { error: string }).error;
+  }
+  return `service answered ${status}`;
+}
 
 /**
  * Read this project's onboarding state through the cockpit's own route (#464 P2).
@@ -84,7 +130,7 @@ export async function readOnboardingThroughService(
   projectId: string,
 ): Promise<unknown | null> {
   try {
-    const res = await buildClient(service).api.v1.p[':projectId'].onboarding.$get({
+    const res = await inProcessClient(service).api.v1.p[':projectId'].onboarding.$get({
       param: { projectId },
     });
     return res.ok ? ((await res.json()) as unknown) : null;
@@ -93,7 +139,7 @@ export async function readOnboardingThroughService(
   }
 }
 
-type ScopedApi = ReturnType<typeof buildClient>['api']['v1']['p'][':projectId'];
+type ScopedApi = ReturnType<typeof inProcessClient>['api']['v1']['p'][':projectId'];
 type RunsApi = ScopedApi['runs'];
 type RunApi = RunsApi[':id'];
 
@@ -144,7 +190,7 @@ export class McpServiceAdapter {
       throw new McpServiceAdapterError(`not a project id: ${JSON.stringify(projectId)}`);
     }
     this.projectId = projectId;
-    this.api = buildClient(options.service).api.v1.p[':projectId'];
+    this.api = inProcessClient(options.service).api.v1.p[':projectId'];
   }
 
   listRuns(): Promise<McpServiceResult<ListRunsValue>> {
@@ -200,21 +246,9 @@ export class McpServiceAdapter {
     return this.settle<T>(call({ ...this.scope(), id: runId }), success);
   }
 
-  /**
-   * Map the service's answer onto a result. A success status WITHOUT a JSON body is an error,
-   * not an `undefined` value: "the service said nothing" and "the service said []" must never
-   * read the same to the leader.
-   */
-  private async settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<McpServiceResult<T>> {
-    const res = await pending;
-    const body: unknown = await res.json().catch(() => undefined);
-    if (success.includes(res.status)) {
-      if (body === undefined) {
-        return { ok: false, origin: MCP_ORIGIN, status: 502, error: `service answered ${res.status} without a body` };
-      }
-      return { ok: true, origin: MCP_ORIGIN, status: res.status, value: body as T };
-    }
-    return { ok: false, origin: MCP_ORIGIN, status: res.status, error: errorMessage(body, res.status), body };
+  /** `settleWithOrigin`: the one mapping every MCP tool shares. */
+  private settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<McpServiceResult<T>> {
+    return settleWithOrigin<T>(pending, success);
   }
 }
 
@@ -228,11 +262,4 @@ function runIdRefusal(runId: string): string | null {
     return `not a run id: ${JSON.stringify(runId)}`;
   }
   return null;
-}
-
-function errorMessage(body: unknown, status: number): string {
-  if (body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string') {
-    return (body as { error: string }).error;
-  }
-  return `service answered ${status}`;
 }

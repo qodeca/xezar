@@ -1,4 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Markdown } from './markdown'
@@ -256,5 +259,41 @@ describe('Markdown', () => {
       })
       expect(openMock).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('Markdown links in the light theme (WCAG 1.4.3)', () => {
+  const css = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../styles/index.css'), 'utf8')
+  const lightBlock = css.slice(css.indexOf('.light {'), css.indexOf('}', css.indexOf('.light {')))
+  const lightToken = (name: string) => new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i').exec(lightBlock)?.[1]
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+  }
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi! + 0.05) / (lo! + 0.05)
+  }
+
+  it('the selector the light rule targets is what Streamdown puts on a link', async () => {
+    render(<Markdown>{'See [the docs](https://example.com/docs).'}</Markdown>)
+    const link = await waitFor(() => {
+      const el = document.querySelector('[data-streamdown="link"]')
+      if (!el) throw new Error('no link yet')
+      return el
+    })
+    expect(link.className).toContain('underline')
+  })
+
+  it('light links take the ink token, which passes 4.5:1 on the light background', () => {
+    expect(css).toMatch(/\.light \[data-streamdown='link'\]\s*\{\s*color:\s*var\(--foreground\);/)
+    const ink = lightToken('foreground')!
+    const ground = lightToken('background')!
+    expect(contrast(ink, ground)).toBeGreaterThanOrEqual(4.5)
+    // The accent it replaces does not: lime #a8f372 on white is about 1.3:1.
+    expect(contrast('#a8f372', ground)).toBeLessThan(3)
   })
 })

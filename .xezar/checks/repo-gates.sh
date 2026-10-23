@@ -212,13 +212,15 @@ if [ -z "${XEZ_GATE_LEASE:-}" ]; then
     local secs="$1" out="$2"
     shift 2
     "$@" >"$out" 2>&1 &
+    # Polled in tenths of a second: an engine start takes 1-2 s, and whole-second polls rounded
+    # each probe up to the next second (#132 speed bar).
     local pid=$! waited=0
     while kill -0 "$pid" 2>/dev/null; do
-      if [ "$waited" -ge "$secs" ]; then
+      if [ "$waited" -ge "$((secs * 10))" ]; then
         kill -TERM "$pid" 2>/dev/null
         return 124
       fi
-      sleep 1
+      sleep 0.1
       waited=$((waited + 1))
     done
     wait "$pid"
@@ -257,23 +259,24 @@ if [ -z "${XEZ_GATE_LEASE:-}" ]; then
     else
       lease_version=""
     fi
-    if ! node -e '
+    # One node start answers both thresholds (#132 speed bar: each start is about 0.2 s on
+    # Windows): exit 0 for 0.19.0 and later, 3 for 0.17 and 0.18, anything else - including a
+    # version that does not parse and a node that cannot start - for "no gate lease".
+    lease_version_rc=0
+    node -e '
       const raw = String(process.argv[1] || "").replace(/^v/, "");
       const m = /^(\d+)\.(\d+)\.(\d+)/.exec(raw);
       if (!m) process.exit(1);
       const major = Number(m[1]), minor = Number(m[2]);
-      process.exit(major > 0 || (major === 0 && minor >= 17) ? 0 : 1);
-    ' "$lease_version" 2>/dev/null; then
-      lease_why="engine ${lease_version:-unknown} has no gate lease (it arrived in 0.17.0)"
-      lease_bin=""
-    elif node -e '
-      const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(process.argv[1] || "").replace(/^v/, ""));
-      if (!m) process.exit(1);
-      const major = Number(m[1]), minor = Number(m[2]);
-      process.exit(major > 0 || (major === 0 && minor >= 19) ? 0 : 1);
-    ' "$lease_version" 2>/dev/null; then
+      if (major > 0 || (major === 0 && minor >= 19)) process.exit(0);
+      process.exit(major === 0 && minor >= 17 ? 3 : 1);
+    ' "$lease_version" 2>/dev/null || lease_version_rc=$?
+    if [ "$lease_version_rc" -eq 0 ]; then
       # 0.19.0 and later answer the published `--probe`; older engines refuse the flag.
       lease_has_probe=1
+    elif [ "$lease_version_rc" -ne 3 ]; then
+      lease_why="engine ${lease_version:-unknown} has no gate lease (it arrived in 0.17.0)"
+      lease_bin=""
     fi
   fi
 
@@ -392,6 +395,9 @@ if [ "$DEPS_UNITS" -eq 0 ] && [ "${GATE_COMMANDS[0]}" != ".xezar/checks/deps-res
   exit 1
 fi
 
+# npm cannot change between here and the first gate, so every fingerprint until then asks it once
+# (lib/common.sh, deps_npm_version_pin). It is asked again after the install and after the gates.
+deps_npm_version_pin
 if [ "$FAST" -eq 1 ] && ! deps_are_fresh; then
   printf '=== --fast declined ===\n'
   if [ "$DEPS_UNITS" -eq 0 ]; then
@@ -443,19 +449,16 @@ trap gate_cancel INT TERM
 
 gate_phase() {
   local mode="$1"; shift
-  local index entries args=()
+  local index args=()
   for index in "$@"; do
     args+=("$index" "${GATE_NAMES[$((index - 1))]}" "${GATE_COMMANDS[$((index - 1))]}")
   done
-  entries="$(node -e '
-    const args = process.argv.slice(1), entries = [];
-    for (let i = 0; i < args.length; i += 3) entries.push({index: Number(args[i]), name: args[i+1], command: args[i+2]});
-    process.stdout.write(JSON.stringify(entries));
-  ' "${args[@]}")" || return 1
   # The folder gate_cancel writes its stop file to under Git Bash: made before node starts, so an
   # interrupt that lands before the scheduler made it still reaches the scheduler.
   mkdir -p "$GATE_ATTEMPT_DIR/workers" || return 1
-  node "$SCRIPT_DIR/lib/gate-parallel.mjs" "$SCRIPT_DIR/lib/gate-record.sh" "$mode" "$entries" &
+  # The scheduler builds the entries from the triples itself (`--triples`), the same entries a node
+  # start here used to build as JSON first (#132 speed bar: about 0.2 s a phase on Windows).
+  node "$SCRIPT_DIR/lib/gate-parallel.mjs" "$SCRIPT_DIR/lib/gate-record.sh" "$mode" --triples "${args[@]}" &
   GATE_SCHEDULER_PID=$!
   wait "$GATE_SCHEDULER_PID"
   local scheduler_rc=$?
@@ -479,6 +482,9 @@ gate_phase() {
 gate_finish() {
   local expected="$1"
   printf '\n==================== SUMMARY ====================\n'
+  # The gates have run, so npm is asked again: the record's after-fingerprint and the re-stamp both
+  # see the npm that is there now, and a gate that changed it still blocks the re-stamp.
+  deps_npm_version_pin
   # Publishing result.json is the completion commit point. Bash may defer a signal
   # during finalization; the trap then reports the completed record instead of denying it.
   result="$(gate_attempt_complete)"
@@ -510,7 +516,8 @@ if [ "$FAST" -eq 1 ]; then
   DEPS_BASELINE="$(deps_restamp_baseline)" || DEPS_BASELINE=""
 else
   gate_phase serial 1 || exit 1
-  if node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).status === "passed" ? 0 : 1)' "$GATE_ATTEMPT_DIR/workers/1.json"; then
+  # The install's status as gate_collect_worker validated it from workers/1.json (lib/gate-record.sh).
+  if [ "${GATE_WORKER_STATUS[1]:-}" = passed ]; then
     # A passed install whose workspace packages still load from another checkout would have
     # every later gate judge that checkout's source (#286). No command after this point could
     # produce evidence for this branch, so the attempt stops here and is left incomplete.
@@ -523,6 +530,7 @@ else
       fi
       exit 1
     fi
+    deps_npm_version_pin
     write_deps_stamp || exit 1
     DEPS_BASELINE="$(deps_restamp_baseline)" || DEPS_BASELINE=""
   fi
@@ -545,7 +553,9 @@ fi
 # every clean run. `unknown` deliberately does not stop the run — it is a resolved security
 # outcome, not a refusal, and `security-scan.sh` exits 0 for it (#691).
 gate_phase serial 2 || exit 1
-security_status="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).status)' "$GATE_ATTEMPT_DIR/workers/2.json" 2>/dev/null)" || security_status="unreadable"
+# gate_collect_worker keeps the status it validated in GATE_WORKER_STATUS, so no node start reads
+# workers/2.json a second time (#132 speed bar).
+security_status="${GATE_WORKER_STATUS[2]:-unreadable}"
 case "$security_status" in
   passed) ;;
   *)

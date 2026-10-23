@@ -71,6 +71,21 @@ In the mockup: real `<button>`s and `<a>`s,
 `aria-current="page"` on the active nav item, `aria-label` on icon-only controls, `sr-only` text for a
 count a badge shows in colour, and `role="status"` on anything that announces.
 
+The target is WCAG 2.2 level AA. Four criteria a mockup can break before any code exists:
+
+- **Focus not obscured (2.4.11, AA).** A focused control stays at least partly visible. Check every
+  sticky or floating layer the design adds or keeps – sticky page and run headers, the composer dock,
+  toasts – and show in the README that none can fully cover a focused control.
+- **Focus contrast (1.4.11, AA).** A focus ring, a field border and any other mark that identifies a
+  control reach 3:1 against what is next to them, in both themes and both accents (G-51, G-52).
+- **Dragging (2.5.7, AA).** Anything done by dragging also works with a single click or tap.
+- **Accessible sign-in (3.3.8, AA).** A sign-in step never makes a person solve, recall or retype
+  something: allow paste and password managers, and offer copy for a code it shows.
+
+Target size: 2.5.8 (AA) asks for 24 × 24 CSS px; the cockpit's own rule is 44 px on a phone
+([foundations.md](foundations.md) §4). The full list of what is new in 2.2 is at
+<https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/>.
+
 ## 8. Handoff
 
 The README names, for each new surface, the components it reuses and the files a developer will touch,

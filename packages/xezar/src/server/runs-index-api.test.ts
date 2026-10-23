@@ -80,7 +80,15 @@ describe('workspace runs index API', () => {
 
   it('answers an empty index for an empty registry — never a 404', async () => {
     const body = await getIndex();
-    expect(body).toEqual({ runs: [], perProjectLimit: 200, truncated: [], referenceStatuses: {} });
+    expect(body).toEqual({
+      runs: [],
+      perProjectLimit: 200,
+      truncated: [],
+      referenceStatuses: {},
+      attention: {},
+      unreadable: [],
+      registryUnreadable: false,
+    });
   });
 
   it('merges the boot project’s live store with a cold project read off disk, newest first', async () => {
@@ -407,6 +415,46 @@ describe('workspace runs index API', () => {
     expect(body.runs.at(-1)?.id).toBe('r-010');
   });
 
+  it('counts tasks that need a person over ALL of a project’s runs, beyond the row cap', async () => {
+    // The gap this closes: a task waiting for an answer that is older than the project's newest
+    // 200 runs was in no row, so every badge built from the rows missed it.
+    const boot = await registerProject(repoRoot);
+    const other = await registerProject(otherRoot);
+    seedColdProject(
+      otherRoot,
+      Array.from({ length: 210 }, (_, i) => {
+        const n = String(i).padStart(3, '0');
+        const hour = String(10 + Math.floor(i / 60)).padStart(2, '0');
+        const minute = String(i % 60).padStart(2, '0');
+        // r-000..r-009 fall outside the cap: four are in review, one of them archived. r-205
+        // (inside the cap) is in review too. A cold project's `waiting` row reads as interrupted
+        // (no process is waiting on it), so r-206 must not count.
+        const status = ['000', '003', '004', '005', '205'].includes(n)
+          ? 'review'
+          : n === '206'
+            ? 'waiting'
+            : 'done';
+        return storedRun({
+          id: `r-${n}`,
+          title: `Task ${n}`,
+          status,
+          archived: n === '005',
+          createdAt: `2026-07-14T${hour}:${minute}:00Z`,
+        });
+      }),
+    );
+    const live = store.createRun({ title: 'Waiting in the boot project', workflow: 'build', task: 't', steps: [] });
+    store.updateRun(live.id, { status: 'waiting' });
+
+    const body = await getIndex();
+
+    // other: r-000, r-003, r-004 beyond the cap (r-005 is archived), r-205 inside it.
+    expect(body.attention[other.id]).toEqual({ total: 4, beyondLimit: 3 });
+    expect(body.attention[boot.id]).toEqual({ total: 1, beyondLimit: 0 });
+    // A project with nothing waiting has no entry.
+    expect(Object.keys(body.attention).sort()).toEqual([boot.id, other.id].sort());
+  });
+
   it('carries `autoResumeAt`, so a usage-limit park does not read as a failure', async () => {
     await registerProject(repoRoot);
     await registerProject(otherRoot);
@@ -454,6 +502,42 @@ describe('workspace runs index API', () => {
 
     // One unreadable project costs its own rows, never the whole workspace's search.
     expect(body.runs.map((run) => run.id)).toEqual([live.id]);
+  });
+
+  it('names a project whose task data cannot be read, so "no rows" is never read as "no tasks"', async () => {
+    await registerProject(repoRoot);
+    const corrupt = await registerProject(otherRoot);
+    const wrongShapeRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-shape-'));
+    const neverRunRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-fresh-'));
+    try {
+      const wrongShape = await registerProject(wrongShapeRoot);
+      await registerProject(neverRunRoot)
+      mkdirSync(join(otherRoot, '.local/xezar'), { recursive: true });
+      writeFileSync(join(otherRoot, '.local/xezar/runs.json'), '{ not json', 'utf8');
+      seedColdProject(wrongShapeRoot, [{ id: 42 }]);
+      // `neverRunRoot` has no runs.json at all: a project nobody has run a task in. Readable.
+
+      const body = await getIndex();
+
+      expect([...body.unreadable].sort()).toEqual([corrupt.id, wrongShape.id].sort());
+      expect(body.registryUnreadable).toBe(false);
+    } finally {
+      for (const dir of [wrongShapeRoot, neverRunRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
+    }
+  });
+
+  it('says so when the project registry itself cannot be read — still a 200', async () => {
+    await registerProject(repoRoot);
+    // The registry file replaced by a directory: every read of it fails.
+    const configPath = join(home, 'config.json');
+    rmSync(configPath, { force: true });
+    rmSync(`${configPath}.bak`, { force: true });
+    mkdirSync(configPath, { recursive: true });
+
+    const body = await getIndex();
+
+    expect(body.registryUnreadable).toBe(true);
+    expect(body.runs).toEqual([]);
   });
 
   /**

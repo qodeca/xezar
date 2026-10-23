@@ -11,9 +11,16 @@
 <!-- The commands you ran and what they showed, e.g. `npm run typecheck` and `npm test`.
      For a cockpit change, say what you exercised by hand (an `XEZ_DRY_RUN=1` session needs no agent login). -->
 
+Verified on (OS): <!-- Windows, Linux and/or macOS. Name every platform label this change carries; a labelled platform you did not verify is reported as unchecked. -->
+
+## Changelog
+
+- [ ] A user-visible change: a fragment under `changelog.d/` ending with this PR's number, `(#<n>)` (see `changelog.d/README.md`)
+- [ ] No changelog entry needed, because: <say why>
+
 ## Design
 
-<!-- UI in scope = any non-test .tsx under packages/web/src/routes or packages/web/src/components, index.css, cockpit.css, or anything under designs/. -->
+<!-- UI in scope = any non-test .tsx under packages/web/src/routes or packages/web/src/components, index.css, cockpit.css, anything under designs/, or the CLI's visible surface: command names, flags, help text, output shapes and exit codes. -->
 - [ ] Not UI in scope
 - [ ] UI in scope – `needs-design` applied (outside contributors: a maintainer applies it). Design: `designs/<feature>/` or "fix-sized"
 - [ ] `skip-design`, because: <rendered output unchanged – say why>

@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 import record from './fixtures/subagents-run.record.json'
 
 /**
@@ -183,7 +184,7 @@ beforeAll(async () => {
   // Touch and no-hover emulation over the provider's own CDP endpoint, kept alive for the suite
   // (device presets alone do not switch `(hover: none)` on) — the B2/B3 recipe.
   const cli = (...args: string[]) => {
-    const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+    const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if (!result.success) throw new Error('B4 provider command failed')
     return result.data
   }
@@ -316,7 +317,7 @@ describe('B4 phone matrix', () => {
 const CONFLICT_ROUTE = '**/github/ref-status*'
 const CONFLICT_ANSWER = JSON.stringify({ available: true, prs: { 7: 'review-required', 9: 'review-required' }, issues: {}, conflicts: [7, 9], recheckAfterMs: 600_000 })
 function provider(...args: string[]) {
-  const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+  const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
   if (!result.success) throw new Error(`B4 provider command failed: ${args[0]} ${args[1]}`)
 }
 const CONFLICT_CARD = '[data-slot="reference-status-card"][data-state="open"]'
@@ -524,14 +525,10 @@ function contrast(scope: string) {
   })()`)
 }
 
-// Light-theme ink tokens already below 4.5:1 as small text, recorded in known-gaps G-23. B4 may
-// not change a token (#453: B1 owns them), so these three colours are reported, not passed: any
-// OTHER colour below the line still fails, and so does one of these on a dark surface.
-const G23_LIGHT_INKS: Record<string, string> = {
-  'rgb(16, 185, 129)': '--success',
-  'rgb(239, 68, 68)': '--danger',
-  'rgb(143, 134, 232)': '--violet',
-}
+// Light-theme ink tokens once below 4.5:1 as small text (known-gaps G-23). The light theme now
+// darkens `--success`, `--danger` and `--violet` past 4.5:1 (`src/light-status-ink.test.ts`), so
+// no colour is excused any more: every sample below the line fails, in both themes.
+const G23_LIGHT_INKS: Record<string, string> = {}
 
 it.each(['light', 'dark'] as const)('small task-list text has composited contrast in %s with both accents', (theme) => {
   const low: string[] = []

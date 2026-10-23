@@ -40,17 +40,9 @@ is the engine and cockpit, and xezar-skills is the skill collection it loads by 
 a Claude Code leader – workflows, role skills, gates, labels and branch protection – from a
 [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
-For a project that this kit onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) keeps
-model and lane routing. Its leader reads it with <code>node .xezar/<wbr>checks/route.mjs</code>:
-`--check` validates, `--rows` lists classification rows without lane data,
-<code>node .xezar/<wbr>checks/route.mjs &lt;row id&gt;</code> prints one row's lane order, and `--table`
-prints a human view. `--file <path>` is for onboarding only, before the first merge, and marks output
-`source=unmerged`. The kit's account-limits table records each runner/login budget as `ok`, `unknown`,
-or `out` with its reset time; the leader reads it under the kit's routing guide,
-and it will feed xezar's agent-quota status when that status ships.
-
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
-still on kit 2.x moves to 3.0.3 first.
+A project the kit onboards needs xezar-skills 3.2.0 or later with xezar 0.30.0 or later; see
+[Project kit](docs/guide/15-project-kit.md#to-add-an-optional-agent-pipeline) for supported kit versions,
+routing and account limits.
 
 ## 60-second tour
 
@@ -119,7 +111,26 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 |---|---|
 | Every system | Node.js 22 or newer with npm, and at least one signed-in agent CLI – [`claude`](https://github.com/anthropics/claude-code), [`codex`](https://github.com/openai/codex) or [`qwen`](https://github.com/QwenLM/qwen-code) (Qwen Code). Optional: `git` for isolated working copies (Git worktrees) and the Git views, and `gh` for GitHub issues and pull requests. |
 | macOS, Linux | Nothing more. |
-| Windows | Install the full [Git for Windows](https://gitforwindows.org/) (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Install each agent CLI as its own Windows instructions describe. Turn on long paths: the Windows setting LongPathsEnabled (needs an administrator) and `git config --global core.longpaths true`. Start xezar without administrator rights: the MCP leader bridge (`xezar mcp`) is unavailable while xezar runs elevated. Attaching to a running Codex session is not available on Windows yet. To stop `xezar serve` there, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may not be enough to stop everything. |
+| Windows | Everything in the Windows checklist below. |
+
+**Windows checklist**
+
+- Install the full [Git for Windows](https://gitforwindows.org/), not MinGit. xezar uses it for the
+  Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what
+  those steps started.
+- Install each agent CLI as its own Windows instructions describe.
+- Turn on long file paths for Git: `git config --global core.longpaths true`.
+- Turn on long file paths in Windows. This needs an administrator: set `LongPathsEnabled` to `1`
+  under `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, for example from PowerShell run as
+  administrator:
+  `Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1`.
+  `xezar serve` warns at start-up while either setting is off.
+- Start xezar without administrator rights: the MCP leader bridge (`xezar mcp`) is unavailable while
+  xezar runs elevated.
+- Attaching a leader to a running Codex session is not available on Windows yet.
+- To stop `xezar serve`, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the
+  programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may
+  not be enough to stop everything.
 
 The package installs both the `xezar` and `xez` commands.
 
@@ -227,6 +238,7 @@ agent accounts in later, without overwriting one this project already has. See
 | `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed and you can still add and remove them). A saved `cli.instance` overrides it; `--instance` overrides both. `XEZ_SINGLE_PROJECT` and a folder that owns its xezar state already serve one project and win over it. |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
+| `XEZ_ALLOWED_HOSTS=cockpit.example.com` | Hosted mode only: extra public host names the cockpit answers to, comma-separated (exact match, case-insensitive, port ignored). Loopback, IP addresses and the names `xezar server-install` recorded always pass; any other name is refused. Set it when you run hosted mode without the installer recording your domain. Empty by default. |
 | `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access for a writing step and a confined sandbox with network for a read-only step. |
 | `XEZ_CODEX_SANDBOX_FALLBACK=0` | Keep Codex's sandbox when Git Bash cannot start inside it on Windows, and fail the step. By default a read-only step with a `bashAllowlist` runs the rest of the step without the sandbox, still under its allowlist, and the run gets a note. |
 | `XEZ_HOME=/path/to/state` | Move global state and the project registry from `~/.xezar`; empty uses the default. |
@@ -294,7 +306,7 @@ recovery instructions for Claude Code, Codex and Qwen Code are in the
 <details>
 <summary>Waking a Claude Code leader: requirements and recovery</summary>
 
-Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose "I am using this for local development" if you accept it. Then let the leader call `leader_events` action `attach`, or use **Attach leader** under **Settings → MCP connection → Connection status**, the same control that attaches Codex and Qwen Code. Until it is attached, the leader reads events with `leader_events`. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose "I am using this for local development" if you accept it. Then let the leader call `leader_events` action `attach`, or use **Attach leader** under **Settings → MCP connection → Connection status**, the same control that attaches Codex and Qwen Code. Until it is attached, the leader reads events with `leader_events`. The feature-flag service must be reachable and enable Channels. On Team or Enterprise plans, an organization Owner must enable Channels under **Organization settings → Claude Code → Channels**, or set `channelsEnabled: true` in managed settings. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
 
 - **`claude-code-not-owner`** – The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal. fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
 - **`claude-code-bridge-too-old`** – This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal. fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
@@ -312,129 +324,24 @@ authenticated front before it – see the [Remote access overview](docs/server-i
 
 ## Upgrading
 
-The sections below cover **0.15.0 and 0.16.0 only**, and they are not extended for every release: each
-one is kept because it needs a paragraph of explanation, not because it is the newest. For any release
-after those — including the current one — the [CHANGELOG](CHANGELOG.md) is the complete record, and
-every breaking change is called out there. Read it from your installed version forward:
-
 ```bash
-xezar --version                 # the version you are on
-npm view @qodeca/xezar version  # the version you would get
+npm install -g @qodeca/xezar@latest
+xezar --version
 ```
+
+The [CHANGELOG](CHANGELOG.md) is the complete record and calls out every breaking change; read it
+from your installed version forward. Longer notes for the 0.15.0 and 0.16.0 upgrades are in
+[Upgrading from older releases](docs/upgrading.md).
 
 If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
 still names them, and lists each file and field to change. See
 [Moving from pi or OpenCode](docs/guide/18-moving-from-pi-or-opencode.md).
 
-## Upgrading to 0.16.0
-
-> pi and OpenCode, named in this section, were removed later, in 0.30.0 – see
-> [Moving from pi or OpenCode](docs/guide/18-moving-from-pi-or-opencode.md).
-
-### Audit trail file
-
-The audit trail is now `.local/xezar/audit.ndjson`, with a new record shape (#306). The old
-`mcp-audit.ndjson` is read-only: xezar reads it only while the new file does not exist, prints one
-deprecation line when it does, and never changes it. Keep it if you want the old history. xezar 0.15.0,
-after a downgrade, reads its old file but cannot read records written by 0.16.0. The old name stops
-being read no earlier than 0.18.0. The trail now records cockpit, automation and command-line changes
-too, not only MCP; on a hosted server behind a custom reverse proxy, set `X-Xezar-User` to the
-authenticated user (the bundled nginx site already does).
-
-### Claude Code, pi and OpenCode runs and your own MCP servers
-
-A task run started with Claude Code, pi or OpenCode no longer loads your own `xezar` MCP entry (#342) –
-the same rule Codex runs have had since #324. This closes a real bug: xezar's bridge took your
-project's one leader slot the moment it connected, so a task running in the project folder itself
-(Worktree off) could hold that slot for its whole lifetime and refuse your own leader session with
-"project occupied". Every other MCP server your project declares still loads, for every backend; your
-config files are never edited. Two narrowings follow: a Claude Code task now sees only the MCP
-servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json`; and for pi and
-OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
-rename an unrelated server of that name.
-Migration: [Run each supported client as the project leader](docs/guide/13-mcp-leader.md) § "To keep your leader while tasks run in the same folder".
-
-### The sidebar is navigation-only now
-
-The sidebar's task list, the Active/Archived toggle and the "Search… ⌘K" box are gone (#546); the
-sidebar shows navigation only. Active/Archived and search now live on the Tasks pages – the
-per-project Tasks page and the workspace-wide All tasks page – alongside pin/unpin, unread state
-and diff stats, which already lived there; ⌘K still opens the command palette from anywhere, with
-no sidebar click target needed.
-
-### Single-project mode
-
-A repository can now carry its own xezar setup so every clone runs the same way with no host setup
-step: start `xezar --single-project` once in the project folder – its first run there also offers a
-one-time import of your existing global `~/.xezar` setup. See
-[Projects § single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
-
-### Hosted WebSocket migration
-
-Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including
-native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through
-your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket
-clients and the Vite development proxy are unchanged.
-
-### MCP door for every registered project
-
-Every project registered in the cockpit now gets its own MCP door, opened at boot and when the
-project is registered (#557) – not only the one the cockpit started in. A leader started in a
-second project can attach without restarting the cockpit inside that project's folder; nothing to
-configure, and the starting project's connection, socket location and connection file are
-unchanged. See
-[Run a leader in each client](docs/guide/13-mcp-leader.md#to-run-a-leader-in-each-client).
-
-### A few more things to expect
-
-- A pi task in its own isolated working copy (Git worktree) can no longer use its file tools to
-  write or edit the repository's primary working copy, and a shell command that names that copy is
-  refused (best effort, not containment). A pi task that needs the primary working copy on purpose
-  must be created with Worktree off.
-- A run xezar itself ends for the memory limit now finishes `failed`, not `done` – expect `failed`
-  instead of a done run with no deliverable.
-- In an autonomous run, the automatic re-prompt after a Continue on a workflow step still waiting
-  for `XEZ:DONE` is capped at 3 attempts; once that step says `XEZ:DONE`, the remaining steps keep
-  their usual budget. No flag restores the old 40-retry loop.
-- The stdout line `recovered N run(s) from the previous session` is gone; a script that read it
-  should instead read stderr's plain output and select `event=task.recovered`.
-
-## Upgrading to 0.15.0
-
-### Codex runs and MCP servers
-
-A Codex run no longer loads the MCP servers, plugins or apps from your own Codex config (#324). To give
-Codex runs a server, declare it in the project's own `.codex/config.toml`, trust the project in Codex,
-and do not name it `xezar` (reserved for xezar's leader bridge). The run uses the project's settings
-for it only: when `~/.codex/config.toml` declares the same server, its settings are left out (#1007).
-A setting there that a run cannot leave out – an `env` entry or a `url`, for example – keeps the
-server off for the run, and the run's note names it. A Codex CLI that cannot answer `config/read` fails the run – update it with
-`npm i -g @openai/codex`.
-
-### Team skills repository
-
-The default team skills repository moved from `open-mercato/skills` (`om-*`) to `qodeca/xezar-skills`
-(`xez-*`). A curated selection naming `om-*` keeps working. Move an `npx skills` install by hand:
-
-```sh
-npx skills remove om-fix om-code-review … -p   # every om-* name in skills-lock.json; -g for a global install
-npx skills add qodeca/xezar-skills --skill '*'
-rm -rf ~/.cache/xez/skills/open-mercato__skills .claude/skills/om-*   # optional: orphaned clone cache and copies
-```
-
-To keep the old collection, set `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in `.xezar/config.json`
-(loaded and enabled, no longer auto-updated).
-
-### Agent config symlinks
-
-Settings → Agent config no longer follows an individual config-file symlink: reads and writes answer
-409 and the file is listed read-only (#363). Replace the link with a regular file; relocating a whole
-agent home still works.
-
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome – [CONTRIBUTING.md](CONTRIBUTING.md) is the path from a
-change to a merged pull request, including local development. Report security problems privately, as
+Bug reports and ideas are welcome as issues. Pull requests from outside the maintainer team are not
+accepted for now – open an issue instead. [CONTRIBUTING.md](CONTRIBUTING.md) is the path from a change to
+a merged pull request, including local development. Report security problems privately, as
 described in [SECURITY.md](SECURITY.md).
 
 ## License

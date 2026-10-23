@@ -81,13 +81,13 @@ describe('the nightly MCP mutation workflow (#377)', () => {
   it('grants write access to issues on the report job only, and read everywhere else', () => {
     expect(wf.permissions).toEqual({ contents: 'read' });
     expect(wf.jobs.report!.permissions).toEqual({ contents: 'read', issues: 'write', actions: 'read' });
-    for (const name of ['plan', 'mutants']) expect(wf.jobs[name]!.permissions, name).toBeUndefined();
+    for (const name of ['plan', 'mutants', 'lock']) expect(wf.jobs[name]!.permissions, name).toBeUndefined();
     expect(text).not.toMatch(/id-token|NPM_TOKEN|NODE_AUTH_TOKEN|npm\s+publish/);
   });
 
   it('reaches the report job when a shard fails and when the planner fails', () => {
     const report = wf.jobs.report!;
-    expect(report.needs).toEqual(['plan', 'mutants']);
+    expect(report.needs).toEqual(['plan', 'mutants', 'lock']);
     // A success condition on `plan` is what the draft had, and it meant a planner failure filed
     // nothing. `!cancelled()` is the condition that lets both failures through.
     expect(report.if).toBe('${{ !cancelled() }}');
@@ -110,7 +110,7 @@ describe('the nightly MCP mutation workflow (#377)', () => {
     const called = [...text.matchAll(/npm run (?:--silent )?([\w:-]+)/g)].map((m) => m[1]!);
     expect(called.length).toBeGreaterThan(3);
     for (const name of new Set(called)) expect(scripts[name], `package.json names ${name}`).toBeDefined();
-    for (const name of ['test:mutation:mcp:plan', 'test:mutation:mcp:shard', 'test:mutation:mcp:report', 'test:mutation:mcp:issue', 'test:mutation:mcp:survivors']) {
+    for (const name of ['test:mutation:mcp:plan', 'test:mutation:mcp:shard', 'test:mutation:mcp:report', 'test:mutation:mcp:issue', 'test:mutation:mcp:survivors', 'test:mutation:lock']) {
       expect(called, name).toContain(name);
     }
   });
@@ -121,16 +121,36 @@ describe('the nightly MCP mutation workflow (#377)', () => {
     for (const ref of uses) expect(ref, ref).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
   });
 
-  it('writes the floor nowhere in the scheduled path — stryker.config.mjs is its only home', async () => {
+  it('writes either floor nowhere in the scheduled path — each scope’s config is its only home', async () => {
     // The floor is read at run time. A second copy of the number in the workflow or its scripts is
     // how the two drift apart: somebody raises the floor in the config and the nightly keeps the old.
-    const { default: config } = (await import(pathToFileURL(join(REPO_ROOT, 'packages/xezar/stryker.config.mjs')).href)) as {
-      default: { thresholds: { break: number } };
-    };
-    const floor = new RegExp(`(?<![\\d.])${config.thresholds.break}(?![\\d.])`);
     const files = [WORKFLOW, ...readdirSync(MUTATION_DIR).map((name) => join(MUTATION_DIR, name))];
     expect(files.length).toBeGreaterThanOrEqual(5);
-    for (const file of files) expect(readFileSync(file, 'utf8'), file).not.toMatch(floor);
+    for (const configPath of ['packages/xezar/stryker.config.mjs', 'packages/xezar/stryker.lock.config.mjs']) {
+      const { default: config } = (await import(pathToFileURL(join(REPO_ROOT, configPath)).href)) as {
+        default: { thresholds: { break: number } };
+      };
+      expect(config.thresholds.break, configPath).toBeTypeOf('number');
+      const floor = new RegExp(`(?<![\\d.])${config.thresholds.break}(?![\\d.])`);
+      for (const file of files) expect(readFileSync(file, 'utf8'), `${file} repeats the floor of ${configPath}`).not.toMatch(floor);
+    }
+  });
+
+  it('runs the read-only lock scope as its own job and hands its report to the verdict', () => {
+    const lock = wf.jobs.lock!;
+    // Skipped exactly when the shards are: a forced red run measures nothing.
+    expect(lock.if).toBe(wf.jobs.mutants!.if);
+    expect(step('lock', /stryker/i).run).toBe('npm run test:mutation:lock');
+    const upload = step('lock', /upload/i);
+    expect(upload.if).toBe('always()');
+    expect(upload.with).toMatchObject({ name: 'mutation-lock-report', path: '.local/mutation/lock/', 'include-hidden-files': true });
+    // The shards' download pattern must not swallow the lock artifact into the shard directory.
+    expect(step('report', /every shard/i).with?.pattern).toBe('mutation-report-*');
+    expect('mutation-lock-report').not.toMatch(/^mutation-report-/);
+    const download = step('report', /read-only lock report/i);
+    expect(download.with).toMatchObject({ name: 'mutation-lock-report', path: '.local/mutation/lock-report' });
+    expect(download['continue-on-error']).toBe(true);
+    expect(step('report', /sum the shards/i).run).toContain('--lock-report .local/mutation/lock-report/report.json');
   });
 });
 

@@ -15,7 +15,7 @@ import { signalPid } from '../platform/process-table.ts';
 import type { AgentEvent, AgentRunSpec } from './agent-runner.ts';
 import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION, waitForExit } from './qwen-runner.ts';
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
-import { scanQwenProjectEnv } from './qwen-run-config.ts';
+import { qwenWorkspaceLooseningMessage, qwenWorkspaceLoosenings, scanQwenProjectEnv } from './qwen-run-config.ts';
 import { settingsFromObject, type QwenSettings } from './qwen-settings.ts';
 import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
@@ -158,6 +158,8 @@ describe('QwenRunner stop (#1042)', () => {
       // Bounded, so a regression fails here and the finally still stops what the turn started.
       const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000))]);
       expect(outcome).not.toBe('still running');
+      // A cancel sweeps on its own path (#943): only the EOF watchdog's stop is marked.
+      expect(await session.result.then((result) => result.stoppedAfterClose, () => undefined)).toBeUndefined();
       await vi.waitFor(() => expect(pids.filter(alive)).toEqual([]), { timeout: 5_000, interval: 50 });
     } finally {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
@@ -170,6 +172,8 @@ describe('QwenRunner stop (#1042)', () => {
       session.end();
       const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 15_000))]);
       expect(outcome).toBe('resolved');
+      // The run manager sweeps what the turn left behind a stop like this one (#943).
+      expect((await session.result).stoppedAfterClose).toBe(true);
     } finally {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
     }
@@ -183,9 +187,13 @@ describe('waitForExit (#1070)', () => {
     child.kill('SIGTERM');
     await closed;
     expect(child.exitCode).toBeNull();
-    const started = Date.now();
-    expect(await waitForExit(child)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(1_000);
+    // At once means no safety timer is armed at all: only that timer could end this wait, so its
+    // absence is the claim, and a busy machine cannot make it pass or fail.
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    const wait = waitForExit(child);
+    expect(timers).not.toHaveBeenCalled();
+    timers.mockRestore();
+    expect(await wait).toBeNull();
   });
 });
 
@@ -303,6 +311,41 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
     expect((await runOnce({ allowedTools: READ_ONLY })).result).toHaveProperty('value');
   });
 
+  // One row per clause of `qwenWorkspaceLoosenings`: each key ALONE refuses, so removing any one
+  // clause turns its row green-to-red (the combined test above passes with only one of them).
+  it.each([
+    { name: 'hooks', settings: JSON.stringify({ hooks: { PreToolUse: [{ matcher: '*', hooks: [] }] } }), key: 'hooks' },
+    { name: 'permissions.allow', settings: JSON.stringify({ permissions: { allow: ['run_shell_command'] } }), key: 'permissions.allow' },
+    { name: 'permissions.ask', settings: JSON.stringify({ permissions: { ask: ['edit'] } }), key: 'permissions.ask' },
+    { name: 'tools.allowed', settings: JSON.stringify({ tools: { allowed: ['run_shell_command'] } }), key: 'tools.allowed' },
+    { name: 'malformed JSON', settings: '{ "permissions": { "allow": [', key: '(unreadable)' },
+  ])('refuses a read-only step whose .qwen/settings.json has only $name, naming exactly that key', ({ settings, key }) => {
+    mkdirSync(join(project, '.qwen'));
+    const file = join(project, '.qwen', 'settings.json');
+    writeFileSync(file, settings);
+    expect(qwenWorkspaceLoosenings(project)).toEqual({ file, keys: [key] });
+    const runner = new QwenRunner({ bin: STUB, readSettings: () => SETTINGS });
+    let message = '';
+    try {
+      runner.startSession({ userPrompt: 'x', cwd: project, allowedTools: READ_ONLY, bashAllowlist: ['git status'] });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toBe(qwenWorkspaceLooseningMessage({ file, keys: [key] }));
+    expect(existsSync(recordFile)).toBe(false);
+  });
+
+  it.each([
+    { name: 'empty hooks', settings: { hooks: {} } },
+    { name: 'empty permissions.allow', settings: { permissions: { allow: [] } } },
+    { name: 'empty permissions.ask', settings: { permissions: { ask: [] } } },
+    { name: 'empty tools.allowed', settings: { tools: { allowed: [] } } },
+  ])('does not refuse a read-only step for $name', ({ settings }) => {
+    mkdirSync(join(project, '.qwen'));
+    writeFileSync(join(project, '.qwen', 'settings.json'), JSON.stringify(settings));
+    expect(qwenWorkspaceLoosenings(project)).toBeUndefined();
+  });
+
   it('stops the .env walk at the first file and at the home folder, as Qwen Code does', () => {
     writeFileSync(join(root, '.env'), 'HOME_ONLY=1\n');
     expect(scanQwenProjectEnv(project)).toEqual({ excludedNames: [], unblockable: [] });
@@ -396,4 +439,19 @@ describe('QwenRunner version gate and missing binary (#1044 acceptance 6, 7)', (
     const outcome = await runner.startSession({ userPrompt: 'x', cwd: project }).result.then(() => 'resolved', (error: Error) => error.message);
     expect(outcome).toMatch(/not found on PATH — Install Qwen Code \(`npm i -g @qwen-code\/qwen-code`\)/);
   });
+});
+
+describe('QwenRunner with an agent that exits before it reads its prompt', () => {
+  it('fails the step with the exit and stderr instead of crashing on the failed stdin write', async () => {
+    const stub = join(HERE, '__fixtures__', 'process', 'exits-before-reading-stdin.mjs');
+    const events: AgentEvent[] = [];
+    const runner = new QwenRunner({ bin: stub, readSettings: () => SETTINGS });
+    // Far larger than any pipe buffer, so the write is still pending when the agent exits.
+    const outcome = await runner
+      .startSession({ userPrompt: 'x'.repeat(2_000_000), cwd: project, sessionId: '11111111-1111-4111-8111-111111111111' }, (e) => events.push(e), { autoEndAfterFirstTurn: true })
+      .result.then(() => 'resolved', (error: Error) => error.message);
+    expect(outcome).toMatch(/exited with code 1/);
+    expect(outcome).toMatch(/exited before reading its input/);
+    expect(events.some((e) => e.type === 'note' && e.message.startsWith('qwen: stdin write failed:'))).toBe(true);
+  }, 15_000);
 });

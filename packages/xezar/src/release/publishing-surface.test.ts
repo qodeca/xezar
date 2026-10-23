@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { npmCommand } from '../../test/helpers/platform.ts';
 
 /**
@@ -86,6 +87,75 @@ describe('publishing surface', () => {
     expect(packageStep).toBeLessThan(publishStep);
   });
 
+  describe('the release workflow keeps publish rights away from the build', () => {
+    type Step = { name?: string; id?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> };
+    type Job = { needs?: string | string[]; environment?: string; permissions?: Record<string, string>; steps: Step[] };
+    const release = () => parse(workflows().find((w) => w.name === 'release.yml')!.body) as { jobs: Record<string, Job> };
+    const stepIndex = (job: Job, id: string) => job.steps.findIndex((s) => s.id === id);
+
+    it('builds, tests and packs in a read-only job that holds no publish right', () => {
+      const build = release().jobs.build!;
+      expect(build.permissions).toEqual({ contents: 'read' });
+      expect(build.environment).toBeUndefined();
+      const runs = build.steps.map((s) => s.run ?? '').join('\n');
+      expect(runs).toContain('npm ci');
+      expect(runs).toContain('npm run test:package');
+      expect(runs).toMatch(/scripts\/release\.mjs "\$BUMP" --pack-destination/);
+      expect(runs).not.toMatch(/npm\s+publish/);
+      const upload = build.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'));
+      expect(upload?.with?.name).toBe('release-package');
+    });
+
+    it('publishes from a separate production job that installs nothing and runs no package script', () => {
+      const { jobs } = release();
+      expect(Object.keys(jobs).sort()).toEqual(['build', 'publish']);
+      const publish = jobs.publish!;
+      // npm's trusted publisher names this file AND this environment: both must stay as they are.
+      expect(publish.environment).toBe('production');
+      expect(publish.needs).toBe('build');
+      expect(publish.permissions).toEqual({ contents: 'write', 'id-token': 'write', 'pull-requests': 'write' });
+      const runs = publish.steps.map((s) => s.run ?? '').join('\n');
+      // As a command (line start or after a separator), not as text the summary echoes.
+      expect(runs).not.toMatch(/(?:^|[;&|(]|\bdo|\bthen)\s*(?:npm\s+(?:ci|install|i|run|test|exec)\b|npx\s|node\s+scripts\/)/m);
+      expect(publish.steps.some((s) => s.with?.['cache'])).toBe(false);
+      const download = publish.steps.find((s) => s.uses?.startsWith('actions/download-artifact@'));
+      expect(download?.with?.name).toBe('release-package');
+      const step = publish.steps[stepIndex(publish, 'publish')]!;
+      expect(step.run).toContain('sums --check --strict SHA256SUMS');
+      expect(step.run).toContain('shasum -a 256');
+      expect(step.run).toMatch(/npm publish "\.\/\$tarball" .*--provenance/);
+      expect(stepIndex(publish, 'publish')).toBeGreaterThan(publish.steps.indexOf(download!));
+    });
+
+    it('tags the release right after the publish and before the bump PR', () => {
+      const publish = release().jobs.publish!;
+      const order = ['publish', 'github-release', 'bump-pr'].map((id) => stepIndex(publish, id));
+      expect(order.every((i) => i > -1)).toBe(true);
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+      expect(publish.steps[order[1]!]!.if).toBe("steps.publish.outcome == 'success'");
+    });
+
+    it('reports each step from its real outcome, never a blanket "tagged"', () => {
+      const publish = release().jobs.publish!;
+      const summary = publish.steps.find((s) => s.name === 'Write workflow summary')!;
+      expect(summary.if).toBe('always()');
+      expect(summary.env).toMatchObject({
+        PUBLISH: '${{ steps.publish.outcome }}',
+        GITHUB_RELEASE: '${{ steps.github-release.outcome }}',
+        BUMP_PR: '${{ steps.bump-pr.outcome }}',
+      });
+      expect(summary.run).not.toMatch(/tagged/);
+    });
+
+    it('passes every expression through env, never interpolated into a run script', () => {
+      for (const job of Object.values(release().jobs)) {
+        for (const step of job.steps) expect(step.run ?? '', step.name).not.toMatch(/\$\{\{/);
+      }
+      const bump = release().jobs.publish!.steps.find((s) => s.id === 'bump-pr')!;
+      expect(bump.env?.BASE_BRANCH).toBe('${{ github.ref_name }}');
+    });
+  });
+
   it('has no snapshot channel left to publish from', () => {
     const scripts = readdirSync(join(repoRoot, 'scripts'));
     expect(scripts).not.toContain('release-snapshot.mjs');
@@ -112,6 +182,23 @@ describe('publishing surface', () => {
     }
   });
 
+  it('ships only the scripts the installed CLI runs', () => {
+    // The CLI resolves four programs next to `dist/` at runtime: the dry-run mocks
+    // (claude-cli-runner.ts, qwen-runner.ts) and the two bundled tool-policy hooks
+    // (codex-app-server-runner.ts, qwen-runner.ts). Build, release and test helpers stay out.
+    const npm = npmCommand(['pack', '--dry-run', '--json', '--ignore-scripts']);
+    const packed = JSON.parse(
+      execFileSync(npm.file, npm.args, { cwd: join(repoRoot, 'packages', 'xezar'), encoding: 'utf8' }),
+    ) as Array<{ files: Array<{ path: string }> }>;
+    const scripts = packed[0]!.files.map((f) => f.path).filter((p) => p.startsWith('scripts/')).sort();
+    expect(scripts).toEqual([
+      'scripts/codex-read-only-hook.mjs',
+      'scripts/mock-claude.mjs',
+      'scripts/mock-qwen.mjs',
+      'scripts/qwen-pre-tool-hook.mjs',
+    ]);
+  }, 60_000);
+
   it('keeps the MCP mutation run (Stryker) out of what a user installs', () => {
     // #333: Stryker is the MCP mutation gate — nightly on GitHub Actions since #377 — and a
     // devDependency only. A user who installs @qodeca/xezar must get neither its ~140 packages nor
@@ -133,7 +220,7 @@ describe('publishing surface', () => {
         encoding: 'utf8',
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
-    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];
+    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts', 'stryker.lock.config.mjs', 'vitest.mutation.lock.config.ts'];
     const shipped = packed[0]!.files
       .map((f) => f.path)
       .filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/') || p.startsWith('mutation/'));

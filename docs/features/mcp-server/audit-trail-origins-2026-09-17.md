@@ -1,5 +1,7 @@
 # Audit-trail origins — technical specification (2026-09-17)
 
+> **Status update – 2026-10-18:** Implemented in four parts (#564, #568, #575, #586; issue #306 closed 2026-09-18) and shipped in 0.16.0; the four doors are pinned by `packages/xezar/src/mcp/audit-four-doors.test.ts`. The plan below is kept as written; where it says the four writers do not exist yet, that was true on 2026-09-17. `bc-route-inventory.test.ts`, cited in § 6, was removed later with the old process documents (#949).
+
 Status: **Accepted implementation plan for GitHub issue #306**. Target: 0.16.0.
 
 This record turns the local audit trail into one ordered history for changes entering through the cockpit HTTP door (`ui`), MCP (`mcp`), the automation runner (`automation`), and a headless command (`cli`). It is an implementation specification, not a claim that those four writers exist yet.
@@ -265,7 +267,7 @@ The families for tests and acceptance are F1–F10 as named in the tables. F8 al
 The parity test (PR 2) makes the inventory the authority and not the tool annotation:
 
 1. Every entry in `TOOL_ACTION_COVERAGE` has exactly one inventory class. **Verified source** (`packages/xezar/src/mcp/tools/api-coverage.testkit.ts:28`).
-2. Every non-GET route in the built app route table (the same source `packages/xezar/src/server/bc-route-inventory.test.ts` reads) has a mutation descriptor or a read reason.
+2. Every non-GET route in the built app route table (the same source `packages/xezar/src/server/bc-route-inventory.test.ts` read; that test was removed in `5459cc68`, and today `packages/xezar/src/mcp/audit-inventory.test.ts` reads the route table from `app.routes` itself) has a mutation descriptor or a read reason.
 3. Every mutation row has an MCP mapping and either an HTTP route or an explicit `ui: none`.
 4. An empty inventory, an empty route table or an empty MCP coverage map fails the test. It is never read as "no auditable mutations".
 

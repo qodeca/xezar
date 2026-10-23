@@ -60,7 +60,8 @@ through `packages/web/src/components/composer/composer.tsx:173` for `/new`,
 `packages/web/src/routes/inbox.tsx:175` for Inbox.
 
 **Pages read:** components §§ PickerPill and PromptTemplateMenu; patterns §7;
-foundations §4; behaviour §1; writing §4; decisions D-04 and D-06; known gaps G-03.
+foundations §4; behaviour §1; writing §4; decisions D-04 and D-06. No open known gap
+covers this trigger: G-03 (the copied chip) is retired.
 Then complete the chip, phone target and keyboard rows in the verification matrix.
 
 **Reuse plan:** import `chipClass` from `picker-pill.tsx` for the trigger instead
@@ -71,9 +72,9 @@ trigger forms and sizing overrides at all three render sites; sharing a class
 alone proves no rendered size.
 
 **Decisions and gaps:** D-04 keeps density on one lever; D-06 forbids adding an
-arbitrary spacing exception. G-03 names this copied chip and another copy in
-`packages/web/src/routes/settings/prompt-templates-section.tsx`. A one-site fix
-must leave the remaining gap accurate. The 24 px chip floor does not satisfy the
+arbitrary spacing exception. G-03, which named a copied chip here, is retired:
+`prompt-template-menu.tsx` now imports `chipClass`, so keep it that way rather than
+copying the classes again. The 24 px chip floor does not satisfy the
 44 px phone target policy: measure both dimensions of the interactive target at
 every density and resolve any shortfall within the accepted fix scope. A needed
 shared sizing rule requires a recorded decision, not a silent new allowlist row.
@@ -105,7 +106,8 @@ failed save and a refusal response. Start at
 
 **Pages read:** CONTRIBUTING §§1–3; new-designs §§1–8; patterns §§3, 6–8;
 components §§ Input, Button and CenteredState; foundations §4.1; theming;
-behaviour §§1–4; writing §§1–4; decisions D-02–D-06; known gaps G-05, G-13 and G-23.
+behaviour §§1–4; writing §§1–4; decisions D-02–D-06. G-05, G-13 and G-23 are retired;
+their rules below still apply.
 Use the verification matrix to plan the design's state and appearance captures.
 
 **Reuse plan:** keep the settings shell and registry; compose `SettingsField` from
@@ -120,9 +122,9 @@ AlertDialog, following patterns §7.
 
 **Decisions and gaps:** D-02 selects rhythm, D-03 aligns gutters and D-04/D-05
 preserve the density lever and default. D-06 rules out a local pixel patch.
-Check for later superseding records before building. G-13 warns against another
-private field wrapper; G-05 warns against another hand-built page state; G-23
-requires checking the actual contrast of small text. No new badge grammar is
+Check for later superseding records before building. Do not add another private
+field wrapper (the retired G-13), another hand-built page state (the retired G-05),
+or small text whose actual contrast you have not measured (the retired G-23). No new badge grammar is
 needed. If the feature later adds a navigation badge, inspect open D-01; D-08's
 development badge exception does not decide it.
 

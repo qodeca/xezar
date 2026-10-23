@@ -56,8 +56,9 @@ See [lists and tables](patterns.md#4-lists-cards-and-tables) and
   no-hover pin visibility.
 - The cross-project table in
   [global-tasks.tsx](../../packages/web/src/routes/global-tasks.tsx) has its own
-  columns and hides some at breakpoints; it does not share the phone-card layout
-  (G-17). Do not infer parity from the shared agent cells.
+  columns and hides some at breakpoints; on a phone it renders `GlobalTaskCard`,
+  which follows the per-project `TaskCard` grammar (G-17, retired). Do not infer
+  column parity from the shared agent cells.
 
 **Density and targets:** apply the shared rule to fold toggles, filters, pins,
 reference links and card actions at every density; measure hidden/revealed pin
@@ -72,7 +73,8 @@ reference data and an already-pinned task; explain any inapplicable refusal.
 
 **Design review:** use the [table/pin, phone target and state rows](verification.md#check-matrix).
 Check long titles/models, folded columns, nested clicks, keyboard access and
-touch visibility. G-03, G-17, G-21 and G-23 remain relevant debt. Historical
+touch visibility. Open gaps here: G-27 (title column width) and G-42
+(`SearchField` slots). Historical
 table dimensions have the limits below.
 
 ## 2. Task thread and composer
@@ -124,7 +126,8 @@ belongs to a picker when applicable, not a fictitious thread filter.
 **Design review:** use the [responsive, keyboard, motion and state rows](verification.md#check-matrix).
 Check speaker hierarchy in flat and virtual rendering, reading-position stability,
 keyboard clearance, focus/caret recovery and attachment removal without hover.
-G-03, G-08, G-09 and G-21 are existing debt, not reusable exceptions. Historical
+Open gaps here are G-26, G-32, G-33, G-36, G-37 and G-45; none is a reusable
+exception. Historical
 thread/dock spacing is superseded as described below.
 
 ## 3. Settings sections
@@ -133,8 +136,8 @@ thread/dock spacing is superseded as described below.
 summary within the existing settings navigation.
 
 **Compose:** `SETTINGS_SECTIONS`, `SettingsField`, `Input`, `Textarea`, `Switch`,
-`Button` and the existing native select/number controls where they ship. Do not
-adopt the unused `Select` just because it exists (G-11/G-20). Use `gap-section`
+`Button` and the existing native select/number controls where they ship. There is no
+`Select` primitive (#453 B1 deleted the unused one); do not add one just to replace a native control. Use `gap-section`
 between fields and `gap-stack` within a field; keep `bg-muted` active desktop
 navigation and `bg-contrast text-contrast-foreground` active phone pills.
 See [settings and forms](patterns.md#8-settings-and-forms).
@@ -145,7 +148,7 @@ See [settings and forms](patterns.md#8-settings-and-forms).
 [resources-section.tsx](../../packages/web/src/routes/settings/resources-section.tsx).
 
 Preserve project/global scope in the registry. Keep a flat list of fields;
-reuse `SettingsField` instead of another private wrapper (G-13). Selects and
+reuse `SettingsField` instead of another private wrapper. Selects and
 switches save on change; text and numbers use a local draft and explicit Save.
 Keep page failure in `CenteredState`, field validation beside its control and
 mutation failure in a danger toast. Destructive removal uses `AlertDialog`.
@@ -163,7 +166,8 @@ refused save as persisted success.
 
 **Design review:** use the [geometry, keyboard, copy and state rows](verification.md#check-matrix).
 Check field hierarchy, label association, save semantics, refusal recovery and
-contrast. G-11, G-13, G-15, G-22 and G-23 identify existing differences; the old
+contrast. G-15 (copy) and G-30 (the projects table on a phone) are the open
+differences here; the old
 Air settings baseline is not the current rhythm.
 
 ## 4. Overlays and transient feedback
@@ -201,7 +205,7 @@ empty state; record that N/A rather than inventing one.
 
 **Design review:** use the [dialog, keyboard, phone target and motion rows](verification.md#check-matrix).
 Check focus trapping/return, Escape, labelled close buttons, consequence copy,
-danger styling, contrast and reduced motion. G-06, G-07, G-10 and G-16 remain debt.
+danger styling, contrast and reduced motion. G-06 and G-16 are the open gaps here.
 Historical quality-checks overlays are proposals, not substitute primitives.
 
 ## 5. State and marker selection
@@ -243,8 +247,8 @@ missing data.
 
 **Design review:** use the [semantics, contrast, motion and state rows](verification.md#check-matrix).
 Check the attention derivation, accessible names/announcements, no colour-only
-meaning, recovery actions and real text contrast. G-05, G-08, G-14 and G-23 remain
-open implementation concerns. A documented token or marker is not a compliance
+meaning, recovery actions and real text contrast. G-14 and G-31 remain open
+implementation concerns. A documented token or marker is not a compliance
 certificate.
 
 ## Limits of historical designs

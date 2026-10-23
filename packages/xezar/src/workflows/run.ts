@@ -36,6 +36,9 @@ import {
   attachmentExtension,
   isImageAttachmentName,
   isImageMediaType,
+  engineOwnsRun,
+  RUN_STILL_ACTIVE_CODE,
+  type ApiErrorCode,
 } from '@qodeca/xezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import {
@@ -396,10 +399,12 @@ interface ActiveRun {
    *  "xezar cut it off" and recorded the pause as `done`. Consumed once, where `session.result`
    *  resolves, and cleared there. */
   memoryLimitPause?: string;
-  /** Why xezar is stopping this run (#943), set beside `cancelled` by `cancel()` and beside
-   *  `memoryLimitPause` by `enforceMemoryLimit`. `dropActive` reads it to sweep what the run
-   *  started; a run that ends on its own has none, and its processes are left alone. */
-  stopReason?: Exclude<SweepReason, 'restart'>;
+  /** Why xezar is stopping this run (#943), set beside `cancelled` by `cancel()`, beside
+   *  `memoryLimitPause` by `enforceMemoryLimit`, and as `close` wherever xezar closes a session the
+   *  agent had not ended (the idle close, `finish()`, a gated bound, a read-only bound finish).
+   *  `dropActive` reads it to sweep what the run started; a run that ends on its own has none, and
+   *  its processes are left alone. */
+  stopReason?: Exclude<SweepReason, 'restart' | 'timeout' | 'eof-kill' | 'agent-error'>;
 }
 
 /** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
@@ -894,6 +899,9 @@ export class RunManager {
   /** Stops what a paused, cancelled or timed-out run started (#943). */
   private readonly runProcesses: RunProcessSweeper;
 
+  /** See the `ownRunsOnly` constructor option; `startedHere` is the set of runs it may act on. */
+  private readonly ownRunsOnly: boolean;
+  private readonly startedHere = new Set<string>();
   /** The stalled-queue watchdog (see `rescueStalledQueue`). */
   private readonly queueWatchdog: ReturnType<typeof setInterval>;
 
@@ -1010,8 +1018,16 @@ export class RunManager {
       agentQuotaStore?: AgentQuotaStore;
       /** Test seam: builds the run-process sweeper around this manager's hooks. */
       runProcesses?: (hooks: RunProcessSweeperOptions) => RunProcessSweeper;
+      /**
+       * Headless `xezar run`: this manager acts only on the runs it starts itself. The store
+       * still holds every other project run as it was (`keepLive`), and those belong to the next
+       * `serve`'s `recover()` — so the queue watchdog never re-adopts them here and no usage-limit
+       * resume is re-armed for them.
+       */
+      ownRunsOnly?: boolean;
     } = {},
   ) {
+    this.ownRunsOnly = options.ownRunsOnly === true;
     this.autoResumeTimer = options.autoResumeTimer ?? {
       schedule: (callback, delay) => setTimeout(callback, delay),
       cancel: timer => clearTimeout(timer),
@@ -1476,7 +1492,10 @@ export class RunManager {
     });
     // Persist the full definition so a queued run survives a restart (#367) —
     // ad-hoc "(planned)" chains exist nowhere else to re-resolve from.
-    this.store.updateRun(run.id, { workflowDef: workflow });
+    // The task's own extra system prompt rides along for the same reason: a queued run is rebuilt
+    // from the record (`reviveQueuedRun`), and `execute` echoes the resolved prompt over it later.
+    const systemPrompt = input.systemPrompt?.trim() || undefined;
+    this.store.updateRun(run.id, { workflowDef: workflow, ...(systemPrompt ? { systemPrompt } : {}) });
     // Initial pasted attachments must be visible while the run is still queued (#612),
     // and must survive a restart before a slot opens. Persist them before the job
     // enters `pendingJobs`; `hydrateQueuedInput` reconstructs their content blocks
@@ -1505,6 +1524,7 @@ export class RunManager {
     this.pendingJobs.set(run.id, { workflow, input: effectiveInput });
     this.queue.push(run.id);
     void this.pump();
+    this.startedHere.add(run.id);
     return run;
   }
 
@@ -1803,6 +1823,9 @@ export class RunManager {
         autonomous: run.autonomous,
         // Preserve an explicit worktree opt-out across a queued restart.
         worktree: run.worktree,
+        // The task's own extra system prompt, saved by `startRun`. Absent means the project
+        // default, which `execute` resolves at start exactly as it would have.
+        systemPrompt: run.systemPrompt,
       }),
     });
     this.queue.push(run.id);
@@ -1815,7 +1838,8 @@ export class RunManager {
    *  - `queued`  → back into the queue (FIFO by createdAt), from the persisted
    *    workflowDef (or the catalog by name for older records);
    *  - `waiting` → the turn was over and the ball was in the user's court —
-   *    settle exactly like a closed session (review/done, Continue still works);
+   *    settle exactly like a closed session (review/done, Continue still works) — and a
+   *    Continue parked mid-workflow fails, as its live close does (#520);
    *  - `running` → mark interrupted, then immediately resume the last agent
    *    session via the Continue path, pointing the agent at its handoff file.
    * Call once, before the server starts taking requests.
@@ -1823,7 +1847,7 @@ export class RunManager {
   async recover(): Promise<void> {
     const live = this.store
       .listRuns()
-      .filter((r) => ['queued', 'waiting', 'running'].includes(r.status))
+      .filter((r) => engineOwnsRun(r.status))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     // A crash never reaches `dropActive`, so its temp directory (#785) outlived the run.
     // Startup is the one moment we know which runs are still live, so sweep every other
@@ -1837,6 +1861,32 @@ export class RunManager {
         continue;
       }
       if (run.status === 'waiting') {
+        // A Continue parked mid-workflow hands the remaining steps over only after its turn's
+        // `XEZ:DONE` (#520). Closing it live fails the task with that reason, so a restart must
+        // too: settling it as a success ended the task `done`/`review` with its later checks
+        // and reviews never run. The failed task stays Continue-able, as after a live close.
+        const parked = run.steps.find((s) => s.status === 'waiting' || s.status === 'running');
+        if (parked?.id.startsWith('continue-')) {
+          const workflow = await this.reviveWorkflow(run);
+          const reason = unfinishedContinuationReason(continuationTail(run, workflow, parked.id), workflow);
+          if (reason) {
+            const finishedAt = new Date().toISOString();
+            this.store.updateStep(run.id, parked.id, { status: 'failed', error: reason, finishedAt });
+            this.store.updateRun(run.id, {
+              status: 'failed',
+              error: `continue failed: ${reason}`,
+              finishedAt,
+              currentStepId: undefined,
+              activity: undefined,
+            });
+            appendHandoffHeartbeat(this.dataDir, run.id, `step "${parked.id}" complete — status=failed`);
+            this.store.appendEvent(run.id, {
+              type: 'lifecycle',
+              message: `xezar restarted — the open session was closed; continue failed — ${reason}`,
+            });
+            continue;
+          }
+        }
         for (const step of run.steps) {
           if (step.status === 'waiting' || step.status === 'running') {
             this.store.updateStep(run.id, step.id, { status: 'done', finishedAt: new Date().toISOString() });
@@ -1899,11 +1949,21 @@ export class RunManager {
     return workflows.find((w) => w.name === run.workflow) ?? null;
   }
 
+  /**
+   * #943, owner 2026-10-19: every way a task stops stops what it started. A backend the EOF watchdog
+   * stopped after its session closed, and an agent error, are swept at once – before anything else
+   * of the run starts (a retry, the next step, the rest of the workflow), as after a time limit.
+   * A stop xezar named itself (cancel, pause, close) sweeps when the run leaves, in `dropActive`.
+   */
+  private async sweepAfterSession(runId: string, state: ActiveRun, reason: 'eof-kill' | 'agent-error'): Promise<void> {
+    if (!state.stopReason) await this.runProcesses.now(runId, reason);
+  }
+
   /** Remove a run from the live registries — keeps `waiting ⊆ active`. */
   private dropActive(runId: string): void {
     const state = this.active.get(runId);
-    // #943: a run xezar paused or cancelled leaves nothing it started running; every other end
-    // forgets the run's process ledger. Synchronous – the sweep runs enrolled in the background.
+    // #943: a run xezar paused, cancelled or closed leaves nothing it started running; every other
+    // end forgets the run's process ledger. Synchronous – the sweep runs enrolled in the background.
     if (state?.stopReason) this.runProcesses.start(runId, state.stopReason);
     else this.runProcesses.drop(runId);
     state?.releaseRepoRoot?.();
@@ -2070,6 +2130,11 @@ export class RunManager {
    *
    * Cheap: an in-memory scan, and arming is skipped for every run already held.
    */
+  /** Whether this manager may act on a stored run it did not hand a job to (`ownRunsOnly`). */
+  private mayAdopt(runId: string): boolean {
+    return !this.ownRunsOnly || this.startedHere.has(runId);
+  }
+
   private reconcileAutoResumes(): void {
     if (!this.semaphore.autoResumeOnUsageLimit()) {
       // Sweep the RECORDS, not the timer map. A record promising a resume that no timer is
@@ -2084,7 +2149,7 @@ export class RunManager {
       const pending = new Set([
         ...this.autoResumeTimers.keys(),
         ...this.store.listRuns().filter((run) => run.autoResumeAt !== undefined).map((run) => run.id),
-      ]);
+      ].filter((runId) => this.mayAdopt(runId)));
       for (const runId of pending) {
         this.clearAutoResume(runId);
         this.store.appendEvent(runId, {
@@ -2096,6 +2161,7 @@ export class RunManager {
     }
     for (const run of this.store.listRuns()) {
       if (run.status !== 'failed' || !run.autoResumeAt) continue;
+      if (!this.mayAdopt(run.id)) continue;
       if (this.autoResumeTimers.has(run.id)) continue;
       const deadline = Date.parse(run.autoResumeAt);
       // A deadline that is unreadable, belongs to a run that has spent its cap, or belongs to a
@@ -2215,6 +2281,7 @@ export class RunManager {
     for (const run of this.store.listRuns()) {
       if (this.disposed) return;
       if (run.status !== 'queued') continue;
+      if (!this.mayAdopt(run.id)) continue;
       if (this.active.has(run.id) || this.starting.has(run.id)) continue;
       if (this.pendingJobs.has(run.id) || this.pendingContinuations.has(run.id)) continue;
       if (this.queue.includes(run.id)) continue;
@@ -2386,6 +2453,7 @@ export class RunManager {
       if (this.disposed) return;
       await reclaimWorktrees(this.repoRoot, this.store, keep, {
         shouldStop: () => this.disposed,
+        reserve: (runId) => this.reserveForReclaim(runId),
       });
     } catch {
       // retention is best-effort; swallow so terminal transitions never break.
@@ -2548,7 +2616,7 @@ export class RunManager {
     // after it, the pin missed the window, the ledger rejected the root and a stop swept nothing.
     const trackProcess = (pid: number): void => {
       const spawnedAt = Date.now();
-      registerRunProcess(runId, pid);
+      registerRunProcess(runId, pid, spawnedAt);
       if (this.active.get(runId) === state) this.runProcesses.pinRoot(runId, pid, spawnedAt);
     };
     if (session.pid !== undefined) trackProcess(session.pid);
@@ -2559,8 +2627,31 @@ export class RunManager {
     if (state.cancelled) session.interrupt();
   }
 
+  /** This process's own view: a run it is executing, starting or holding in its queue. Not the
+   *  record's `engineOwnsRun` (contract): after a crash a record still says `running` while no
+   *  engine holds it, until `recover()` takes it back – the question here is who holds it NOW. */
   isActive(runId: string): boolean {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
+  }
+
+  /** Retention removals in flight, per run (`reserveForReclaim`). A Continue waits on its run's. */
+  private readonly reclaiming = new Map<string, Promise<void>>();
+
+  /**
+   * Reserve `runId` for a worktree removal (`reclaimWorktrees`' `reserve`): refused while the run
+   * is live here, otherwise held until the returned release. A Continue accepted meanwhile is
+   * already `isActive` (so no later sweep picks it) and waits for the release before it
+   * re-materializes the worktree (`runContinuation`), so a removal and a Continue never overlap.
+   */
+  reserveForReclaim(runId: string): (() => void) | undefined {
+    if (this.isActive(runId) || this.reclaiming.has(runId)) return undefined;
+    let settle!: () => void;
+    const removal = new Promise<void>((resolve) => { settle = resolve; });
+    this.reclaiming.set(runId, removal);
+    return () => {
+      if (this.reclaiming.get(runId) === removal) this.reclaiming.delete(runId);
+      settle();
+    };
   }
 
   /** The id set behind `isActive` — `active ∪ starting ∪ queue`. `quiesce()` needs the whole
@@ -2945,6 +3036,7 @@ export class RunManager {
     if (state?.session?.open) {
       this.clearIdleTimer(state);
       this.store.appendEvent(runId, { type: 'lifecycle', message: 'session closed by user' });
+      state.stopReason ??= 'close'; // #943, owner 2026-10-19: every stop stops what the task started
       state.session.end();
       return true;
     }
@@ -2982,7 +3074,7 @@ export class RunManager {
     /** Restart recovery may discover several interrupted tasks at once. Those
      *  continuations are queued; an explicit user Continue remains immediate. */
     deferForCapacity = false,
-  ): { ok: boolean; error?: string } {
+  ): { ok: boolean; error?: string; code?: ApiErrorCode } {
     if (agentModelsLocked(this.repoRoot) && opts.model?.trim()) {
       return { ok: false, error: AGENT_MODELS_LOCKED_ERROR };
     }
@@ -2993,7 +3085,8 @@ export class RunManager {
     // cancellation already delivered to it and leaving one body driving a session the registry
     // no longer points at. Two spellings of "is this run live" is the drift `activeRunIds()`
     // was introduced to end (#200).
-    if (this.isActive(runId)) return { ok: false, error: 'run is still active' };
+    // The one refusal a client retries, so it carries a stable code (clients match the code).
+    if (this.isActive(runId)) return { ok: false, error: 'run is still active', code: RUN_STILL_ACTIVE_CODE };
     const run = this.store.getRun(runId);
     if (!run) return { ok: false, error: 'not found' };
     // `review` is continuable too — that's the "Send back" path (spec 009).
@@ -3178,6 +3271,10 @@ export class RunManager {
     // the stamp so the session regains its isolated tree and the run is eligible
     // for retention again — otherwise it keeps a dir on disk while staying
     // invisible to the enforcer forever. A failed restoration must not widen isolation.
+    // A retention removal of this worktree that was already under way when this Continue was
+    // accepted finishes first, stamp included, so the step below re-materializes what it removed.
+    const removal = this.reclaiming.get(runId);
+    if (removal) await removal;
     await rematerializeReclaimedWorktree(this.repoRoot, this.store, runId);
     const record = this.store.getRun(runId);
     // A recorded path/branch proves prior isolation; an absent policy alone does not
@@ -3297,10 +3394,8 @@ export class RunManager {
     if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) this.armResumeProofPump();
 
     const workflow = record ? await this.reviveWorkflow(record) : null;
-    const resumeIndex = workflow?.steps.findIndex(step =>
-      record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
-    const hasUnfinishedSteps = record?.steps.some(step =>
-      step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done');
+    const tail = continuationTail(record, workflow, stepId);
+    const { resumeIndex } = tail;
     // The workflow tail runs only after this turn's DONE (#520), so an autonomous nudge loop here
     // stands in for a step the workflow path never nudges (#317) — give it the small budget (#613).
     if (resumeIndex >= 0) state.autoContinueCap = MAX_GATED_CONTINUE_NUDGES;
@@ -3311,6 +3406,18 @@ export class RunManager {
     /** The session's resolved tools, assigned with `toolsStep` below (#933 reads them at turn end). */
     let continueTools: readonly string[] = DEFAULT_ALLOWED_TOOLS;
     let stepCost = 0;
+    /**
+     * What the resumed thread had already spent before this continuation, on a backend that
+     * reports the thread's cumulative total (`BACKENDS_WITH_CUMULATIVE_TOKENS`): every earlier step
+     * that ran on this session. The run total sums its steps, so recording Codex's raw figure here
+     * billed all of them twice. Every other backend counts from zero per session object.
+     */
+    const resumedTokens =
+      sessionId !== undefined && BACKENDS_WITH_CUMULATIVE_TOKENS[backend]
+        ? (record?.steps ?? [])
+          .filter((s) => s.id !== stepId && s.sessionId === sessionId)
+          .reduce((sum, s) => sum + s.tokensUsed, 0)
+        : 0;
     let turnText = '';
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, stepId);
@@ -3339,7 +3446,7 @@ export class RunManager {
         this.store.updateStep(runId, stepId, { sessionId: event.sessionId, backend });
       }
       if (event.type === 'token-usage') {
-        this.store.updateStep(runId, stepId, { tokensUsed: event.tokensUsed });
+        this.store.updateStep(runId, stepId, { tokensUsed: Math.max(0, event.tokensUsed - resumedTokens) });
       }
       if (event.type === 'cost') {
         stepCost += event.usd;
@@ -3391,12 +3498,14 @@ export class RunManager {
             !autoContinued && !gatedStop && !monitoring &&
             this.finishStoppedReadOnlyTurn(runId, state, stepId, continueTools);
           if (gatedStop) {
+            state.stopReason ??= 'close'; // in place of the idle close it would wait out (#943)
             state.session?.end();
           } else if (!autoContinued && !finishedReadOnly) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
-            // `running`/`activity:'monitoring'` (#490). Both share the waiting
-            // lifecycle (free the slot, keep the idle timer); the autonomous
+            // `running`/`activity:'monitoring'` (#490). Both free the slot; `waiting`
+            // keeps the idle timer, while monitoring runs on its wake timer instead
+            // (#661, #810) and gets the idle timer once the wake-ups run out; the autonomous
             // nudge may answer ASK in autonomous mode, but explicit monitoring
             // parks with its bounded wake timer instead of spinning immediately.
             if (ask) emitAskRequested(sink, ask);
@@ -3615,9 +3724,17 @@ export class RunManager {
       if (state.cwd !== this.repoRoot) await autosaveCommit(state.cwd, 'turn end');
     };
     try {
-      await session.result;
+      const settled = await session.result.catch(async (err: unknown) => {
+        // The backend failed the session: an agent error, swept as in `execute` (#943).
+        if (!this.exiting) await this.sweepAfterSession(runId, state, 'agent-error');
+        throw err;
+      });
       // The exit is the shutdown's own stop: record nothing, the next start resumes the run (#963).
       if (this.exiting) await this.parkedForExit();
+      // #943, as in `execute`: before the tail of the workflow, if any, starts anything.
+      if (sessionError || settled.stoppedAfterClose) {
+        await this.sweepAfterSession(runId, state, sessionError ? 'agent-error' : 'eof-kill');
+      }
       if (sessionError) throw new Error(sessionError);
       // Same "our own signal coming back" teardown path a legitimate `XEZ:DONE` close settles on
       // (#703) — a close xezar forced for the memory guard must land on the `catch` below as a
@@ -3635,13 +3752,14 @@ export class RunManager {
         this.store.appendEvent(runId, { type: 'lifecycle', message: 'run cancelled' });
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=cancelled`);
       } else {
-        if (hasUnfinishedSteps && !workflow) {
-          throw new Error('workflow definition not recoverable; remaining steps cannot be completed');
+        if (tail.hasUnfinishedSteps && !workflow) {
+          throw new Error(unfinishedContinuationReason(tail, workflow) ?? 'workflow definition not recoverable');
         }
-        if (resumeIndex >= 0 && !completedTurn) {
+        const unfinished = completedTurn ? null : unfinishedContinuationReason(tail, workflow);
+        if (unfinished) {
           // The prefix is unchanged; a bound that closed the turn is named after it (#613).
           const bound = state.autoContinueStop ? ` — ${state.autoContinueStop}` : '';
-          throw new Error(`remaining workflow requires XEZ:DONE from the continued turn${bound}`);
+          throw new Error(`${unfinished}${bound}`);
         }
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
@@ -3780,6 +3898,7 @@ export class RunManager {
         'It ended without the done marker: its last message is the result, and anything it says it ' +
         'could not read or check is a gap in that result.',
     });
+    state.stopReason ??= 'close'; // #943, owner 2026-10-19: the run then sweeps what it started
     state.session.end();
     return true;
   }
@@ -4490,8 +4609,9 @@ export class RunManager {
           // cockpit renders as an ask card (#473) — or the agent declared it is
           // still working on its own downstream work with `XEZ:MONITORING`, which
           // parks as `running`/`activity:'monitoring'`, a non-attention state,
-          // instead of raising "needs you" (#490). Lifecycle is identical: the
-          // run frees its slot and keeps the idle timer.
+          // instead of raising "needs you" (#490). Both free the slot; `waiting`
+          // keeps the idle timer, while monitoring runs on its wake timer instead
+          // (#661, #810) and gets the idle timer once the wake-ups run out.
           if (ask) emitAskRequested(sink, ask);
           if (monitoring) {
             this.store.updateRun(runId, { status: 'running', activity: 'monitoring' });
@@ -4699,6 +4819,9 @@ export class RunManager {
         // agent left running too, before anything else of this run starts. A cancel that lands
         // meanwhile is seen below and by the step loop, never behind a retry.
         if (result.timedOut) await this.runProcesses.now(runId, 'timeout');
+        else if (sessionError || result.stoppedAfterClose) {
+          await this.sweepAfterSession(runId, state, sessionError ? 'agent-error' : 'eof-kill');
+        }
         if (sessionError) {
           sink.sessionEnded('error', sessionError);
           return sessionError;
@@ -4723,6 +4846,7 @@ export class RunManager {
         return null;
       } catch (err) {
         if (this.exiting) await this.parkedForExit();
+        await this.sweepAfterSession(runId, state, 'agent-error'); // the backend failed the session
         const message = err instanceof Error ? err.message : String(err);
         sink.sessionEnded('error', message); // alongside v1's fatal `error`
         return message;
@@ -5218,6 +5342,9 @@ export class RunManager {
           type: 'lifecycle',
           message: `session closed after ${Math.round(timeoutMs / 60_000)}m of inactivity`,
         });
+        // #943, owner 2026-10-19: the run then sweeps what it started. No `beforeStop` read: the
+        // session sat idle for the whole timeout, so the sampler has long recorded its programs.
+        state.stopReason ??= 'close';
         state.session.end();
       }
     }, timeoutMs);
@@ -5246,13 +5373,7 @@ export class RunManager {
     }
     if ((state.monitoringWakeups ?? 0) >= MAX_AUTO_CONTINUES) {
       this.clearMonitoringWakeTimer(state, runId);
-      if (!this.store.getRun(runId)?.monitoringWakeCapReached) {
-        this.store.updateRun(runId, { monitoringWakeCapReached: true });
-        this.store.appendEvent(runId, {
-          type: 'note',
-          message: `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`,
-        });
-      }
+      this.monitoringWakeCapReached(runId, state);
       return;
     }
     if (state.monitoringWakeTimer && state.monitoringWakeIntervalMinutes === minutes) return;
@@ -5267,11 +5388,7 @@ export class RunManager {
       if (!this.monitoring.has(runId) || !state.session?.open || state.cancelled) return;
       const wakeups = state.monitoringWakeups ?? 0;
       if (wakeups >= MAX_AUTO_CONTINUES) {
-        this.store.updateRun(runId, { monitoringWakeCapReached: true });
-        this.store.appendEvent(runId, {
-          type: 'note',
-          message: `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`,
-        });
+        this.monitoringWakeCapReached(runId, state);
         return;
       }
       state.monitoringWakeups = wakeups + 1;
@@ -5282,6 +5399,27 @@ export class RunManager {
       this.deliverMessage(runId, [{ type: 'text', text: MONITORING_WAKE_NUDGE }], false);
     }, Math.max(0, deadline - Date.now()));
     state.monitoringWakeTimer.unref?.();
+  }
+
+  /**
+   * The wake timer is a monitoring session's only automatic exit (#810) — it has no idle timer
+   * (#661). Once the wake-ups are spent that exit is gone, so the ordinary idle timer takes over:
+   * the session closes after the idle timeout unless someone answers first. Armed once, never
+   * re-armed by a later reconcile, so a pump cannot keep pushing the close back. An operator who
+   * switched the idle close off (`idleTimeoutMinutes: null`) keeps the session parked.
+   */
+  private monitoringWakeCapReached(runId: string, state: ActiveRun): void {
+    if (!this.store.getRun(runId)?.monitoringWakeCapReached) {
+      this.store.updateRun(runId, { monitoringWakeCapReached: true });
+      const minutes = this.semaphore.idleTimeoutMinutes();
+      this.store.appendEvent(runId, {
+        type: 'note',
+        message: minutes === null
+          ? `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); session remains parked`
+          : `automatic monitoring wake-up cap reached (${MAX_AUTO_CONTINUES}); the session closes after ${minutes}m of inactivity`,
+      });
+    }
+    if (!state.idleTimer && state.session?.open && !state.cancelled) this.armIdleTimer(runId, state);
   }
 
   private clearMonitoringWakeTimer(state: ActiveRun, runId?: string): void {
@@ -5508,6 +5646,37 @@ function continuationModel(
   const stepDef = defSteps.find((candidate) => candidate.id === owner?.id && stepKind(candidate) === 'agent')
     ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent' && candidate.runner === backend);
   return stepDef?.model ?? record.model;
+}
+
+/**
+ * What a Continue still owes the workflow it continues (#520): `resumeIndex` is the first
+ * workflow step the record has not finished (-1 when none), and `hasUnfinishedSteps` says the
+ * record itself holds an unfinished workflow step. `runContinuation` reads it when the turn
+ * starts, and restart recovery reads it for a continuation parked at `waiting`, so a parked
+ * continuation settles on the same rule whichever way its session closes.
+ */
+function continuationTail(
+  record: RunRecord | undefined,
+  workflow: WorkflowDef | null,
+  stepId: string,
+): { resumeIndex: number; hasUnfinishedSteps: boolean } {
+  const resumeIndex = workflow?.steps.findIndex(step =>
+    record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
+  const hasUnfinishedSteps = record?.steps.some(step =>
+    step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done') ?? false;
+  return { resumeIndex, hasUnfinishedSteps };
+}
+
+/** Why a continuation that closed without `XEZ:DONE` cannot settle as a success, or null. */
+function unfinishedContinuationReason(
+  tail: { resumeIndex: number; hasUnfinishedSteps: boolean },
+  workflow: WorkflowDef | null,
+): string | null {
+  if (tail.hasUnfinishedSteps && !workflow) {
+    return 'workflow definition not recoverable; remaining steps cannot be completed';
+  }
+  if (tail.resumeIndex >= 0) return 'remaining workflow requires XEZ:DONE from the continued turn';
+  return null;
 }
 
 function findLastAgentStepIndex(workflow: WorkflowDef): number {

@@ -51,8 +51,19 @@ afterEach(() => {
   sendMessage.mockReset()
 })
 
+/** The toast, not the run header's own status announcer: both are `role="status"`. */
+const findToast = () =>
+  waitFor(() => {
+    const el = document.querySelector<HTMLElement>('[data-slot="toast"]')
+    if (!el) throw new Error('no toast yet')
+    return el
+  })
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+// The header's "take over interactively" line is built by the server (`GET /runs/:id/resume-command`).
+const RESUME_LINE = "cd '/tmp/wt' && claude --resume sess-1"
 
 function stubFetch() {
   vi.stubGlobal(
@@ -63,6 +74,7 @@ function stubFetch() {
       if (path === '/api/v1/providers/status') {
         return json({ providers: [{ provider: 'claude', status: 'connected', enabled: true }] })
       }
+      if (path === '/api/v1/runs/r1/resume-command') return json({ command: RESUME_LINE })
       return json({})
     }),
   )
@@ -234,19 +246,20 @@ describe('Q80 / G-21 / G-10 / G-16 the run header', () => {
     const writeText = vi.fn(() => Promise.resolve())
     vi.stubGlobal('navigator', { clipboard: { writeText } })
     renderHeader(run())
-    const hint = screen.getByRole('button', { name: /take over interactively/ })
+    const hint = await screen.findByRole('button', { name: /take over interactively/ })
     expect(classes(hint)).toEqual(expect.arrayContaining(PHONE_ROW))
     fireEvent.click(hint)
-    expect((await screen.findByRole('status')).textContent).toBe('Command copied')
+    expect((await findToast()).textContent).toBe('Command copied')
   })
 
   it('a refused clipboard never reports success: the toast carries the command instead', async () => {
     stubFetch()
     vi.stubGlobal('navigator', { clipboard: { writeText: () => Promise.reject(new Error('Document is not focused.')) } })
     renderHeader(run())
-    fireEvent.click(screen.getByRole('button', { name: /take over interactively/ }))
-    const toast = await screen.findByRole('status')
+    fireEvent.click(await screen.findByRole('button', { name: /take over interactively/ }))
+    const toast = await findToast()
     expect(toast.textContent).toMatch(/^Run manually: /)
+    expect(toast.textContent).toContain(RESUME_LINE)
     expect(toast.textContent).not.toContain('copied')
   })
 })

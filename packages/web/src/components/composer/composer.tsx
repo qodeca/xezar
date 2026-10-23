@@ -258,6 +258,45 @@ export function Composer({
 
   const closeMenu = useCallback(() => setTrigger(null), [])
 
+  // ---- suggestion-list semantics (ARIA 1.2 autocomplete on a textbox) ------------------------
+  //
+  // Focus never leaves the textarea while the menu is open, so a screen reader only learns about
+  // the menu through the textarea. It stays a multi-line TEXTBOX – `role="combobox"` would tell
+  // readers it is a single-line picker – and carries the attributes ARIA 1.2 allows a textbox:
+  // `aria-autocomplete="list"`, `aria-controls` pointing at the listbox, and
+  // `aria-activedescendant` naming the highlighted option, which makes ↑/↓ speak each
+  // suggestion. cmdk owns the listbox and option ids (it overwrites any id passed in), so the
+  // two ids are mirrored from the DOM rather than reinvented.
+  // A callback ref held in state: the listbox lives in a portal that mounts after the textarea's
+  // commit, so an effect keyed on `menuOpen` would still see no element.
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null)
+  const [listbox, setListbox] = useState<{ id?: string; active?: string }>({})
+  useLayoutEffect(() => {
+    if (!listEl) {
+      setListbox((prev) => (prev.id === undefined && prev.active === undefined ? prev : {}))
+      return
+    }
+    const read = () => {
+      const id = listEl.id || undefined
+      // The highlighted option, read from the options themselves: cmdk's own listbox
+      // `aria-activedescendant` is only updated for an uncontrolled value, and this one is
+      // controlled (`value={activeValue}`).
+      const active = listEl.querySelector('[role="option"][aria-selected="true"]')?.id || undefined
+      setListbox((prev) => (prev.id === id && prev.active === active ? prev : { id, active }))
+    }
+    read()
+    const observer = new MutationObserver(read)
+    observer.observe(listEl, {
+      attributes: true,
+      attributeFilter: ['id', 'aria-selected'],
+      subtree: true,
+      childList: true,
+    })
+    return () => observer.disconnect()
+  }, [listEl])
+  // What Enter or Tab just inserted, said once: the menu closing alone tells a reader nothing.
+  const [accepted, setAccepted] = useState('')
+
   const pick = (candidate: MenuCandidate) => {
     const el = textareaRef.current
     if (!el || trigger === null) return
@@ -275,6 +314,7 @@ export function Composer({
     setText(next.text)
     pendingCaretRef.current = next.caret
     setTrigger(null)
+    setAccepted(`Inserted ${trigger.trigger}${candidate.insert}`)
     el.focus()
   }
 
@@ -521,18 +561,25 @@ export function Composer({
             value={text}
             disabled={disabled}
             aria-label={ariaLabel}
+            aria-autocomplete="list"
+            aria-controls={menuOpen ? listbox.id : undefined}
+            aria-activedescendant={menuOpen ? listbox.active : undefined}
             placeholder={disabled ? disabledReason : placeholder}
             // 16px on touch widths — iOS zooms any focused input below 16px (spec mobile rule).
             className="block max-h-[220px] min-h-tap w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:min-h-13.5 md:px-4 md:pt-3 md:text-sm"
             onChange={(event) => {
               // The native `input` listener above may already have written this value (#14).
               if (event.target.value !== textRef.current) setText(event.target.value)
+              setAccepted('')
               syncTrigger()
             }}
             onKeyDown={onKeyDown}
             onSelect={syncTrigger}
             onPaste={onPaste}
           />
+          <span data-slot="composer-accepted" role="status" aria-atomic="true" className="sr-only">
+            {accepted}
+          </span>
 
           {recording ? (
             <DictationBar
@@ -607,6 +654,8 @@ export function Composer({
       >
         <Command shouldFilter={false} value={activeValue ?? ''} onValueChange={setMenuValue}>
           <CommandList
+            ref={setListEl}
+            label={trigger?.trigger === '@' ? 'Files' : 'Skills'}
             data-slot="composer-menu"
             data-trigger={trigger?.trigger}
             // Clamped to the popper's reported space so the open keyboard (collisionPadding

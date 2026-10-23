@@ -1,5 +1,12 @@
 # Codex reaction adapter – runtime evidence
 
+> **Status update – 2026-10-23:** The "no push" statements below are out of date. Since
+> [#403](https://github.com/qodeca/xezar/issues/403) a Codex leader gets pushed events again: xezar attaches to the
+> Codex TUI session through the shared app-server the user started, and each event starts a new turn
+> in that session (`packages/xezar/src/mcp/adapters/codex-link.ts`; user steps in
+> `docs/guide/13-mcp-leader.md`, § Codex). xezar still does not start the Codex process. The
+> successor record is [mcp-wake-codex-decision.md](mcp-wake-codex-decision.md).
+
 > **Status update — 2026-09-20:** Historical measurements (run 2026-09-11), **superseded**: the spawn path this record measured was removed before 0.14.0 (owner decision on #311), and a Codex leader now reads its events with `leader_events`. Kept as the record of what was measured.
 
 > **2026-09-11 — the spawn path this record describes was removed** before release 0.14.0 (owner decision on #311: xezar does not start agent processes). The Codex app-server process link and thread start needed a process xezar started, so it is gone from the product; this record stays as the evidence of what was measured. A leader in this client gets no push and reads its events with `leader_events`. See #323 and #324.

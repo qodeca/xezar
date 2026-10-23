@@ -22,6 +22,7 @@ import { claudeMcpIsolation, runMcpIsolationNote, type ClaudeMcpIsolation } from
 import { writeSystemPromptFile } from './system-prompt-file.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
 import { readNdjson } from './ndjson.ts';
+import { StderrTail } from './stderr-tail.ts';
 import {
   claudeTurnStarted,
   createClaudeUiState,
@@ -141,11 +142,19 @@ export class ClaudeCliRunner implements AgentRunner {
       child.once('exit', promptFile.cleanup);
       child.once('close', promptFile.cleanup);
     }
+    // An agent that exits before it reads a message larger than the pipe buffer fails the write
+    // with EPIPE as an `error` event on stdin; unhandled, that event would stop the whole server.
+    // The exit code and stderr already report the failure, so this only records it.
+    child.stdin.on('error', (err) => {
+      onEvent?.({ type: 'note', message: `claude: stdin write failed: ${err.message}` });
+    });
 
     let stdinOpen = true;
     let autoEndTimer: NodeJS.Timeout | undefined;
     let eofTermTimer: NodeJS.Timeout | undefined;
     let eofKillTimer: NodeJS.Timeout | undefined;
+    /** The EOF watchdog had to stop the CLI after `end()` (`AgentRunResult.stoppedAfterClose`). */
+    let stoppedAfterClose = false;
 
     // Protocol v2 emission — additive alongside v1 (`onEvent` keeps flowing
     // byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
@@ -212,7 +221,10 @@ export class ClaudeCliRunner implements AgentRunner {
         // already gone
       }
       eofTermTimer = setTimeout(() => {
-        if (!hasExited()) signalChild('SIGTERM');
+        if (!hasExited()) {
+          stoppedAfterClose = true;
+          signalChild('SIGTERM');
+        }
         eofKillTimer = setTimeout(() => {
           if (!hasExited()) signalChild('SIGKILL');
         }, EOF_KILL_GRACE_MS);
@@ -230,6 +242,9 @@ export class ClaudeCliRunner implements AgentRunner {
     // Pasted task screenshots (spec.images) ride along as leading blocks.
     sendMessage([...(spec.images ?? []), { type: 'text', text: spec.userPrompt }]);
 
+    // Never filled: no caller reads a result's tool calls, and keeping every call's full input
+    // (a whole written file, a long command) grew with the session. Tool calls reach consumers as
+    // `tool-call` events.
     const toolCalls: AgentToolCallRecord[] = [];
     const textChunks: string[] = [];
     let tokensUsed = 0;
@@ -240,9 +255,9 @@ export class ClaudeCliRunner implements AgentRunner {
       spawnFailed = wrapSpawnError(err, this.bin);
     });
 
-    const stderrChunks: string[] = [];
+    const stderrTail = new StderrTail();
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => stderrTail.push(chunk));
 
     // Optional wall-clock kill switch (disabled for interactive sessions).
     const limitMs = spec.timeoutMs ?? this.timeoutMs;
@@ -288,7 +303,7 @@ export class ClaudeCliRunner implements AgentRunner {
 
           let delta = 0;
           try {
-            delta = handleClaudeMessage(mappedMessage, { toolCalls, textChunks, onEvent });
+            delta = handleClaudeMessage(mappedMessage, { textChunks, onEvent });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onEvent?.({ type: 'note', message: `claude: skipped malformed event (${msg.type ?? 'unknown'}): ${message}` });
@@ -338,6 +353,8 @@ export class ClaudeCliRunner implements AgentRunner {
         onEvent?.({ type: 'done' });
         return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, timedOut: true };
       }
+      // #943: the run manager sweeps what the agent left running behind a CLI the watchdog stopped.
+      const closeStop = stoppedAfterClose ? { stoppedAfterClose: true as const } : {};
 
       // A session xezar itself tore down (EOF watchdog after `end()`, or a
       // cancel) exits 143/137 — that is our own signal coming back, not an
@@ -349,11 +366,11 @@ export class ClaudeCliRunner implements AgentRunner {
           message: `claude CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,
         });
         onEvent?.({ type: 'done' });
-        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
+        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, ...closeStop };
       }
 
       if (exitCode !== 0 && exitCode !== null) {
-        const stderr = stderrChunks.join('').trim();
+        const stderr = stderrTail.text().trim();
         const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
         // Reaching here on a 128+signal code means the flag above was false:
         // this CLI was signalled and xezar was not the one who signalled it.
@@ -371,7 +388,7 @@ export class ClaudeCliRunner implements AgentRunner {
       }
 
       onEvent?.({ type: 'done' });
-      return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
+      return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, ...closeStop };
     })();
 
     const session: AgentSession = {
@@ -534,7 +551,6 @@ function normalizeIntentionalTeardownResult(
 function handleClaudeMessage(
   msg: ClaudeStreamMessage,
   ctx: {
-    toolCalls: AgentToolCallRecord[];
     textChunks: string[];
     onEvent?: (e: AgentEvent) => void;
   },
@@ -546,7 +562,6 @@ function handleClaudeMessage(
         ctx.textChunks.push(b.text);
         ctx.onEvent?.({ type: 'text', text: b.text });
       } else if (b.type === 'tool_use' && b.id && b.name) {
-        ctx.toolCalls.push({ id: b.id, name: b.name, input: b.input });
         ctx.onEvent?.({ type: 'tool-call', id: b.id, tool: b.name, input: b.input });
       }
     }

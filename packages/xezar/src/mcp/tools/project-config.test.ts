@@ -29,6 +29,7 @@ import { PROVIDER_IDS, ProviderAuthService, type ProviderId, type ProviderStatus
 import { connectedProviderAuth } from '../../server/provider-auth.testkit.ts';
 import { createApp } from '../../server/server.ts';
 import { recordOwnListen } from '../../server/instance-liveness.ts';
+import { __settleTeamSkillsLoadsForTests } from '../../skills-remote.ts';
 import type { SkillsUpdateService } from '../../skills-update.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
@@ -239,15 +240,20 @@ beforeEach(async () => {
   ws = await setup();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // First, while every folder and the case's own HOME still exist: let each background
+  // team-skills load the case started finish reading them. One that reads after the removal below
+  // finds no `.xezar/config.json`, falls back to the default source and clones it from the
+  // network into the NEXT case's HOME, where it raced that case's cleanup (`ENOTEMPTY` on
+  // `.cache/xez/skills/qodeca__xezar-skills`, CI run 39239763879).
+  await __settleTeamSkillsLoadsForTests();
   for (const key of ENV_KEYS) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
   for (const store of stores.splice(0)) store.close();
-  // A home's background team-skills clone may still be writing into it, and a loaded runner can
-  // hold a folder for longer: retry for about 9 s, or about 25 s on Windows – each inside its
-  // hook limit (#963).
+  // A loaded runner can still hold a folder for a moment: retry for about 9 s, or about 25 s on
+  // Windows – each inside its hook limit (#963).
   for (const dir of tempDirs.splice(0)) rmSync(dir, { ...TEST_DIR_RM_OPTIONS, maxRetries: onWindows ? 22 : 13, retryDelay: 100 });
 });
 

@@ -4,6 +4,11 @@ The cockpit (`packages/web`) as it is today: every token, primitive, shared comp
 
 Two readers: a coding agent that must find the right rule fast, and a person who wants the reasons. Read this file first; it routes you to one or two more.
 
+**Fast path.**
+
+- **Designer:** [new-designs.md](new-designs.md) → link [cockpit.css](cockpit.css) → open [specimens/](specimens/index.html) beside your mockup → check [known-gaps.md](known-gaps.md) before you copy a look.
+- **Developer:** reuse from [components.md](components.md) → follow [patterns.md](patterns.md) → run `npm test -- packages/web/src/design-system-drift.test.ts packages/web/src/design-guardian.test.ts`.
+
 ## Route by task
 
 Start with [usage.md](usage.md) to scope the task and finish each route with
@@ -25,7 +30,7 @@ lifecycle for actors and transitions, and storage for artifacts and capture prov
 Each holds today and `packages/web/src/design-guardian.test.ts` or the drift test enforces most of them. Written once, here; the other files refer back. Eleven rules; counts read on 2026-09-16.
 
 1. **Tokens only.** No raw hex, rgb or named colour outside `packages/web/src/styles/index.css`. Use the Tailwind utility a token maps to (`bg-card`, `text-muted-foreground`, `border-border`).
-2. **No `dark:` variants.** Dark is the default; `.light` overrides 26 tokens. A component that needs a theme-specific value gets a token, not a variant.
+2. **No `dark:` variants.** Dark is the default; `.light` overrides 31 tokens (read 2026-10-23 from `styles/index.css`). A component that needs a theme-specific value gets a token, not a variant. One sanctioned exception runs the other way: the `light:` variant (`@custom-variant light` in `styles/index.css`), used only as `light:text-foreground` beside `text-primary` where the accent would be text on white ([behaviour.md](behaviour.md) §5, pinned by `src/light-accent-ink.test.ts`). Nothing else may use it.
 3. **Amber text is `text-pending-strong`**, never `text-pending` or `text-amber-*`. The soft amber is for dots and backgrounds only; it fails contrast as text in light.
 4. **No `bg-white`, `text-white`, `bg-black`, `text-black`** outside `src/components/ui/` and `zoomable-image.tsx`. Use `--contrast` and `--contrast-foreground`.
 5. **Heights use `dvh`, never `h-screen`, `min-h-screen`, `max-h-screen` or `100vh`.** The phone keyboard must not hide the composer.
@@ -37,12 +42,29 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 
 11. **Between blocks, a rhythm token; never a hand-typed spacing pixel.** Use `gap-stack`, `p-inset`, `md:px-section` ([foundations.md](foundations.md) §4.1) between blocks and the numeric scale inside a control. The `no-arbitrary-spacing` guardian rule fails a new `p-[7px]` or `h-[34px]` (`decisions.md` D-06).
 
+## The design guardian rules
+
+`packages/web/src/design-guardian.test.ts` runs ten static rules over the cockpit sources in `npm test`. Each is listed once, here; the other files name a rule rather than restate it.
+
+| Rule | What it fails | Allowed where |
+| --- | --- | --- |
+| `no-raw-hex-colors` | a raw hex colour | `styles/index.css` only |
+| `no-color-functions` | `rgb()`, `rgba()`, `hsl()`, `hsla()`, `oklch()`, `oklab()` or `color-mix()` in a component | `styles/index.css`, and `routes/github/github-filter.ts`, which blends a GitHub label colour (runtime data, not a design choice) |
+| `unknown-color-token` | a colour utility (`bg-`, `text-`, `border-`, `ring-` …) naming a colour that is not a `--color-*` token in the `@theme inline` block; Tailwind would emit nothing and the element would silently inherit its parent's colour | – |
+| `no-amber-text` | `text-pending` or `text-amber-*`; amber ink is `text-pending-strong` | – |
+| `no-raw-black-white` | `bg-white`, `bg-black`, `text-white`, `text-black` | `src/components/ui/` and `zoomable-image.tsx` (scrims) |
+| `no-native-dialogs` | `confirm()`, `alert()`, `prompt()` (scans `src/**` and `e2e/**`) | `lib/bookmarklet.ts` |
+| `no-dark-variant` | a `dark:` variant | – |
+| `no-100vh` | `100vh`, `h-screen`, `min-h-screen`, `max-h-screen` | – |
+| `no-arbitrary-spacing` | a hand-typed spacing or size pixel (`gap-[7px]`, `h-[34px]`) | the counted rows of `design-guardian-spacing-allowlist.json` |
+| `fixture-serve-must-pin-xez-home` | a browser-spec line that sets `XEZ_DRY_RUN` without `XEZ_HOME`; a spec's `xezar serve` takes its environment from `fixtureServeEnv(dataRoot)`, or it would write to the developer's real `~/.xezar` | – (applies to `e2e/**` only) |
+
 ## What is in this folder
+
+**Reference** – what the cockpit is. Read these to build or review.
 
 | File | What it holds |
 | --- | --- |
-| [usage.md](usage.md) | Task scoping and worked fix/feature reading routes. |
-| [verification.md](verification.md) | Before/after evidence matrix; source tests versus rendered checks and acceptance. |
 | [foundations.md](foundations.md) | Every token with its dark and light value, meaning and Tailwind utility; colour roles; type; spacing and the density lever; radius; shadow; motion and reduced motion; icons; layout and reading width; breakpoints; `no-hover:`; safe areas. |
 | [theming.md](theming.md) | Theme, accent, density and width: where each is stored, how the pre-paint script applies it before React, and how a design must behave under each. |
 | [components.md](components.md) | Every `src/components/ui` primitive and every shared component: purpose, source, variants and props, states, do and don't, accessibility, where used. |
@@ -50,15 +72,22 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 | [patterns.md](patterns.md) | Shell, sidebar and badges, page headers, lists/cards/tables, status, empty/loading/error, dialogs/sheets/palette/toasts/notifications, settings and forms, the mobile drawer, live updates. |
 | [behaviour.md](behaviour.md) | Keyboard and focus, announcements, responsive breakpoints with counts, motion, theming behaviour. |
 | [writing.md](writing.md) | UX writing conventions with the real copy quoted and its source. |
-| [new-designs.md](new-designs.md) | The rules for a new mockup: the stylesheet link, what a local stylesheet may contain, states, appearance, mobile, accessibility, handoff. |
 | [coverage.md](coverage.md) | One row per token, primitive, shared component and pattern with its status. The drift test reads it. |
 | [known-gaps.md](known-gaps.md) | Every place the code disagrees with itself: paths, the chosen rule, why, the proposed fix. Also comment-vs-code mismatches and where the mockup stylesheet departs from the cockpit. |
 | [decisions.md](decisions.md) | Design decisions made in reviews, one `D-nn` each: date, context, decision, consequences, source. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How the system changes: the criteria for a new token, component or pattern, the triage buckets, fix-by-PR versus design-first, deprecation, decisions versus gaps, and the debt loop. |
 | [cockpit.css](cockpit.css) | The shared stylesheet: the tokens of both themes verbatim from `index.css`, the appearance overrides, and base classes for every component. Specimens and every mockup link it by relative path. |
 | [specimens/](specimens/index.html) | Static HTML that opens from disk: `foundations.html`, `components.html`, `patterns.html`, `mobile.html`. Light/dark switch, accent, density and width in the bar. No build, no server, no network, no app code. |
+
+**Process** – how work moves. Read these to plan, hand off and prove a change.
+
+| File | What it holds |
+| --- | --- |
+| [usage.md](usage.md) | Task scoping and worked fix/feature reading routes. |
+| [new-designs.md](new-designs.md) | The rules for a new mockup: the stylesheet link, what a local stylesheet may contain, states, appearance, mobile, accessibility, handoff. |
+| [verification.md](verification.md) | Before/after evidence matrix; source tests versus rendered checks and acceptance. |
 | [lifecycle.md](lifecycle.md) | Design lifecycle ownership, review gates, implementation and retirement transitions, with eight tabletop paths. |
 | [storage.md](storage.md) | Locations for mockups, screenshots, decisions and private evidence; capture provenance, supersession and retention. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How the system changes: the criteria for a new token, component or pattern, the triage buckets, fix-by-PR versus design-first, deprecation, decisions versus gaps, and the debt loop. |
 
 ## How it stays true
 

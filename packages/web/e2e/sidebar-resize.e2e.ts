@@ -123,12 +123,12 @@ describe('the sidebar column the user can widen', () => {
   it('is a desktop affordance only: below md there is no handle to reach', () => {
     browser.setViewport(390, 844)
     browser.goto(home)
-    browser.waitForFunction(`document.querySelector('button[aria-label="Open menu"]') !== null`)
+    browser.waitForFunction(`document.querySelector('button[aria-label^="Open menu"]') !== null`)
 
     // The aside is still in the DOM (display:none), so the handle inside it is unreachable
     // rather than absent — and the drawer that replaces it brings no handle of its own.
     expect(browser.isVisible(HANDLE)).toBe(false)
-    browser.click('button[aria-label="Open menu"]')
+    browser.click('button[aria-label^="Open menu"]')
     browser.waitForFunction(`document.querySelector('[role="dialog"] nav[aria-label="Main"]') !== null`)
     expect(browser.evaluate(`document.querySelectorAll('[role="dialog"] ${HANDLE}').length`)).toBe(0)
     expect(

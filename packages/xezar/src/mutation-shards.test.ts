@@ -2,12 +2,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
-// The MCP mutation gate runs nightly against `main` (#377): `.github/workflows/mutation.yml` splits
-// it across nine jobs because one job cannot finish inside GitHub's 6-hour kill.
-// `packages/xezar/mutation/shards.mjs` is the split.
+// The MCP mutation gate runs nightly against the default branch (#377): `.github/workflows/mutation.yml`
+// splits it across as many jobs as its measured minutes need, because one job cannot finish inside
+// GitHub's 6-hour kill. `packages/xezar/mutation/shards.mjs` is the split.
 //
 // A split is only safe if it is COMPLETE and DISJOINT. A file that falls out of the partition is a
 // file the gate silently stops measuring — the same failure shape as #375, where a release-only
@@ -22,14 +24,19 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 type ScopeFile = { path: string; size: number };
 type Shard = { index: number; files: string[]; bytes: number; weight: number };
 type ShardsModule = {
-  DEFAULT_SHARDS: number;
+  SHARD_BUDGET_MINUTES: number;
+  MAX_SHARDS: number;
+  FALLBACK_SHARDS: number;
   WEIGHTS_FILE: string;
   repoRoot: string;
   globToRegExp: (glob: string) => RegExp;
   mutateGlobs: (root?: string) => Promise<string[]>;
   scopeFiles: (globs: string[], root?: string) => ScopeFile[];
   loadWeights: (root?: string) => Map<string, number> | null;
-  planShards: (files: ScopeFile[], count?: number, weights?: Map<string, number> | null) => Shard[];
+  fallbackWeights: (files: ScopeFile[], weights: Map<string, number> | null) => Map<string, number>;
+  planShards: (files: ScopeFile[], count: number, weights?: Map<string, number> | null) => Shard[];
+  withinBudget: (shards: Shard[], budget?: number) => boolean;
+  shardCount: (files: ScopeFile[], weights: Map<string, number> | null) => number;
   mutationShardPlan: (count?: number, root?: string) => Promise<{ globs: string[]; files: ScopeFile[]; shards: Shard[] }>;
 };
 
@@ -44,7 +51,11 @@ const scope = shards.scopeFiles(globs, REPO_ROOT);
 // `plan` job (the matrix) and the `report` job (re-deriving the same partition to check nothing
 // went missing).
 const weights = shards.loadWeights(REPO_ROOT);
-const plan = shards.planShards(scope, shards.DEFAULT_SHARDS, weights);
+const count = shards.shardCount(scope, weights);
+const plan = shards.planShards(scope, count, weights);
+const jobCeiling = (parse(readFileSync(join(REPO_ROOT, '.github/workflows/mutation.yml'), 'utf8')) as {
+  jobs: { mutants: { 'timeout-minutes': number } };
+}).jobs.mutants['timeout-minutes'];
 
 describe('the MCP mutation shard plan (#377)', () => {
   it('lives outside the shipped `scripts/` folder, and still finds the repository root', () => {
@@ -82,7 +93,7 @@ describe('the MCP mutation shard plan (#377)', () => {
   });
 
   it('leaves no shard empty and keeps them within reach of each other', () => {
-    expect(plan).toHaveLength(shards.DEFAULT_SHARDS);
+    expect(plan).toHaveLength(count);
     for (const shard of plan) expect(shard.files.length, `shard ${shard.index} is empty`).toBeGreaterThan(0);
     const total = plan.reduce((sum, shard) => sum + shard.weight, 0);
     const heaviest = Math.max(...plan.map((shard) => shard.weight));
@@ -91,25 +102,79 @@ describe('the MCP mutation shard plan (#377)', () => {
     expect(heaviest).toBeLessThanOrEqual((total / plan.length) * 2);
   });
 
-  it('reads the committed measured-cost snapshot and balances on it, not on byte size', () => {
+  it('plans every shard well inside the job ceiling — the regression #443 kept shipping', () => {
+    // The third incident: nine fixed shards carried about 35 runner-hours, and two to four hit the
+    // 300-minute ceiling every night. The budget is in the snapshot's unit, minutes, so it can be
+    // held against the workflow's own ceiling — read from the workflow, not repeated here.
+    expect(jobCeiling).toBe(300);
+    expect(shards.SHARD_BUDGET_MINUTES, 'the budget must leave the ceiling room for a slow runner').toBeLessThanOrEqual(jobCeiling / 2);
+    expect(shards.withinBudget(plan), 'a multi-file shard is planned over the budget').toBe(true);
+    // A shard holding ONE file is exempt from the budget, because a file cannot be split; the
+    // slowest file must still leave the ceiling the same room for a slow night.
+    const heaviestFile = Math.max(...scope.map((f) => weights!.get(f.path) ?? 0));
+    expect(heaviestFile, 'one file alone is too slow for a job — make its tests cheaper').toBeLessThanOrEqual(jobCeiling * 0.6);
+    expect(count).toBeLessThan(shards.MAX_SHARDS);
+    // The fewest shards that meet the budget: one fewer does not.
+    expect(shards.withinBudget(shards.planShards(scope, count - 1, weights))).toBe(false);
+  });
+
+  it('reads the committed measured-minutes snapshot and balances on it, not on byte size', () => {
     // The populated-input control for the weighted split: without this, a snapshot that failed to
     // load would silently read the same as "balance on byte size", which is the pre-#443 bug.
     expect(weights, `${shards.WEIGHTS_FILE} must parse and cover most of the scope`).not.toBeNull();
     expect(weights!.size).toBeGreaterThan(scope.length / 2);
-    // event-controller.ts is the heaviest MEASURED file (#443) — byte size alone (36 347 bytes,
-    // the smallest of the four hottest files) would never put it alone in its own shard.
-    const heaviest = 'packages/xezar/src/mcp/event-controller.ts';
-    expect(weights!.get(heaviest)).toBeGreaterThan(100_000);
-    const itsShard = plan.find((shard) => shard.files.includes(heaviest))!;
-    expect(itsShard.weight).toBeGreaterThanOrEqual(weights!.get(heaviest)!);
+    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, shards.WEIGHTS_FILE), 'utf8')) as { unit: string; weights: Record<string, number> };
+    expect(snapshot.unit).toBe('minutes');
+    // event-controller.ts is among the slowest MEASURED files (#443) — byte size alone (about 36 kB,
+    // a third of `tools/project-config.ts`) would never put it alone in its own shard.
+    const slow = 'packages/xezar/src/mcp/event-controller.ts';
+    expect(weights!.get(slow)).toBeGreaterThan(shards.SHARD_BUDGET_MINUTES);
+    expect(plan.find((shard) => shard.files.includes(slow))!.files).toEqual([slow]);
     // Balancing on bytes alone would produce a materially different, worse-balanced split — the
     // regression this fix repairs. Proven, not asserted: compute the byte-only split and show its
-    // heaviest shard (by real measured weight) is heavier than the weighted split's.
-    const byteOnly = shards.planShards(scope, shards.DEFAULT_SHARDS, null);
-    const weightOf = (path: string) => weights!.get(path) ?? scope.find((f) => f.path === path)!.size;
-    const byteOnlyHeaviest = Math.max(...byteOnly.map((shard) => shard.files.reduce((sum, p) => sum + weightOf(p), 0)));
-    const weightedHeaviest = Math.max(...plan.map((shard) => shard.weight));
-    expect(weightedHeaviest).toBeLessThan(byteOnlyHeaviest);
+    // heaviest shard (in measured minutes) is heavier than the weighted split's.
+    const byteOnly = shards.planShards(scope, count, null);
+    const minutes = shards.fallbackWeights(scope, weights);
+    const heaviestOf = (split: Shard[]) => Math.max(...split.map((shard) => shard.files.reduce((sum, p) => sum + minutes.get(p)!, 0)));
+    expect(heaviestOf(plan)).toBeLessThan(heaviestOf(byteOnly));
+  });
+
+  it('weighs a file the snapshot never measured in the snapshot’s own unit', () => {
+    // Raw bytes beside minutes is the unit bug the third incident found: a new 20 kB file weighed
+    // like twenty thousand minutes, or a stale snapshot's minutes like nothing at all.
+    const files = [
+      { path: 'a.ts', size: 100 },
+      { path: 'b.ts', size: 300 },
+      { path: 'new.ts', size: 200 },
+    ];
+    const measured = new Map([
+      ['a.ts', 10],
+      ['b.ts', 30],
+    ]);
+    expect(shards.fallbackWeights(files, measured)).toEqual(new Map([['a.ts', 10], ['b.ts', 30], ['new.ts', 20]]));
+    // No snapshot: every file weighs its bytes, the pre-#443 balance.
+    expect(shards.fallbackWeights(files, null).get('new.ts')).toBe(200);
+    // The real scope: an unmeasured file lands in minutes, not in bytes.
+    const real = shards.fallbackWeights([...scope, { path: 'packages/xezar/src/mcp/brand-new.ts', size: 20_000 }], weights);
+    expect(real.get('packages/xezar/src/mcp/brand-new.ts')).toBeLessThan(shards.SHARD_BUDGET_MINUTES);
+  });
+
+  it('derives the count from the budget, caps it, and falls back without a snapshot', () => {
+    const files = Array.from({ length: 30 }, (_, i) => ({ path: `f${String(i).padStart(2, '0')}.ts`, size: 1 }));
+    const even = new Map(files.map((f) => [f.path, 40]));
+    // 30 files × 40 min = 1 200 min: ten shards of three files each meet a 120-minute budget.
+    expect(shards.shardCount(files, even)).toBe(Math.ceil((30 * 40) / shards.SHARD_BUDGET_MINUTES));
+    expect(shards.withinBudget(shards.planShards(files, shards.shardCount(files, even), even))).toBe(true);
+    // One file over the budget gets a shard to itself and does not inflate the count past need.
+    const oneSlow = new Map([...even, ['f00.ts', 200]]);
+    const withSlow = shards.planShards(files, shards.shardCount(files, oneSlow), oneSlow);
+    expect(withSlow.find((s) => s.files.includes('f00.ts'))!.files).toEqual(['f00.ts']);
+    expect(shards.withinBudget(withSlow)).toBe(true);
+    // A scope too heavy for the cap gets the cap, never an unbounded matrix.
+    const heavy = new Map(files.map((f) => [f.path, 1_000]));
+    expect(shards.shardCount(files, heavy)).toBe(Math.min(shards.MAX_SHARDS, files.length));
+    // No snapshot: minutes cannot be budgeted, so the fallback count.
+    expect(shards.shardCount(files, null)).toBe(shards.FALLBACK_SHARDS);
   });
 
   it('honours the config negations — and the scope really does contain what they exclude', () => {
@@ -130,12 +195,13 @@ describe('the MCP mutation shard plan (#377)', () => {
     // the aggregate would see files "missing" that a shard never had. Both read the same committed
     // snapshot, so both must be given it explicitly here too — `mutationShardPlan` below proves
     // that in practice they get it from the same place without either caller passing it by hand.
-    expect(shards.planShards(scope, shards.DEFAULT_SHARDS, weights)).toEqual(plan);
-    expect(shards.planShards([...scope].reverse(), shards.DEFAULT_SHARDS, weights)).toEqual(plan);
+    expect(shards.planShards(scope, count, weights)).toEqual(plan);
+    expect(shards.planShards([...scope].reverse(), count, weights)).toEqual(plan);
+    expect(shards.shardCount([...scope].reverse(), weights)).toBe(count);
   });
 
-  it('`mutationShardPlan` derives the same weighted split on its own, with no weights argument to forget', async () => {
-    const derived = await shards.mutationShardPlan(shards.DEFAULT_SHARDS, REPO_ROOT);
+  it('`mutationShardPlan` derives the same weighted split and count on its own, with no argument to forget', async () => {
+    const derived = await shards.mutationShardPlan(undefined, REPO_ROOT);
     expect(derived.shards).toEqual(plan);
   });
 

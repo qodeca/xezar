@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { hc } from 'hono/client';
 import { z } from 'zod';
 import {
   RUN_HISTORY_PAGE_ITEMS,
@@ -24,8 +23,8 @@ import { resolveTaskDiffBase, type GitRunner } from '../../git-diff-base.ts';
 import { isSafeGitRef } from '../../git-refs.ts';
 import { launchFile } from '../../platform/process-launch.ts';
 import type { RunRecord } from '../../runs/store.ts';
-import type { AppType } from '../../server/app-type.ts';
 import { imageMimeType } from '../../server/git-changes.ts';
+import { redactRemoteUrl } from '../../server/git.ts';
 import {
   MCP_CURSOR_MAX_BYTES,
   openCursor,
@@ -36,7 +35,7 @@ import {
   sealCursor,
   type OwnershipScope,
 } from '../resource-ownership.ts';
-import { McpServiceAdapter, type ServiceDispatch } from '../service-adapter.ts';
+import { inProcessClient, McpServiceAdapter, type ServiceDispatch } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -290,19 +289,8 @@ export const resultsEvidenceTool = createResultsEvidenceTool();
 
 // ---- the typed in-process client ------------------------------------------------
 
-/** The same in-process dispatch the shared adapter uses: loopback `host`, no `Origin`. The
- *  operations below are additional READS the adapter's closed table does not carry yet. */
-const buildClient = (service: ServiceDispatch) =>
-  hc<AppType>('http://127.0.0.1', {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', '127.0.0.1');
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  });
-type ScopedApi = ReturnType<typeof buildClient>['api']['v1']['p'][':projectId'];
+/** The operations below are additional READS the adapter's closed table does not carry yet. */
+type ScopedApi = ReturnType<typeof inProcessClient>['api']['v1']['p'][':projectId'];
 
 /** A route's answer, read once: its status and its raw body text. */
 interface Answer {
@@ -382,11 +370,6 @@ export function gitIsoDate(text: string): string {
 async function committedAt(git: GitRunner, sha: string): Promise<string | undefined> {
   const res = await git(['show', '-s', '--format=%cI', sha]);
   return res.ok && res.stdout.trim() ? gitIsoDate(res.stdout.trim()) : undefined;
-}
-
-/** A remote URL without any `user:token@` it may carry (F-15). */
-function withoutUserinfo(url: string): string {
-  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, '$1');
 }
 
 // ---- paging -----------------------------------------------------------------------
@@ -558,7 +541,7 @@ class EvidenceReader {
     service: ServiceDispatch,
   ) {
     this.adapter = new McpServiceAdapter({ projectId: project.id, service });
-    this.api = buildClient(service).api.v1.p[':projectId'];
+    this.api = inProcessClient(service).api.v1.p[':projectId'];
     this.scopeParam = { projectId: project.id };
   }
 
@@ -1026,7 +1009,7 @@ class EvidenceReader {
     const payload = repoResponseSchema.safeParse(jsonOf(read.value));
     if (!payload.success) return { ok: false, result: errorResult('the service answered an unexpected repository shape') };
     const data: Record<string, unknown> = { ...payload.data };
-    if (payload.data.info?.remote) data.info = { ...payload.data.info, remote: withoutUserinfo(payload.data.info.remote) };
+    if (payload.data.info?.remote) data.info = { ...payload.data.info, remote: redactRemoteUrl(payload.data.info.remote) /* F-15 */ };
     const revision: Revision | null = read.head ? { headSha: read.head, uncommitted: await isDirty(gitIn(root)) } : null;
     return { ok: true, evidence: { base: this.baseFor(args, revision), data, shape: { lists: ['status', 'log', 'branches'] } } };
   }

@@ -24,6 +24,7 @@ import { launch } from '../platform/process-launch.ts';
 import { stopChildWithDescendants } from '../platform/process-tree.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { readNdjson } from './ndjson.ts';
+import { StderrTail } from './stderr-tail.ts';
 import { costWeightedTokens } from './usage.ts';
 import { stringifyToolResultContent, toolResultImageBlocks } from './claude-ui-mapper.ts';
 import {
@@ -290,6 +291,8 @@ class QwenSession {
   private child: ChildProcessWithoutNullStreams | null = null;
   private hasExited: (() => boolean) | null = null;
   private terminatedByXezar = false;
+  /** The EOF watchdog had to stop a turn still running after `end()` (`AgentRunResult.stoppedAfterClose`). */
+  private stoppedAfterClose = false;
   private timedOut = false;
   private stopRequested = false;
   private autoEndTimer: NodeJS.Timeout | undefined;
@@ -299,6 +302,9 @@ class QwenSession {
   private readonly pidListeners: Array<(pid: number) => void> = [];
   private versionChecked = false;
   private uiState;
+  // Never filled: no caller reads a result's tool calls, and keeping every call's full input
+  // (a whole written file, a long command) grew with the session. Tool calls reach consumers as
+  // `tool-call` events.
   private readonly toolCalls: AgentToolCallRecord[] = [];
   private readonly textChunks: string[] = [];
   private tokensUsed = 0;
@@ -364,7 +370,10 @@ class QwenSession {
     // A turn still running gets the same EOF watchdog Claude Code's session gets.
     if (this.child && !this.hasExited?.()) {
       this.eofTermTimer = setTimeout(() => {
-        if (!this.hasExited?.()) this.signalChild('SIGTERM');
+        if (!this.hasExited?.()) {
+          this.stoppedAfterClose = true;
+          this.signalChild('SIGTERM');
+        }
         this.eofKillTimer = setTimeout(() => {
           if (!this.hasExited?.()) this.signalChild('SIGKILL');
         }, EOF_KILL_GRACE_MS);
@@ -474,7 +483,9 @@ class QwenSession {
     }
     if (!this.sawUsage && this.turns > 0) onEvent?.({ type: 'note', message: 'token usage not reported by Qwen Code' });
     onEvent?.({ type: 'done' });
-    return { text, toolCalls: this.toolCalls, tokensUsed: this.tokensUsed, sessionId };
+    // #943: the run manager sweeps what the agent left running behind a turn the watchdog stopped.
+    const closeStop = this.stoppedAfterClose ? { stoppedAfterClose: true as const } : {};
+    return { text, toolCalls: this.toolCalls, tokensUsed: this.tokensUsed, sessionId, ...closeStop };
   }
 
   /** Start one turn's process, read it to the end, and wait for its exit. */
@@ -516,9 +527,15 @@ class QwenSession {
       spawnFailed = wrapSpawnError(err, bin);
     });
     if (child.pid !== undefined) for (const listener of this.pidListeners) listener(child.pid);
-    const stderrChunks: string[] = [];
+    const stderrTail = new StderrTail();
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    child.stderr.on('data', (chunk: string) => stderrTail.push(chunk));
+    // An agent that exits before it reads a prompt larger than the pipe buffer fails the write with
+    // EPIPE as an `error` event on stdin; unhandled, that event would stop the whole server. The
+    // exit code and stderr already report the failure, so this only records it.
+    child.stdin.on('error', (err) => {
+      onEvent?.({ type: 'note', message: `qwen: stdin write failed: ${err.message}` });
+    });
     try {
       child.stdin.end(prompt);
     } catch {
@@ -557,7 +574,7 @@ class QwenSession {
       if (!this.timedOut) throw err;
     }
     outcome.exitCode = await waitForExit(child);
-    outcome.stderr = stderrChunks.join('').trim();
+    outcome.stderr = stderrTail.text().trim();
     if (spawnFailed) throw spawnFailed;
     return outcome;
   }
@@ -604,7 +621,6 @@ class QwenSession {
           if (msg.parent_tool_use_id == null && b.text.trimStart().startsWith(QWEN_API_ERROR_PREFIX)) outcome.apiError ??= b.text.trim();
         } else if (b.type === 'tool_use' && b.id && b.name) {
           const tool = unwrapQwenToolCall(b.name, b.input);
-          this.toolCalls.push({ id: b.id, name: tool.name, input: tool.input });
           onEvent?.({ type: 'tool-call', id: b.id, tool: tool.name, input: tool.input });
         }
       }

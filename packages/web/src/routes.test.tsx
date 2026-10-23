@@ -627,8 +627,11 @@ describe('legacy flat URLs redirect to the boot project', () => {
     renderAt('/new?skill=xez-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
     expect(currentPathname()).toBe(`/p/${BOOT}/new`)
     expect(routeName()).toBe('new')
-    // auto=1 + key armed the unattended start — only possible if every param survived.
-    expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
+    // The ref filled the composer — only possible if the params survived the redirect. auto=1
+    // no longer arms a start (owner decision 2026-10-19), so the composer shows at once.
+    const box = screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
+    expect(box.value).toBe('https://github.com/o/r/pull/1')
+    expect(document.querySelector('[data-slot="auto-starting"]')).toBeNull()
     expect(document.body.textContent).not.toContain('s3cret')
   })
 
@@ -751,9 +754,9 @@ describe('unknown project ids', () => {
 })
 
 /** The bookmarklet contract (spec 011), protected by the backward-compatibility promise:
- *  `/new?skill=&ref=&auto=1&key=`. Since R4 Step 1.3 `auto=1` arms the real unattended start
- *  (the full matrix lives in routes/new-task.test.tsx); this file keeps the URL contract —
- *  through the legacy redirect, exactly as a saved bookmarklet arrives. */
+ *  `/new?skill=&ref=&auto=1&key=`. Since 2026-10-19 every link only fills the form and the
+ *  user presses Start (the full matrix lives in routes/new-task.test.tsx); this file keeps the
+ *  URL contract — through the legacy redirect, exactly as a saved bookmarklet arrives. */
 describe('/new query params', () => {
   const textarea = () =>
     screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
@@ -764,13 +767,11 @@ describe('/new query params', () => {
     expect(textarea().value).toBe('https://github.com/o/r/pull/1')
   })
 
-  it('an armed auto=1 link shows the starting surface, never the composer mid-flight', () => {
-    // fetch never answers here, so the key check is honestly in flight: no composer to type
-    // into, no run POSTed, and the key nowhere in the DOM.
+  it('an old auto=1 link fills the composer at once — no starting surface, key nowhere', () => {
     renderAt('/new?skill=xez-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
     expect(routeName()).toBe('new')
-    expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
-    expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
+    expect(document.querySelector('[data-slot="auto-starting"]')).toBeNull()
+    expect(textarea().value).toBe('https://github.com/o/r/pull/1')
     expect(document.body.textContent).not.toContain('s3cret')
   })
 

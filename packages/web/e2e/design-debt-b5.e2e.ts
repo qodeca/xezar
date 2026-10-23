@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 import subagents from './fixtures/subagents-run.record.json'
 import thread from './fixtures/thread-run.record.json'
 
@@ -196,7 +197,7 @@ beforeAll(async () => {
   project = await bootProjectId(url)
   browser = AgentBrowser.open(sessionId)
   const cli = (...args: string[]) => {
-    const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+    const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if (!result.success) throw new Error('B5 provider command failed')
     return result.data
   }
@@ -301,7 +302,7 @@ describe('B5 phone matrix', () => {
     collect('ask card', `find('group', /Which date library/).parentElement.parentElement`, failures, seen)
 
     // The drawer's Tools trigger and its menu.
-    browser.click('button[aria-label="Open menu"]')
+    browser.click('button[aria-label^="Open menu"]')
     until(`find('button', /Tools/)`); settle()
     collect('drawer Tools trigger', `find('button', /Tools/).parentElement`, failures, seen, `/Tools/.test(nameOf(el))`)
     press('button', /Tools/)
@@ -383,14 +384,10 @@ function contrast(scope: string) {
   })()`)
 }
 
-// Light-theme ink tokens already below 4.5:1 as small text (known-gaps G-23). B5 may not change a
-// token (#453: B1 owns them), so these colours are reported, not passed; any OTHER colour below the
-// line still fails, and so does one of these on a dark surface.
-const G23_LIGHT_INKS: Record<string, string> = {
-  'rgb(16, 185, 129)': '--success',
-  'rgb(239, 68, 68)': '--danger',
-  'rgb(143, 134, 232)': '--violet',
-}
+// Light-theme ink tokens once below 4.5:1 as small text (known-gaps G-23). The light theme now
+// darkens `--success`, `--danger` and `--violet` past 4.5:1 (`src/light-status-ink.test.ts`), so
+// no colour is excused any more: every sample below the line fails, in both themes.
+const G23_LIGHT_INKS: Record<string, string> = {}
 
 it.each(['light', 'dark'] as const)('small thread text has composited contrast in %s', (theme) => {
   read(`(() => { localStorage.setItem('xez-theme', '${theme}'); return true })()`)

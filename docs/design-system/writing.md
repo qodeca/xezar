@@ -16,7 +16,7 @@ source. Where usage is split, the rule is the majority form and the minority is 
 | Clauses are joined with a spaced em dash ` — `. | 334 lines. "Disconnected — reconnecting", "Copy failed — drag the button instead." (`bookmarklets-section.tsx`). Note: the repository's docs use en dashes; the UI uses em dashes. Follow the surface you are writing for. |
 | User-supplied names are wrapped in curly quotes `“ ”`; apostrophes are curly `’`. | `Remove “{label}”?` (`accounts-section.tsx`), `No tasks match “{needle}”.` (`tasks-overview.tsx`), "This xezar doesn’t serve a project by that id." |
 | No Oxford comma. | 25 to 2. "Theme, accent and density." (`settings/registry.tsx`), "Claude Code, Codex or Qwen Code" (`mcp-capabilities.tsx`). |
-| Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). |
+| Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). The "doesn’t" quoted in the row above is one of the minority, recorded in known-gaps G-15; it shows the curly apostrophe, not a contraction to copy. |
 
 ## 2. Voice
 
@@ -44,13 +44,13 @@ The one question heading is the `/new` hero: "What should the agent work on?"
 - Pending state replaces the label with the present participle and `…`: "Starting…", "Saving…",
   "Adding…", "Sending…", "Planning…", "Committing…", "Cloning…", "Updating…".
 - Toggles state the next state: "Hide details" / "Show details", "Hide folders" / "Browse…".
-- Dismiss buttons name the kept outcome: "Keep it" (6 sites), "Keep comparing",
+- Dismiss buttons name the kept outcome: "Keep it" (7 sites in 6 files, read 2026-10-23), "Keep comparing",
   "Keep the existing chain" over a plain "Cancel" (1 site, a non-destructive dialog). "Keep the
   file" was listed here until #453 B7 replaced it with "Keep it"; `design-debt-b7.test.tsx`
   asserts the old string is gone, so do not reintroduce it. Counts read 2026-09-17.
 - Destructive verbs are explicit: "Delete", "Remove from list", "Cancel the run", "Discard".
 - No "OK", no visible "Close" (the close button's `sr-only` text is "Close").
-- Retry: "Retry" (5 sites) over "Try again" (3 sites).
+- Retry: "Retry" (at least 8 button labels) over "Try again" (1 site, `routes/github/github.tsx`, known-gaps G-15). Counts read 2026-10-23.
 
 ## 5. Empty states
 
@@ -87,6 +87,10 @@ Markdown files into .xezar/skills/, …".
   remains (#453 B3 fixed settings, B4 the global Tasks page).
 - Disabled-action reasons: "{Thing} unavailable — {why}": "Commit unavailable — no changes to commit",
   "Push unavailable — no remote configured" (`lib/git-actions.ts`).
+- The short visible reason beside a disabled composer control names that control, so it reads on its
+  own: "Variants need a git repository", "Worktree always on with variants", "Autonomous unavailable
+  with Plan first", "Model set by the agent’s own settings" (`routes/new-task.tsx`,
+  `components/engine-pills.tsx`, `routes/task-thread/follow-up-engine.tsx`; PickerPill `disabledNote`).
 - Refusals name the consequence and who can act, never the phrase "not available in hosted mode":
   "Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode."
   (`accounts-section.tsx`); "This xezar is not running in local mode, so actions on the host machine are
@@ -110,6 +114,7 @@ Title is a question naming the object; body states what happens; irreversible ac
 | "Cancel this task?" | "The agent is stopped and the run completes as cancelled. The worktree stays." | "Keep it" | "Cancel the run" | `run-header.tsx` |
 | "Remove {name} from the workspace?" | "This only unregisters the project — nothing on disk is deleted. …" | "Keep it" | "Remove from list" | `remove-project.tsx` |
 | "Open this link?" | – | "Cancel" | "Open link" | `link-safety-dialog.tsx` |
+| "Discard your edits to “{file}”?" | "Your unsaved changes to this file are lost. There is no undo." | "Keep it" | "Discard and leave" when it also leaves the file (a link, Back, the palette, another file or agent); "Discard" for Reload from disk | `settings/agent-config-section.tsx` |
 
 Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent account",
 "Open local folder", "Clone from GitHub", "Save as chain".
@@ -209,4 +214,5 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   project" when none does (`routes/settings/agents-section.tsx`, #809).
 - Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
   clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
-- Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.
+- Browser notification body: "{project} — task needs you" (also "task needs review", "task failed"); title is the run title, not repeated in the body. The project leads because a notification can come from any registered project.
+- Attention counts (`components/app-shell.tsx`, `tasksNeedYou`): a group badge's name "1 task needs you" / "2 tasks need you" (no project prefix — the header already names it); All tasks "{n} tasks need you across all projects", which is also the shell's one live announcement; the phone menu button "Open menu — {n} tasks need you". When the task index cannot be refreshed: "Other projects’ counts could not be refreshed — they may be out of date."; when it never answered or the registry could not be read: "Other projects’ counts could not be loaded — they are not shown."; when some projects' task data could not be read: "Some projects’ tasks could not be read — their counts are not shown." (one line under All tasks; different facts, different words).

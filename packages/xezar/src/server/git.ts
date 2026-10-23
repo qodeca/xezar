@@ -19,6 +19,58 @@ export interface LogEntry {
   when: string;
 }
 
+/** Schemes whose user name names an account rather than carrying a secret (`ssh://git@host/…`). */
+const SSH_SCHEMES = new Set(['ssh', 'git+ssh', 'ssh+git']);
+
+/**
+ * A remote URL with any credential it carries removed, so the value is safe to send or log.
+ *
+ * - `scheme://userinfo@host/…` (https, http, ftp, …): the whole userinfo goes — on http(s) a bare
+ *   user name is commonly an access token.
+ * - `ssh://user:password@host/…` and the scp-like `user:password@host:path`: the account name
+ *   stays (`git@` is not a secret) and only the password is dropped.
+ * - A local path, a value with no `@`, or anything unparseable comes back unchanged; nothing here
+ *   throws.
+ *
+ * The userinfo ends at the LAST `@` before the host part, as URL parsers read it, so a raw `@`
+ * inside a password cannot leave a fragment of it behind.
+ */
+export function redactRemoteUrl(remote: string): string {
+  const value = remote.trim();
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value);
+  if (scheme) {
+    const start = scheme[0].length;
+    const end = authorityEnd(value, start);
+    const at = value.lastIndexOf('@', end - 1);
+    if (at < start) return value;
+    const user = keptUser(value.slice(start, at), SSH_SCHEMES.has(scheme[1]!.toLowerCase()));
+    return `${value.slice(0, start)}${user}${value.slice(at + 1)}`;
+  }
+  // scp-like `[user[:password]@]host:path` — only when an `@` precedes the first path separator
+  // and a `host:` follows it, so a local path (`/srv/repo.git`, `C:\work\me@corp\repo`) is
+  // never touched.
+  const sep = value.search(/[\\/]/);
+  const at = value.lastIndexOf('@', sep === -1 ? value.length - 1 : sep - 1);
+  if (at <= 0 || !/^[^:]+:/.test(value.slice(at + 1))) return value;
+  return `${keptUser(value.slice(0, at), true)}${value.slice(at + 1)}`;
+}
+
+/** Where a URL's authority ends: the first `/`, `?` or `#` after the scheme, or the end. */
+function authorityEnd(value: string, from: number): number {
+  for (let i = from; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '/' || ch === '?' || ch === '#') return i;
+  }
+  return value.length;
+}
+
+/** The part of a userinfo that may be shown: an account name with no password, or nothing. */
+function keptUser(userinfo: string, keepAccount: boolean): string {
+  if (!keepAccount) return '';
+  const user = userinfo.split(':')[0] ?? '';
+  return user ? `${user}@` : '';
+}
+
 async function git(root: string, args: string[]): Promise<string> {
   const { stdout } = await launchFileAsync('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 });
   return stdout;
@@ -46,7 +98,9 @@ export async function getRepoInfo(dir: string): Promise<RepoInfo | null> {
         // no remotes at all — local-only repo
       }
     }
-    return { root, branch, remote };
+    // Redacted here, at the one place the remote is read, so health, the repo route, MCP and
+    // every log line receive the same credential-free value.
+    return { root, branch, remote: remote === undefined ? undefined : redactRemoteUrl(remote) || undefined };
   } catch {
     return null;
   }

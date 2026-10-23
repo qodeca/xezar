@@ -19,8 +19,11 @@ describe('agent quota read surface', () => {
   let runs: RunStore;
   let quota: AgentQuotaStore;
   const savedHome = process.env.XEZ_HOME;
+  const savedAllowed = process.env.XEZ_ALLOWED_HOSTS;
 
   beforeEach(() => {
+    // The hosted-mode cases below are served under the public name `server`.
+    process.env.XEZ_ALLOWED_HOSTS = 'server';
     root = mkdtempSync(join(realpathSync(tmpdir()), 'xez-quota-api-'));
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-quota-home-'));
     process.env.XEZ_HOME = home;
@@ -34,6 +37,8 @@ describe('agent quota read surface', () => {
     rmSync(home, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
+    if (savedAllowed === undefined) delete process.env.XEZ_ALLOWED_HOSTS;
+    else process.env.XEZ_ALLOWED_HOSTS = savedAllowed;
   });
 
   const app = (extra: Record<string, unknown> = {}) => createApp({

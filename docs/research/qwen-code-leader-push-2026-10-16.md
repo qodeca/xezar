@@ -1,5 +1,11 @@
 # Pushing xezar events into a running Qwen Code leader session – spike
 
+> **Status – implemented.** The push this spike proved shipped in 0.30.0 as the Qwen Code leader
+> adapter, `packages/xezar/src/mcp/adapters/qwen-code.ts` ([#1045](https://github.com/qodeca/xezar/issues/1045), commit `7546c7cf`). On
+> Windows, Qwen Code opens no inbox (up to 0.25.2), so a Windows leader has no push and reads its
+> events with `leader_events` `read` and `ack` ([#1086](https://github.com/qodeca/xezar/issues/1086); `docs/guide/13-mcp-leader.md`, § Qwen Code).
+> The text below is the spike as written.
+
 Date: 2026-10-16. Issue: #1043 (part of #1041). Research only: no product code changed.
 
 ## Verdict

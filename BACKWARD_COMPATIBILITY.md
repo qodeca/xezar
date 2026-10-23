@@ -84,13 +84,38 @@ were removed in one release, without a deprecation release, once Qwen Code passe
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
+- **Unreleased – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
+  narrowed** (§2). Health no longer sends `access-control-allow-origin: *` or answers the CORS
+  preflight with `access-control-allow-private-network`; its only cross-origin reader, the old
+  bookmarklet port probe, was retired earlier. `repo.remote` (on health and the repository route)
+  no longer includes a user name or password embedded in the URL, and in hosted mode `repo.root`
+  is the folder name, as `repoRoot` already was. Every field keeps its name and type.
+  The `health` WebSocket topic is likewise readable only by a connection proven to be the
+  cockpit itself. *Symptom:* a script running in a browser page on another origin can no longer
+  read health over HTTP or the WebSocket; a native client (`curl`, the MCP bridge) is unaffected.
+  *Way forward:* read health from a native client or from the cockpit's own origin. The owner
+  approved removing the health CORS headers on 2026-10-18.
+- **Unreleased – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
+  mode (`XEZ_REMOTE=1` or a non-loopback bind) three things that used to succeed are refused. The
+  owner approved shipping this without a §8 deprecation notice (2026-10-18), because the changes
+  fix security holes. A `Host` name that is
+  not loopback, an IP address, a public name `xezar server-install` recorded or a name in the new
+  `XEZ_ALLOWED_HOSTS` gets `403`. `PUT /api/v1/workspace/config` answers `409` and saves nothing
+  when the body names `browseRoot`, `projectsDir`, `agentEnvPassthrough` or `cli.instance`.
+  `GET /api/v1/fs/browse` ignores `showHidden=1`. Local mode is unchanged. *Symptom:* a hosted
+  cockpit reached under an unrecorded name answers `403` naming `XEZ_ALLOWED_HOSTS`; saving one of
+  those four settings from a remote browser shows the hosted-mode refusal; hidden folders are not
+  listed. *Way forward:* list the public name in `XEZ_ALLOWED_HOSTS` or re-run
+  `xezar server-install --domain`; change the four settings on the machine that runs the cockpit.
 - **0.30.0 – the `pi` and `opencode` backends are removed** (§1, §2, §4, §5, §6). The runner,
   backend, provider and leader-client ids `pi` and `opencode` are gone from every schema, with
   `XEZ_PI_BIN`, `XEZ_OPENCODE_BIN`, the `OPENCODE_CONFIG_DIR` / `PI_CODING_AGENT_DIR` homes, the
   shipped pi scripts, the OpenCode "Attach leader" form and the `client-needs-address` refusal code.
   Skills in `.opencode/skills/` are no longer found. Stored data is not converted. *Symptom:* while
-  any saved setting or task record still names `pi` or `opencode`, `xezar serve` and `xezar run`
-  exit with code 1 and list each file and field. *Way forward:* change each value to `qwen`,
+  any saved setting or task record still names `pi` or `opencode`, every command that saves
+  settings or records – `xezar serve`, `run`, `init`, `projects`, `accounts` and `providers`;
+  all but `mcp` and `lease` – exits with code 1 and lists each file and field, and the cockpit
+  does not open such a project. *Way forward:* change each value to `qwen`,
   `claude` or `codex`, or remove it; the guide page "Moving from pi or OpenCode to Qwen Code"
   (`docs/guide/18-moving-from-pi-or-opencode.md`) shows how to move model providers. The owner
   waived the §8 deprecation release for this change (#1041, #1046).

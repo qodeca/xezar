@@ -23,6 +23,10 @@ steps:
     name: Verify worktree isolation
     command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
+  - id: prepare
+    name: Check the pull request out for review
+    command: "bash .local/xezar/cache/kit/checks/review-run.sh prepare"
+    resultScope: routine
   - id: verify
     name: Acceptance verification
     prompt: "Acceptance verification: {{task}}. Follow xezar-acceptance instructions. List the issue's accepted criteria first, word for word; if there are none that can be checked, say so and stop – never write your own. Check out the PR's head, detached, in this run's own worktree and run it there. Give each criterion one verdict – MET, NOT MET, PARTLY MET, NOT VERIFIABLE HERE – with evidence somebody else can repeat, then say what the change does that nobody asked for. State author independence as confirmed, not confirmed or unknown from the launch text; when it is not confirmed, post nothing and stop. Post exactly one comment headed '## Acceptance verification' with the full head SHA. Post no QA comment, move no label, fix nothing."

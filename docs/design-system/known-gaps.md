@@ -20,8 +20,9 @@ Every row now has exactly one of three dispositions, stated in its own last bull
   `packages/web/e2e/design-debt-b8.e2e.ts` — kebab → Delete → Escape (and "Keep it") at 375 px in
   the dark theme, checking `document.activeElement` by identity. A retirement whose only evidence is
   a source string is not a retirement.
-- **Filed** — the row stays and names the issue that owns it. Six issues cover twenty of the
-  twenty-three remaining rows: **#593** small text below AA contrast (G-23, G-38, G-46), **#594**
+- **Filed** — the row stays and names the issue that owns it. At B8, six issues covered twenty of the
+  twenty-three remaining rows: **#593** small text below AA contrast (G-23, since retired, G-38,
+  G-46), **#594**
   rendered Markdown's phone targets (G-36, G-45), **#595** phone and desktop layout (G-26, G-27,
   G-28, G-30, G-32, G-33, G-37), **#596** accessibility (G-06, G-31, G-39), **#597** the two diff
   endpoints' status words (G-41, server work), **#598** shared helpers and copy rows (G-14, G-15,
@@ -29,17 +30,27 @@ Every row now has exactly one of three dispositions, stated in its own last bull
 - **Kept, with a reason** — three rows: **G-20** (dead primitives; adding or deleting a catalogued
   component file belongs to one commit, which has merged), **G-35** (the palette hint, whose own
   rule is conditional on a keyboard-help surface that does not exist) and **G-47** (single-project
-  mode's accepted deviations from its mockup, added after B8 by #600 PR4).
+  mode's accepted deviations from its mockup, added after B8 by #600 PR4). **G-49** (the plan-limits
+  cockpit's deviations from its mockup, #867) was added later on the same terms.
+- **Open, not yet filed** — three rows added on 2026-10-23 by a docs audit: **G-50** (two page
+  header spellings; the rule is an owner decision), **G-51** (the violet accent's focus ring is
+  below 3:1) and **G-52** (the field border is 1.19:1, unverified in the browser). Each needs an
+  issue or a decision before it has an owner.
 
-So nothing here is merely deferred: a row is either gone, owned by a number, or carries the reason it
-stays. Two rows to read first if you are picking work up: **G-31** is a live axe-core violation with a
+So nothing B8 reconciled is merely deferred: a row is either gone, owned by a number, or carries the
+reason it stays; the three 2026-10-23 rows still need an owner. Two rows to read first if you are picking work up: **G-31** is a live axe-core violation with a
 small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real user-visible failure mode.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
-the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47 and G-49 are live** (24 rows); **G-01 to G-05, G-07 to
-G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43, G-44 and G-48 are retired** (25
-numbers); and **the next free id is G-50**. G-43 was retired by decision
+the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47, G-49, G-50, G-51 and G-52 are live** (26
+rows); **G-01 to G-05, G-07 to G-13, G-17 to G-19, G-21 to G-25, G-29, G-34, G-40, G-43, G-44 and
+G-48 are retired** (26 numbers); and **the next free id is G-53**. **G-23** (small text below AA
+contrast in the light theme) was retired on 2026-10-23: both of its halves closed on 2026-10-19
+(fix/cockpit-a11y) – the accent no longer colours text in the light theme, and the light
+`--success`, `--danger` and `--violet` were darkened to clear 4.5:1 on every light surface they
+print on. `src/light-accent-ink.test.ts` and `src/light-status-ink.test.ts` keep both halves
+closed. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
 **G-48** (the Tasks desktop header did not fit below about 896 px at comfortable density – density-
@@ -88,7 +99,7 @@ is gone says so and keeps its line so the history reads.
 | --- | --- | --- | --- |
 | Load-error copy | "Could not load" (40 literal occurrences, case-insensitive) | "did not load" – none left (was 10) | fixed (#453 B3, B4) |
 | Retry label | "Retry" | "Try again" (1) | `routes/github/github.tsx:394` |
-| Search placeholder case | "Search tasks…" | "search …" (2) | `routes/new-task.tsx:957` ("search projects…"), `:1240` ("search skills & workflows…") |
+| Search placeholder case | "Search tasks…" | "search …" (2) | `routes/new-task.tsx`: the project picker's `CommandInput` ("search projects…") and the skills picker's input ("search skills & workflows…") – found by the strings, since line numbers drift |
 | Dash | ` — ` | ` – ` – none left in UI strings (the four in `.tsx` files are comments) | fixed (#453 B3) |
 | Negatives | "could not" | "couldn’t" – none left (was 2) | fixed; no "couldn’t" or "couldn't" in non-test source |
 | Apostrophes | curly `’` | straight `'` – not re-counted on 2026-09-18 (was ~12) | the B3, B6 and B7 sites are curly; see the status bullets below |
@@ -98,6 +109,7 @@ is gone says so and keeps its line so the history reads.
 | Column label case | sentence case | "Tool Name" – none left | fixed (#453 B4; `lib/task-columns.ts:62` reads "Tool name") |
 | Heading period | none | "This page could not be displayed." – none left | fixed (`components/route-error-boundary.tsx:33` reads "Could not display this page") |
 | Oxford comma | omitted | present – not re-counted on 2026-09-18 | B3 removed it from `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx` |
+| Contractions | none ("does not", "cannot") | "doesn’t" (1, found 2026-10-23) – and `writing.md` §1 quotes it as an example of curly apostrophes | `routes/unknown-project.tsx` ("This xezar doesn’t serve a project by that id.") |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
 - **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
@@ -107,7 +119,7 @@ is gone says so and keeps its line so the history reads.
 - **Status (#453 batch B6, Git tabs)**: the apostrophes row's `task-commits.tsx` site is curly (“hasn’t”), and so are “merge commit’s” (`repo-commits.tsx`, `task-commits.tsx`), “repo’s” (`repo-git-loading.tsx`) and “task’s” (`commit-dialog.tsx`, `task-changes.tsx`, which used `&apos;`). Still open (B7): the other rows.
 - **Status (#453 batch B7, remaining routes)**: fixed rows – the negatives row ("Could not load comments", `routes/github/github.tsx`), the apostrophes row (`compare-loading.tsx`, and `&apos;` in `skills-import-panel.tsx`), the curly quotes row (`workflows.tsx`), the empty list row ("Nothing matches." in `workflows.tsx`, `skills.tsx` and `skills-import-panel.tsx`), and the placeholders in `routes/github/hand-to-agent.tsx` ("Search workflows…", "Search skills…"). Still open: the three lower-case placeholders in `routes/new-task.tsx` ("search projects…", "search skills & workflows…"). They are asserted verbatim by `routes/new-task-project.test.tsx`, which § B7's manifest does not list, so the batch did not change them; the PR records it under "Reconciliation needed". The guardian rule is not added.
 - **Final disposition (#453 B8, 2026-09-17)**: remaining rows filed as **#598**. Left: the two lower-case placeholders in `routes/new-task.tsx` ("search projects…", "search skills & workflows…"), asserted verbatim by `routes/new-task-project.test.tsx` and `routes/new-task.test.tsx`, which no batch manifest listed; the Retry/Try again split; the heading-period, negatives and Oxford-comma holdouts; and the proposed `no-en-dash-in-ui` guardian rule, which was never added.
-- **Re-read (docs wave, 2026-09-18)**: the heading-period and negatives holdouts are gone (table above). Still left for **#598**: the two `routes/new-task.tsx` placeholders (`:957`, `:1240`), the one "Try again" (`routes/github/github.tsx:394`), the apostrophe and Oxford-comma rows (not re-counted) and the guardian rule.
+- **Re-read (docs wave, 2026-09-18)**: the heading-period and negatives holdouts are gone (table above). Still left for **#598**: the two `routes/new-task.tsx` placeholders (re-checked 2026-10-23: still lower case), the one "Try again" (`routes/github/github.tsx:394`), the apostrophe and Oxford-comma rows (not re-counted) and the guardian rule.
 
 ### G-16 Toast punctuation
 
@@ -122,24 +134,15 @@ is gone says so and keeps its line so the history reads.
 
 ### G-20 Dead primitives
 
-- **Differs**: `components/ui/card.tsx`, `scroll-area.tsx`, `select.tsx`, `separator.tsx` have zero importers.
-- **Rule**: do not use them until adopted (each entry in components.md says what to use instead).
-- **Also (#819 PR 9, 2026-09-21)**: `components/ui/tabs.tsx` joined them when the Agent accounts pane, its only user, stacked its four agents instead of tabbing them (`designs/agent-accounts-onboarding` DG-1). Kept on the same terms as the four: `components.md` still documents it, so a surface that genuinely switches panels can adopt it.
+- **Differs**: `components/ui/tabs.tsx` has zero importers (see Also below). The four primitives this row first listed – `card.tsx`, `scroll-area.tsx`, `select.tsx` and `separator.tsx` – were deleted by #453 B1 (`b310e8db`), and `design-debt-b1.test.tsx` keeps them gone.
+- **Rule**: do not use `Tabs` until a surface genuinely switches panels (its components.md entry says what to use instead).
+- **Also (#819 PR 9, 2026-09-21)**: `components/ui/tabs.tsx` became unused when the Agent accounts pane, its only user, stacked its four agents instead of tabbing them (`designs/agent-accounts-onboarding` DG-1). Kept on the terms below: `components.md` still documents it, so a surface that genuinely switches panels can adopt it.
 - **Fix**: delete or adopt.
-- **Final disposition (#453 B8, 2026-09-17)**: kept, with a reason. All four still have zero importers. #453 gives adding and deleting catalogued component files to batch B1 in a single commit, so that mirror and coverage ownership stays in one place, and B1 has merged — no later batch may delete them, and B8 did not. They are harmless while the rule holds: each entry in `components.md` names what to use instead, `design-system-drift.test.ts` keeps their rows honest, and the two decisions that would close this row (adopt `Select` in settings per G-11, restyle or delete `card.tsx` per G-02) are design decisions, not cleanup. Revisit when a surface genuinely wants one of the four; deleting them is a `decisions.md` record, not a silent removal.
-
-### G-23 Small text below AA contrast in three token pairs
-
-- **Differs**: `--soft-foreground` is `#a3a3a3` in `.light` (`styles/index.css:198`) – 2.5:1 on `--background`, 2.4:1 on `--muted` – and it colours 10–12.5 px text (eyebrows, hints, chip counts, table headers). `--danger-foreground` (`#ffffff`) on `--danger` (`#ef4444`) is 3.8:1 for the danger button and the danger toast. `--violet-foreground` on `--violet` is 3.1:1 for the nav badge (accepted in `styles/index.css` beside the token). AA needs 4.5:1 for text this size.
-- **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
-- **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
-- **Also measured (#453 batch B4, 375 px, light theme)**: three ink tokens are below 4.5:1 as small text on the task lists – `--success` (`#10b981`) 2.5:1 and `--danger` (`#ef4444`) 3.8:1 in the `+`/`−` diff counts (`components/diff-stat.tsx`), and `--violet` (`#8f86e8`) 3.1:1 in a reference chip with no forge status (`components/reference-chip.tsx`). The dark theme passes. B4 may not change a token, so `e2e/design-debt-b4.e2e.ts` reports these three colours and fails on any other. Owner: a token change after B1, through B8 reconciliation.
-- **Also measured (#453 batch B6, 375–1280 px, light theme)**: two more sites paint the same token pairs as small text. The repository Branches tab spells a check's state in 10 px words – "passing" in `--success` at 2.54:1 and "failing" in `--danger` at 3.76:1 (`routes/repo-git/repo-branches.tsx`), the same pairs this entry already records for the diff counts. The review gate's manual-merge URL renders `text-primary` on white at **1.34:1**, which fails AA for text of any size, not only small text; that one was measured in the running cockpit and its source site is still to be located – `routes/task-thread/review-panel.tsx` paints its own manual path in `--soft-foreground`, so the lime ink comes from somewhere else on that surface. Both found by the #574 design review (NB-6, NB-7). B6 may not change a token. Owner: the same token change, through B8 reconciliation of #453.
-- **Final disposition (#453 B8, 2026-09-17)**: filed as **#593**, with G-38 and G-46. Every one of these is a token or blend change, and #453 gives token ownership to batch B1, which has merged; B4, B6 and B7 were each told to REPORT the colours rather than pass them, which is why their browser suites list them. The review gate's 1.34:1 lime manual-merge URL is the most serious of them and its source site is still unlocated.
+- **Final disposition (#453 B8, 2026-09-17)**: kept, with a reason. (Corrected: B1 had already deleted the four files this row listed, so the row's remaining subject is `tabs.tsx`, which became unused later, in #819.) #453 gives adding and deleting catalogued component files to batch B1 in a single commit, so that mirror and coverage ownership stays in one place, and B1 has merged — no later batch may delete a primitive. An unused primitive is harmless while the rule holds: its entry in `components.md` names what to use instead and `design-system-drift.test.ts` keeps the coverage rows honest. Revisit when a surface genuinely wants `Tabs`; deleting it is a `decisions.md` record, not a silent removal.
 
 ### G-26 The thread header shows scrolled content through it
 
-- **Differs**: the task thread's header is `bg-background/95 … backdrop-blur md:sticky` (`routes/task-thread/run-header.tsx:160`), so thread content scrolled under it stays faintly readable beside the title and meta line, most visibly in light theme. The canonical page header (G-01) is opaque.
+- **Differs**: the task thread's header is `bg-background/95 … backdrop-blur md:sticky` (the run header's root element in `routes/task-thread/run-header.tsx`), so thread content scrolled under it stays faintly readable beside the title and meta line, most visibly in light theme. The canonical page header (G-01) is opaque.
 - **Rule**: an opaque sticky header for new work.
 - **Fix**: make the run header opaque, or strong enough that text behind it does not read. Seen in the 0.15.0 docs captures (#448, design review NB-2).
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#595**, with the other layout rows. `run-header.tsx` is B5's file and making the header opaque changes how the whole thread surface reads under scroll — a layout decision, not a class swap, and one a design review should see on its own.
@@ -153,26 +156,27 @@ is gone says so and keeps its line so the history reads.
 
 ### G-28 The version chip truncates at Roomy density and in the phone drawer
 
-- **Differs**: the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:750`) reads `v0.1…`. In the desktop sidebar that happens at Roomy, while Comfortable and Compact show the whole version. In the phone drawer it also happens at Comfortable (375 px, both themes; #559 design review NB-3). Compact in the phone drawer was not measured.
+- **Differs**: the sidebar footer leaves the version chip too little room, and its `truncate` span (`VersionChip`, `data-slot="version-chip"` in `components/app-shell.tsx`) reads `v0.1…`. In the desktop sidebar that happens at Roomy, while Comfortable and Compact show the whole version. In the phone drawer it also happens at Comfortable (375 px, both themes; #559 design review NB-3). Compact in the phone drawer was not measured.
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#595**. `app-shell.tsx` is B2's file. Compact in the phone drawer was never measured, so the fix starts by finishing the measurement.
 
 ### G-30 The registered-projects table scrolls sideways on a phone
 
-- **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, found in the B3 design review (#519, NB-2). Owner: B8 reconciliation of #453. It was given to B4, but `projects-section.tsx` is in no remaining batch manifest (B3 owned it and has merged), so the fix needs a manifest revision first.
+- **Differs**: at 390 px the Global → Projects "Registered projects" table (the `<table>` under the "Registered projects" heading in `routes/settings/projects-section.tsx`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, found in the B3 design review (#519, NB-2). Owner: B8 reconciliation of #453. It was given to B4, but `projects-section.tsx` is in no remaining batch manifest (B3 owned it and has merged), so the fix needs a manifest revision first.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#595**. B8 did the part it could: `e2e/capture/manifest.ts` now carries a `settings-projects` shot state planned for 0.16.0, phone variant included, so whoever reflows the table has a before picture instead of a sentence. The reflow itself is `projects-section.tsx`, B3's file, and is a card-layout design.
 
 ### G-31 The reference panel is an unnamed dialog
 
-- **Differs**: a conflicting pull request's panel takes `role="dialog"` so its "Resolve conflicts" button can be reached (`components/reference-chip.tsx:395`), but the dialog has no accessible name, so axe-core 4.12.1 reports `aria-dialog-name` on every surface, density and theme; the chip that opens it is named. Pre-existing on `main`; found by the axe pass for #453 B4 design-review finding B-1.
+- **Differs**: a conflicting pull request's panel takes `role="dialog"` so its "Resolve conflicts" button can be reached (`role={action ? 'dialog' : 'tooltip'}` on the `PopoverContent` with `data-slot="reference-status-card"` in `components/reference-chip.tsx`), but the dialog has no accessible name, so axe-core 4.12.1 reports `aria-dialog-name` on every surface, density and theme; the chip that opens it is named. Pre-existing on `main`; found by the axe pass for #453 B4 design-review finding B-1.
 - **Rule**: a `role="dialog"` always carries a name, for example `aria-labelledby` pointing at the text that already heads it.
 - **Fix**: name the panel from its first line (the reference and its status) and add the axe rule to the B4 browser pass. Owner: B8 reconciliation of #453; `reference-chip.tsx` is outside the B4 source change.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#596**. This is the most serious row left — a live axe-core `aria-dialog-name` violation on every surface, density and theme — and the fix is small (`aria-labelledby` pointing at the line that already heads the panel). It stays filed rather than fixed because `reference-chip.tsx` is B4's file and #453 AC-0 holds each batch to its own manifest; B8's brief named four deferred gaps to fix and this was not one of them. It should be picked up first of the six.
+- **Re-read (2026-10-23, source only)**: still open. The `PopoverContent` takes `role="dialog"` when it holds an action and carries no `aria-label` or `aria-labelledby`, so this is a live **WCAG 2.2 success criterion 4.1.2 (Name, Role, Value, level A)** failure, not only an axe-core warning. No browser re-run in this change.
 
 ### G-32 The phone run header opens partly under the top bar
 
-- **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, `routes/task-thread/run-header.tsx:160`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`run-header.tsx:895`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`components/app-shell.tsx:797`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
+- **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, the run header's root element in `routes/task-thread/run-header.tsx`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`aria-label="Run actions"` in `run-header.tsx`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`data-slot="mobile-top-bar"` in `components/app-shell.tsx`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
 - **Rule**: a control in the page's first row is fully visible when the page opens.
 - **Fix**: open a short thread at its top, or keep the phone run header's first row visible. Owner: B5 (`run-header.tsx`) or B8 reconciliation of #453; the thread's scroll behaviour is outside B4.
 - **Status (#453 batch B5, thread, composer and launch menus)**: not fixed, moved to B8 reconciliation. The cause is where the phone thread opens (at its end, `thread-scroller.tsx` / `thread-scroll.ts`), a behaviour the thread-scroll specs pin; changing it is a behaviour decision, not a class change. B5's 44 px rows make the header taller, so the first row sits further under the top bar. `e2e/design-debt-b5.e2e.ts` scrolls each control into view before it measures it.
@@ -180,7 +184,7 @@ is gone says so and keeps its line so the history reads.
 
 ### G-33 The composer footer reflows after the model pill enables
 
-- **Differs**: on a phone, one or two frames after the composer's model pill (`components/engine-pills.tsx:204`) stops being disabled, the footer reflows. Measured at 375 px: before B4 the pill moves 28 px sideways; with the B4 44 px phone pills it wraps to the next line (from y 218 to y 266). A click aimed at the first position then misses. A person cannot tap that fast (the move is under 25 ms), but a test can. Pre-existing; B4's larger pills turn the shift into a wrap. `e2e/design-debt-b1.e2e.ts` now waits until the pill holds still.
+- **Differs**: on a phone, one or two frames after the composer's model pill (`slot="model-pill"` in `components/engine-pills.tsx`) stops being disabled, the footer reflows. Measured at 375 px: before B4 the pill moves 28 px sideways; with the B4 44 px phone pills it wraps to the next line (from y 218 to y 266). A click aimed at the first position then misses. A person cannot tap that fast (the move is under 25 ms), but a test can. Pre-existing; B4's larger pills turn the shift into a wrap. `e2e/design-debt-b1.e2e.ts` now waits until the pill holds still.
 - **Rule**: a control is in its final place when it becomes enabled.
 - **Fix**: reserve the footer's space before the late content arrives, or enable the pill in the same render. Owner: B5 (composer) or B8 reconciliation of #453.
 - **Status (#453 batch B5, thread, composer and launch menus)**: not fixed, moved to B8 reconciliation. The late enable comes from `components/engine-pills.tsx`, which is in no B5 manifest file; `composer.tsx` only hosts the footer.
@@ -214,10 +218,11 @@ is gone says so and keeps its line so the history reads.
 - **Rule**: keep the tokens; a syntax colour must still reach 4.5:1 on every `--diff-*` surface it is painted on.
 - **Fix**: darken the two light `--syn-*` colours and the comment colour in both themes, or lighten the `--diff-*` tints, and re-measure every diff surface. B6 may not change a token (#453: B1 owns them), so the browser suite reports these colours instead of passing them. Owner: B8 reconciliation of #453.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#593**, with G-23 and G-46. A token change, which B1 owns; the dark theme fails too, so it is not a light-theme polish item.
+- **Wider than diffs (2026-10-23, token math, not a browser measurement)**: the comment colour also misses AA in plain code blocks with no diff tint. The one Shiki highlighter (`lib/highlighter.ts`) paints comments `var(--syn-com)` in rendered Markdown code blocks, the file preview and the code editor as well as the diffs. On a white surface the light `--syn-com` (`#9ca3af`) is **2.54:1**; on the dark `--background` (`#0d0d0d`) the dark `--syn-com` (`#6b7280`) is about 4.0:1. The fix above therefore has to hold on every surface the highlighter paints, not only the `--diff-*` tints.
 
 ### G-39 The changed-files tree marks a file's status with colour alone
 
-- **Differs**: in the task Changes tree (`routes/task-git/changes-tree.tsx:115`) an added or copied file is marked only by a green file icon and a renamed file carries no mark at all, while the diff card beside it spells "copied" and "renamed" in words. [README.md](README.md) rule 10 puts the word first and colour second, and colour alone is not readable for a reader who cannot tell the two greens apart; the icon is `aria-hidden`, so the row carries no accessible status either. Pre-existing; found by the #574 design review (NB-3).
+- **Differs**: in the task Changes tree (`data-slot="tree-file"` rows in `routes/task-git/changes-tree.tsx`) an added or copied file is marked only by a green file icon and a renamed file carries no mark at all, while the diff card beside it spells "copied" and "renamed" in words. [README.md](README.md) rule 10 puts the word first and colour second, and colour alone is not readable for a reader who cannot tell the two greens apart; the icon is `aria-hidden`, so the row carries no accessible status either. Pre-existing; found by the #574 design review (NB-3).
 - **Rule**: a status is a word, or an accessible name; colour only ever repeats it.
 - **Fix**: give each row an `aria-label` carrying the status, or a short status word beside the file name, matching the diff card's vocabulary. Owner: B8 reconciliation of #453.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#596**. `changes-tree.tsx` is B6's file. Whoever fixes it should read **#597** first: the two surfaces currently disagree about what to CALL a change, and adding a status word to the tree would entrench one of the two names.
@@ -231,7 +236,7 @@ is gone says so and keeps its line so the history reads.
 
 ### G-42 `SearchField` cannot carry a slot, so four searches spell it by hand
 
-- **Differs**: `SearchField` (`routes/tasks-overview.tsx:431`) takes `value`, `onChange`, `placeholder`, `label` and `className` and spreads nothing else onto its `Input`. The GitHub list (`data-slot="gh-search"`, `type="search"`), the Skills catalog (`skills-filter`), the skills import panel (`import-filter`) and the Workflows palette (`wb-filter`) need their slot – tests and the browser suite find them by it – so #453 B7 spelled the same `relative` wrapper, `SearchIcon` and `Input pl-8 md:text-[13px]` four times instead of importing it.
+- **Differs**: `SearchField` (exported from `routes/tasks-overview.tsx`) takes `value`, `onChange`, `placeholder`, `label` and `className` and spreads nothing else onto its `Input`. The GitHub list (`data-slot="gh-search"`, `type="search"`), the Skills catalog (`skills-filter`), the skills import panel (`import-filter`) and the Workflows palette (`wb-filter`) need their slot – tests and the browser suite find them by it – so #453 B7 spelled the same `relative` wrapper, `SearchIcon` and `Input pl-8 md:text-[13px]` four times instead of importing it.
 - **Rule**: one search field component.
 - **Fix**: let `SearchField` forward the rest of `Input`'s props (and move it out of a route module into `components/`), then replace the four spellings. `tasks-overview.tsx` is B4's file, so B7 did not change it. Owner: B8 reconciliation of #453.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#598**. `tasks-overview.tsx` is B4's file, and moving `SearchField` into `components/` adds a shared component — which #453 reserves for B1 — so it needs the coverage row and the drift test in the same commit.
@@ -281,6 +286,27 @@ is gone says so and keeps its line so the history reads.
 - **Fix**: a contract revision (a new `schemaVersion`) that adds the missing facts, then the matching mockup behaviour; or revise the mockup to the slimmer answer.
 - **Final disposition (#867, 2026-09-22)**: kept, with a reason (S5) — the merged contract wins over the spec and the mockup (the leader's brief for S5); every difference is listed in the S5 pull request. Narrowed on 2026-09-23 (review round 1 on #889): the S3 fields above moved from "derived" to "read as sent".
 
+### G-50 Two spellings of the desktop page header
+
+- **Differs**: the same desktop page header is written two ways. Seven route files spell it by hand (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `routes/inbox.tsx`, `routes/skills.tsx`, `routes/skills-loading.tsx`, `routes/workflows/workflows.tsx`, `routes/settings/settings-shell.tsx`), mostly as `sticky top-0 z-10 hidden h-14 … gap-3 … md:flex md:px-section` – the form [patterns.md](patterns.md) §3 calls "the rule". Two render the shared `PageHeader` (`components/centered-state.tsx`, `data-slot="page-header"`: `min-h-14 flex-wrap … gap-row … px-4 py-2`) – Automations and Compare. The Tasks header already borrows `PageHeader`'s wrap and padding by hand (#625). The two differ in height (`h-14` against `min-h-14`), wrapping, gap (`gap-3` against `gap-row`) and vertical padding.
+- **Rule**: **not decided – an owner decision.** Either the hand spelling stays the rule and `PageHeader` is the variant for headers kept on a phone, or `PageHeader` becomes the one header and the seven hand spellings migrate. Until then, copy the spelling of the page you are next to and say which in the PR.
+- **Fix**: after the decision, migrate one way and update patterns.md §3 and components.md PageHeader together.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – the rule is an owner decision that has not been made; recorded by a docs audit, read from source only.
+
+### G-51 The violet accent's focus ring is below 3:1
+
+- **Differs**: the focus ring is `ring-ring/50` (half strength). Under the default lime accent it reaches about 4.3:1 on the dark `--background` and 3.4:1 on white in the light theme. `:root[data-accent='violet']` repoints `--ring` to `--violet`, and at half strength that is about **2.2:1** on white (light, `#5d50de`) and **2.4:1** on `#0d0d0d` (dark, `#8f86e8`) – below the 3:1 WCAG 2.2 success criterion 1.4.11 (Non-text Contrast, AA) asks of a focus indicator. Token math (alpha blend, then the WCAG contrast formula), not a browser measurement.
+- **Rule**: a focus indicator is at least 3:1 against what is next to it, in both themes and every accent ([foundations.md](foundations.md) rules, [theming.md](theming.md) Accent).
+- **Fix**: give the violet accent its own ring value, or draw the ring at full strength under violet; then measure every accent and theme in the browser.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – recorded by a docs audit from token math; the fix needs a browser measurement of every accent and theme first.
+
+### G-52 The text-field border is 1.19:1 (unverified)
+
+- **Differs**: `Input` and `Textarea` draw their edge with `border-input`. `--input` is `#ebebeb` on a white card in light (**1.19:1**) and `#262626` on `#171717` / `#0d0d0d` in dark (about 1.2–1.3:1). Token math only; not measured in the browser.
+- **Rule**: open question. WCAG 1.4.11 asks 3:1 for the visual information needed to **identify** a control. If the placeholder, the label and the field's position already identify it, a faint border may pass; if the border is the only thing that shows where to type, it fails. Which is true needs a rendered check of the real forms.
+- **Fix**: first answer the question above with screenshots of a settings form and the `/new` composer in both themes; then either record why the border may stay faint or darken `--input`.
+- **Final disposition (#1143, 2026-10-23)**: kept, with a reason – recorded by a docs audit from token math; whether it fails at all is the open question above, answered only by a rendered check.
+
 ## Comment vs code
 
 Four of the five rows this section opened with closed with their gaps at the #453 B8 reconciliation
@@ -291,7 +317,7 @@ it has no G id because nothing is inconsistent in the code — the comment is si
 
 | Comment says | Code does | Where |
 | --- | --- | --- |
-| the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | `lib/reference-status.ts:11-13`, `components/reference-chip.tsx:469` |
+| the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | the comment above `ReferenceStatusTone` in `lib/reference-status.ts`; the `StatusDot` fallback in `components/reference-chip.tsx` |
 
 ## Mockup fidelity (designs/quality-checks on the shared stylesheet)
 
@@ -301,8 +327,8 @@ for new work.
 
 | Class | Mockup value (`cockpit.css`; the `qc-` rows live in `designs/quality-checks/styles.css`) | Cockpit value | Source |
 | --- | --- | --- | --- |
-| `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `h-[30px] px-2.5 text-[12.5px] font-semibold` | `components/ui/button.tsx` |
-| `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx:498`, `components/app-shell.tsx:704` |
+| `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `size="sm"`: `h-7.5 rounded-sm px-2.5 text-[12.5px]` (30 px at the default density), `font-semibold` | `components/ui/button.tsx` (the `sm` size) |
+| `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `md:h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx`: the New task CTA and `AddProjectMenu` |
 | `.quick li` | fixed `height: 32px`, `padding 0 10px` | none since #546: the sidebar lists no tasks; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
 | `.list-tabs span.on` | `bg card-2`, weight 500 | none in the sidebar since #546; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
 | `.tasks-table th` | 11.5px, weight 500, no transform | `text-[11px] font-semibold tracking-[0.05em] uppercase` | `TASK_TH_CLASS`, `lib/task-columns.ts:143` |
@@ -310,7 +336,7 @@ for new work.
 | `.qc-empty` | dashed box, 40px icon, 15px title | `CenteredState`: 72px tile, `text-2xl` | `components/centered-state.tsx` |
 | `.qc-skeleton` | sheen sweep | `animate-pulse rounded-md bg-accent` | `components/ui/skeleton.tsx` |
 | `.task-body` | `padding 18px 24px 24px`, fixed px | thread column `md:px-section md:py-section` (32 px on the density unit) | `routes/task-thread/task-thread.tsx:307` |
-| `.task-head h1`, `.task-head .row` | `margin 8px 0 10px`, fixed px | tab row `mt-stack` (12 px) under the title | `routes/task-thread/run-header.tsx:222` |
+| `.task-head h1`, `.task-head .row` | `margin 8px 0 10px`, fixed px | tab row `mt-stack` (12 px) under the title | `data-slot="run-tabs"` in `routes/task-thread/run-header.tsx` |
 | `.quick-head` | `padding 12px 22px 4px`, fixed px | none since #546: the sidebar has no bucket headings; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
 | `.tasks-table td` | `padding 10px 12px`, height from content | `h-11 px-3` | `TASK_TD_CLASS`, `lib/task-columns.ts:145` |
 | `.qc-toast` | card surface with a success icon | `bg-contrast text-contrast-foreground`, no icon | `components/ui/toaster.tsx` |
@@ -318,7 +344,7 @@ for new work.
 | `.qc-alert` | card with a danger-tinted border and icon | `banner-row` with the `alert` tone | `components/provider-banner.tsx` |
 | `.btn.contrast:hover` (new) | the mockup had no hover, so a contrast button turned `--muted` on hover | `filter: brightness(0.96)` | `components/ui/button.tsx` |
 | `.tasks-table tbody tr:hover` (new) | the mockup had no row hover | `hover:bg-muted` | `routes/tasks-overview.tsx` |
-| `.sidebar-head .where` (new) | the mockup had no truncation, so a long repo or branch name wrapped the brand row onto three lines | `truncate` on `data-slot="repo-chip"` | `components/app-shell.tsx:485-489` (added 2026-09-17 with `designs/single-project-mode`) |
+| `.sidebar-head .where` (new) | the mockup had no truncation, so a long repo or branch name wrapped the brand row onto three lines | `truncate` on `data-slot="repo-chip"` | `components/app-shell.tsx`, `data-slot="repo-chip"` (added 2026-09-17 with `designs/single-project-mode`) |
 
 Proposed fix: when the quality-checks design gets its review, restyle those classes to the cockpit
 values and drop the `qc-` prefixed ones in favour of the shared `.centered-state`, `.skeleton` and

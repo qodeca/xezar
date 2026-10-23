@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { withPlatform, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
@@ -17,6 +18,7 @@ import {
   safeRemoteFor,
 } from './skills-remote.ts';
 import type { Skill } from './skills.ts';
+import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
 
 /**
  * The git half of team skills (spec 005, hardened by #428) — everything
@@ -518,5 +520,107 @@ describe('team skills read out of a real bare clone', () => {
       ).toBe(false);
       expect(existsSync(join(repoRoot, '.claude', 'skills', 'dir-skill'))).toBe(false);
     });
+  });
+});
+
+// A deep project on Windows: the clone's own `objects/pack/pack-<hash>.idx` passes the 260-character
+// limit while the clone folder itself stays under it. Git for Windows then fails with "Filename too
+// long" unless `core.longpaths` is on. A clone folder whose own path is longer still is refused
+// either way ("'$GIT_DIR' too big", from about 225 characters on Git 2.53), so this pins 210.
+// The machine's own Git config is shut out, because a machine that already turns long paths on
+// (Git for Windows can) would hide the failure. The source is a `file://` URL so its cache name
+// stays short and the project depth alone sets the length, in a deep checkout too. Linux and macOS
+// have no such limit, so there this pins the same behaviour.
+describe('team skills from a source whose clone path passes 260 characters', () => {
+  /** Long enough that the clone's pack files pass 260 characters, short enough that Git for
+   *  Windows still accepts the folder itself. */
+  const BARE_DIR_LENGTH = 210;
+  const savedEnv = { nosystem: process.env.GIT_CONFIG_NOSYSTEM, global: process.env.GIT_CONFIG_GLOBAL };
+  let base: string;
+  let source: string;
+  let sourceUrl: string;
+  let project: string;
+  let repoRoot: string;
+
+  beforeEach(() => {
+    base = scratch('xez-skills-deep-');
+    source = scratch('xez-skills-deep-source-');
+    git(source, 'init', '-q', '-b', REF);
+    write(source, 'dir-skill/SKILL.md', withFrontmatter('dir-skill', 'a directory skill', 'DIR BODY'));
+    write(source, 'dir-skill/references/notes.md', 'REFERENCE NOTES\n');
+    git(source, 'add', '-A');
+    git(source, 'commit', '-q', '-m', 'skills');
+    sourceUrl = pathToFileURL(source).href;
+
+    const emptyConfig = join(base, 'empty.gitconfig');
+    writeFileSync(emptyConfig, '', 'utf8');
+    process.env.GIT_CONFIG_NOSYSTEM = '1';
+    process.env.GIT_CONFIG_GLOBAL = emptyConfig;
+
+    // Deepen the project folder until the clone folder is exactly BARE_DIR_LENGTH characters.
+    project = join(base, 'p');
+    setActiveStateLayout(projectStateLayout(project));
+    let missing = BARE_DIR_LENGTH - bareDirFor(sourceUrl).length;
+    while (missing > 0) {
+      const segment = Math.min(missing - 1 || 1, 60);
+      project = join(project, 'p'.repeat(segment));
+      setActiveStateLayout(projectStateLayout(project));
+      missing = BARE_DIR_LENGTH - bareDirFor(sourceUrl).length;
+    }
+    repoRoot = join(project, 'r'.repeat(60));
+    mkdirSync(repoRoot, { recursive: true });
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    if (savedEnv.nosystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+    else process.env.GIT_CONFIG_NOSYSTEM = savedEnv.nosystem;
+    if (savedEnv.global === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = savedEnv.global;
+    for (const dir of [source, base]) rmSync(dir, TEST_DIR_RM_OPTIONS);
+  });
+
+  it('clones, lists, reads and copies a directory skill with long paths on in xezar itself', async (ctx) => {
+    // A temp folder that is already deep (a task's TMPDIR inside its repository) cannot give a
+    // clone folder this short: the case under test does not exist there.
+    if (bareDirFor(sourceUrl).length >= BARE_DIR_LENGTH + 5) {
+      ctx.skip(`the temp folder is too deep for a ${BARE_DIR_LENGTH}-character clone folder: ${bareDirFor(sourceUrl).length}`);
+    }
+    expect(bareDirFor(sourceUrl).length).toBeGreaterThanOrEqual(BARE_DIR_LENGTH);
+    expect(bareDirFor(sourceUrl).length).toBeLessThan(BARE_DIR_LENGTH + 5);
+
+    await expect(ensureBareClone(sourceUrl)).resolves.toEqual({ bareDir: bareDirFor(sourceUrl), created: true });
+
+    const src: SkillsRepoSource = { repo: sourceUrl, ref: REF };
+    const skills = await listRemoteSkills(src);
+    const skill = skills.find((s) => s.name === 'dir-skill');
+    expect(skill).toBeDefined();
+    expect(await readRemoteSkill(src, 'dir-skill/SKILL.md')).toContain('DIR BODY');
+    expect(await materializeSkillDir(repoRoot, skill!)).toBe(true);
+    const dest = join(repoRoot, '.claude', 'skills', 'dir-skill');
+    expect(readFileSync(join(dest, 'references', 'notes.md'), 'utf8')).toBe('REFERENCE NOTES\n');
+
+    await expect(fetchAll(bareDirFor(sourceUrl))).resolves.toBeUndefined();
+  });
+
+  // A drive source spelled with backslashes used to name its clone folder after its whole path, so
+  // here the old folder would have been at least 240 characters: "'$GIT_DIR' too big", whatever
+  // `core.longpaths` says. The short name keeps the same depth working.
+  // win32-skip(#976): a drive source and the Windows path limit exist on Windows only; the name rule is pinned on every OS in skills-remote.test.ts
+  it.runIf(process.platform === 'win32')('serves a Windows drive source in a project where its full-path name would not fit', async () => {
+    const OLD_NAME_LENGTH = 240;
+    const cacheRoot = (): string => dirname(bareDirFor('qodeca/xezar-skills'));
+    while (cacheRoot().length + 1 + source.length + 1 < OLD_NAME_LENGTH) {
+      project = join(project, 'p'.repeat(40));
+      setActiveStateLayout(projectStateLayout(project));
+    }
+
+    await expect(ensureBareClone(source)).resolves.toEqual({ bareDir: bareDirFor(source), created: true });
+    const src: SkillsRepoSource = { repo: source, ref: REF };
+    const skill = (await listRemoteSkills(src)).find((s) => s.name === 'dir-skill');
+    expect(skill).toBeDefined();
+    expect(await readRemoteSkill(src, 'dir-skill/SKILL.md')).toContain('DIR BODY');
+    expect(await materializeSkillDir(repoRoot, skill!)).toBe(true);
+    await expect(fetchAll(bareDirFor(source))).resolves.toBeUndefined();
   });
 });

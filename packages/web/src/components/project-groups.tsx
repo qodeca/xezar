@@ -2,13 +2,18 @@ import { ChevronDownIcon } from 'lucide-react'
 import * as React from 'react'
 import { useLocation } from 'react-router'
 
-import { useProjectRuns } from '@/api/queries'
+import { useAttentionCounts } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
-import { MissingProjectBadge, NavBadge, SkillsUpdateMarker, useSidebarNavigate } from '@/components/app-shell'
+import {
+  MissingProjectBadge,
+  NavBadge,
+  SkillsUpdateMarker,
+  tasksNeedYou,
+  useSidebarNavigate,
+} from '@/components/app-shell'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
 import { Link, pathnameProjectId, scopeTo, stripProjectPrefix } from '@/lib/project-router'
 import { isProjectCollapsed, readStoredCollapsed, writeStoredCollapsed } from '@/lib/sidebar-collapse'
-import { listCounts } from '@/lib/task-groups'
 import { cn } from '@/lib/utils'
 
 /**
@@ -88,6 +93,13 @@ export function ProjectGroups({
   // must not fold the whole sidebar shut.
   const collapseAnchorId = scopedProjectId ?? bootProjectId
   const { collapsed, toggle } = useSidebarCollapse(collapseAnchorId)
+  // Every group's badge, collapsed or not, from the one workspace attention model — kept live
+  // for every project by the global stream (api/global-events.tsx), so a group never needs its
+  // own runs request to stay honest.
+  // If that index cannot be read, the anchor project (the one whose run list the scope holds)
+  // falls back to its own list; the others keep their last known counts, and the one line under
+  // All tasks (app-shell.tsx, AttentionStaleNote) says they may be out of date.
+  const attention = useAttentionCounts(collapseAnchorId)
 
   const activeTo = activeNavPath(stripProjectPrefix(pathname))
 
@@ -104,7 +116,8 @@ export function ProjectGroups({
         <ProjectGroup
           key={project.id}
           project={project}
-          boot={project.id === bootProjectId}
+          // Unknown (null) until the index answers: no badge rather than a guessed 0.
+          attentionCount={attention.countFor(project.id)}
           active={project.id === scopedProjectId}
           collapsed={isProjectCollapsed(collapsed, project.id, collapseAnchorId)}
           onToggle={toggle}
@@ -121,7 +134,7 @@ export function ProjectGroups({
 
 function ProjectGroup({
   project,
-  boot,
+  attentionCount,
   active,
   collapsed,
   onToggle,
@@ -132,9 +145,9 @@ function ProjectGroup({
   skillsUpdateAvailable,
 }: {
   project: ProjectListEntry
-  /** The boot project's runs cache lives under the `'default'` scope key (it mounts
-   *  unscoped) — see `useProjectRuns`' `boot` parameter. */
-  boot: boolean
+  /** Tasks in this project that need you (waiting or review), from the workspace attention
+   *  model; null while that model is unknown. */
+  attentionCount: number | null
   active: boolean
   collapsed: boolean
   onToggle: (projectId: string) => void
@@ -146,15 +159,12 @@ function ProjectGroup({
   skillsUpdateAvailable: boolean
 }) {
   const missing = project.status === 'missing'
-  // Collapsed (or missing) groups never fetch — a 40-project workspace costs one registry
-  // request, not 40 run lists. A collapsed group still READS whatever is cached, which is what
-  // keeps its attention badge alive after the user shuts it.
-  const runs = useProjectRuns(project.id, !collapsed && !missing, boot)
+  // No group fetches anything of its own: a 40-project workspace costs one registry request and
+  // one runs-index request, collapsed or not. The header's attention badge counts waiting +
+  // review (the meaning is unchanged by #546 even though the group no longer lists the tasks it
+  // counts; #399 owns any redesign).
   const onNavigate = useSidebarNavigate()
-
-  // The header's attention badge: waiting + review, counted by status. Its meaning is unchanged by
-  // #546 even though the group no longer lists the tasks it counts (#399 owns any redesign).
-  const waiting = runs.data ? listCounts(runs.data).waiting : 0
+  const waiting = attentionCount ?? 0
 
   // A missing project's panes all 409 (spec, "Registered project folder deleted/moved"), so
   // there is nothing behind the chevron — the row renders greyed and inert rather than
@@ -212,7 +222,9 @@ function ProjectGroup({
           aria-hidden="true"
         />
         <span className="truncate">{project.name}</span>
-        <NavBadge data-slot="project-attention" title={`${project.name}: ${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{waiting}</NavBadge>
+        {/* Not a live region: one change moves this badge AND All tasks, and the shell owns the
+            single announcement (app-shell.tsx). The words still join the header's name. */}
+        <NavBadge data-slot="project-attention" live={false} title={tasksNeedYou(waiting)} className="ml-0">{attentionCount}</NavBadge>
         {project.branch ? (
           <span
             data-slot="project-branch"

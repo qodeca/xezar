@@ -453,7 +453,19 @@ describe('a run stopped by a usage limit resumes itself', () => {
         { timeout: 20_000 },
       )
       .toBe(1);
+    // Wait for the hand-back itself, not for a fixed second. The four runs behind the lease are
+    // `running` with a `startedAt` while they are parked on it (#347), and each is handed back
+    // only when the lease reaches it – after the run ahead of it has fully settled, which on a
+    // loaded Windows or macOS runner took longer than the second this used to sleep (CI runs
+    // 39239891519, 39153384669: two `startedAt` at the one-second mark, the second a parked run
+    // still waiting for its turn). The second disjunct keeps a broken gate failing on the real
+    // count below instead of hanging: without the gate a parked run spawns and meets the limit.
+    const scheduled = () => runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length;
+    const queued = () => runs.filter((r) => store.getRun(r.id)?.status === 'queued').length;
+    await expect.poll(() => queued() === 4 || scheduled() > 1, { timeout: 30_000 }).toBe(true);
+    // Then the original settle window: nothing that was handed back may start late.
     await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(scheduled()).toBe(1);
     expect(runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined)).toHaveLength(1);
     // Handed back untouched — plain `queued`, no half-started record left behind.
     expect(runs.filter((r) => store.getRun(r.id)?.status === 'queued')).toHaveLength(4);

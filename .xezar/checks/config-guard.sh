@@ -78,30 +78,42 @@ if [ "$FROM_BASE" -eq 1 ]; then
   SOURCE_NAME="origin/$BASE_BRANCH:$CFG_REL"
   git -C "$TASK_CWD" fetch --quiet origin "refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH" 2>/dev/null || true
   if [ "$KEY" = "browser" ]; then
-    for file in .mcp.json .codex/config.toml; do
-      # Both texts go in as DATA (environment), never spliced into the script.
-      SAME="$(BASE_TEXT="$(git -C "$TASK_CWD" show "origin/$BASE_BRANCH:$file" 2>/dev/null)" \
-        TREE_TEXT="$(cat "$TASK_CWD/$file" 2>/dev/null)" node -e '
-        const entry = (text) => {
-          if (!text) return "";
-          if (process.argv[1].endsWith(".json")) {
-            const found = JSON.parse(text).mcpServers?.["chrome-devtools"];
-            return found === undefined ? "" : JSON.stringify(found);
-          }
-          // TOML: every table under mcp_servers.chrome-devtools, plus any line naming it elsewhere.
-          let inside = false;
-          return text.split("\n").map((line) => line.trim()).filter((line) => {
-            if (line.startsWith("[")) inside = /^\[\s*mcp_servers\.("?)chrome-devtools\1\s*[.\]]/.test(line);
-            return line !== "" && !line.startsWith("#") && (inside || line.includes("chrome-devtools"));
-          }).join("\n");
-        };
+    # One node start judges both files, each exactly as its own start did, and prints one word per
+    # file in this order; the loop below reads them in the same order (#132 speed bar: a node start
+    # is about a quarter of a second on Windows). All four texts go in as DATA (environment), never
+    # spliced into the script.
+    VERDICTS="$(BASE_TEXT_1="$(git -C "$TASK_CWD" show "origin/$BASE_BRANCH:.mcp.json" 2>/dev/null)" \
+      TREE_TEXT_1="$(cat "$TASK_CWD/.mcp.json" 2>/dev/null)" \
+      BASE_TEXT_2="$(git -C "$TASK_CWD" show "origin/$BASE_BRANCH:.codex/config.toml" 2>/dev/null)" \
+      TREE_TEXT_2="$(cat "$TASK_CWD/.codex/config.toml" 2>/dev/null)" node -e '
+      const entry = (text, file) => {
+        if (!text) return "";
+        if (file.endsWith(".json")) {
+          const found = JSON.parse(text).mcpServers?.["chrome-devtools"];
+          return found === undefined ? "" : JSON.stringify(found);
+        }
+        // TOML: every table under mcp_servers.chrome-devtools, plus any line naming it elsewhere.
+        let inside = false;
+        return text.split("\n").map((line) => line.trim()).filter((line) => {
+          if (line.startsWith("[")) inside = /^\[\s*mcp_servers\.("?)chrome-devtools\1\s*[.\]]/.test(line);
+          return line !== "" && !line.startsWith("#") && (inside || line.includes("chrome-devtools"));
+        }).join("\n");
+      };
+      process.argv.slice(1).forEach((file, i) => {
         try {
-          const base = entry(process.env.BASE_TEXT);
-          console.log(base === "" || base === entry(process.env.TREE_TEXT) ? "same" : "changed");
+          const base = entry(process.env[`BASE_TEXT_${i + 1}`], file);
+          const tree = entry(process.env[`TREE_TEXT_${i + 1}`], file);
+          console.log(base === "" ? (tree === "" ? "none" : "new") : base === tree ? "same" : "changed");
         } catch { console.log("unreadable"); }
-      ' "$file")"
+      });
+    ' .mcp.json .codex/config.toml)"
+    added=""
+    for file in .mcp.json .codex/config.toml; do
+      SAME="${VERDICTS%%$'\n'*}"
+      case "$VERDICTS" in *$'\n'*) VERDICTS="${VERDICTS#*$'\n'}" ;; *) VERDICTS="" ;; esac
       case "$SAME" in
-        same) ;;
+        same | none) ;;
+        new) added="${added:+$added, }$file" ;;
         changed)
           printf 'config-guard: refused — the chrome-devtools entry in %s differs from origin/%s. A change to the browser'"'"'s command, args or tools needs a security review and a human merge, never this gate.\n' "$file" "$BASE_BRANCH" >&2
           exit 1 ;;
@@ -110,7 +122,13 @@ if [ "$FROM_BASE" -eq 1 ]; then
           exit 2 ;;
       esac
     done
-    printf 'config-guard: ok — browser: the chrome-devtools entry matches origin/%s (.mcp.json, .codex/config.toml)\n' "$BASE_BRANCH"
+    # Say what was compared (#222): a base with no entry is not a match. Adding the first entry is
+    # the setup or upgrade pull request's, which the security-review row and a human merge judge.
+    if [ -n "$added" ]; then
+      printf 'config-guard: ok — browser: origin/%s has no chrome-devtools entry yet in %s; this branch adds the first one, which the security review and a human merge judge, not this gate\n' "$BASE_BRANCH" "$added"
+    else
+      printf 'config-guard: ok — browser: the chrome-devtools entry matches origin/%s (.mcp.json, .codex/config.toml)\n' "$BASE_BRANCH"
+    fi
     exit 0
   fi
   CFG_TEXT="$(git -C "$TASK_CWD" show "origin/$BASE_BRANCH:$CFG_REL" 2>/dev/null)" || {

@@ -3,7 +3,7 @@
 Every primitive in `packages/web/src/components/ui/` and every shared module in
 `packages/web/src/components/` (including `composer/` and `diff/`). One entry per file, in a fixed order:
 purpose · source · variants and props that matter · states · rules · accessibility · where used.
-"Where used" counts importing files outside tests. Button, Collapsible, Input, Label and StatusDot counts read on 2026-09-18; other importer counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
+"Where used" counts importing files outside tests. Primitive counts read on 2026-10-18 and the StatusDot count on 2026-09-18; other shared-component counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
 
 Definitions the drift test uses:
 
@@ -29,7 +29,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: hover (brightness or background), focus-visible ring, disabled (50% opacity, no pointer events), pending (caller swaps the label to `Verb-ing…` and disables), unavailable but focusable (`aria-disabled`, for an action whose reason must stay reachable by keyboard and screen reader – `outline` and `ghost` only): the caller adds `aria-disabled:cursor-not-allowed aria-disabled:text-soft-foreground aria-disabled:hover:bg-transparent aria-disabled:hover:text-soft-foreground` and points `aria-describedby` at the reason on screen. Never an opacity there: the label is still text the contrast gate measures, and `opacity-55` put it at 2.45:1 (#889); `--soft-foreground` clears 4.5:1 on every surface it prints on (foundations.md). First used by the plan-limits Refresh (`routes/settings/account-limits.tsx`, `HELD_BUTTON`).
 - **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger` for a solid destructive confirm, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a destructive confirm – use `variant="danger"`; every confirm does since #453 (G-10 retired; on 2026-09-18 the pair appears only inside `components/ui`, in the `danger` variant and the toaster's error tone). DO NOT add a `secondary` variant.
 - **Accessibility**: an icon-only button MUST carry `aria-label`. Every size meets the 44 px phone target at every density through `min-h-tap` / `min-w-tap`; a caller no longer adds `size-11` for that.
-- **Where used**: 47 files (most-imported primitive).
+- **Where used**: 53 files (most-imported primitive).
 
 ### Badge
 
@@ -39,7 +39,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: hover only when rendered as a link (`[a&]:hover:…`); focus-visible ring; `aria-invalid` styling.
 - **Rules**: DO use `outline` and `ghost` (the two variants the cockpit uses). DO NOT use Badge for run status; that is `Pill` + `StatusDot`.
 - **Accessibility**: plain span; no role.
-- **Where used**: 4 files (`add-project-dialog.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/skills-section.tsx` — the skill catalog's state word, `variant="outline"`, which is a label and not a run status).
+- **Where used**: 6 files (`add-project-dialog.tsx`, `app-shell.tsx`, `settings/account-limits.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/skills-section.tsx` — the skill catalog's state word, `variant="outline"`, which is a label and not a run status).
 
 ### Collapsible
 
@@ -67,7 +67,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: open/closed animations on `data-[state]`, all `motion-safe:`; close button `opacity-70 hover:opacity-100` with the shared `focus-visible:ring-[3px] focus-visible:ring-ring/50` ring and a centred `before:size-tap` overlay that gives the 16 px glyph a 44 px phone target without moving it.
 - **Rules**: DO put the cancel button first in DOM order and the confirm last (the footer reverses on phone so the confirm sits on top). DO use `AlertDialog` instead when the action is destructive. DO NOT nest a scroller taller than `max-h-[80dvh]` (skill preview) without `overflow-y-auto`.
 - **Accessibility**: always render `DialogTitle` (`sr-only` if visually elsewhere) and a `DialogDescription`, or pass `aria-describedby={undefined}` deliberately.
-- **Where used**: 9 files.
+- **Where used**: 12 files.
 
 ### AlertDialog
 
@@ -77,7 +77,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: no outside-click dismiss; focus starts on the cancel action.
 - **Rules**: DO title it as a question (`Delete this task?`), state the consequence, add `There is no undo.` when true, and word the cancel as the kept outcome (`Keep it`). DO tint a destructive action with `className={buttonVariants({ variant: "danger" })}`, never a copied class string. DO return focus to the opener when the dialog is opened from state rather than from an `AlertDialogTrigger` (`onCloseAutoFocus`; settings use `useReturnFocus`). DO NOT use it for a non-destructive form.
 - **Accessibility**: `role="alertdialog"` from Radix.
-- **Where used**: 8 files (`compare-variants.tsx`, `plan-review.tsx`, `settings/accounts-section.tsx`, `settings/remove-project.tsx`, `settings/worktrees-panel.tsx`, `task-thread/link-safety-dialog.tsx`, `task-thread/run-header.tsx`, `workflows/workflows.tsx`).
+- **Where used**: 9 files (`compare-variants.tsx`, `plan-review.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/remove-project.tsx`, `settings/worktrees-panel.tsx`, `task-thread/link-safety-dialog.tsx`, `task-thread/run-header.tsx`, `workflows/workflows.tsx`).
 
 ### Sheet
 
@@ -105,7 +105,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: `w-72 rounded-md border bg-popover p-4 shadow-md` with slide/zoom animations.
 - **Rules**: DO prevent `onOpenAutoFocus` when the popover opens from hover or from typing (the reference chip, the composer menu). DO clamp lists to `--radix-popover-content-available-height`.
 - **Accessibility**: `PopoverTitle` renders the `h2` it is typed as, so the panel's name is in the heading outline.
-- **Where used**: 10 files.
+- **Where used**: 11 files.
 
 ### Tooltip
 
@@ -119,10 +119,10 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11, kept with a reason, folded into G-20's 2026-09-17 disposition since `Select` still has zero importers). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11 is retired, and #453 B1 deleted the unused `Select`). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. New search fields use `Input` with a leading icon; G-12 is fixed (every search route does), and the remaining hand-spelled wrapper duplication across four routes is tracked as G-42, filed as #598.
-- **Where used**: 18 files.
+- **Where used**: 20 files (read 2026-10-23).
 
 ### Textarea
 
@@ -130,18 +130,18 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/textarea.tsx`. Exports `Textarea`.
 - **Look**: `field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base shadow-xs … md:text-sm`; same focus and invalid rings as Input; disabled has no `pointer-events-none` (G-07). No `min-h-tap`: `min-h-16` is 64 px at comfortable and still 48 px at the tightest density, so it is above the phone floor already.
 - **Rules**: DO submit with ⌘↵ / Ctrl+↵ (`isSubmitShortcut`) and keep plain Enter as a newline in dialogs. DO save on an explicit button for long text; never PUT on every keystroke.
-- **Where used**: 8 files.
+- **Where used**: 9 files.
 
 ### Label
 
 - **Purpose**: form label (Radix).
 - **Source**: `packages/web/src/components/ui/label.tsx`. Class `flex items-center gap-2 text-sm leading-none font-medium select-none`; dims with a disabled `peer` or `group`.
-- **Where used**: 3 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`, `routes/settings/mcp-leader-control.tsx`).
+- **Where used**: 2 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`).
 
 ### Switch
 
 - **Purpose**: on/off preference.
-- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default` (track `h-4.5 w-8` / `h-3.5 w-6`); track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
+- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default` (track `h-3.5 w-6` / `h-4.5 w-8`); track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
 - **States**: checked/unchecked, focus-visible ring, disabled 50%.
 - **Rules**: DO save on change and toast the new state (`Live title updates on`). DO put the visible label in a `SettingsField` title.
 - **Accessibility**: `role="switch"` and `aria-checked` from Radix; label via `aria-label` or `aria-labelledby`. The root IS the visible track, so the 44 px phone target is a centred `before:size-tap` overlay on it rather than a 44 px pill; it is released at `md:`.
@@ -171,22 +171,27 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: outlet `fixed top-[calc(61px+env(safe-area-inset-top))] right-[calc(16px+env(safe-area-inset-right))] z-[60] … md:top-[calc(16px+env(safe-area-inset-top))]`; toast `max-w-[min(360px,calc(100vw-32px))] rounded-md px-3.5 py-2.5 text-[13px] font-medium shadow-modal`, `bg-contrast text-contrast-foreground` or `bg-danger text-danger-foreground`; `motion-safe:` slide from the right.
 - **Rules**: DO call `toast(error.message, { tone: 'danger' })` in every mutation `onError` (the repo-wide error doctrine: the server's words, verbatim). DO keep success toasts to one short sentence. DO NOT call `toast.success` or `toast.error`; they do not exist.
 - **Accessibility**: each toast is `role="status"`.
-- **Where used**: 41 files import `toast`; one (`app.tsx`) mounts `Toaster`.
+- **Where used**: 45 files import `toast`; one (`app.tsx`) mounts `Toaster`.
 
 ## 2. Shared components (`src/components/`)
 
 ### AppShell
 
 - **Purpose**: the presentational shell: fixed sidebar plus one scrolling main region. The sidebar is navigation only (#546): tasks live on the Tasks pages, never in the sidebar.
-- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
+- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`, and five small parts other files reuse:
+  - `NavBadge` – the violet count (`data-slot="nav-badge"`, look under Badges below). A polite `role="status"` region by default; `live={false}` drops the region and keeps the `sr-only` words. Imported by `project-groups.tsx`.
+  - `VersionChip` – the footer's version (`data-slot="version-chip"`, `min-h-chip rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground`); a pulsing `pending` `StatusDot` and `data-update-available="true"` when a newer version exists, and a `title` that always carries the whole version. Its `truncate` span is G-28.
+  - `SkillsUpdateMarker` – the Skills row's update dot: a `size-1.5` violet `StatusDot` plus `sr-only` "Skills update available" inside a `role="status"` wrapper (`data-slot="nav-update-marker"`). Imported by `project-groups.tsx`.
+  - `MissingProjectBadge` – the danger chip "folder not found" (`data-slot="project-missing"`, `min-h-chip rounded-full bg-danger px-2 py-px text-[10px] font-medium text-danger-foreground`). Imported by `command-palette.tsx` and `other-projects.tsx`, so a missing project reads the same everywhere.
+  - `tasksNeedYou(count, scope)` – the one sentence for the attention count ("1 task needs you", "2 tasks need you across all projects"), used by the phone menu button's name, the `attention-live` announcement and the badges' titles, here and in `project-groups.tsx`. Copy changes go through it.
 - **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `channel` (development-build badge), `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject` (hides Add project), `singleProjectRoot` (the single-project mode badge, #600), `banner`, `projectGroups` (replaces the flat nav).
 - **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar` and renders the same sidebar content.
 - **Sidebar order**: brand row → New task (+ Add project) → `<nav aria-label="Main" class="min-h-0 flex-1 overflow-y-auto overscroll-contain …">`, which fills the column and scrolls on a short window → footer. With project groups the nav is replaced by the pinned All tasks link and the scrolling groups.
 - **Footer**: `data-slot="sidebar-footer"` `border-t border-border px-3.5 py-2.5` holding one row, `sidebar-footer-controls` `flex items-center gap-2`: Tools menu, version chip, global settings gear (`ml-auto`), theme toggle. No search launcher; the palette opens from the keyboard.
 - **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - **Brand row and New task**: brand row `flex items-center gap-row px-3.5 pt-3.5 pb-2.5`; the New task button is `contrast` at `h-10`, one step taller than the `md:h-9` nav rows (`decisions.md` D-07); the Add project icon button beside it (multi-project only) is `size-11 md:size-10`, so on desktop the two share one height.
-- **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
-- **Brand tile and development-build badge** (#442, decisions.md D-08): the private `BrandTile` renders `/xezar.svg` as `<img data-slot="brand-tile" alt="" aria-hidden="true" class="size-[26px] shrink-0 rounded-sm">`. When the `channel` prop is `'dev'` it wraps the image in `relative flex shrink-0` and adds `<span data-slot="dev-badge" title="Development build" class="absolute -top-[15%] -right-[15%] grid size-[54%] place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-danger-ink ring-2 ring-sidebar">` holding an `aria-hidden` "D" and `sr-only` "Development build". The badge size is a share of the tile, so it is the same in every density, and the letter is `--danger-ink` (near-black in both themes and under every accent). Any other value renders the bare image. `AppShellContainer` passes `health.channel ?? null`.
+- **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count, the project groups' and `All tasks`' needs-you counts, `data-slot="project-attention"` / `"all-tasks-attention"`); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text. `NavBadge` is a polite live region by default; `live={false}` keeps the `sr-only` words for the row's name without the region — the attention badges use it because the shell's single `attention-live` region announces their changes. The same violet count sits inside the phone top bar's menu button (`data-slot="menu-attention"`, `aria-hidden`, the count in the button's `aria-label`). While the workspace task index cannot be refreshed, `AttentionStaleNote` renders one `role="status"` line under `All tasks` (`data-slot="attention-stale"`, `px-2.5 pt-1 text-[11.5px] text-muted-foreground`; copy in writing.md).
+- **Brand tile and development-build badge** (#442, decisions.md D-08): the private `BrandTile` renders `/xezar.svg` as `<img data-slot="brand-tile" alt="" aria-hidden="true" class="size-[26px] shrink-0 rounded-sm">`. When the `channel` prop is `'dev'` it wraps the image in `relative flex shrink-0` and adds `<span data-slot="dev-badge" title="Development build" class="absolute -top-[15%] -right-[15%] grid size-[54%] place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-danger-ink ring-2 ring-sidebar">` holding an `aria-hidden` "D" and `sr-only` "Development build". The badge size is a share of the tile, so it is the same in every density, and the letter is `--danger-ink` (near-black on the dark red, white on the darker light-theme red, the same under every accent). Any other value renders the bare image. `AppShellContainer` passes `health.channel ?? null`.
 - **Single-project mode badge** (#600, `designs/single-project-mode/` §7): with `singleProjectRoot` true the brand row becomes a column `flex flex-col gap-1 px-3.5 pt-3.5 pb-2.5`; line one is the unchanged row (`flex min-w-0 items-center gap-row`), line two indents the badge to the wordmark (`pl-[calc(26px+var(--spacing-row))]`). The badge is the private `ModeBadge`: `Badge variant="outline"` with `data-slot="mode-badge"`, `gap-1 px-1.5 text-[10.5px] text-muted-foreground [&>svg]:size-2.75`, a lucide `FolderIcon` (`aria-hidden`), the words "Single project" and an `sr-only` tail "— xezar settings and state live in this folder, not in your home directory" (no `title`: on a span that is never focused it would only repeat the tail). The `26px` in the indent is `BrandTile`'s `size-6.5` at its pinned `--spacing: 0.25rem`. It has no colour of its own (violet means a person is wanted, danger is the development build), it is not a link, a button or a tab stop, and on a development build it sits under the tile's "D" badge without overlapping it. The same badge fills the phone top bar's `data-slot="mobile-status"` slot. Rendered only on a definite `true`: while health is unknown, and in global mode, the brand row is the one-line row above, byte for byte. In the mode the footer's settings gear is named "Workspace settings" (accessible name and tooltip), matching the page it opens; global mode keeps "Global settings".
 - **States**: drawer open/closed (closes on route change and when `(min-width: 768px)` matches), active route, absent data renders nothing (no repo chip, no badge at 0 or null).
 - **Rules**: DO add a nav item in `nav-items.ts`, never in the shell. DO keep the shell presentational; data lives in `AppShellContainer`. DO NOT add a second page scroller.
@@ -225,12 +230,22 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Accessibility**: the backdrop is `aria-hidden` and `pointer-events-none`; twinkles are `motion-safe:animate-pulse`.
 - **Where used**: 39 files.
 
+### PageHeader
+
+- **Purpose**: the desktop page heading as a shared component; the shell's phone top bar supplies the heading below `md`. Its actions wrap instead of clipping.
+- **Source**: `packages/web/src/components/centered-state.tsx` (it lives beside `CenteredState`, not in a file of its own). Exports `PageHeader`.
+- **Props**: `title` (required), `children` (actions, tabs, search), `className`, `titleClassName`.
+- **Look**: `<header data-slot="page-header" class="sticky top-0 z-10 hidden min-h-14 flex-wrap items-center gap-row border-b border-border bg-background px-4 py-2 md:flex md:px-section">`; title `<h1 class="min-w-0 flex-1 text-base font-semibold break-words">`.
+- **Rules**: pass `className="flex"` to keep the header on a phone (the two-row variant, patterns.md §3). Pass `titleClassName="sr-only md:not-sr-only"` when a header kept on a phone would repeat the top bar word for word. Most pages still spell the same header by hand rather than render this component; which spelling is the rule is open (G-50).
+- **Accessibility**: one `h1` per page; the header is opaque, so content scrolled under it does not show through.
+- **Where used**: 2 files (`routes/automations/automations.tsx`, `routes/compare-variants.tsx`).
+
 ### StatusDot
 
 - **Purpose**: the 7px dot, the design system's single carrier of status colour.
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
-- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
+- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot.
 - **Where used**: 16 files.
 
 ### Pill
@@ -246,8 +261,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: the composer's single-choice bordered pill (runner, model, account).
 - **Source**: `packages/web/src/components/picker-pill.tsx`. Exports `chipClass`, `chevron`, `PickerPill`, `RunnerPill`, type `RunnerAccountChoice`.
 - **Look** (`chipClass`): `inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-55 max-md:min-h-tap max-md:min-w-tap`. `h-7` rides the density lever (28 / 24.5 px at Comfortable / Compact); `min-h-[24px]` is an absolute floor, so at Compact for real it stays 24 px instead of 21 (WCAG 2.2 SC 2.5.8). Below `md` the chip is a 44 px phone target at every density; `max-md:` keeps the unprefixed 24 px floor for the desktop.
-- **Props**: `slot`, `ariaLabel`, `label`, `value`, `options[{value,label,desc?}]`, `onPick`, `disabled`, `readOnly`, `hint`, `disabledHint`, `status`.
-- **States**: enabled, read-only (`cursor-default`, no hover), disabled (bare button in a `title` span so the reason still shows), open menu (`DropdownMenuRadioGroup`), catalog status row.
+- **Props**: `slot`, `ariaLabel`, `label`, `value`, `options[{value,label,desc?}]`, `onPick`, `disabled`, `readOnly`, `hint`, `disabledHint`, `disabledNote`, `status`.
+- **States**: enabled, read-only (`cursor-default`, no hover), disabled (bare button in a `title` span), open menu (`DropdownMenuRadioGroup`), catalog status row. A disabled or read-only pill with a `disabledNote` shows that short reason beside it (`data-slot="{slot}-note"`, `text-[11px] text-soft-foreground`) and points `aria-describedby` at it; `disabledHint` stays as the longer hover `title`. The `/new` Worktree and Autonomous toggles do the same when disabled (`data-slot="toggle-note"`: "Worktree always on with variants", "Autonomous unavailable with Plan first"). Notes in use (writing.md §7): "Model set by the agent’s own settings", "Variants need a git repository".
+- **Accessibility**: `ariaLabel` is the setting's name and renders as a hidden `sr-only` prefix, never as an `aria-label`, so the accessible name is "Model: sonnet" and keeps the visible value (WCAG 2.5.3); the read-only pill carries the same text. The `/new` project pill does the same ("Project: {name}").
 - **Rules**: DO import `chipClass` rather than copy it (`PromptTemplateMenu`, `new-task.tsx` and `github/hand-to-agent.tsx` do; G-03 retired in #453 B4). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
 - **Where used**: 5 files.
 
@@ -328,7 +344,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/reference-chip.tsx`. Exports `ReferenceChip`, `useCloseReferenceCard`.
 - **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`. Below `md` a link chip keeps its 24 px look and gets a centred 44 px `::before` hit area (`PHONE_HIT_AREA`); callers set it on a 44 px line (`CHIP_SLOT` in `routes/tasks-overview.tsx`) so two chips' hit areas never overlap. An inert chip is not a target and gets none.
 - **States**: inert (non-http URL), unknown status, loading (`Checking GitHub…`), unavailable, not found, conflicting (warning triangle + `Resolve conflicts` action), open card (150ms open, 120ms close; never on touch).
-- **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel.
+- **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel. Known gap: the `dialog` form has no accessible name (G-31, a WCAG 4.1.2 failure).
 - **Where used**: 3 files.
 
 ### ReferenceConflictAction
@@ -445,7 +461,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: card `rounded-xl border border-border bg-card shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15`; textarea `min-h-tap … text-base md:min-h-13.5 md:text-sm` (44 px on a phone at every density, 54 px at comfortable on a desktop), max height 220px; footer paperclip (`size-4` glyph) · pills · spacer · `Dictation` · lime send (`ArrowUpIcon`).
 - **States**: disabled (`opacity-80`, reason as placeholder), busy, attachments row (image thumbs `size-12`, file chips, both at least `min-h-tap min-w-tap` below `md`; the remove mark shows on hover and keyboard focus, and on a device that cannot hover as a `size-5` corner badge so the image stays visible), autocomplete menu open (`PopoverContent side="top"`), dictation recording (a `role="status"` bar with a `StatusDot tone="danger" pulse` at `size-2`, `mm:ss` timer, `aria-live="polite"` transcript, cancel / insert / insert-and-send).
 - **Rules**: Enter sends, Shift+Enter newlines, ⌘↵ / Ctrl+↵ send; a failed send restores the draft ahead of anything typed since. Rejections toast verbatim (`{name} is too large (max 5 MB)`). The dock lives in the host (`task-thread.tsx`, `bottom-[var(--kb,0px)]`).
-- **Accessibility**: `aria-label="Attach files"`, `"Start dictation"`, `"Cancel dictation"`, `"Insert transcription"`, `"Insert transcription and send"`, `"Remove {file}"`; the mic renders only when the browser supports speech recognition.
+- **Accessibility**: the textarea stays a multi-line textbox (no `role="combobox"`, which would announce a single-line picker) and carries the autocomplete attributes ARIA 1.2 allows a textbox: `aria-autocomplete="list"`, and while the `/` or `@` menu is open `aria-controls` → the cmdk listbox, named "Skills" or "Files", and `aria-activedescendant` → the highlighted option; focus never leaves the textarea. Accepting a suggestion is said once by an `sr-only` `role="status"` (`data-slot="composer-accepted"`, "Inserted /{skill}"), cleared by the next keystroke. Buttons: `aria-label="Attach files"`, `"Start dictation"`, `"Cancel dictation"`, `"Insert transcription"`, `"Insert transcription and send"`, `"Remove {file}"`; the mic renders only when the browser supports speech recognition.
 - **Where used**: 2 files (`routes/new-task.tsx`, `routes/task-thread/task-thread.tsx`).
 
 ### Diff (facade, engine and helpers)
@@ -479,7 +495,8 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: keeps the shell alive when a routed page throws; resets on navigation.
 - **Source**: `packages/web/src/components/route-error-boundary.tsx`.
-- **Copy**: `This page could not be displayed.` (`h1 text-lg font-semibold`), `Try again, or open another page from the sidebar.`, button `Try again`; container `role="alert"`.
+- **Copy**: `Could not display this page` (the `CenteredState` title, `tone="danger"`), `Retry, or open another page from the sidebar.`, button `Retry`; container `role="alert"`.
+- **Stale code file**: when the caught error is a failed lazy-chunk load (`isChunkLoadError`, `lib/chunk-reload.ts` – a tab older than the running build), the button reloads the document instead of re-rendering, because `React.lazy` caches the failure. `main.tsx` also installs `installChunkReloadGuard`, which reloads once on Vite's `vite:preloadError`, guarded by a `sessionStorage` timestamp (`xez-chunk-reload-at`, 30 s) so a real outage cannot loop; when storage is unusable no automatic reload happens.
 - **Where used**: 1 file (`app.tsx`).
 
 ### RunNotifications
@@ -502,7 +519,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: the second row in the shell's banner slot — the post-update setup offer (#464 P2), with exactly two actions, Re-check and Later, and the running-check line that replaces it.
 - **Source**: `packages/web/src/components/onboarding-offer-row.tsx`, `packages/web/src/components/onboarding-offer-container.tsx`. Its text rules live in `packages/web/src/lib/onboarding.ts`, not in the component.
 - **Look**: the status banner row `flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap`, an `outline` and a `ghost` Button trailing. It keeps `py-row` at every width, unlike `ProviderBanner`, whose `md:py-0` is safe only because its copy never wraps: this row names two identity pairs and wraps to two lines on an ordinary laptop, where `md:py-0` left 40 px of text flush to both borders (design review of #497, NB-3). Deliberately **no status dot and never the alert tone**: nothing is broken, and the alert tone in that row means an agent provider failed. Under `md` both actions go full width at `h-11` (44 px).
-- **Copy**: `xezar changed since this project was last checked`, `The setup templates changed since this project was last checked`, `xezar and the setup templates changed since this project was last checked.`, `See the exact versions`, `Re-checking this project`, `Open the task`, `Re-check`, `Later`, `Starting…`.
+- **Copy**: `xezar changed since this project was last checked`, `The setup templates changed since this project was last checked`, `xezar and the setup templates changed since this project was last checked.`, `See the exact versions`, `Re-checking this project`, `Open the task`, `Re-check`, `Later`, `Starting…`. The older-setup shape (`data-offer-state="older-setup"`, when `olderSetup` is set) leads with `This project’s setup is older than this xezar supports` and swaps Re-check for an `outline` link Button, `Open the upgrade guide` with an `ExternalLinkIcon` and an `sr-only` " (opens in a new tab)", because a re-check before the upgrade changes nothing; Later stays. On Settings → Project setup the same link is the card's `contrast` primary action, above `outline` Re-check now. It is the one owner-approved place the deck says *upgrade* (decision D-13).
 - **Where used**: 1 file (`app-shell-container.tsx`, beside `ProviderBannerContainer`). Being in the banner slot puts it on every route, so the container passes `atSettings` on Settings → Project setup and the row drops the link that points at the page the reader is already on — the sentence and both actions stay (NB-6).
 
 ### SkillDetail, SkillEmptyHint, SkillsImportPanel
@@ -542,3 +559,42 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: remembers the last project-scoped location for the next bare-root launch. Renders nothing.
 - **Source**: `packages/web/src/components/last-location-controller.tsx`.
 - **Where used**: 1 file.
+
+## 3. Route-owned shared parts
+
+These parts are reused across routes but live in a route module or in `lib/`, not in
+`src/components/`, so `design-system-drift.test.ts` does not ask for a coverage row. Reuse them;
+do not copy them. Moving one into `src/components/` makes it a shared component, which then needs
+its `coverage.md` row in the same commit.
+
+### SearchField
+
+- **Purpose**: the search box of both task tables: the `Input` primitive with a leading `SearchIcon`, so its phone target, focus ring and iOS text size are the primitive's.
+- **Source**: `packages/web/src/routes/tasks-overview.tsx`, exported `SearchField`. Props `value`, `onChange`, `placeholder`, `label` (the accessible name – a placeholder is not a label), `className`.
+- **Look**: `relative w-full` wrapper; icon `absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground`; `Input` with `pl-8 md:text-[13px]`.
+- **Rules**: it spreads nothing else onto `Input`, so a search that needs a `data-slot` spells the wrapper by hand today (G-42).
+- **Where used**: 2 files (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`).
+
+### ListViewTabs
+
+- **Purpose**: the Active / Archived switch above both task tables.
+- **Source**: `packages/web/src/routes/tasks-overview.tsx`, exported `ListViewTabs`. Props `view`, `onSelect`, `counts` (omit to show none; a zero count is never printed).
+- **Look**: track `inline-flex gap-0.5 rounded-md bg-muted p-0.75`; button `h-7 min-h-tap rounded-[7px] px-3 text-[12.5px] font-medium text-muted-foreground md:min-h-0`; active `bg-card font-semibold text-foreground shadow-xs`; counts `font-mono text-[11px] tabular-nums`.
+- **Accessibility**: toggle buttons with `aria-pressed`, not a tablist – they filter one list in place rather than switch panels (`data-slot="overview-tab"`, `data-view`).
+- **Where used**: 2 files (`routes/tasks-overview.tsx`, `routes/global-tasks.tsx`).
+
+### SettingsField
+
+- **Purpose**: one labelled settings row – title, one-line hint, then the control(s) – so every settings section reads as one surface.
+- **Source**: `packages/web/src/routes/settings/settings-field.tsx`. Props `title`, `hint`, `children`.
+- **Look**: `<section class="flex flex-col gap-stack">`; title `h2 text-sm font-semibold text-foreground`; hint `text-[13px] text-muted-foreground`. See patterns.md §8.
+- **Rules**: DO reuse it rather than add a private field wrapper (the retired G-13 was three such copies).
+- **Where used**: 12 files in `routes/settings/` (read 2026-10-23).
+
+### useLeaveGuard
+
+- **Purpose**: holds a page in place while it has unsaved edits and asks before the reader leaves – one confirm, whatever the screen renders for it ([#1120](https://github.com/qodeca/xezar/pull/1120)).
+- **Source**: `packages/web/src/lib/use-leave-guard.ts`. Exports `useLeaveGuard(dirty, onAttempt)`, `useGuardedNavigate(navigate)` and `requestLeave(proceed)`.
+- **Behaviour**: while `dirty` is true it catches in-app link clicks (capture phase, before React Router), programmatic navigation that goes through `useGuardedNavigate` or `requestLeave`, Back and Forward (through a sentinel history entry), and tab close or reload (the browser's own `beforeunload` prompt). One guard is active at a time; a screen with several drafts arms once with their combined `dirty`. Disarming leaves the history as it was.
+- **Rules**: DO render an `AlertDialog` for `onAttempt` whose destructive action runs `proceed()` and whose cancel keeps editing. DO send any new programmatic navigation (a shortcut, a palette action) through `useGuardedNavigate`, or it skips the guard.
+- **Where used**: `routes/settings/agent-config-section.tsx` (the guard) and `components/command-palette.tsx` (guarded navigation).

@@ -33,6 +33,7 @@ import { isUnread } from '@/lib/read-state'
 import { orderSkillsByUsage } from '@/lib/skills'
 import { runTitle } from '@/lib/task-groups'
 import { useCommandShortcut, useKeyShortcut } from '@/lib/use-command-shortcut'
+import { useGuardedNavigate } from '@/lib/use-leave-guard'
 import { linksOutToOtherProjects, projectsLocked } from '@/lib/project-mode'
 import { otherProjectRow } from '@/components/other-projects'
 
@@ -211,7 +212,8 @@ export function orderProjects(
 
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false)
-  const navigate = useNavigate()
+  // Guarded: a screen with unsaved edits (Agent config) is asked before `c` / ⌘N leaves it.
+  const navigate = useGuardedNavigate(useNavigate())
   const returnFocus = React.useRef<HTMLElement | null>(null)
   const changeOpen = React.useCallback((next: boolean) => {
     if (next) returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -313,9 +315,11 @@ function TaskItem({
 }
 
 function PaletteContent({ close }: { close: () => void }) {
-  const navigate = useNavigate()
+  // Both guarded: a pick from the palette leaves the page like a link does, so a screen with
+  // unsaved edits gets its confirm first (`lib/use-leave-guard.ts`).
+  const navigate = useGuardedNavigate(useNavigate())
   // The UNSCOPED twin, for the handful of targets that live outside every project (`/tasks`).
-  const routerNavigate = useRouterNavigate()
+  const routerNavigate = useGuardedNavigate(useRouterNavigate())
   // Controlled so the body can tell the default view from a search. cmdk still owns filtering and
   // ranking (`paletteScore`); this only decides which SECTIONS exist.
   const [search, setSearch] = React.useState('')
@@ -559,7 +563,7 @@ function PaletteContent({ close }: { close: () => void }) {
                     </span>
                   ) : null}
                   {active ? (
-                    <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+                    <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary light:text-foreground" />
                   ) : null}
                 </CommandItem>
               )

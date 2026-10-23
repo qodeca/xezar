@@ -7,7 +7,9 @@ project documentation. Use the table to find the part you need.
 | --- | --- | --- |
 | [guide/](guide/README.md) | The 18-part user guide: getting started, tasks, settings and references. | Users |
 | [server-install/](server-install/README.md) | Host xezar on a server and reach it from another machine. | Users |
-| [project-layout.md](project-layout.md) | The `.xezar/` directory, discovery precedence and the legacy migration command. | Users and contributors |
+| [project-layout.md](project-layout.md) | Where a project's kit and working files live, and how to move a project from the old `.ai/xezar/` layout by hand; a contributor appendix covers how the engine resolves them. | Users; appendix for contributors |
+| [upgrading.md](upgrading.md) | Longer upgrade notes for 0.15.0 and 0.16.0; the CHANGELOG is the full record. | Users |
+| [STATUS.md](STATUS.md) | Known gaps and unfinished migrations, with how far each has got. | Maintainers |
 | [publishing.md](publishing.md) | How a release reaches npm through the manual Release workflow. | Maintainers |
 | [releases/](releases/0.14.0-definition-of-done.md) | What "done" means for a release beyond its features, and how it was assessed for 0.14.0 — the only release with a recorded definition-of-done so far. | Maintainers and reviewers |
 | [design-system/](design-system/README.md) | The cockpit's UX/UI design system: tokens, components, patterns, writing, HTML specimens and the shared mockup stylesheet. Every new design and UI change follows it. | Designers, contributors and coding agents |
@@ -31,5 +33,8 @@ the shipped MCP tools. Its tables are generated from the code and `npm test` che
 
 - Repository contracts at the root: [AGENTS.md](../AGENTS.md), [AGENT_PROTOCOL.md](../AGENT_PROTOCOL.md)
   and [CHANGELOG.md](../CHANGELOG.md).
+- Process documents at the root: [CONTRIBUTING.md](../CONTRIBUTING.md), [SDLC.md](../SDLC.md),
+  [CODE_REVIEW.md](../CODE_REVIEW.md), [BACKWARD_COMPATIBILITY.md](../BACKWARD_COMPATIBILITY.md) and
+  [SECURITY.md](../SECURITY.md).
 - [designs/](../designs/README.md): UI designs, one folder per feature – static mockups on the shared
   design-system stylesheet plus a handoff README. Its § Lifecycle carries the status of every design.

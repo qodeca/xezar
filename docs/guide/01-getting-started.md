@@ -8,7 +8,16 @@ If you would rather look before you sign anything in, [try it without a login](#
 
 Have Node.js 22 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex or Qwen Code. GitHub features also need `gh`; `GITHUB_TOKEN` is the authentication fallback when `gh` is not signed in. You can start a local task without it.
 
-**By system.** macOS and Linux need nothing beyond the above. On Windows, install the full Git for Windows (not MinGit): xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started. Follow each agent CLI's own Windows instructions. Start xezar without administrator rights, or the MCP leader bridge (`xezar mcp`) is unavailable; attaching to a running Codex session is not available on Windows yet. `xezar serve` warns at start-up when long file paths are off; turn on the Windows setting LongPathsEnabled (needs an administrator) and run `git config --global core.longpaths true`.
+**By system.** macOS and Linux need nothing beyond the above. On Windows, work through this checklist:
+
+- Install the full [Git for Windows](https://gitforwindows.org/), not MinGit. xezar uses it for the Git features, runs workflow check steps in its Git Bash, and uses its process list to stop what those steps started.
+- Install each agent CLI as its own Windows instructions describe.
+- Turn on long file paths for Git: `git config --global core.longpaths true`.
+- Turn on long file paths in Windows. This needs an administrator: set `LongPathsEnabled` to `1` under `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, for example from PowerShell run as administrator: `Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1`. `xezar serve` warns at start-up while either long-path setting is off.
+- Start xezar without administrator rights, or the MCP leader bridge (`xezar mcp`) is unavailable.
+- Attaching a leader to a running Codex session is not available on Windows yet.
+
+If something still fails on Windows, see [Troubleshooting](16-troubleshooting-faq.md#on-windows).
 
 ## To install xezar
 
@@ -93,7 +102,7 @@ On a fresh project's Tasks page, xezar offers a guided setup: "New to this proje
 
 The button creates an ordinary task from the built-in `project-setup` workflow. It appears in the task list, and you can open or cancel it like any other task. Nothing starts it except your click or a project leader's request.
 
-**What it runs.** The task runs the `xez-onboard-opinionated` skill from xezar-skills 3.0.3, the default team-skills source. That skill sets up the whole project around xezar: a Claude Code project leader, workflows and role skills, gates, labels and branch protection. The same skill also runs from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
+**What it runs.** The task runs the `xez-onboard-opinionated` skill from xezar-skills (`qodeca/xezar-skills`), the default team-skills source. That skill sets up the whole project around xezar: a Claude Code project leader, workflows and role skills, gates, labels and branch protection. The same skill also runs from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
 **Its limits.** Before it touches anything, it checks three limits: Claude Code only, GitHub only, and clean projects only – it never merges into a setup the project already has. A project outside them gets a stop that writes nothing and names the alternative.
 
@@ -120,18 +129,8 @@ This history lives in `<project>/.local/xezar/onboarding-state.json`. It is disp
 
 A project leader sees the same state through the MCP and can start the same setup or re-check task; see [MCP project leader](13-mcp-leader.md).
 
-In a project that xezar-skills onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) holds model
-and lane routing. Its leader uses `node .xezar/checks/route.mjs --check` to validate it, `--rows` for
-classification rows without lane data, `node .xezar/checks/route.mjs <row id>` for that row's lane
-order, and `--table` for a human
-view; `--file <path>` is onboarding-only before the first merge and marks output `source=unmerged`.
-The kit's account-limits table records each runner/login budget as `ok`, `unknown`, or `out` with its
-reset time; the kit's routing guide tells the leader to read it. Xezar reports that same status
-natively – see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits).
-
-xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
-still on kit 2.x moves to 3.0.3 first; the kit's
-[upgrade notes](https://github.com/qodeca/xezar-skills/blob/main/UPGRADE_NOTES.md) list the steps.
+A project that xezar-skills onboards also carries the kit's model routing and needs xezar-skills
+3.2.0 or later; see [Project kit](15-project-kit.md#to-add-an-optional-agent-pipeline).
 
 ## To upgrade
 
@@ -173,4 +172,4 @@ For a workspace reset, remove the whole `~/.xezar/` directory, or the directory 
 
 Next: [Tasks and runs](02-tasks-and-runs.md)
 
-Describes xezar 0.18.0.
+Describes xezar 0.30.0.

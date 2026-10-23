@@ -92,6 +92,8 @@ describe('a teardown xezar initiated (codex app-server)', () => {
     expect(result.text).toBe('Checking the working tree.');
     expect(events.some((e) => e.type === 'error')).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'done' });
+    // A cancel sweeps on its own path (#943): only the EOF watchdog's stop is marked.
+    expect(result.stoppedAfterClose).toBeUndefined();
     // win32-skip(#974): Node reports a Windows kill as exit code null, so no exit code reaches the note
     if (!onWindows) {
       expect(
@@ -99,6 +101,26 @@ describe('a teardown xezar initiated (codex app-server)', () => {
       ).toBe(true);
     }
   }, 15_000);
+
+  it('marks a session the EOF watchdog had to stop after close (#943)', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    let sawText: () => void = () => {};
+    const firstText = new Promise<void>((resolve) => {
+      sawText = resolve;
+    });
+    const session = runner.startSession(
+      { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_IGNORE_EOF: '1' } },
+      (event) => {
+        if (event.type === 'text') sawText();
+      },
+    );
+    await firstText;
+
+    session.end();
+    const result = await session.result;
+
+    expect(result.stoppedAfterClose).toBe(true);
+  }, 30_000);
 
   it('surfaces a failed turn as an AgentEvent error', async () => {
     const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });

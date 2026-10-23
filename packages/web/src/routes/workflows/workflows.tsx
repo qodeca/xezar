@@ -740,7 +740,7 @@ function Canvas({
         <p
           className={cn(
             'rounded-md px-3 py-10 text-center text-[13px] transition-colors',
-            isOver ? 'text-primary' : 'text-muted-foreground',
+            isOver ? 'text-primary light:text-foreground' : 'text-muted-foreground',
           )}
         >
           Drop a skill here — or Import a workflow.yaml

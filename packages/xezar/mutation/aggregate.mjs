@@ -21,14 +21,26 @@
  *   - a file that fell out of the partition, or landed in two shards and was counted twice —
  *     every reported file must belong to the shard that reported it, and to only one shard.
  *
+ * A SECOND SCOPE, ONE VERDICT. The read-only lock scope (`packages/xezar/stryker.lock.config.mjs`,
+ * `core/read-only-lock.ts` and `core/qwen-tool-policy.ts`) runs nightly as one job of its own,
+ * with its own floor read from its own config. `aggregateLock` holds it to the same refusals — a
+ * missing report, a file of its scope unreported, nothing tested, a score under its floor — and
+ * the CLI folds it into the night's single verdict, so a red lock scope is a red night and the
+ * same tracking issue, never a job somebody has to remember to look at.
+ *
  * Used by `.github/workflows/mutation.yml` (the `report` job) and by
  * `npm run test:mutation:mcp:report`. Its suite is `packages/xezar/src/mutation-aggregate.test.ts`.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { DEFAULT_SHARDS, STRYKER_CONFIG, mutationShardPlan, repoRoot } from './shards.mjs'
+import { STRYKER_CONFIG, mutationShardPlan, repoRoot, scopeFiles } from './shards.mjs'
+
+/** The read-only lock scope's own config: its `mutate` and its floor live there and nowhere else. */
+export const LOCK_CONFIG = 'packages/xezar/stryker.lock.config.mjs'
+/** Where the `report` job puts the lock job's artifact (`mutation-lock-report`). */
+export const LOCK_REPORT = '.local/mutation/lock-report/report.json'
 
 /** Stryker's `MutantStatus` values that count as detected. */
 export const DETECTED = ['Killed', 'Timeout']
@@ -115,17 +127,18 @@ export function countReport(report, root = repoRoot) {
 }
 
 /**
- * The floor the gate breaks below, read from the real config.
+ * The floor a scope breaks below, read from its real config.
  * @param {string} [root]
+ * @param {string} [config] the MCP gate's config unless told otherwise
  * @returns {Promise<number>}
  */
-export async function breakThreshold(root = repoRoot) {
-  const loaded = await import(pathToFileURL(join(root, STRYKER_CONFIG)).href)
+export async function breakThreshold(root = repoRoot, config = STRYKER_CONFIG) {
+  const loaded = await import(pathToFileURL(join(root, config)).href)
   const value = loaded.default?.thresholds?.break
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     // A config with no floor is not a gate. Refusing here is what stops "the threshold was
     // quietly removed" from reading as "the scheduled run passed".
-    throw new Error(`${STRYKER_CONFIG} declares no numeric \`thresholds.break\` — there is no floor to apply`)
+    throw new Error(`${config} declares no numeric \`thresholds.break\` — there is no floor to apply`)
   }
   return value
 }
@@ -146,7 +159,7 @@ export const shardArtifact = (shard) => `mutation-report-${shard}`
  * @param {string} [options.root]
  * @returns {Promise<{ ok: boolean, problems: string[], threshold: number, counts: Counts, metrics: ReturnType<typeof metrics>, perFile: { path: string, counts: Counts, score: number | null }[], perShard: { shard: number, counts: Counts, metrics: ReturnType<typeof metrics> }[] }>}
  */
-export async function aggregate({ readReport, shards = DEFAULT_SHARDS, root = repoRoot }) {
+export async function aggregate({ readReport, shards = undefined, root = repoRoot }) {
   const plan = await mutationShardPlan(shards, root)
   const threshold = await breakThreshold(root)
   /** @type {string[]} */
@@ -218,14 +231,66 @@ export async function aggregate({ readReport, shards = DEFAULT_SHARDS, root = re
 }
 
 /**
- * A Markdown report for `$GITHUB_STEP_SUMMARY` and for the tracking issue.
+ * Score the read-only lock scope against its own floor, with the same refusals as the shards.
+ * @param {object} options
+ * @param {() => unknown} options.readReport reads the lock job's parsed report, or throws when it
+ *   is missing — a missing report fails the night.
+ * @param {string} [options.root]
+ * @returns {Promise<{ ok: boolean, problems: string[], threshold: number, counts: Counts, metrics: ReturnType<typeof metrics>, perFile: { path: string, counts: Counts, score: number | null }[] }>}
+ */
+export async function aggregateLock({ readReport, root = repoRoot }) {
+  const loaded = await import(pathToFileURL(join(root, LOCK_CONFIG)).href)
+  const scope = scopeFiles(loaded.default?.mutate ?? [], root).map((file) => file.path)
+  const threshold = await breakThreshold(root, LOCK_CONFIG)
+  /** @type {string[]} */
+  const problems = []
+  if (scope.length === 0) problems.push(`read-only lock: ${LOCK_CONFIG} mutates no file that exists`)
+  /** @type {Map<string, Counts> | null} */
+  let counted = null
+  try {
+    counted = countReport(readReport(), root)
+  } catch (error) {
+    problems.push(`read-only lock: no usable report (${error instanceof Error ? error.message : String(error)})`)
+  }
+  let total = emptyCounts()
+  for (const [path, counts] of counted ?? []) {
+    if (!scope.includes(path)) problems.push(`read-only lock: the report names ${path}, which is not in ${LOCK_CONFIG}`)
+    total = addCounts(total, counts)
+  }
+  // Only once a report was read: a missing one is already the problem, and an EMPTY one must not
+  // pass as "nothing wrong" — every file of the scope it leaves out is named here.
+  if (counted) {
+    for (const path of scope) if (!counted.has(path)) problems.push(`read-only lock: ${path} is in its scope but the report does not name it`)
+  }
+  const overall = metrics(total)
+  if (counted && overall.score === null) problems.push('read-only lock: no mutants were tested')
+  else if (overall.score !== null && overall.score < threshold) {
+    problems.push(`read-only lock: mutation score ${overall.score.toFixed(2)} % is below its ${threshold} % floor`)
+  }
+  return {
+    ok: problems.length === 0,
+    problems,
+    threshold,
+    counts: total,
+    metrics: overall,
+    perFile: [...(counted ?? new Map()).entries()]
+      .map(([path, counts]) => ({ path, counts, score: metrics(counts).score }))
+      .sort((a, b) => (a.score ?? -1) - (b.score ?? -1) || (a.path < b.path ? -1 : 1)),
+  }
+}
+
+/**
+ * A Markdown report for `$GITHUB_STEP_SUMMARY` and for the tracking issue. With `lock`, the night's
+ * verdict is both scopes': the title says PASSED only when each cleared its own floor.
  * @param {Awaited<ReturnType<typeof aggregate>>} result
  * @param {{ runUrl?: string, ref?: string, sha?: string }} [context]
+ * @param {Awaited<ReturnType<typeof aggregateLock>>} [lock]
  */
-export function renderMarkdown(result, context = {}) {
+export function renderMarkdown(result, context = {}, lock = undefined) {
   const m = result.metrics
+  const ok = result.ok && (lock?.ok ?? true)
   const lines = [
-    `## MCP mutation gate — ${result.ok ? 'PASSED' : 'FAILED'}`,
+    `## MCP mutation gate — ${ok ? 'PASSED' : 'FAILED'}`,
     '',
     `**Score ${m.score === null ? 'n/a' : `${m.score.toFixed(2)} %`}** against a floor of ${result.threshold} %`,
     '',
@@ -241,47 +306,85 @@ export function renderMarkdown(result, context = {}) {
   ]
   if (context.sha) lines.push(`Revision \`${context.sha}\`${context.ref ? ` on \`${context.ref}\`` : ''}.`, '')
   if (context.runUrl) lines.push(`[The run, with the per-mutant HTML report as an artifact](${context.runUrl})`, '')
-  if (!result.ok) {
+  if (!ok) {
     lines.push('### What went wrong', '')
-    for (const problem of result.problems) lines.push(`- ${problem}`)
+    for (const problem of [...result.problems, ...(lock?.problems ?? [])]) lines.push(`- ${problem}`)
     lines.push(
       '',
       'Known survivors are tracked in #338 and #353 — compare the per-file table below with those before filing a new one.',
       '',
     )
   }
-  lines.push('### Per file, weakest first', '', '| File | Score | Killed | Timeout | Survived | No coverage |', '|---|---:|---:|---:|---:|---:|')
-  for (const file of result.perFile) {
+  lines.push(...fileTable('### Per file, weakest first', result.perFile, 'packages/xezar/src/mcp/'))
+  if (lock) {
+    const lm = lock.metrics
     lines.push(
-      `| \`${file.path.replace('packages/xezar/src/mcp/', '')}\` | ${file.score === null ? 'n/a' : `${file.score.toFixed(1)} %`} | ${file.counts.Killed} | ${file.counts.Timeout} | ${file.counts.Survived} | ${file.counts.NoCoverage} |`,
+      '### Read-only lock scope',
+      '',
+      `**Score ${lm.score === null ? 'n/a' : `${lm.score.toFixed(2)} %`}** against its own floor of ${lock.threshold} % (\`${LOCK_CONFIG}\`), over ${lm.valid} tested mutants.`,
+      '',
+      ...fileTable('', lock.perFile, 'packages/xezar/src/'),
     )
   }
-  lines.push('')
   return lines.join('\n')
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2)
+/**
+ * @param {string} heading
+ * @param {{ path: string, counts: Counts, score: number | null }[]} files
+ * @param {string} prefix dropped from each path
+ */
+function fileTable(heading, files, prefix) {
+  const lines = heading ? [heading, ''] : []
+  lines.push('| File | Score | Killed | Timeout | Survived | No coverage |', '|---|---:|---:|---:|---:|---:|')
+  for (const file of files) {
+    lines.push(
+      `| \`${file.path.replace(prefix, '')}\` | ${file.score === null ? 'n/a' : `${file.score.toFixed(1)} %`} | ${file.counts.Killed} | ${file.counts.Timeout} | ${file.counts.Survived} | ${file.counts.NoCoverage} |`,
+    )
+  }
+  lines.push('')
+  return lines
+}
+
+/**
+ * The CLI: both scopes, one summary, one exit status. Paths resolve from the repository root.
+ * @param {string[]} args
+ * @param {{ GITHUB_SERVER_URL?: string, GITHUB_REPOSITORY?: string, GITHUB_RUN_ID?: string, GITHUB_REF_NAME?: string, GITHUB_SHA?: string }} [env]
+ * @returns {Promise<{ exitCode: number, markdown: string }>}
+ */
+export async function main(args, env = process.env) {
+  /** @param {string} name @param {string} fallback */
   const arg = (name, fallback) => {
     const at = args.indexOf(name)
-    return at === -1 ? fallback : args[at + 1]
+    return at === -1 ? fallback : args[at + 1] ?? fallback
   }
-  const reportsDir = arg('--reports', '.local/mutation/shards')
-  const shards = Number(arg('--shards', String(DEFAULT_SHARDS)))
+  const reportsDir = resolve(repoRoot, arg('--reports', '.local/mutation/shards'))
+  const shardsArg = arg('--shards', '')
+  const lockReport = resolve(repoRoot, arg('--lock-report', LOCK_REPORT))
+  const readJson = (/** @type {string} */ path) => JSON.parse(readFileSync(path, 'utf8'))
   const result = await aggregate({
-    shards,
-    readReport: (shard) =>
-      JSON.parse(readFileSync(join(repoRoot, reportsDir, shardArtifact(shard), 'report.json'), 'utf8')),
+    shards: shardsArg === '' ? undefined : Number(shardsArg),
+    readReport: (shard) => readJson(join(reportsDir, shardArtifact(shard), 'report.json')),
   })
-  const markdown = renderMarkdown(result, {
-    runUrl: process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
-      ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-      : undefined,
-    ref: process.env.GITHUB_REF_NAME,
-    sha: process.env.GITHUB_SHA,
-  })
-  process.stdout.write(`${markdown}\n`)
+  const lock = await aggregateLock({ readReport: () => readJson(lockReport) })
+  const markdown = renderMarkdown(
+    result,
+    {
+      runUrl: env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY && env.GITHUB_RUN_ID
+        ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`
+        : undefined,
+      ref: env.GITHUB_REF_NAME,
+      sha: env.GITHUB_SHA,
+    },
+    lock,
+  )
   const out = arg('--out', '')
-  if (out) (await import('node:fs')).writeFileSync(join(repoRoot, out), markdown)
-  process.exitCode = result.ok ? 0 : 1
+  if (out) writeFileSync(resolve(repoRoot, out), markdown)
+  return { exitCode: result.ok && lock.ok ? 0 : 1, markdown }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { exitCode, markdown } = await main(process.argv.slice(2))
+  process.stdout.write(`${markdown}\n`)
+  process.exitCode = exitCode
 }

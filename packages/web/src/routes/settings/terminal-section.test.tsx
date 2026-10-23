@@ -96,9 +96,12 @@ function serve(cli: Partial<WorkspaceConfigResponse['cli']> = {}, opts: { failPu
   )
 }
 
-function renderTerminal() {
+function renderTerminal({ hosted = false }: { hosted?: boolean } = {}) {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
+  client.setQueryData(
+    queryKeys.health,
+    hosted ? { bootProject: 'boot', capabilities: { localHandoff: false } } : { bootProject: 'boot' },
+  )
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
@@ -306,5 +309,38 @@ describe('Global settings → Terminal', () => {
     expect(text('terminal-log-level-hint')).toContain('print warnings and errors.')
     expect(text('terminal-log-level-hint')).not.toContain('XEZ_LOG_LEVEL')
     expect(select('terminal-log-level')!.value).toBe('warn')
+  })
+
+  describe('in hosted mode', () => {
+    it('shows the instance mode read-only with the reason on screen; the terminal keys stay editable', async () => {
+      serve({ instance: 'project' })
+      renderTerminal({ hosted: true })
+      await waitFor(() => expect(document.querySelector('[data-slot="terminal-instance-locked"]')).not.toBeNull())
+      const field = document.querySelector<HTMLTextAreaElement>('[data-slot="terminal-instance-locked-value"]')!
+      expect(field.readOnly).toBe(true)
+      expect(field.value).toBe('One cockpit per project')
+      const reason = document.querySelector('[data-slot="terminal-instance-locked-reason"]')!
+      expect(reason.textContent).toBe('Changed on the machine that runs xezar — this cockpit runs in hosted mode.')
+      expect(field.getAttribute('aria-describedby')).toBe(reason.id)
+      expect(control()).toBeNull()
+      expect(select('terminal-output')).not.toBeNull()
+      expect(select('terminal-log-level')).not.toBeNull()
+    })
+
+    it('reads plain "Not set" when nothing is stored', async () => {
+      serve()
+      renderTerminal({ hosted: true })
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="terminal-instance-locked-value"]')).not.toBeNull(),
+      )
+      expect(document.querySelector<HTMLTextAreaElement>('[data-slot="terminal-instance-locked-value"]')!.value).toBe('Not set')
+    })
+
+    it('keeps the instance select in local mode', async () => {
+      serve()
+      renderTerminal()
+      await waitFor(() => expect(control()).not.toBeNull())
+      expect(document.querySelector('[data-slot="terminal-instance-locked"]')).toBeNull()
+    })
   })
 })

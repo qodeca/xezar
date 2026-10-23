@@ -13,6 +13,7 @@ import {
   workspaceConfigLockPath,
 } from './config-lock.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { countFileLockPolls } from '../core/file-lock-polls.testkit.ts';
 
 /**
  * The bounded cross-process merge lock (#467, AC-04).
@@ -201,8 +202,11 @@ describe('workspace config lock', () => {
   it('two writers inside ONE process are serialized without touching the file lock', async () => {
     writeFileSync(join(home, 'config.json'), JSON.stringify({ projects: [] }), 'utf8');
     // Both would find a lock file owned by a live pid — their own — and wait out the bound.
-    // The in-process queue is what keeps that from happening.
-    const started = Date.now();
+    // The in-process queue is what keeps that from happening: the second writer never polls the
+    // file lock, and never waits out the bound into the "writing without it" warning. Both are
+    // counted, not timed, so a busy machine cannot pass or fail this.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const lockPolls = countFileLockPolls();
     await Promise.all([
       mergeWriteWorkspaceConfig((config) => {
         config.projects.push({
@@ -217,7 +221,10 @@ describe('workspace config lock', () => {
     ]);
 
     expect(readProjectIds().sort()).toEqual(['alpha', 'beta']);
-    expect(Date.now() - started).toBeLessThan(1_000);
+    lockPolls.restore();
+    expect(lockPolls.count()).toBe(0);
+    expect(warn.mock.calls.flat().filter((line) => String(line).includes('workspace config lock'))).toEqual([]);
+    warn.mockRestore();
   });
 
   it('every registry writer inherits the lock through mergeWriteWorkspaceConfig', async () => {

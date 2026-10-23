@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { API_PREFIX, getApiScope, setApiScope } from '@qodeca/xezar-api-client'
 
@@ -26,21 +26,32 @@ export function useProjectScope(): ProjectScope {
   return useContext(ProjectScopeContext)
 }
 
+/** "This provider has not committed any scope yet" — distinct from `null`, the boot project. */
+const NOT_COMMITTED = Symbol('not-committed')
+
 /**
  * Binds the module-level API scope to this subtree's lifetime.
  *
- * The module write happens **during render**, not in an effect: the children's very first render
- * computes query keys (queries.ts reads `queryScope()`), and an effect would run after that —
- * the first paint would fetch under the wrong scope and cache it there. The write is idempotent
- * and derived solely from props, so re-renders (StrictMode's double-invoke included) converge on
- * the same value. The effects below only re-assert it (covering StrictMode's mount–unmount–mount
- * cycle, whose cleanup ran the reset) and reset to unscoped on real unmount.
+ * The children never render under a scope that has not been COMMITTED. Their very first render
+ * computes query keys (queries.ts reads `queryScope()`), so they must see the new scope then —
+ * but the module write is not done during render any more, because a render is not a commit.
+ * React Router runs every navigation as a transition: while the new project's tree renders (and
+ * yields, or waits on a lazy route's code), the OLD project's screen is still mounted and still
+ * rendering, refetching and handling events. A write during the new render leaked the new scope
+ * into all of that, so the old screen briefly sent requests to the new project and cached the
+ * answers under its own keys.
+ *
+ * So a change of `projectId` renders NO children first. The layout effect then writes the scope
+ * and marks it committed, and that state update re-renders synchronously, still before the
+ * browser paints, with the children mounting under the new scope. The old screen is gone by
+ * then: it was replaced in the commit that ran the effect. A provider that mounts with the
+ * scope already in place (the boot project's `null` on first load) renders its children at once.
  *
  * The reset lives in its OWN mount-only effect rather than as the `[projectId]` effect's
  * cleanup, and that split is load-bearing (multi-project spec, step 3.4 — swapping projects
  * from the composer's project pill). React runs every destroy in a commit before any create,
  * and the provider is an ancestor of the subtree the swap remounts: a cleanup here would null
- * the scope *between* the render that set it and the children's mount effects, so the arriving
+ * the scope *between* the effect that set it and the children's mount effects, so the arriving
  * project's very first requests would go out unprefixed and cache under the wrong key. A
  * project change must therefore never run a cleanup — only a real unmount does.
  *
@@ -48,16 +59,14 @@ export function useProjectScope(): ProjectScope {
  * request in this app goes out from a passive effect — TanStack's mount fetch, the EventSource
  * hooks — and React runs every layout effect in a commit (destroys in the mutation phase, creates
  * in the layout phase) before any passive one. Passive effects here would leave two windows where
- * a child fetches with the scope this provider's own cleanup nulled, because a child's create runs
- * BEFORE its ancestor's:
+ * a child fetches with the scope this provider's own cleanup nulled:
  *
  *   - StrictMode's simulated remount, where the whole subtree's destroys (this reset among them)
  *     run and then its creates — so a thread mounted in the SAME commit as this provider re-fires
  *     its query unprefixed. That is a soft navigation into another project's task: 404, cached
- *     under the correctly-scoped key, and only a reload (where the provider commits with the lazy
- *     route's Suspense fallback, a commit earlier than the route's own) clears it.
+ *     under the correctly-scoped key, and only a reload clears it.
  *   - a real unmount+mount of two providers in ONE commit (leaving a project area for another),
- *     where the departing provider's cleanup would land between the arriving one's render and its
+ *     where the departing provider's cleanup would land between the arriving one's effect and its
  *     children's fetches.
  *
  * As layout effects, the whole dance finishes before the first request of the commit is made.
@@ -69,10 +78,13 @@ export function ProjectScopeProvider({
   projectId: string | null
   children: ReactNode
 }) {
-  if (getApiScope() !== projectId) setApiScope(projectId)
+  const [committed, setCommitted] = useState<string | null | typeof NOT_COMMITTED>(() =>
+    getApiScope() === projectId ? projectId : NOT_COMMITTED,
+  )
 
   useLayoutEffect(() => {
     setApiScope(projectId)
+    setCommitted(projectId)
   }, [projectId])
 
   // Unmount only — see the note above on why this cannot be the cleanup of the effect above, and
@@ -86,5 +98,9 @@ export function ProjectScopeProvider({
     () => (projectId === null ? UNSCOPED : { projectId, apiBase: `${API_PREFIX}/p/${encodeURIComponent(projectId)}` }),
     [projectId],
   )
-  return <ProjectScopeContext.Provider value={value}>{children}</ProjectScopeContext.Provider>
+  return (
+    <ProjectScopeContext.Provider value={value}>
+      {committed === projectId ? children : null}
+    </ProjectScopeContext.Provider>
+  )
 }

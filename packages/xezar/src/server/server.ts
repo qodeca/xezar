@@ -4,6 +4,7 @@ import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { resolveNextStartCli } from '../cli-settings.ts';
 import { createUiAuditDoor } from './audit-ui.ts';
+import { allowsHost } from './hosted-hosts.ts';
 import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -37,6 +38,9 @@ import {
   appearanceSchema,
   agentQuotaQuerySchema,
   agentQuotaRefreshInputSchema,
+  engineOwnsRun,
+  TERMINAL_ACCOUNT_UNSAFE_CODE,
+  TERMINAL_FOLDER_UNSAFE_CODE,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -47,6 +51,9 @@ import {
   type GroupVariant,
   type PickVariantResponse,
   type ProjectsResponse,
+  type RegisterProjectResponse,
+  type RemoveProjectResponse,
+  type UpdateProjectResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
 } from '@qodeca/xezar-contract';
@@ -115,7 +122,7 @@ import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService
 import { getTeamSkillsCached, refreshTeamSkills, skillsCatalogVersions, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
-import type { RunEvent, RunRecord, RunStatus, RunStore } from '../runs/store.ts';
+import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
 import type { InstallChannel } from '../install-channel.ts';
 import {
   HistoryCursorError,
@@ -124,7 +131,7 @@ import {
   readRunHistoryPage,
   validateLiveCursor,
 } from '../runs/event-history.ts';
-import { readRunIndexFromDisk } from '../runs/run-index.ts';
+import { readRunIndexFromDiskChecked } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference, SkillsCatalogVersion } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
@@ -188,6 +195,7 @@ import {
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
   loadWorkspaceConfig,
+  loadWorkspaceConfigChecked,
   mergeWriteWorkspaceConfig,
   effectiveComposerDefault,
   type WorkspaceConfig,
@@ -221,7 +229,7 @@ import { activeStateLayout } from '../state-layout.ts';
 import { globalImportStateAfter, globalImportSummary, importGlobalAccounts } from '../workspace/import-global.ts';
 import { recordGlobalImportState } from '../workspace/project-machine-state.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
-import { withEnvPrefix } from '../core/shell-env.ts';
+import { terminalCommandLine, terminalLineRefusal } from '../core/shell-env.ts';
 import {
   allocateProjectSlug,
   findRegistryProject,
@@ -274,7 +282,10 @@ import {
 import {
   ASSET_CACHE_CONTROL,
   BUILD_HINT_HTML,
+  HTML_FRAME_HEADERS,
+  HOST_REFUSED_HEADERS,
   assetContentType,
+  hostRefusedHtml,
   isSafeAssetFilename,
   resolveGetRequest,
 } from './static-ui.ts';
@@ -631,33 +642,10 @@ async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
 // `ProjectsResponse` used to be declared here as an interface; it is the contract's
 // `projectsResponseSchema` type now and is re-exported at the top of this file (#467, PR 3).
 
-/** `POST /api/projects` (multi-project spec, step 4.2) — the folder-browser
- *  dialog's commit step. The entry carries the same `status`/`branch` probe
- *  `GET /api/projects` attaches, so the cockpit sees one project shape.
- *  `error` is present ONLY on the 409 (already registered), where `project` is
- *  the EXISTING entry — the dialog navigates to it instead of dead-ending. */
-export interface RegisterProjectResponse {
-  project: ProjectListEntry;
-  error?: string;
-}
-
-/** `DELETE /api/projects/:projectId` (multi-project spec, step 4.4) — the
- *  Projects settings pane's Remove. DEREGISTRATION ONLY: the entry leaves
- *  `~/.xezar/config.json` and nothing under the project root is read, moved or
- *  deleted. `removed` is always true on a 200 (the failure paths are 404/409). */
-export interface RemoveProjectResponse {
-  removed: true;
-  id: string;
-}
-
-/** `PATCH /api/projects/:projectId` (spec 2026-07-22-per-project-concurrency)
- *  — sets or clears a project's per-project `maxParallel`. The entry carries
- *  the same `status`/`branch` probe `GET /api/projects` attaches, so the
- *  cockpit sees one project shape. `null` in the request clears the override
- *  back to "inherit the workspace cap". */
-export interface UpdateProjectResponse {
-  project: ProjectListEntry;
-}
+// `RegisterProjectResponse`, `RemoveProjectResponse` and `UpdateProjectResponse` were
+// hand-written interfaces here; they are the contract's inferred types now, re-exported for the
+// tests that import them from this file (AGENTS.md § The HTTP API).
+export type { RegisterProjectResponse, RemoveProjectResponse, UpdateProjectResponse };
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
  *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
@@ -1406,12 +1394,12 @@ export function createApp(deps: ServerDeps) {
   // Two zero-config checks close both holes on every /api route EXCEPT
   // /api/v1/health (the intentional cross-origin discovery endpoint, spec 011 —
   // it exposes nothing sensitive, see #431):
-  //   1. Host allowlist (loopback deployments only) — a request whose Host is
-  //      not a loopback name did not really originate from this machine. A
-  //      rebound `evil.com` still sends `Host: evil.com`, so this kills DNS
-  //      rebinding for reads AND writes. Skipped in hosted mode (XEZ_REMOTE /
-  //      non-loopback bind), where the reverse proxy forwards the real public
-  //      Host and TLS+auth own the perimeter.
+  //   1. Host allowlist — a request whose Host is not a loopback name did not
+  //      really originate from this machine. A rebound `evil.com` still sends
+  //      `Host: evil.com`, so this kills DNS rebinding for reads AND writes.
+  //      In hosted mode (XEZ_REMOTE / non-loopback bind) the proxy forwards the
+  //      real public Host, so the allowlist also admits IP literals, the public
+  //      names the install recorded and XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`).
   //      The match runs through `isLoopbackHostHeader`, whose 127.0.0.0/8 test
   //      is *anchored* and whose missing-Host answer is "untrusted". Both are
   //      load-bearing: a `startsWith('127.')` prefix would accept the
@@ -1432,22 +1420,54 @@ export function createApp(deps: ServerDeps) {
   // what check 1 stops.
   const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   const isHostedMode = () => !resolveCapabilities(process.env, bindHost).localHandoff;
+  // Hosted mode used to skip check 1 outright, but the installers keep the
+  // listener on loopback behind a local proxy, so a browser on the same machine
+  // can still reach it under a foreign name. A hosted cockpit therefore serves a
+  // non-loopback Host only when it is an IP literal, a public name this host's
+  // install records, or a name in XEZ_ALLOWED_HOSTS (`hosted-hosts.ts`). Each
+  // refused name is logged once (bounded), with how to allow it.
+  const loggedRefusedHosts = new Set<string>();
+  const hostedModeAllowsHost = (hostName: string): boolean => {
+    if (!isHostedMode()) return false;
+    if (allowsHost(hostName)) return true;
+    if (!loggedRefusedHosts.has(hostName) && loggedRefusedHosts.size < 64) {
+      loggedRefusedHosts.add(hostName);
+      console.warn(
+        `[xezar] hosted mode: refused a request for Host "${hostName.slice(0, 120) || '(none)'}". ` +
+          `${HOSTED_HOST_HINT} To serve this name, add it to XEZ_ALLOWED_HOSTS (comma-separated) and restart, ` +
+          'or record it with `xezar server-install --domain <name>`.',
+      );
+    }
+    return false;
+  };
+  // Every non-API path in hosted mode: the same Host rule, answered with a small page that says
+  // which name was refused and how to allow it — not a cockpit shell whose API calls would all
+  // fail. Local mode keeps serving the static shell (it carries no data; check 1 guards the API).
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/api' || c.req.path.startsWith('/api/') || !isHostedMode()) return next();
+    const hostName = hostnameOfHost(c.req.header('host'));
+    if (isLoopbackHostHeader(hostName) || hostedModeAllowsHost(hostName)) return next();
+    return new Response(hostRefusedHtml(hostName), { status: 403, headers: HOST_REFUSED_HEADERS });
+  });
   app.use('/api/*', async (c, next) => {
     const hostName = hostnameOfHost(c.req.header('host'));
     // Strict twin of `isLoopbackHost`: a *missing* Host is untrusted here (an
     // absent header is not the "we defaulted to the loopback bind" case), and
     // the loopback match is anchored so `127.0.0.1.evil.com` does not pass.
-    if (!isHostedMode() && !isLoopbackHostHeader(hostName)) {
+    if (!isLoopbackHostHeader(hostName) && !hostedModeAllowsHost(hostName)) {
       return c.json(
         {
-          error: 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
+          error: isHostedMode()
+            ? `forbidden: unexpected Host header — ${HOSTED_HOST_HINT} To allow a name, list it in XEZ_ALLOWED_HOSTS (comma-separated) and restart (see #426)`
+            : 'forbidden: unexpected Host header — this request did not originate from this machine (see #426)',
         },
         403,
       );
     }
 
-    // /api/v1/health stays CORS-open for cross-origin discovery, but its Host is
-    // still checked above: cross-origin is legitimate, DNS rebinding is not. The
+    // /api/v1/health skips the Origin gate below (it is read-only, and it sends no
+    // CORS headers, so a foreign page cannot read the answer), but its Host is
+    // still checked above: DNS rebinding is refused. The
     // path is spelled through V1_PREFIX rather than inline — an unversioned
     // literal here silently stopped matching when the API moved and left health
     // relying on the mutating-methods gate below to let its GETs through.
@@ -1579,11 +1599,11 @@ export function createApp(deps: ServerDeps) {
         console.log('xezar: the cockpit files (web/dist) are missing — reinstall xezar, or build the web interface when running from source');
       }
       return new Response(BUILD_HINT_HTML, {
-        headers: { 'content-type': HTML_TYPE },
+        headers: { 'content-type': HTML_TYPE, ...HTML_FRAME_HEADERS },
       });
     }
     return new Response(readFileSync(distIndex), {
-      headers: { 'content-type': HTML_TYPE },
+      headers: { 'content-type': HTML_TYPE, ...HTML_FRAME_HEADERS },
     });
   };
 
@@ -1609,23 +1629,12 @@ export function createApp(deps: ServerDeps) {
   app.get('/xezar.svg', staticFile('xezar.svg', 'image/svg+xml'));
 
   // ---- meta ----------------------------------------------------------------
-  // CORS — deliberately for /api/health ONLY (spec 011): the bookmarklets
-  // fetch it cross-origin from github.com to discover which local ports run a
-  // cockpit and which repo each serves. Health exposes no secrets beyond the
-  // repo path/remote; every other endpoint stays same-origin.
-  const healthCors = async (c: Context, next: Next): Promise<Response | void> => {
-    c.header('access-control-allow-origin', '*');
-    if (c.req.method === 'OPTIONS') {
-      // Preflight (e.g. Chrome Private Network Access) — allow the plain GET.
-      c.header('access-control-allow-methods', 'GET');
-      c.header('access-control-allow-private-network', 'true');
-      return c.body(null, 204);
-    }
-    await next();
-  };
-  app.use(`${V1_PREFIX}/health`, healthCors);
-  // One builder for both transports: `GET /api/health` (the authoritative,
-  // CORS-open discovery endpoint) and the `health` topic on `/api/v1/ws` below
+  // No CORS on health (or anywhere): the cockpit reads it same-origin, and the MCP bridge and
+  // other native clients are not subject to CORS. The one cross-origin reader it once had, the
+  // spec 011 bookmarklet port probe, was retired (see packages/web/src/lib/bookmarklet.ts), so a
+  // page on another site has no reason to read this project's repository facts.
+  // One builder for both transports: `GET /api/health` (the authoritative
+  // discovery endpoint) and the `health` topic on `/api/v1/ws` below
   // push the byte-identical shape, so the two can never drift.
   // Deliberately UNANNOTATED: this literal is the source of the `/health` shape. Annotating it
   // with the api-client's `HealthResponse` made the contract circular — the DTO was declared by
@@ -1655,16 +1664,19 @@ export function createApp(deps: ServerDeps) {
       // says `.optional()`, and contract-parity.test.ts holds the two together.
       ...(update?.latest !== undefined ? { latestVersion: update.latest } : {}),
       channel,
-      // Health is CORS-open and, in hosted mode, reachable off the loopback —
-      // so any site/host that reads it would learn the developer's absolute
-      // checkout path and username (#431). Local mode keeps the full path (the
-      // protected bookmarklet shape); hosted/remote mode trims it to a basename.
+      // Health is, in hosted mode, reachable off the loopback — so any host that
+      // reads it would learn the developer's absolute checkout path and username
+      // (#431). Local mode keeps the full path (the protected shape); hosted/remote
+      // mode trims it to a basename.
       // NB this narrows the VALUE of a field named in the backward-compatibility promise
       // §2: the field is always present and a string, but under XEZ_REMOTE it is
       // no longer an absolute path. Deliberate — a hosted cockpit's paths are on
       // a machine the reader does not have anyway. See §2's `repoRoot` note.
       repoRoot: caps.localHandoff ? bootRoot : basename(bootRoot),
-      repo,
+      // The same trim for `repo.root`, which carries the same absolute path: without it the
+      // hosted `repoRoot` basename above protected nothing. The remote arrives already
+      // credential-free from getRepoInfo.
+      repo: repo && !caps.localHandoff ? { ...repo, root: basename(repo.root) } : repo,
       checks,
       defaultRunner: config.defaultRunner,
       // Non-blocking: cached availability or null-until-warm — health must never pay a `gh`
@@ -1672,9 +1684,9 @@ export function createApp(deps: ServerDeps) {
       forge: forge ? { kind: forge.kind, ...(forge.detectCached() ?? {}) } : null,
       capabilities: caps,
       // Workspace enumeration (multi-project spec) — additive, id+name ONLY.
-      // NEVER `projects[].root` here: health is the one CORS-open route, and
-      // the repoRoot trim above exists precisely to keep absolute paths and
-      // usernames away from cross-origin readers (#431) — per-project roots
+      // NEVER `projects[].root` here: health is the workspace discovery route,
+      // and the repoRoot trim above exists precisely to keep absolute paths and
+      // usernames away from readers that do not need them (#431) — per-project roots
       // would reintroduce that leak once per registered project. Absolute
       // roots live on the same-origin GET /api/projects instead. An
       // unreadable workspace degrades to `projects: []`.
@@ -1774,11 +1786,11 @@ export function createApp(deps: ServerDeps) {
         };
       },
     },
-    // health IS the CORS-open discovery payload (#431), so it is the one topic
-    // safe for any local page — including a cross-port page admitted by the
-    // loopback fallback on a no-Sec-Fetch browser. Every other (future) topic
-    // keeps the default: trusted connections only.
-    { loopbackReadable: true },
+    // Default trust, like every other topic: the payload carries the absolute
+    // checkout path and the repository identity, and a connection admitted by
+    // the loopback fallback on a no-Sec-Fetch browser may be a foreign local
+    // page. The HTTP twin sends no CORS headers for the same reason. A cockpit
+    // on such a connection keeps reading health over HTTP; it only loses the push.
   );
   // Pre-warm on the live-server path only (startServer injects the hub; a bare
   // app in tests does not, so tests never spawn the probes here): the cache
@@ -1898,12 +1910,18 @@ export function createApp(deps: ServerDeps) {
     return { env: resolved.env };
   };
 
-  /** The copy-paste fallback shown when no terminal could be opened — same account, spelled for
-   *  this platform's shell. `null` when the dir cannot be embedded safely, which is a refusal. */
-  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null => {
-    const prefixed = withEnvPrefix(command, env, process.platform);
-    return prefixed === null ? null : `cd '${cwd}' && ${prefixed}`;
-  };
+  /** The copy-paste line shown when no terminal could be opened, and as the cockpit's takeover
+   *  hint — same account, spelled for this platform's shell by the one builder the terminal
+   *  launcher uses. `null` when the dir or the account cannot be embedded safely: a refusal. */
+  const handoffFallbackCommand = (cwd: string, command: string, env: Record<string, string>): string | null =>
+    terminalCommandLine(cwd, command, env, process.platform);
+
+  /** The 409 body for a handoff whose line `handoffFallbackCommand` refused – one accurate
+   *  sentence and code per reason: the task's folder, or the session's account folder. */
+  const handoffRefusal = (cwd: string, command: string, env: Record<string, string>) =>
+    terminalLineRefusal(cwd, command, env, process.platform) === 'folder'
+      ? { error: 'this task\'s folder path cannot be passed safely to cmd.exe, so no terminal can be opened in it', code: TERMINAL_FOLDER_UNSAFE_CODE }
+      : { error: 'this account\'s folder cannot be used in a terminal command', code: TERMINAL_ACCOUNT_UNSAFE_CODE };
 
   /** A registered project's realpath'd root, or null when the id is unknown. Layout-aware (#600
    *  review M2): in the project layout the registry is the DERIVED row, so a raw stored-row lookup
@@ -3164,7 +3182,6 @@ export function createApp(deps: ServerDeps) {
   // deregistering mid-run would strand a live agent process under a root no
   // route can resolve any more — the run would keep burning tokens with no
   // cockpit able to show, message or cancel it.
-  const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 
   /**
    * How many of `projectId`'s runs this process is actively responsible for.
@@ -3187,7 +3204,7 @@ export function createApp(deps: ServerDeps) {
   const activeRunCount = (projectId: string): number => {
     const ctx = contexts.peek(projectId);
     if (!ctx) return 0;
-    return ctx.store.listRuns().filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).length;
+    return ctx.store.listRuns().filter((run) => engineOwnsRun(run.status)).length;
   };
 
   // Workspace-level by design: update state spans project and global installs,
@@ -3379,6 +3396,28 @@ export function createApp(deps: ServerDeps) {
         agentDefaults,
         cli,
       } = parsed.data;
+      // Hosted mode: the keys that decide what this machine exposes stay a local-machine
+      // choice, like agent config. `browseRoot` bounds which host folders a remote viewer can
+      // list and register, `projectsDir` is where checkouts are written, `agentEnvPassthrough`
+      // names host variables handed to every agent, and `cli.instance` decides which
+      // registered projects this process serves. Display and resource settings stay writable.
+      // Refused before any probe or write, so a refused body changes nothing.
+      if (!capabilities().localHandoff) {
+        const machineKeys = [
+          browseRoot !== undefined && 'browseRoot',
+          projectsDir !== undefined && 'projectsDir',
+          agentEnvPassthrough !== undefined && 'agentEnvPassthrough',
+          cli?.instance !== undefined && 'cli.instance',
+        ].filter((key): key is string => typeof key === 'string');
+        if (machineKeys.length > 0) {
+          return c.json(
+            {
+              error: `changing ${machineKeys.join(', ')} is disabled in hosted mode (XEZ_REMOTE) — change it from the machine that owns the checkout`,
+            },
+            409,
+          );
+        }
+      }
       for (const [configuredRoot, create] of [
         [browseRoot, false],
         [projectsDir, true],
@@ -3547,7 +3586,10 @@ export function createApp(deps: ServerDeps) {
         const result = await browseDirectory({
           root,
           path: query.path,
-          showHidden: query.showHidden === '1',
+          // Hosted mode never lists hidden entries: dot-folders hold credentials and agent
+          // configuration, and a remote viewer only needs project folders. The flag is ignored
+          // there rather than refused, so the picker keeps working.
+          showHidden: query.showHidden === '1' && capabilities().localHandoff,
         });
         if (!result.ok) return c.json({ error: result.error }, result.status);
         return c.json(result.body);
@@ -4527,7 +4569,7 @@ export function createApp(deps: ServerDeps) {
         // step's own agent instead (#984).
         keepRunAgent: true,
       });
-      if (!result.ok) return c.json({ error: result.error }, 409);
+      if (!result.ok) return c.json({ error: result.error, ...(result.code ? { code: result.code } : {}) }, 409);
       return c.json({ continued: true });
     })
 
@@ -4564,14 +4606,35 @@ export function createApp(deps: ServerDeps) {
       const fallback = handoffFallbackCommand(cwd, command, account.env);
       // Fail closed for the same reason as the session id: a terminal opened without the
       // account's config dir resumes nothing and says nothing about why.
-      if (fallback === null) {
-        return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-      }
+      if (fallback === null) return c.json(handoffRefusal(cwd, command, account.env), 409);
       const opened = await openTerminal(cwd, command, account.env);
       if (!opened) {
         return c.json({ error: 'no terminal emulator found', command: fallback }, 409);
       }
       return c.json({ opened: true, command });
+    })
+
+    // The cockpit's copyable "take over interactively" line: the same session, folder and account
+    // as `open-in-cli` above, through the same builder, so the hint and the terminal never differ.
+    .get('/runs/:id/resume-command', async (c) => {
+      const { root: repoRoot, store } = c.get('project');
+      const run = store.getRun(c.req.param('id'));
+      if (!run) return c.json({ error: 'not found' }, 404);
+      const none = { command: null };
+      if (engineOwnsRun(run.status)) return c.json(none);
+      const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
+      const command = sessionStep?.sessionId ? resumeCommand(run.runner, sessionStep.sessionId) : null;
+      if (!command) return c.json(none);
+      const account = await handoffEnv(run.runner ?? 'claude', sessionStep?.profileId);
+      if ('error' in account) return c.json(none);
+      if (capabilities().localHandoff) {
+        const cwd = run.worktreePath && existsSync(run.worktreePath) ? run.worktreePath : repoRoot;
+        return c.json({ command: handoffFallbackCommand(cwd, command, account.env) });
+      }
+      // Hosted mode still answers – this is a read with no local effect, so it is not a
+      // `localHandoffRoute` refusal. The folder and a named account's config dir are paths on the
+      // server, so the hint drops the `cd` and is offered only when no account variable is needed.
+      return c.json({ command: Object.keys(account.env).length === 0 ? command : null });
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
@@ -4656,7 +4719,7 @@ export function createApp(deps: ServerDeps) {
       if (cliRunner) {
         const blocked = await providerActionError([cliRunner]);
         if (blocked) return c.json({ error: blocked }, 409);
-        const engineOwnsSession = run.status === 'running' || run.status === 'queued' || run.status === 'waiting';
+        const engineOwnsSession = engineOwnsRun(run.status);
         const sessionStep = engineOwnsSession ? undefined : [...run.steps].reverse().find((s) => s.sessionId);
         const sessionId = sessionStep?.sessionId;
         // An id resumeCommand refuses (#431) degrades to a fresh CLI in the worktree,
@@ -4672,9 +4735,7 @@ export function createApp(deps: ServerDeps) {
           : await freshCliEnv(repoRoot, cliRunner);
         if ('error' in account) return c.json({ error: account.error }, 409);
         const fallback = handoffFallbackCommand(dir, command, account.env);
-        if (fallback === null) {
-          return c.json({ error: 'this account\'s folder cannot be used in a terminal command' }, 409);
-        }
+        if (fallback === null) return c.json(handoffRefusal(dir, command, account.env), 409);
         const opened = await openTerminal(dir, command, account.env);
         if (!opened) {
           return c.json({ error: 'no terminal emulator found', command: fallback }, 409);
@@ -5179,10 +5240,12 @@ export function createApp(deps: ServerDeps) {
     })
 
     .post('/worktrees/reclaim', jsonZodValidator(() => reclaimBodySchema, { absent: ({}), message: 'invalid body' }), ui.route('worktree.reclaim'), async (c) => {
-      const { root: repoRoot, store } = c.get('project');
+      const { root: repoRoot, store, manager } = c.get('project');
       // The body is validated (an empty or `{}` one is accepted) but carries nothing this
       // handler reads; retention is best-effort, so 200 always.
-      const reclaimed = await reclaimWorktrees(repoRoot, store, await resolveWorktreeRetention(repoRoot));
+      const reclaimed = await reclaimWorktrees(repoRoot, store, await resolveWorktreeRetention(repoRoot), {
+        reserve: (runId) => manager.reserveForReclaim(runId),
+      });
       return c.json({ reclaimed });
     });
 
@@ -6332,6 +6395,12 @@ export function createApp(deps: ServerDeps) {
     return undefined;
   };
 
+  /** "This task wants a person": `waiting` or `review`, not archived. The SAME rule as the
+   *  cockpit's `needsYou` (`web/src/lib/workspace-attention.ts`) — duplicated on purpose, because
+   *  the count spans runs the index does not ship as rows; keep the two identical. */
+  const runNeedsPerson = (run: Pick<RunRecord, 'status' | 'archived'>): boolean =>
+    !run.archived && (run.status === 'waiting' || run.status === 'review');
+
   const runIndexEntry = (
     projectId: string,
     run: RunRecord,
@@ -6397,6 +6466,7 @@ export function createApp(deps: ServerDeps) {
   const runsIndexRoutes = new Hono()
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
+      let registryUnreadable = false;
       try {
         // In `project` mode this answers for THIS project only (#467, spec Q-7 option A): the
         // rows exist to be opened, and a row this process refuses to build a context for would
@@ -6407,11 +6477,21 @@ export function createApp(deps: ServerDeps) {
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
+        // `listProjects` never throws for a bad registry file: it degrades to "no projects".
+        // Ask the same file whether that was a fault, so the answer can say "could not look"
+        // rather than pass an unreadable registry off as an empty workspace. Project mode derives
+        // its one row from the folder, so its registry file is not what this answer rests on.
+        if (activeStateLayout().mode !== 'project') {
+          registryUnreadable = (await loadWorkspaceConfigChecked(activeStateLayout().workspacePath)).degraded;
+        }
       } catch {
-        // unreadable workspace — an empty index, never a 500. The palette degrades to the
-        // active project's own run list, which it holds either way.
+        // unreadable workspace — an empty index, never a 500 (the status code is part of the
+        // compatibility promise). The palette degrades to the active project's own run list,
+        // which it holds either way — and `registryUnreadable` says this answer is not "no tasks".
+        registryUnreadable = true;
       }
       const bootId = await resolveBootProject(projects);
+      const unreadable: string[] = [];
       const runs: RunIndexEntry[] = [];
       const truncated: string[] = [];
       // Statuses the server already holds, shipped WITH the rows that carry the references. The
@@ -6420,6 +6500,7 @@ export function createApp(deps: ServerDeps) {
       // never touches `gh` and never slows the index down; anything cold stays absent and the
       // lazy `/github/ref-status` route fills it in.
       const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
+      const attention: RunsIndexResponse['attention'] = {};
       for (const project of projects) {
         // No folder, no runs to read. `not-git` still has an `.local/xezar` worth indexing.
         if (project.status === 'missing') continue;
@@ -6431,10 +6512,30 @@ export function createApp(deps: ServerDeps) {
         // `GET /runs`, which has always carried them, and excluding them here would mean a task
         // is findable while you stand in its project and vanishes the moment you leave — the
         // exact asymmetry a cross-project finder exists to remove.
-        const recent = (
-          owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
-        ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        let read: RunRecord[];
+        if (owned) {
+          read = owned.store.listRuns();
+        } else {
+          const fromDisk = readRunIndexFromDiskChecked(projectDataDir(project.root));
+          // Its tasks are unknown, not absent: name it, so no consumer reads "nothing waits".
+          if (!fromDisk.readable) unreadable.push(project.id);
+          read = fromDisk.runs;
+        }
+        const recent = read.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
+        // Over EVERY run, not the capped rows (see the schema): a task waiting for a person must
+        // be counted however many newer tasks the project has. One pass over a list this loop
+        // already holds — no extra read.
+        let attentionTotal = 0;
+        let attentionBeyondLimit = 0;
+        recent.forEach((run, position) => {
+          if (!runNeedsPerson(run)) return;
+          attentionTotal += 1;
+          if (position >= RUNS_INDEX_PER_PROJECT) attentionBeyondLimit += 1;
+        });
+        if (attentionTotal > 0) {
+          attention[project.id] = { total: attentionTotal, beyondLimit: attentionBeyondLimit };
+        }
         // LAZY, and at most once per project. This route is polled every 15s and invalidated on a
         // 400ms debounce during a run, so a config read per project per request would be dozens of
         // file reads a second on a large registry. Almost every row answers for itself — a started
@@ -6476,6 +6577,9 @@ export function createApp(deps: ServerDeps) {
         perProjectLimit: RUNS_INDEX_PER_PROJECT,
         truncated,
         referenceStatuses,
+        attention,
+        unreadable,
+        registryUnreadable,
       };
       return c.json(body);
     });
@@ -6504,7 +6608,7 @@ export function createApp(deps: ServerDeps) {
   // Workspace families mount LAST and that is load-bearing: mounting the project table also
   // mounts its `use('*')` scope resolver over the whole prefix, and Hono runs matched middleware
   // in registration order. `/health` in particular answers for the workspace, has no project to
-  // resolve, and is the CORS-open discovery route — it must not sit behind the resolver.
+  // resolve, and is the discovery route — it must not sit behind the resolver.
   const routed = app
     .route(V1_SCOPED_PREFIX, v1)
     .route(V1_PREFIX, v1)
@@ -6601,7 +6705,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   deps.onApp?.(app);
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
-  // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
+  // same-origin-trusted (no route sends CORS headers); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate
   // hosted/VPS deployment (which also flips XEZ_REMOTE to gate the local-handoff endpoints).
   // src/index.ts DOES pass it: the CLI resolves `--bind-host` once at its boundary and hands it in
@@ -6865,8 +6969,8 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
  * `Sec-Fetch-Site`, a page served from ANOTHER loopback port. That is no longer
  * a caveat the caller must remember: the verdict carries a `trusted` flag, and
  * the hub only lets an UNtrusted connection subscribe to topics a publisher
- * marked `loopbackReadable`. `health` is flagged so (the CORS-open discovery
- * payload, #431); every other topic stays trusted-only by default, so a topic
+ * marked `loopbackReadable`. No topic is flagged so today
+ * (`health` was, until it stopped being safe for any local page); every topic stays trusted-only by default, so a topic
  * carrying run or repo content is mechanically unreachable from a foreign local
  * page without any per-topic vigilance. A connection is `trusted` when it is
  * provably the cockpit itself: a same-authority Origin, a no-Origin native
@@ -6905,6 +7009,10 @@ export function verifyWsUpgrade(req: IncomingMessage, bindHost?: string): WsUpgr
 
 /** The bare hostname of a `Host` header — see `normalizeHostname`. `''` when the
  *  header is absent, which no allowlist matches. */
+/** Shared by the hosted-mode 403 body and its log line, so the two cannot drift. */
+const HOSTED_HOST_HINT =
+  'this hosted cockpit serves only loopback, IP addresses, public names recorded by `xezar server-install` and names listed in XEZ_ALLOWED_HOSTS.';
+
 function hostnameOfHost(host: string | undefined): string {
   return host ? normalizeHostname(host) : '';
 }

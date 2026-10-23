@@ -8,8 +8,9 @@ process around the review — who reviews, how many rounds, when it merges — i
 
 1. Read the pull request body: what changed, why, how it was verified, and whether it says it is
    risky.
-2. Confirm the gate is green **on the head you are reviewing** — the CI check
-   `Typecheck, unit tests, build, and package`, or a sealed run of
+2. Confirm the gate is green **on the head you are reviewing** — the required CI checks
+   (`ci.requiredChecks` in `.xezar/pipeline/config.json`, led by
+   `Typecheck, unit tests, build, and package`), or a sealed run of
    `bash .xezar/checks/repo-gates.sh`. A verdict names that head.
 3. Read `BACKWARD_COMPATIBILITY.md` for the surfaces the change may not break, and `SECURITY.md`
    for what this project has promised.
@@ -43,7 +44,9 @@ the diff to the security-review row. The risk is not removed; it is made visible
   change what the leader is told at every start, resume and compaction.
 - **The leader launcher.** `scripts/xezar-leader.sh` starts Claude Code with
   `--dangerously-load-development-channels` for the `xezar` server and exports `XEZAR_LEADER=1`;
-  `scripts/xezar-leader-settings.json` is the leader's permission to run `gh pr merge`.
+  `scripts/xezar-leader-settings.json` is the leader's permission to run `gh pr merge`. Both
+  files are listed in `security.trustBoundaries` in `.xezar/pipeline/config.json`, so a change
+  to either is routed to the security-review row automatically.
 - **Configuration every run trusts.** `.xezar/config.json` (the base branch),
   `.xezar/pipeline/config.json` (the gate commands, `deploy.*`, `ci.requiredChecks`),
   `.xezar/workflows/`, `.xezar/checks/` with `documented-output.allowlist.json`,

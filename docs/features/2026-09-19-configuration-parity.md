@@ -2,7 +2,9 @@
 
 # Configuration parity — every configurable value editable through the MCP and the cockpit (2026-09-19)
 
-**Status: requirement, not yet built.** Owner: Marcin. Date: 2026-09-19. Campaign: 0.17.0.
+> **Status update – 2026-10-18:** Built by the programme in [#677](https://github.com/qodeca/xezar/issues/677) (closed 2026-09-21). The inventory found about 42 settings and slices A–D closed the gaps: the two config request shapes moved into the contract with MCP ↔ route parity pinned (#729); `project_config` writes the workspace settings, folder paths, shared preferences, provider on/off and agent accounts (#734, #748, #753, #760, #764, #769, recorded in the classification by #781); the per-task memory limit and `modelsLocked` gained cockpit controls (#802, #809); and a watcher makes a hand edit of the workspace config live without a restart (#801). Not delivered: starting the automations scheduler from a stored key instead of the env flag (deferred to its own issue), and the four boot properties – port, bind host, state layout, CLI output – stay restart-only by design. The text below is the original requirement.
+
+**Original status (2026-09-19, superseded by the status update above): requirement, not yet built.** Owner: Marcin. Date: 2026-09-19. Campaign: 0.17.0.
 
 ## 1. The requirement
 
@@ -39,7 +41,7 @@ Inputs already available to that inventory:
 - `mcp-settings-classification.md` — the MCP side, field by field, with the product decisions D-03-1 to D-03-5 and the enforcement primitives E-BIND, E-409-LOCAL, E-409-PROFILE, E-SCOPE-USER, E-SINGLE, E-CONTRACT and E-NARROW.
 - `mcp-ui-action-inventory.md` — the cockpit action inventory the classification cites.
 - The config write surfaces: `GET`/`PUT /api/v1/p/:projectId/config` and the `setConfigInputSchema` / `setWorkspaceConfigInputSchema` shapes in `packages/contract`, plus the agent-config and workspace routes the classification lists.
-- `.xezar/docs/model-routing.md` § 5 already records one restart-shaped constraint in the opposite direction: changing a runner's default model from the cockpit writes the primary checkout's `.xezar/config.json` and breaks the kit snapshot, so the model is set per task or through a committed pin. It is an example of the kind of live-versus-restart fact the inventory must state.
+- `.xezar/docs/model-routing.md` (removed) § 5 already records one restart-shaped constraint in the opposite direction: changing a runner's default model from the cockpit writes the primary checkout's `.xezar/config.json` and breaks the kit snapshot, so the model is set per task or through a committed pin. It is an example of the kind of live-versus-restart fact the inventory must state.
 
 ## 5. What the inventory must answer
 

@@ -85,6 +85,12 @@ if [ -z "$socket" ]; then
   exit 1
 fi
 
+# .local/xezar/ is per machine and git stores no empty folder, so a fresh clone has none of the six
+# named subfolders .xezar/checks/local-tree.sh expects – and once the engine has started here it has
+# made .local/xezar/ itself, so that check would fail in this checkout. Make them, empty, and
+# nothing else: local-tree.sh stays a check that changes nothing (#196).
+mkdir -p .local/xezar/runtime .local/xezar/tasks .local/xezar/worktrees .local/xezar/scratch .local/xezar/cache .local/xezar/qa
+
 # The xez-* skills are installed per machine, not committed. Warn, never install.
 if [ ! -e ".claude/skills/xez-add-rule" ]; then
   echo "xezar-leader: the xez-* skills are missing in this clone. AGENTS.md says how to get them." >&2

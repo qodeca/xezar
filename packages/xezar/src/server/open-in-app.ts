@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import type { RunnerId } from '../core/agent-runner.ts';
+import { fileManagerLabel, hostDesktop, pathOpenerLaunch } from '../platform/desktop-open.ts';
 import { firstOnPath } from '../platform/path-search.ts';
 import { openInTerminal, runDetached } from './open-in-terminal.ts';
 import { isWsl, translateToWindowsPath } from './wsl.ts';
@@ -66,8 +67,7 @@ const EDITORS: EditorDef[] = [
   { id: 'warp', label: 'Warp', icon: 'warp', cli: 'warp', mac: 'Warp' },
 ];
 
-const FILE_MANAGER_LABEL =
-  process.platform === 'darwin' ? 'Finder' : process.platform === 'win32' || isWsl() ? 'Explorer' : 'Files';
+const FILE_MANAGER_LABEL = fileManagerLabel(hostDesktop(isWsl));
 
 /** Is `bin` (with a directly-spawnable Windows suffix under win32/WSL interop) on PATH?
  *  Returns the exact resolved name (which may carry the suffix) — pure filesystem probe, no
@@ -107,7 +107,7 @@ function onPath(bin: string): boolean {
 
 /** macOS: is any of `names` (`<name>.app`) installed in a standard Applications dir? */
 function macAppExists(names: string | string[]): boolean {
-  if (process.platform !== 'darwin') return false;
+  if (hostDesktop() !== 'macos') return false;
   const candidates = Array.isArray(names) ? names : [names];
   return candidates.some((name) =>
     [
@@ -167,10 +167,19 @@ export function fileManagerLaunch(
   wsl: boolean = isWsl(),
   translate: (posixPath: string) => string = translateToWindowsPath,
 ): { bin: string; args: string[] } {
-  if (platform === 'darwin') return { bin: 'open', args: [dir] };
-  if (platform === 'win32') return { bin: 'explorer', args: [dir] };
-  if (wsl) return { bin: 'explorer.exe', args: [translate(dir)] };
-  return { bin: 'xdg-open', args: [dir] };
+  return pathOpenerLaunch(dir, hostDesktop(() => wsl, platform), translate);
+}
+
+/** The (bin, args) that opens one FILE in its default app – the same opener as a folder, so WSL
+ *  also goes through interop to the Windows side with the translated path (it used to fall
+ *  through to `xdg-open`, which has no desktop to open on there). Pure, like `fileManagerLaunch`. */
+export function defaultAppLaunch(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+  wsl: boolean = isWsl(),
+  translate: (posixPath: string) => string = translateToWindowsPath,
+): { bin: string; args: string[] } {
+  return pathOpenerLaunch(path, hostDesktop(() => wsl, platform), translate);
 }
 
 /** Open `dir` in the file manager, natively per platform. Under WSL there is no Linux desktop to
@@ -194,9 +203,8 @@ async function openFileManager(dir: string): Promise<boolean> {
  *  CVE-2024-27980). `explorer <file>` hands the file to its registered handler with no such
  *  re-parsing — the same launcher `openFileManager` already uses for directories. */
 export async function openFileInDefaultApp(path: string): Promise<boolean> {
-  if (process.platform === 'darwin') return runDetached('open', [path]);
-  if (process.platform === 'win32') return runDetached('explorer', [path]);
-  return runDetached('xdg-open', [path]);
+  const { bin, args } = defaultAppLaunch(path);
+  return runDetached(bin, args);
 }
 
 /** Open `dir` in the given target. Unknown/unavailable target → false (the caller 409s). */

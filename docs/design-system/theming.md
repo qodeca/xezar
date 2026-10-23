@@ -34,6 +34,12 @@ Sources: `packages/web/src/lib/theme.ts`, `packages/web/src/lib/appearance.ts`,
   (`routes/settings/appearance.tsx`). Nothing else changes.
 - Stored in the workspace-wide `~/.xezar/ui-state.json` (`appearance.accent`, through
   `PUT /api/v1/workspace/ui-state`), so it follows the person across every project, and mirrored to localStorage `xez-accent` for the pre-paint script.
+  In single-project mode the same file lives in the project instead, at `<project>/.xezar/workspace-ui.json`,
+  and is committed with it (`uiStatePath` in `packages/xezar/src/state-layout.ts`; Settings → Appearance
+  names the file, known-gaps G-47). The same holds for density and width below.
+- Focus ring: the accent also moves `--ring`. A new accent must keep the ring at 3:1 or more against
+  the surfaces it is drawn on, at the `ring-ring/50` strength the cockpit uses (WCAG 1.4.11). Violet
+  does not today (G-51).
 
 ## Density
 

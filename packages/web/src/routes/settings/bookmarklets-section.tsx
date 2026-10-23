@@ -63,7 +63,6 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
   const launchKey = useLaunchKey()
   const health = useHealth()
   const projects = useProjects()
-  const [auto, setAuto] = useState(false)
   const [filter, setFilter] = useState('')
   // THIS project's own launch key: `useLaunchKey` goes through the scoped API client, so under
   // `/p/<id>/settings` it reads `/api/p/<id>/launch-key` — that repo's `.local/xezar/launch-key`,
@@ -100,20 +99,9 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
         to open this cockpit directly. The cockpit must be running: <span className="font-mono">npx xezar</span>.
       </p>
 
-      <label className="mt-4 flex min-h-tap items-center gap-2 text-[13px] font-medium md:min-h-0">
-        <input
-          type="checkbox"
-          data-slot="bm-auto"
-          checked={auto}
-          onChange={(event) => setAuto(event.target.checked)}
-          className="size-3.5"
-        />
-        One-click launch (auto-submit){' '}
-        <span className="font-normal text-soft-foreground">— re-drag the buttons after changing this</span>
-      </label>
-
       <div data-slot="bm-generic" className="mt-4">
-        {/* Generic launcher: no skill, auto forced off — it only prefills the form. */}
+        {/* Every launcher only fills the form (owner decision 2026-10-19): the "One-click launch"
+            checkbox is gone, so no generated link carries auto=1 any more. */}
         <BookmarkletRow
           label={repoName ? `xezar (${repoName}): this PR/issue` : 'xezar: this PR/issue'}
           url={bookmarkletUrl('', false, key, origin, projectId)}
@@ -135,7 +123,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
             <BookmarkletRow
               key={skill.path}
               label={repoName ? `/${skill.name} (${repoName})` : `/${skill.name}`}
-              url={bookmarkletUrl(skill.name, auto, key, origin, projectId)}
+              url={bookmarkletUrl(skill.name, false, key, origin, projectId)}
               hint={skill.source}
             />
           ))

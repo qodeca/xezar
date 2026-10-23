@@ -13,9 +13,9 @@ import { stripComments } from './release/instruction-hygiene.testkit.ts';
  *   `isFullyQualifiedPath` from `platform/path-syntax.ts`.
  * - A runtime `/tmp` literal does not exist on Windows. Use `os.tmpdir()`.
  *
- * Exactly these two patterns and nothing more: this is not the general platform lint rule, which
- * comes later. Comments are blanked first, so prose about the defect is never a finding; tests and
- * testkits are not scanned. An exception names its exact comment-free source line and a reason.
+ * Exactly these two patterns and nothing more: the general rule against a `process.platform` test
+ * at a call site is `platform-test` in `process-spawn-scan.test.ts`. Comments are blanked first,
+ * so prose about the defect is never a finding; tests and testkits are not scanned. An exception names its exact comment-free source line and a reason.
  */
 const SCAN_ROOT = 'packages/xezar/src';
 
@@ -62,6 +62,14 @@ const ALLOWED: readonly Allowance[] = [
     reason:
       'A REFUSAL of anything that is not a plain relative name: it refuses a leading `/`, a backslash ' +
       'and a drive letter together, so it already covers the Windows spellings.',
+  },
+  {
+    file: 'platform/socket-dir.ts',
+    rule: 'tmp-literal',
+    code: "const POSIX_SHORT_TEMP = '/tmp';",
+    reason:
+      'The POSIX-only fallback for a Unix socket whose os.tmpdir() is too deep for sun_path; ' +
+      '`socketTempRoot` returns os.tmpdir() on Windows before it is reached, and its tests pin both branches.',
   },
 ];
 

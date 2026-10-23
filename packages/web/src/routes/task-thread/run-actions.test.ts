@@ -12,7 +12,6 @@ import {
   queuePosition,
   resolveConflictsPrompt,
   resumeCommand,
-  resumeHint,
   runActionFlags,
 } from './run-actions'
 
@@ -189,30 +188,6 @@ describe('resumeCommand — per backend, mirroring the server', () => {
   it('bounds the id length, like the server', () => {
     expect(resumeCommand('claude', 'a'.repeat(200))).toBe(`claude --resume ${'a'.repeat(200)}`)
     expect(resumeCommand('claude', 'a'.repeat(201))).toBeUndefined()
-  })
-})
-
-describe('resumeHint', () => {
-  it('cd-prefixes into the worktree when the run has one', () => {
-    expect(resumeHint(run('failed', { worktreePath: '/tmp/wt', runner: 'codex' }))).toBe(
-      'cd /tmp/wt && codex resume sess-1',
-    )
-  })
-
-  it('is just the resume command for a run without a worktree', () => {
-    expect(resumeHint(run('done'))).toBe('claude --resume sess-1')
-  })
-
-  it('is absent while the engine still owns the run, and absent without a session', () => {
-    expect(resumeHint(run('waiting'))).toBeUndefined()
-    expect(resumeHint(run('done', { steps: [step()] }))).toBeUndefined()
-  })
-
-  // #431: no copyable line at all beats one that runs an injected command on paste.
-  it('is absent for a session id the server would refuse, worktree or not', () => {
-    const hostile = { steps: [step({ sessionId: 'x; rm -rf ~ #' })] }
-    expect(resumeHint(run('done', hostile))).toBeUndefined()
-    expect(resumeHint(run('failed', { ...hostile, worktreePath: '/tmp/wt' }))).toBeUndefined()
   })
 })
 

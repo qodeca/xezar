@@ -192,7 +192,7 @@ function read<T>(expression: string): T {
 // Routes, selectors and the density lever
 // ---------------------------------------------------------------------------
 
-const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label="Open menu"]'
+const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label^="Open menu"]'
 const DRAWER = '[data-slot="mobile-nav-drawer"]'
 /**
  * The drawer is mounted, visible AND still parked at `left: -264` for ~500 ms of its slide, so
@@ -834,7 +834,12 @@ describe('B1 motion: prefers-reduced-motion actually stops the cockpit moving', 
    */
   function pulsingDots(): { tone: string; animationName: string; background: string }[] {
     browser.goto(home())
-    browser.waitForFunction(`document.querySelector('[data-slot="status-dot"]') !== null`)
+    // Wait for the dot this fixture seeded, not for ANY dot. The shell's own dots (the agent-quota
+    // chip, the header) render before the task list's data arrives, so "a dot exists" could pass
+    // with only those on screen, none of which pulses – the vacuity guard below then failed on a
+    // page that simply had not loaded the review run yet (CI runs 39333516944 attempt 3 and
+    // 39341386995).
+    browser.waitForFunction(`document.querySelector('[data-run-id="${REVIEW_RUN.id}"] [data-slot="status-dot"]') !== null`)
     return read<{ tone: string; animationName: string; background: string }[]>(
       `[...document.querySelectorAll('[data-slot="status-dot"]')].map((el) => ({ tone: el.dataset.tone ?? 'dot', animationName: getComputedStyle(el).animationName, background: getComputedStyle(el).backgroundColor }))`,
     )

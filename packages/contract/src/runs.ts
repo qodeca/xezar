@@ -48,6 +48,24 @@ export const runStatusSchema = z.enum([
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
 /**
+ * The statuses in which the engine still owns a run: executing (`running`), parked on its live
+ * session for input (`waiting`), or claimed by the queue (`queued`). While a run is in one of
+ * these, its session belongs to the engine – nothing may resume it in a second CLI, delete it,
+ * remove its worktree or deregister its project. `review` is deliberately NOT here: a parked
+ * review has no live process, and it can be continued, archived or deleted like a finished run.
+ *
+ * This is a fact about the RECORD. The engine's own in-memory view (`RunManager.isActive`: a run
+ * this process has started, is starting or has queued) is a different question and stays separate.
+ */
+export const ENGINE_OWNED_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
+
+/** Does the engine still own a run in this status? See `ENGINE_OWNED_RUN_STATUSES`. Takes any
+ *  string so a caller holding an unvalidated status gets `false` for anything unknown. */
+export function engineOwnsRun(status: string): boolean {
+  return (ENGINE_OWNED_RUN_STATUSES as ReadonlySet<string>).has(status);
+}
+
+/**
  * Sub-state of `running` (spec 2026-07-18-subagent-monitoring-status, #490): the agent ended its
  * turn still working on its own downstream work (a sub-agent, a monitored command) and said so
  * with the `XEZ:MONITORING` marker — a non-attention state, not "needs you".
@@ -483,6 +501,39 @@ export const runsIndexResponseSchema = z.object({
   perProjectLimit: z.number(),
   /** Ids of the projects that had more runs than the cap allowed. */
   truncated: z.array(z.string()),
+  /**
+   * Per project, how many of its tasks need a person — `waiting` or `review` and not archived —
+   * counted over ALL of that project's runs, not only the `perProjectLimit` rows above. Without it
+   * a task older than a busy project's newest rows would be missing from every count.
+   *
+   * Two numbers because the cockpit keeps the rows live from the event stream: `total` is the
+   * complete answer as of this response, and `beyondLimit` is the part of it that lives in runs
+   * NOT carried as rows — the share no stream patch can reach. A live consumer counts its patched
+   * rows and adds `beyondLimit`; anyone else reads `total`.
+   *
+   * Only projects with `total > 0` have an entry: absent means none. The rule is the cockpit's
+   * `needsYou` (`web/src/lib/workspace-attention.ts`) and `listCounts().waiting`; keep the three
+   * identical.
+   */
+  attention: z.record(
+    z.string(),
+    z.object({
+      total: z.number().int().nonnegative(),
+      beyondLimit: z.number().int().nonnegative(),
+    }),
+  ),
+  /**
+   * Ids of the registered projects whose task data exists but could not be read (a corrupt or
+   * unreadable `runs.json`). They contribute no rows and no `attention` entry — their tasks are
+   * UNKNOWN, which a consumer must not read as "none". Empty when everything was read.
+   */
+  unreadable: z.array(z.string()),
+  /**
+   * True when the workspace's project registry itself could not be read. The route still answers
+   * 200 with whatever it could gather (often nothing) — the status code is part of the promise —
+   * so this flag is what tells "no tasks anywhere" apart from "could not look".
+   */
+  registryUnreadable: z.boolean(),
 });
 export type RunsIndexResponse = z.infer<typeof runsIndexResponseSchema>;
 
@@ -583,6 +634,17 @@ export const openInCliResponseSchema = z.object({
   command: z.string(),
 });
 export type OpenInCliResponse = z.infer<typeof openInCliResponseSchema>;
+
+/**
+ * `GET /runs/:id/resume-command` — the cockpit's "take over interactively" line, built by the
+ * server with the same builder as the terminal launcher and its fallback: `cd` into the task's
+ * folder, the account the session belongs to, then the resume command, quoted for the host's
+ * shell. `null` when there is nothing to offer: the engine still owns the run, no session was
+ * recorded, the session id or account cannot be embedded safely, or – in hosted mode – the
+ * session needs a named account (its folder is on the server). Hosted mode drops the `cd`.
+ */
+export const runResumeCommandResponseSchema = z.object({ command: z.string().nullable() });
+export type RunResumeCommandResponse = z.infer<typeof runResumeCommandResponseSchema>;
 
 /** `POST /runs/:id/remove-worktree` — per-row delete in the worktrees panel (#483). */
 export const removeWorktreeResponseSchema = z.object({ removed: z.literal(true) });

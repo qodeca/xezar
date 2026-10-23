@@ -638,8 +638,7 @@ The file kinds and their rules are in `.xezar/docs/campaign-notes.md`.
 
 Two long-lived branches (since 2026-10-18). `develop` is the default branch and the base of every
 feature pull request; `main` is the release branch and holds released work only. Agent branches
-are `xez/<id>`; people use `feature/<name>`. Until `develop` exists and the configured `baseBranch`
-names it, `main` is still the base.
+are `xez/<id>`; people use `feature/<name>`. The configured `baseBranch` is `develop` since #1100.
 
 | Pull request | Source branch | Target | Merge method |
 |---|---|---|---|
@@ -649,6 +648,8 @@ names it, `main` is still the base.
 | Hotfix (owner-authorized) | `hotfix/<name>`, from `main` | `main` | merge commit |
 | Back-merge, after every merge into `main` | `backmerge/v<version>`, from `main` | `develop` | merge commit |
 
+- A hotfix is made by hand on a `hotfix/<name>` branch cut from `main`; the kit's `hotfix`
+  workflow, which targets `develop`, is not used here (§ Deviations from the core).
 - `main` and `develop` are never a pull request's source branch, and never deleted on merge.
 - The `PR source guard` check refuses any other source branch into `main`. Release-class pull
   requests pass `integration-preflight.sh --release`, which also checks the history of promotion and
@@ -667,9 +668,10 @@ enforcement, so this limit is an instruction, not a guard.
 
 `bash .xezar/checks/repo-gates.sh` runs the install, the security stage, the application commands
 in `validation.commands`, and `.xezar/checks/repository-checks.sh`. There is no lint step. The
-required CI checks are the five in `ci.requiredChecks`; the cross-platform matrix legs that
-`CONTRIBUTING.md` names are also required by branch protection, and the LTS legs are
-informational.
+required CI checks are the five in `ci.requiredChecks`. Branch protection on `develop` and `main`
+also requires the four Windows and macOS legs on Node 22 and 24 of the cross-platform matrix, and
+`main` also requires `PR source guard`. The Linux Node 22 leg runs on every pull request without
+being required, and the LTS legs are informational.
 
 ### Gates in this project
 
@@ -702,10 +704,12 @@ After the merge, on `develop`.
 ### Release here
 
 1. CI is green on `develop`, and the owner gives the go.
-2. The `release-prep` workflow folds `changelog.d/` in a pull request into `develop`.
+2. The `release` workflow's `changelog` step folds `changelog.d/` into `CHANGELOG.md` in a pull
+   request into `develop` (`release-prep` is the brief-driven fallback).
 3. `promote/v<version>`, cut at that merge commit, merges into `main` with a merge commit.
-4. The owner dispatches Actions → Release on `main`, which raises the version and publishes to npm
-   through trusted publishing (OIDC, no token).
+4. Actions → Release is dispatched on `main` – by the owner, or by an agent after the owner's go
+   (§ Deviations from the core) – and raises the version and publishes to npm through trusted
+   publishing (OIDC, no token).
 5. Merge the bot's `release/v<version>` pull request with a merge commit.
 6. Back-merge `main` into `develop` through `backmerge/v<version>`.
 7. Verify with `npm view @qodeca/xezar version` and the tag.
@@ -715,8 +719,9 @@ Incident notes: `docs/runbooks/`.
 
 ### Extra project rules
 
-- Shipped prompts and instructions stay generic: no personal identity, path or account in a
-  committed file (`npm run check:generic-instructions`).
+- Shipped prompts and instructions stay generic (`AGENTS.md` § Generic instructions), guarded by
+  `packages/xezar/src/release/generic-instructions.test.ts` and the `check:pack` archive scan. No
+  personal identity, path or account in a committed kit file (`.xezar/CLAUDE.md`).
 - Never stop a process by command-line pattern (`pkill -f`); stop only a PID you started.
 - **Platform labels.** This project adds a `platform` group – `windows`, `linux`, `macos` – to the
   label taxonomy (both machine sources carry it). Every issue carries at least one, set at
@@ -740,7 +745,7 @@ records the evidence and updates this row.
 
 | Guard | State |
 |---|---|
-| Branch rules block force push and deleting the base and release branches | Partly: `main` is protected, but without admin enforcement; `develop` is protected at the cut-over |
+| Branch rules block force push and deleting the base and release branches | Partly: `main` and `develop` are protected, but without admin enforcement; a ruleset on `main` requires a pull request and allows only merge commits. Since 2026-10-23 the tag ruleset "release tags: never moved or deleted" blocks updating or deleting a `refs/tags/v*` tag (repository admins may bypass). Creating a tag stays open: the Release workflow creates its tag through the API, and GitHub does not accept the GitHub Actions app as a bypass actor in a repository ruleset |
 | Hook or permission rule blocks recursive deletes outside the worktree and schema drops | To check |
 | Agents use a short-lived, branch-scoped token, never a full-access login | To check |
 | No deploy, signing, registry or production credentials in agent sessions | To check |
@@ -750,10 +755,10 @@ records the evidence and updates this row.
 | Cost, turn and wall-clock caps per unattended run | Not set; the owner sets the numbers |
 | One-step stop and token revocation | To check |
 | Security stage rejects hidden Unicode in agent instruction files | To check |
-| CI workflow rules (read-only token, pinned actions, no `pull_request_target` checkout) | To check |
+| CI workflow rules (read-only token, pinned actions, no `pull_request_target` checkout) | Yes (checked 2026-10-23): every workflow in `.github/workflows/` defaults to `permissions: contents: read`, with wider rights only on the jobs that need them, every `uses:` is pinned to a commit SHA, and no workflow uses `pull_request_target` |
 | Script that flags changes to tests, fixtures, gate scripts and CI workflows | To check |
-| Minimum package age; install scripts off | Not set; the owner sets the minimum age |
-| Mutation tool, property-test library, clone detector | Not named yet |
+| Minimum package age; install scripts off | Partly: Dependabot waits 7 days after a release before proposing it (`cooldown.default-days: 7` in `.github/dependabot.yml`); no minimum age for installs by hand, and dependency install scripts still run (no `ignore-scripts` setting; only the release `publish` job and the pack checks pass `--ignore-scripts`) |
+| Mutation tool, property-test library, clone detector | Partly: Stryker covers the MCP server (80 % floor) and, since #1123, the read-only command lock and Qwen Code's tool policy (68 % floor), nightly on the default branch (`.github/workflows/mutation.yml`), not per `risk-high` change; no property-test library or clone detector named yet |
 | No agent attribution in commits and pull requests | Yes: the owner's Claude Code setting adds no co-author line |
 | Setup and smoke-check command | Not named yet |
 
@@ -763,11 +768,27 @@ records the evidence and updates this row.
   promotion comes first; the Release workflow then stamps the version while it publishes, tags the
   promoted commit through the GitHub API (unsigned), and opens the version-bump pull request
   afterwards (`docs/publishing.md` § Cutting a release).
+- **Who sets labels.** The core (§ Labels) lets contributors set category, priority and
+  `needs-design`. Here contributors set no labels at all, as `CONTRIBUTING.md` says: a maintainer
+  sets category, priority, risk, platform and `needs-design` at intake, and the pipeline sets the
+  rest.
+- **An agent may dispatch the Release workflow** (owner decision, 2026-10-23). The core (§ Release)
+  says agents never publish. Here the kit's release-publish skill dispatches Actions → Release
+  (`gh workflow run Release`) once the owner has given the go; the `production` environment's
+  required reviewer still approves the publish job before anything reaches npm.
+- **A task agent may merge pull requests with `gh pr merge`** (owner decision, 2026-10-23). The
+  core (§ Merging) sends pipeline merges only through the engine. Here the kit's integration and
+  release-publish skills merge directly with `gh pr merge`, after their preflight checks pass.
+- **A same-vendor review is accepted for `risk-high` and trust-boundary changes** (owner decision,
+  2026-10-23). The core (§ Review loop) asks for a reviewer from a different vendor, or the
+  owner's written acceptance of a same-vendor review. This entry is that standing written
+  acceptance; the reviewer must still be a different model from the author.
+- **Hotfixes are made by hand from `main`** (owner decision, 2026-10-23). The kit's `hotfix`
+  workflow opens its pull request into the base branch (`develop`), so it is not used here; a
+  hotfix follows § Branches and `docs/publishing.md` instead.
 
 ### Known gaps to fix outside this file
 
-- `CONTRIBUTING.md` says the canonical gate list is in `AGENTS.md` § Validation; it is in
-  `repo-gates.sh` and `validation.commands`.
-- The PR template's "UI in scope" omits the CLI surface that the design gate covers.
-- The issue templates do not ask for priority or risk (inferred from a search).
-- `docs/architecture/` does not exist yet; it is created with its first record.
+- The issue templates do not ask for priority or risk.
+- `docs/architecture/`, `docs/runbooks/` and `docs/deprecations/` (named by
+  `BACKWARD_COMPATIBILITY.md` § 8) do not exist yet; each is created with its first record.

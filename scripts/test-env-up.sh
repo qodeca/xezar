@@ -434,10 +434,21 @@ ensure_browser() {
         return 0 ;;
     esac
     BROWSER_COMMAND="$TOOL_DIR/$ASSET"
-    if [ ! -x "$BROWSER_COMMAND" ]; then
-      URL="https://github.com/vercel-labs/agent-browser/releases/latest/download/$ASSET"
+    # The pinned release and its SHA-256 per asset (shared with CI). A cached or downloaded
+    # binary runs only when it is exactly those bytes; anything else is replaced or refused.
+    PIN_FILE="$SCRIPT_DIR/agent-browser-pin.sh"
+    if [ ! -f "$PIN_FILE" ]; then
+      BROWSER_NOTES="agent-browser pin file missing: $PIN_FILE"; return 0
+    fi
+    . "$PIN_FILE"
+    if ! agent_browser_sha256 "$ASSET" >/dev/null; then
+      BROWSER_NOTES="no pinned SHA-256 for $ASSET"; return 0
+    fi
+    if ! agent_browser_verify "$ASSET" "$BROWSER_COMMAND"; then
+      rm -f "$BROWSER_COMMAND"
+      URL=$(agent_browser_url "$ASSET")
       TMP="$BROWSER_COMMAND.tmp.$$"
-      log "installing agent-browser ($ASSET)"
+      log "installing agent-browser $AGENT_BROWSER_VERSION ($ASSET)"
       if command -v curl >/dev/null 2>&1; then
         curl -fL --retry 3 --connect-timeout 30 --max-time 600 -o "$TMP" "$URL" || {
           BROWSER_NOTES="download failed: $URL"; rm -f "$TMP"; return 0; }
@@ -445,6 +456,10 @@ ensure_browser() {
         wget -T 30 -t 3 -O "$TMP" "$URL" || { BROWSER_NOTES="download failed: $URL"; rm -f "$TMP"; return 0; }
       else
         BROWSER_NOTES="no built-in HTTP downloader is available"; return 0
+      fi
+      if ! agent_browser_verify "$ASSET" "$TMP"; then
+        BROWSER_NOTES="SHA-256 check failed for $ASSET $AGENT_BROWSER_VERSION (or no hashing tool); not run"
+        rm -f "$TMP"; return 0
       fi
       chmod 755 "$TMP"
       mv "$TMP" "$BROWSER_COMMAND"

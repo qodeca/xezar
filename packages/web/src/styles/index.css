@@ -29,6 +29,10 @@
  * Reach for this on any control that is hidden until hover. Pair it with `focus-visible:`, which
  * is the keyboard's answer to the same problem. */
 @custom-variant no-hover (@media (hover: none));
+/* The light theme, for the few places where the accent as INK fails on white (G-23): the lime is
+ * about 1.3:1 there and the violet accent 3.1:1, so `light:text-foreground` gives a state mark or
+ * a hint the ink token while the dark theme keeps the accent it was designed with. */
+@custom-variant light (&:where(.light, .light *));
 
 /* Streamdown (the thread's markdown renderer) styles itself with Tailwind utility classes that
  * live in node_modules — without this @source Tailwind would purge them and every code block /
@@ -229,6 +233,18 @@
   /* orange-700, for the same reason the amber above darkens: orange-400 as ink on white is ~2:1.
    * Far enough from `--pending-strong` (amber-700) to stay a different colour, not a shade. */
   --conflict: #c2410c;
+
+  /* The three status hues as ink on white were 2.5:1 (success #10b981), 3.8:1 (danger #ef4444)
+   * and 3.1:1 (violet #8f86e8) – under AA for the 10–13px text they colour (G-23). Same hue,
+   * lower lightness, until each clears 4.5:1 on every light surface it prints on: white, the
+   * card/sidebar tints, `--muted` (#f7f7f7) and its own 10–15% tint over white. The darker
+   * fills then carry white ink better than near-black (near-black drops to ~3.3:1), so the
+   * light theme flips the ink on these fills to white; the dark theme keeps near-black. */
+  --success: #0a7350;
+  --danger: #c61111;
+  --danger-ink: #ffffff;
+  --violet: #5d50de;
+  --violet-foreground: #ffffff;
 
   --shadow-modal: 0 16px 48px 0 rgba(0, 0, 0, 0.12);
 
@@ -533,6 +549,16 @@
   100% {
     opacity: 0;
   }
+}
+
+/* ---------- rendered Markdown links ----------
+ * Streamdown paints every link (`data-streamdown='link'`, an <a> or the link-safety button)
+ * `text-primary underline`. On the light ground the accent is about 1.3:1 (lime) or 3.1:1
+ * (violet) – below AA for text of any size – so light links take the ink token and keep the
+ * underline as the link cue. Dark theme is unchanged: the accent passes there. Unlayered, like
+ * the block below, so it outranks the `utilities` layer. (known-gaps.md G-23) */
+.light [data-streamdown='link'] {
+  color: var(--foreground);
 }
 
 /* ---------- thread markdown (mockup `.msg-assist`) ----------

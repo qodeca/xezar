@@ -77,6 +77,7 @@ function neverSetUp(
     checkingRunId: null,
     launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
     issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
+    olderSetup: null,
     ...overrides,
   };
 }
@@ -559,6 +560,33 @@ describe('discover_project — the tool', () => {
     );
     expect(closed).toContain('Issue filing: not available: The GitHub CLI (gh) is not signed in.');
     expect(closed).not.toContain('Issue filing: available');
+  });
+
+  it('tells the leader when the setup collection is older than this xezar supports (UI ↔ MCP parity)', () => {
+    const older = discoveryText(
+      buildDiscovery(
+        facts({
+          onboarding: {
+            state: 'set-up',
+            provenance: 'recorded',
+            offerPending: true,
+            olderSetup: {
+              recordedVersion: '3.0.3',
+              minimumVersion: '3.2.0',
+              upgradeGuideUrl: 'https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md',
+            },
+          },
+        }),
+      ),
+    );
+    expect(older).toContain('Setup: this project records a finished setup in its own files.');
+    expect(older).toContain("This project's setup is version 3.0.3; this xezar needs 3.2.0 or later");
+    expect(older).toContain('(https://github.com/qodeca/xezar-skills/blob/main/upgrade/README.md)');
+    expect(older).toContain('a re-check compares files but does not upgrade the setup.');
+    expect(older).not.toContain('undefined');
+
+    const current = discoveryText(buildDiscovery(facts({ onboarding: { state: 'set-up', provenance: 'recorded' } })));
+    expect(current).not.toContain('upgrade guide');
   });
 
   it('reads --bind-host from the serving process, in both spellings', () => {

@@ -4,7 +4,7 @@
   "schemaVersion": 1,
   "defaults": {
     "source": "xezar-skills",
-    "version": 4
+    "version": 6
   },
   "leader": {
     "tool": "claude",
@@ -149,7 +149,7 @@
       "enforcesToolLimits": true,
       "advisoryOnly": false,
       "notes": [
-        "Text only through Qwen Code: the image check of #1042 got a wrong colour, so it is in no row that has to see a screen."
+        "Sees images through Qwen Code (#185, 2026-10-18: numbers and colours right, a 4 px offset missed 1 to 2 times in 5), so it stays out of every row that judges a screen until a row-level test passes. The #1042 run that answered \"White\" is not explained."
       ]
     },
     "qwen/deepseek-v4-pro": {
@@ -229,7 +229,7 @@
     {
       "id": "qwen-write-claude-review",
       "checkedAt": "merge",
-      "rule": "What a Qwen lane wrote merges only after a review on a Claude lane, claude/sonnet first, or else on codex/gpt-6-astra. Another DeepSeek model may review DeepSeek work, never the author's own, but that review alone does not clear the merge."
+      "rule": "What a Qwen lane wrote merges only after a review on a Claude lane, claude/sonnet first; codex/gpt-6-astra is reserved and no review fallback. Another DeepSeek model may review DeepSeek work, never the author's own, but that review alone does not clear the merge."
     },
     {
       "id": "high-risk-other-vendor",
@@ -520,7 +520,7 @@
       ],
       "notes": [
         "Sonnet is left out: it slipped twice on docs writing.",
-        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review on a Claude lane, claude/sonnet first (codex/gpt-6-astra is reserved for generated-images, diagrams and security-review)."
       ]
     },
     {
@@ -819,7 +819,7 @@
       ],
       "notes": [
         "A test-only fix may go to codex/gpt-6-luna.",
-        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review on a Claude lane, claude/sonnet first (codex/gpt-6-astra is reserved for generated-images, diagrams and security-review)."
       ]
     },
     {
@@ -872,7 +872,7 @@
       ],
       "notes": [
         "Never codex/gpt-5.6-terra alone with no review.",
-        "A Qwen write opens a draft PR with a red proof and needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR with a red proof and needs a full review on a Claude lane, claude/sonnet first (codex/gpt-6-astra is reserved for generated-images, diagrams and security-review)."
       ]
     },
     {
@@ -1167,7 +1167,7 @@
         }
       ],
       "notes": [
-        "A Qwen write opens a draft PR that needs a full review: claude/sonnet first, then codex/gpt-6-astra."
+        "A Qwen write opens a draft PR that needs a full review on a Claude lane, claude/sonnet first (codex/gpt-6-astra is reserved for generated-images, diagrams and security-review)."
       ]
     },
     {
@@ -1414,12 +1414,15 @@
         "claude/opus",
         "codex/gpt-6-sol",
         "codex/gpt-5.6-terra",
-        "claude/sonnet",
-        "qwen/deepseek-v4-pro"
+        "claude/sonnet"
       ],
       "never": [
         {
           "tier": "cheap"
+        },
+        {
+          "vision": false,
+          "why": "a criterion may need the screen, and a text-only lane cannot see it (#185)"
         }
       ],
       "neverAuthor": true

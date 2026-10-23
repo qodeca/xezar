@@ -7,9 +7,9 @@ Three consumers, one definition:
 
 - **the server** (`packages/xezar/src/server/server.ts`) validates requests with these schemas and
   types each handler's payload by the matching response schema, so the schema is the source of the
-  route type rather than a second opinion about it. Four `/projects` routes still carry a
-  hand-written response interface in `server.ts`; those are not exempt —
-  `contract-parity.workspace.test.ts` asserts each against its schema in both directions;
+  route type rather than a second opinion about it. No response interface is hand-written there
+  any more: the four `/projects` responses that were are the contract's inferred types now,
+  re-exported by `server.ts`;
 - **`@qodeca/xezar-api-client`** depends on this package and re-exports it wholesale
   (`export * from '@qodeca/xezar-contract'` in `packages/api-client/src/index.ts`), so a
   consumer gets the schemas and the inferred types from one import;
@@ -26,6 +26,6 @@ Three consumers, one definition:
    that has none of the server's module graph.
 3. **Exactly what the server sends.** A response schema that is wider than the handler is a
    defect, not a convenience: the per-route guards in
-   `packages/xezar/src/server/contract-parity*.test.ts` – six files, split by route family – assert
+   `packages/xezar/src/server/contract-parity*.test.ts` – eight files, split by route family – assert
    `z.infer<schema>` and the route's own inferred type are MUTUALLY assignable, so a schema that
    drifts either way fails to compile.

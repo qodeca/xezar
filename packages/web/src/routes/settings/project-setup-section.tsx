@@ -1,4 +1,4 @@
-import { CompassIcon, InfoIcon, LockIcon, RotateCwIcon } from 'lucide-react'
+import { CompassIcon, ExternalLinkIcon, InfoIcon, LockIcon, RotateCwIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { useOnboarding, useSetupStart } from '@/api/queries'
@@ -9,10 +9,13 @@ import { Link, useNavigate } from '@/lib/project-router'
 import {
   HOSTED_SETUP_NOTE,
   identityLabel,
+  OLDER_SETUP_DISMISSED_NOTE,
   setupActionLabel,
   setupBody,
   setupHeading,
   setupMode,
+  showsOlderSetup,
+  UPGRADE_GUIDE_LINK_LABEL,
 } from '@/lib/onboarding'
 import type { OnboardingStamp, OnboardingStatus } from '@qodeca/xezar-api-client'
 
@@ -63,6 +66,8 @@ export function ProjectSetupSection() {
  *  the state in words, so it is `aria-hidden` and removing all colour loses nothing. */
 function dotTone(status: OnboardingStatus): StatusDotTone {
   if (status.state === 'checking') return 'violet'
+  // An older setup collection is set up AND needs attention: the same tone as a changed identity.
+  if (showsOlderSetup(status)) return 'pending'
   if (status.state === 'set-up') return 'success'
   return status.state === 'changed' ? 'pending' : 'neutral'
 }
@@ -107,7 +112,22 @@ function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted
                 {setupBody(status)}
               </p>
             </div>
-            <div className="shrink-0 max-md:w-full">
+            <div className="flex shrink-0 flex-col gap-row max-md:w-full">
+              {showsOlderSetup(status) ? (
+                // The upgrade comes first: a re-check before it changes nothing (decision D-13).
+                <Button asChild variant="contrast" className="max-md:h-11 max-md:w-full">
+                  <a
+                    href={status.olderSetup.upgradeGuideUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-action="open-upgrade-guide"
+                  >
+                    <ExternalLinkIcon aria-hidden="true" />
+                    {UPGRADE_GUIDE_LINK_LABEL}
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                </Button>
+              ) : null}
               {running ? (
                 <Button asChild variant="outline" className="max-md:h-11 max-md:w-full">
                   <Link to={`/tasks/${status.checkingRunId}`}>{setupActionLabel(status)}</Link>
@@ -165,7 +185,12 @@ function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted
               xezar and your tasks work exactly as before.
             </SetupNote>
           ) : null}
-          {status.dismissed ? (
+          {status.dismissed && showsOlderSetup(status) ? (
+            <SetupNote icon={<InfoIcon aria-hidden="true" className="size-4 shrink-0" />}>
+              <strong className="font-semibold text-foreground">{OLDER_SETUP_DISMISSED_NOTE.lead}</strong>{' '}
+              {OLDER_SETUP_DISMISSED_NOTE.rest}
+            </SetupNote>
+          ) : status.dismissed ? (
             <SetupNote icon={<InfoIcon aria-hidden="true" className="size-4 shrink-0" />}>
               <strong className="font-semibold text-foreground">A re-check is always here.</strong>{' '}
               Choosing Later hides the notice for this version only. It never turns the check off.

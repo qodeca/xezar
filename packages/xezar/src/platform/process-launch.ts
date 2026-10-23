@@ -214,8 +214,9 @@ export function launch(
 export function launchMsys(
   bash: string,
   command: string,
-  options: Omit<SpawnOptionsWithoutStdio, 'shell' | 'windowsVerbatimArguments'>,
-): ChildProcessWithoutNullStreams {
+  // Its one caller is a check step, which runs with no stdin (`check-step-shell.ts`).
+  options: Omit<SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>, 'shell' | 'windowsVerbatimArguments'>,
+): ChildProcessByStdio<null, Readable, Readable> {
   // A stop finds the shell's MSYS processes through Git's ps and the shell's own MSYS pid, which
   // the script's first act writes to a file (`msys-process-tree.ts`). Without ps.exe (MinGit) the
   // script runs as given and a stop reaches the Windows tree only.
@@ -230,7 +231,16 @@ export function launchMsys(
     argv0: msysQuote(bash),
   });
   trackChild(child, { platform: 'win32', ...(prefix !== null ? { msys: { ps, pidFile } } : {}) });
-  if (prefix !== null) child.once('exit', () => rmSync(pidFile, { force: true }));
+  if (prefix !== null) {
+    child.once('exit', () => {
+      // A locked or protected file (EBUSY, EPERM) must not throw out of an event listener.
+      try {
+        rmSync(pidFile, { force: true });
+      } catch {
+        // The file sits in the temp folder; leaving it behind is harmless.
+      }
+    });
+  }
   return child;
 }
 

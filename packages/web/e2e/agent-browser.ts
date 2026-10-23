@@ -1,7 +1,9 @@
-import { execFileSync, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dirname, resolve } from 'node:path'
+
+import { runAgentBrowserCli } from './agent-browser-cli'
 
 /**
  * The agent-browser provider seam. Every e2e spec drives the app through this module and
@@ -256,11 +258,10 @@ export class AgentBrowser {
   private run(args: string[]): Record<string, unknown> {
     let stdout: string
     try {
-      stdout = execFileSync(this.bin, ['--session', this.session, ...args, '--json'], {
-        encoding: 'utf8',
-        // A hung browser must fail the spec, not the whole suite's wall clock.
+      // Output through files, not pipes: see `agent-browser-cli.ts` (the Windows daemon hang).
+      // A hung browser must fail the spec, not the whole suite's wall clock.
+      stdout = runAgentBrowserCli(this.bin, ['--session', this.session, ...args, '--json'], {
         timeout: 60_000,
-        maxBuffer: 32 * 1024 * 1024,
       })
     } catch (cause) {
       throw new Error(`xezar e2e: agent-browser ${args.join(' ')} failed`, { cause })

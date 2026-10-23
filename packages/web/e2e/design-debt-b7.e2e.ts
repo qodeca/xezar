@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 
 /**
  * Design-debt batch B7 in a real browser — the remaining routes and feature panels (#453, AC-7 /
@@ -219,7 +220,7 @@ beforeAll(async () => {
 
   browser = AgentBrowser.open(sessionId)
   const cli = (...args: string[]) => {
-    const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+    const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if (!result.success) throw new Error('B7 provider command failed')
     return result.data
   }
@@ -441,14 +442,10 @@ function contrast(scope: string) {
   })()`)
 }
 
-// Light-theme ink tokens already below 4.5:1 as small text (known-gaps G-23). B7 may not change a
-// token (#453: B1 owns them), so these colours are reported, not passed; any OTHER colour below the
-// line still fails, and so does one of these on a dark surface.
-const G23_LIGHT_INKS: Record<string, string> = {
-  'rgb(16, 185, 129)': '--success',
-  'rgb(239, 68, 68)': '--danger',
-  'rgb(143, 134, 232)': '--violet',
-}
+// Light-theme ink tokens once below 4.5:1 as small text (known-gaps G-23). The light theme now
+// darkens `--success`, `--danger` and `--violet` past 4.5:1 (`src/light-status-ink.test.ts`), so
+// no colour is excused any more: every sample below the line fails, in both themes.
+const G23_LIGHT_INKS: Record<string, string> = {}
 
 it.each(['light', 'dark'] as const)('small B7 text has composited contrast in %s', (theme) => {
   read(`(() => { localStorage.setItem('xez-theme', '${theme}'); return true })()`)

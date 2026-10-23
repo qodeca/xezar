@@ -28,6 +28,14 @@ import {
 export const ROOT_PIN_WINDOW_MS = 2_000;
 /** Recorded processes per run; beyond it only what is already recorded is kept up to date. */
 export const LEDGER_MAX_ENTRIES = 2_048;
+/**
+ * A full ledger forgets a process no read has shown alive for this long (30 sampler reads), before
+ * it refuses a new one: a long run that starts thousands of short programs would otherwise stop
+ * recording for good. Never the root. The only proof a forgotten process still carried is for a
+ * live program it started that no read recorded (one that left the tree with it); the ledger
+ * records those, by their own identity, as it forgets their parent.
+ */
+export const LEDGER_STALE_MS = 60_000;
 /** Recorded Git Bash process groups per run. */
 export const LEDGER_MAX_GROUPS = 256;
 
@@ -154,6 +162,7 @@ export class RunProcessLedger {
       const row = byPid.get(pid);
       if (row?.startedAt === entry.startedAt) entry.lastSeenAt = Math.max(entry.lastSeenAt, table.queriedAt);
     }
+    if (this.seen.size >= LEDGER_MAX_ENTRIES) this.forgetStale(table);
     const root = this.root;
     const wasRejected = root?.rejected === true;
     const rootStart = root === undefined ? undefined : this.pinnedStart(root, byPid.get(root.pid));
@@ -179,6 +188,27 @@ export class RunProcessLedger {
       root.startedAt = row.startedAt;
     }
     return row.startedAt === root.startedAt ? root.startedAt : undefined;
+  }
+
+  /**
+   * Drop the processes no read has shown alive for `LEDGER_STALE_MS`; the pinned root stays. A
+   * live row that started under a dropped process – the same rule `targets` applies to a recorded
+   * parent – is recorded in its place, so a stop still proves it.
+   */
+  private forgetStale(table: ProcessTable): void {
+    const root = this.root;
+    const stale = new Map<number, Seen>();
+    for (const [pid, entry] of this.seen) {
+      if (root !== undefined && pid === root.pid && entry.startedAt === root.startedAt) continue;
+      if (entry.lastSeenAt < table.queriedAt - LEDGER_STALE_MS) stale.set(pid, entry);
+    }
+    if (stale.size === 0) return;
+    for (const pid of stale.keys()) this.seen.delete(pid);
+    for (const row of table.rows) {
+      const parent = stale.get(row.ppid);
+      if (parent === undefined || row.startedAt === undefined || this.seen.has(row.pid)) continue;
+      if (parent.startedAt <= row.startedAt && row.startedAt < parent.lastSeenAt) this.note({ pid: row.pid, startedAt: row.startedAt }, table.queriedAt);
+    }
   }
 
   private note({ pid, startedAt }: IdentifiedProcess, queriedAt: number): void {

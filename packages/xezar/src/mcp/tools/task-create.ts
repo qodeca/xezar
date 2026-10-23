@@ -9,12 +9,17 @@ import {
   type TaskVerdict,
   type TaskVerdictFinding,
 } from '@qodeca/xezar-contract';
-import { hc } from 'hono/client';
 import { z } from 'zod';
 import { formatModelIdentity, resolveModelIdentity } from '../../core/model-identity.ts';
 import { modelConflictsWithRunner } from '../../core/model-presets.ts';
-import type { AppType } from '../../server/app-type.ts';
-import { McpServiceAdapter, type ServiceDispatch, type StartRunValue } from '../service-adapter.ts';
+import {
+  inProcessClient,
+  McpServiceAdapter,
+  settleServiceAnswer,
+  type ServiceAnswer,
+  type ServiceDispatch,
+  type StartRunValue,
+} from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { cockpitLinks } from '../cockpit-address.ts';
 import { providersPage } from './discovery.ts';
@@ -187,43 +192,22 @@ function fieldRefusal(args: TaskCreateArgs): string | null {
 
 // ---- the service seam --------------------------------------------------------------------------
 
-/** The adapter's in-process transport, for the read and write routes its closed table does not
- *  name. Same `host`, same absent `Origin`, same scoped prefix — the request never leaves the
- *  process and no argument chooses the project. */
-function client(service: ServiceDispatch) {
-  return hc<AppType>('http://127.0.0.1', {
-    fetch: async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('host', '127.0.0.1');
-      headers.delete('origin');
-      const url = input instanceof Request ? input.url : String(input);
-      return service.request(url, { ...init, headers });
-    },
-  });
-}
-
+/** The adapter's in-process client (`service-adapter.ts`), for the read and write routes its
+ *  closed table does not name. No argument chooses the project. */
 function scopedClient(service: ServiceDispatch, projectId: string) {
-  const api = client(service).api.v1;
+  const api = inProcessClient(service).api.v1;
   return { workspace: api, project: api.p[':projectId'], param: { projectId } };
 }
 type Api = ReturnType<typeof scopedClient>;
 
-type Settled<T> = { ok: true; status: number; value: T } | { ok: false; status: number; error: string };
-
-async function settle<T>(pending: Promise<Response>): Promise<Settled<T>> {
-  let res: Response;
+/** The shared mapping (`settleServiceAnswer`). A dispatch that throws is a refusal here, so the
+ *  composer reads that degrade one input instead of failing the whole call. */
+async function settle<T>(pending: Promise<Response>, success: readonly number[] = [200]): Promise<ServiceAnswer<T>> {
   try {
-    res = await pending;
+    return await settleServiceAnswer<T>(pending, success);
   } catch {
     return { ok: false, status: 500, error: 'the service did not answer' };
   }
-  const body: unknown = await res.json().catch(() => undefined);
-  if (res.ok && body !== undefined) return { ok: true, status: res.status, value: body as T };
-  const error =
-    body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
-      ? (body as { error: string }).error
-      : `service answered ${res.status}`;
-  return { ok: false, status: res.status, error };
 }
 
 /** Everything the composer reads before it enables Start, fetched the way it fetches it. */
@@ -924,6 +908,7 @@ async function startFromInbox(args: TaskCreateArgs, api: Api, projectId: string)
   });
   const started = await settle<{ run: RunRecord }>(
     api.project.todos[':id'].start.$post({ param: { ...api.param, id: todoId }, json: body }),
+    [201],
   );
   if (!started.ok) return refusal(operationId, started.status, started.error);
   const record = started.value.run;
@@ -948,6 +933,7 @@ async function savePlan(args: TaskCreateArgs, api: Api): Promise<McpToolResult> 
         overwrite: args.overwrite,
       }) as Parameters<Api['project']['workflows']['$post']>[0]['json'],
     }),
+    [201],
   );
   if (!saved.ok) {
     // The route's 409 names the absolute file path; the caller needs the decision, not the path.

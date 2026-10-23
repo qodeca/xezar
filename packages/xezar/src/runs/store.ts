@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
 // they go out on every run route, and one definition is what keeps the wire and the file identical.
-import { decisionQuestionSchema, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
+import { decisionQuestionSchema, engineOwnsRun, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
@@ -358,6 +358,13 @@ export type StepState = z.infer<typeof stepStateSchema>;
 export type QueuedMessage = z.infer<typeof queuedMessageSchema>;
 export type RunRecord = z.infer<typeof runRecordSchema>;
 
+/** Where `RunStore.open` keeps the original bytes of a `runs.json` it could not fully read: in the
+ *  `backups/` subdirectory, because a new top-level file under `.local/xezar/` breaks consumers
+ *  that check those names (see `local-xezar-top-level-names.ts`). One file, replaced each time. */
+export function runIndexBackupPath(dataDir: string): string {
+  return join(dataDir, 'backups', 'runs.json.bak');
+}
+
 /** One persisted event line; `type` mirrors AgentEvent plus engine lifecycle. */
 export interface RunEvent {
   seq: number;
@@ -651,7 +658,7 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
   // all still work.
   if (
     !opts?.keepLive &&
-    (run.status === 'running' || run.status === 'queued' || run.status === 'waiting')
+    engineOwnsRun(run.status)
   ) {
     run.status = 'failed';
     run.error = 'interrupted — xezar process exited during the run';
@@ -660,7 +667,7 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
       if (step.status === 'running' || step.status === 'waiting') step.status = 'failed';
     }
   }
-  if (!['running', 'waiting', 'queued'].includes(run.status)) {
+  if (!engineOwnsRun(run.status)) {
     run.activity = undefined;
     run.monitoringWakeAt = undefined;
   }
@@ -798,6 +805,9 @@ export class RunStore extends EventEmitter {
    *  until it arrives and `null` when it cannot be known — both mean "unscoped", which is
    *  exactly the pre-#945 behavior. */
   private repoHandle: RepoHandle | null | undefined;
+  /** Why `open()` could not read every record of an existing `runs.json`; undefined when it
+   *  loaded cleanly or no index existed yet. See `loadedCleanly`. */
+  private loadProblem: string | undefined;
 
   private constructor(readonly dataDir: string) {
     super();
@@ -812,21 +822,54 @@ export class RunStore extends EventEmitter {
     const indexPath = join(dataDir, 'runs.json');
     let decisionChanged = false;
     if (existsSync(indexPath)) {
+      let text: string | undefined;
       try {
-        const raw = JSON.parse(readFileSync(indexPath, 'utf8'));
-        const parsed = z.array(runRecordSchema).safeParse(raw);
-        if (parsed.success) {
-          for (const run of parsed.data) {
-            store.decisionProjections.set(run.id, JSON.stringify(runDecisionProjection(run)));
-            if (run.decisionRevision === undefined) decisionChanged = true;
-            run.decisionRevision ??= 0;
-            const reconciled = reconcileLoadedRun(run, opts);
-            store.runs.set(run.id, reconciled);
-            if (store.trackDecision(reconciled)) decisionChanged = true;
+        text = readFileSync(indexPath, 'utf8');
+      } catch (err) {
+        store.loadProblem = `could not be read (${err instanceof Error ? err.message : String(err)})`;
+      }
+      if (text !== undefined) {
+        try {
+          let raw: unknown;
+          try {
+            raw = JSON.parse(text);
+          } catch {
+            raw = undefined;
           }
+          if (!Array.isArray(raw)) {
+            store.loadProblem = 'is not a readable run list';
+          } else {
+            // Per-row salvage: one unreadable record (a damaged row, or a value only a newer
+            // xezar understands) drops that record alone, never the whole history.
+            let dropped = 0;
+            for (const row of raw) {
+              const parsed = runRecordSchema.safeParse(row);
+              if (!parsed.success) {
+                dropped++;
+                continue;
+              }
+              const run = parsed.data;
+              store.decisionProjections.set(run.id, JSON.stringify(runDecisionProjection(run)));
+              if (run.decisionRevision === undefined) decisionChanged = true;
+              run.decisionRevision ??= 0;
+              const reconciled = reconcileLoadedRun(run, opts);
+              store.runs.set(run.id, reconciled);
+              if (store.trackDecision(reconciled)) decisionChanged = true;
+            }
+            if (dropped > 0) store.loadProblem = `had ${dropped} unreadable run record(s)`;
+          }
+        } catch (err) {
+          store.loadProblem = `could not be loaded (${err instanceof Error ? err.message : String(err)})`;
         }
-      } catch {
-        // corrupt index — start fresh; event files stay on disk untouched
+        // Keep the original bytes before any save rewrites runs.json from what was salvaged.
+        if (store.loadProblem) store.backUpUnreadableIndex(text);
+      }
+      if (store.loadProblem) {
+        console.warn(
+          `[xez] ${indexPath} ${store.loadProblem} — loaded ${store.runs.size} run(s); ` +
+            (text === undefined ? 'the file is left as it is' : `the original is kept as ${runIndexBackupPath(dataDir)}`) +
+            ' and orphaned task folders are not cleaned up this start',
+        );
       }
     }
     if (decisionChanged) store.saveNow();
@@ -890,6 +933,29 @@ export class RunStore extends EventEmitter {
       }
     }
     return changed;
+  }
+
+  /**
+   * True when `open()` read the whole existing `runs.json` (or there was none). False when the
+   * file could not be read or parsed, or when some of its records were dropped. A destructive
+   * sweep that treats "not in the store" as "safe to delete" must check this first: a partial
+   * load is not a list of what xezar no longer needs.
+   */
+  get loadedCleanly(): boolean {
+    return this.loadProblem === undefined;
+  }
+
+  /** Copy an index that did not load cleanly to `backups/runs.json.bak`. Best-effort: a failure
+   *  is logged and never blocks the open. */
+  private backUpUnreadableIndex(text: string): void {
+    const indexPath = join(this.dataDir, 'runs.json');
+    try {
+      mkdirSync(join(this.dataDir, 'backups'), { recursive: true });
+      writeFileAtomicSync(runIndexBackupPath(this.dataDir), text, { encoding: 'utf8' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[xez] could not keep a copy of ${indexPath}: ${message}`);
+    }
   }
 
   listRuns(): RunRecord[] {
@@ -965,7 +1031,7 @@ export class RunStore extends EventEmitter {
       delete run.referencedIssueNumberSeeded;
     }
     const normalized = { ...patch };
-    if (normalized.status && !['running', 'waiting', 'queued'].includes(normalized.status)) {
+    if (normalized.status && !engineOwnsRun(normalized.status)) {
       normalized.activity = undefined;
       normalized.monitoringWakeAt = undefined;
       normalized.monitoringWakeCapReached = undefined;
@@ -974,7 +1040,7 @@ export class RunStore extends EventEmitter {
     // 2026-08-03-auto-resume-after-usage-limit): it is a promise made ABOUT a failed run, so a
     // run coming back to life — the resume itself, a user Continue, a re-queue — retires it.
     // The manager's timer re-checks the record before it fires, so a cleared field is enough.
-    if (normalized.status && ['running', 'waiting', 'queued'].includes(normalized.status)) {
+    if (normalized.status && engineOwnsRun(normalized.status)) {
       normalized.autoResumeAt = undefined;
     }
     Object.assign(run, this.redactPatch(normalized));

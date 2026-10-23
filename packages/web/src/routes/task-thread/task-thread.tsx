@@ -482,7 +482,11 @@ export function ThreadView({
               : 'Message the agent — / for skills, @ for files…'
             }
             autocompleteSkills
-            quickReplies
+            // The canned "Yes, approved." / "Continue." answer a question, so they exist only
+            // while the agent is waiting on one (behaviour.md § 1). A running, queued or review
+            // thread keeps the composer enabled, and Alt+A there would message the agent or
+            // reopen a finished session without being asked to.
+            quickReplies={run.status === 'waiting'}
             getMentionCandidates={() => threadFilePaths(thread)}
           />
         </div>

@@ -11,6 +11,7 @@ import {
   getLog,
   getRepoInfo,
   getStatus,
+  redactRemoteUrl,
 } from './git.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
@@ -98,6 +99,12 @@ describe('getRepoInfo — remote discovery', () => {
   it('prefers origin when several remotes exist', async () => {
     g(dir, 'remote', 'add', 'upstream', 'https://github.com/upstream/demo.git');
     g(dir, 'remote', 'add', 'origin', 'https://github.com/acme/demo.git');
+    const info = await getRepoInfo(dir);
+    expect(info?.remote).toBe('https://github.com/acme/demo.git');
+  });
+
+  it('redacts credentials in the remote URL it reads', async () => {
+    g(dir, 'remote', 'add', 'origin', 'https://fixture-user:fixture-secret@github.com/acme/demo.git');
     const info = await getRepoInfo(dir);
     expect(info?.remote).toBe('https://github.com/acme/demo.git');
   });
@@ -400,5 +407,38 @@ describe('repo view helpers', () => {
     commit(root, 'three');
 
     expect(await getLog(root, 2)).toHaveLength(2);
+  });
+});
+
+describe('redactRemoteUrl — credentials never leave the service', () => {
+  it.each([
+    ['https://fixture-user:fixture-secret@github.com/acme/demo.git', 'https://github.com/acme/demo.git'],
+    ['https://fixture-token@github.com/acme/demo.git', 'https://github.com/acme/demo.git'],
+    ['HTTP://u:p@example.test:8080/a/b.git', 'HTTP://example.test:8080/a/b.git'],
+    ['https://u:p@ss@example.test/a/b.git', 'https://example.test/a/b.git'],
+    ['https://u:p@example.test', 'https://example.test'],
+    ['https://u:p@example.test?x=1', 'https://example.test?x=1'],
+    ['  https://u:p@example.test/a.git\n', 'https://example.test/a.git'],
+    ['ssh://git:fixture-secret@example.test:22/a/b.git', 'ssh://git@example.test:22/a/b.git'],
+    ['git+ssh://git@example.test/a/b.git', 'git+ssh://git@example.test/a/b.git'],
+    ['git@github.com:acme/demo.git', 'git@github.com:acme/demo.git'],
+    ['git:fixture-secret@github.com:acme/demo.git', 'git@github.com:acme/demo.git'],
+  ])('%s', (input, expected) => {
+    expect(redactRemoteUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    'https://github.com/acme/demo.git',
+    'https://example.test/path/with@at/repo.git',
+    '/srv/git/me@corp/repo.git',
+    'C:\\work\\me@corp\\repo',
+    '../sibling@repo',
+    'me@host-without-path',
+    'file:///srv/repo.git',
+    '',
+    '@',
+    'https://',
+  ])('leaves %j unchanged — nothing to redact', (input) => {
+    expect(redactRemoteUrl(input)).toBe(input);
   });
 });

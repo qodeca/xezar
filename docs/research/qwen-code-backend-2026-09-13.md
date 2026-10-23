@@ -2,9 +2,15 @@
 
 > **History – removed in 0.30.0.** The pi and OpenCode backends named on this page were removed in 0.30.0 ([#1041](https://github.com/qodeca/xezar/issues/1041)). Those mentions record the product as it was, not current behaviour.
 
-> **Status update — 2026-09-15:** Research only; Qwen Code is not a shipped backend
-> (`packages/contract/src/health.ts`, `runnerSchema`). External vendor/version findings below remain dated
-> 2026-09-13 evidence and were not re-verified in this sweep.
+> **Status – shipped (2026-10-23).** Qwen Code is now a shipped backend: `runnerSchema` in
+> `packages/contract/src/health.ts` lists `claude`, `codex` and `qwen` ([#1041](https://github.com/qodeca/xezar/issues/1041), proof in
+> [#1042](https://github.com/qodeca/xezar/issues/1042)). The same release, 0.30.0, removed pi and OpenCode, so Qwen Code
+> became the third backend, not the fifth the title assumes. The parity proof is
+> [qwen-code-parity-2026-10-16.md](qwen-code-parity-2026-10-16.md).
+>
+> **Status update — 2026-09-15 (original, superseded by the note above):** Research only; Qwen Code
+> is not a shipped backend. External vendor/version findings below remain dated 2026-09-13 evidence
+> and were not re-verified in this sweep.
 
 Date: 2026-09-13. Prepared by the project leader from four parallel research passes (product facts, xezar touchpoints, runner template, fit and risks). Every claim is marked **verified** (read at the cited source, or measured on this machine) or **unverified**. Nothing in xezar was changed for this report.
 
