@@ -7,4 +7,4 @@
   `X-Xezar-User`, says when `XEZ_ALLOWED_HOSTS` is needed, and documents `--yes` and
   `XEZ_DRY_RUN=1` for the installer. `docs/publishing.md` describes the `production` environment's
   reviewer and branch limits, the release-tag ruleset and npm's current unpublish policy, and
-  `SDLC.md` records four owner decisions as deviations from the core.
+  `SDLC.md` records four owner decisions as deviations from the core (#1138).
