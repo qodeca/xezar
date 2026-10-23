@@ -35,3 +35,23 @@ directions and a one-way check passes on real drift. Two mismatches recur often 
 writing `key: maybeUndefined` types a key as always-present that `JSON.stringify` drops from the
 wire (spread it conditionally), and an object-literal `type: 'x'` widens to `string` during hono's
 inference, erasing a discriminant consumers narrow on (`as const`).
+
+## Packaging: the contract and the api-client
+
+Both packages are `private` and Node-free, and both facts have rules.
+
+- **The contract is Node-free on the same terms as the api-client**: `lib: ["ES2022"]` and
+  `types: []` in its tsconfig make a `node:*` import a compile error.
+- **The contract is folded into the published CLI.** The service imports a contract *value*
+  (`workspaceUiStateSchema`, in `workspace/migrations.ts`), so a published tarball naming a package
+  npm has never seen would fail on install. `packages/xezar/scripts/inline-contract.mjs` runs as
+  `postbuild` to fold the contract into `dist/contract/` – bundle and declarations – and repoint
+  the emitted references. Delete that script the day the contract is published, or the day nothing
+  in the service imports a contract value. It needs `esbuild`, so `esbuild` is a devDependency of
+  `packages/xezar`.
+- **The api-client** (`packages/api-client`, `@qodeca/xezar-api-client`) is the typed client over
+  `AppType`, the SSE/protocol types and the scope helpers, and re-exports this package so a
+  consumer needs one import. It is **Node-free by construction** – no `node:*`, no `@types/node` –
+  because it is bundled into a browser and imported by the Node service.
+- **The service imports the api-client only in tests.** It is versioned with the release but not
+  on npm, so a runtime import would make the published CLI depend on something npm cannot resolve.

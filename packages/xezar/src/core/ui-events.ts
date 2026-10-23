@@ -136,8 +136,8 @@ export interface PermissionOption {
 
 /**
  * A chat message.
- * claude: `assistant` `text` blocks (whole-block, or true deltas via
- * `--include-partial-messages`); codex: `agentMessage` items (`phase` from
+ * claude: `assistant` `text` blocks, whole (xezar does not request partial
+ * messages, so no `item.delta`); codex: `agentMessage` items (`phase` from
  * the item's own phase field).
  */
 export interface UiMessageItem {
