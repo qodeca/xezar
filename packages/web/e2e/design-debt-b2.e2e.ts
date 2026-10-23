@@ -1,10 +1,11 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 
 // B2 owns its server and browser; no writes to the shared QA workspace or a real account.
 // Fixture replies below exercise UI failure/pending states, not server authorization.
@@ -150,8 +151,8 @@ beforeAll(async () => {
   // Attach only to this provider session's active page. Device presets do not enable touch;
   // keep this CDP session alive so Chromium retains its real input/media emulation.
   const cli=(...args:string[])=>{
-    const result=JSON.parse(execFileSync(readTestEnv().browser.command,
-      ['--session',sessionId,...args,'--json'],{encoding:'utf8',timeout:60_000}))
+    const result=JSON.parse(runAgentBrowserCli(readTestEnv().browser.command,
+      ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if(!result.success)throw new Error('B2 provider command failed')
     return result.data
   }

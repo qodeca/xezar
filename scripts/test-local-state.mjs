@@ -59,14 +59,20 @@ const ceilings = (process.env.GIT_CEILING_DIRECTORIES ?? '').split(delimiter).fi
 if (!ceilings.includes(realScratch)) ceilings.push(realScratch);
 process.env.GIT_CEILING_DIRECTORIES = ceilings.join(delimiter);
 
-// Node 22 on Windows ignores rmSync's `maxRetries`: measured on 22.23.3, a folder a just-exiting
-// child still holds fails at once with EBUSY, where Node 24 retries and removes it. Every test
-// cleans up with those options (TEST_DIR_RM_OPTIONS), and on GitHub's Node 22 Windows runner that
-// failed hundreds of tests that pass on Node 24 (#963). There, and only there, rmSync gets the
-// retry its documentation promises: EBUSY, EMFILE, ENFILE, ENOTEMPTY and EPERM, linear backoff.
+// On Windows, no Node version gives rmSync the retry its documentation promises (EBUSY, EMFILE,
+// ENFILE, ENOTEMPTY and EPERM, linear backoff of `retryDelay` ms per try), so every test cleanup
+// with TEST_DIR_RM_OPTIONS fails the moment a just-exiting child, git or a file scanner still holds
+// the folder. Node 22's rimrafSync fails at once with EBUSY (measured on 22.23.3; hundreds of
+// failures on GitHub's Node 22 Windows runner, #963). Node 24's C++ RmSync (src/node_file.cc,
+// checked at v24.14.1) has two gaps: Windows "access denied" is std::errc::permission_denied, which
+// is not on its retry list, so it throws `EPERM, Permission denied` without retrying; and its pause,
+// `Sleep(i * retryDelay / 1000)`, treats milliseconds as seconds, so the codes it does retry get
+// no pause at all. Measured on 24.14.1: a folder a child held for 1.5 s threw EPERM after 5 ms, and
+// 363 tests failed in their cleanup on one machine. So on Windows, every version, rmSync gets the
+// documented retry here; the last error still surfaces. Async `rm` keeps Node's own (JS) retry.
 // `packages/xezar/vitest.setup.ts` imports this file again so each vitest worker gets it too.
 const RM_RETRY_CODES = new Set(['EBUSY', 'EMFILE', 'ENFILE', 'ENOTEMPTY', 'EPERM']);
-if (process.platform === 'win32' && process.versions.node.split('.')[0] === '22' && !fs.rmSync.xezRetry) {
+if (process.platform === 'win32' && !fs.rmSync.xezRetry) {
   const plainRmSync = fs.rmSync;
   const pause = new Int32Array(new SharedArrayBuffer(4));
   const rmSyncWithRetry = (path, options) => {
