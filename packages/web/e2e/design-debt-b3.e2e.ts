@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 
 /**
  * Design-debt batch B3 in a real browser — Settings (#453, AC-3 / T-3 and the shared AC-0 matrix).
@@ -168,7 +169,7 @@ beforeAll(async () => {
   // Touch and no-hover emulation over the provider's own CDP endpoint, kept alive for the suite
   // (device presets alone do not switch `(hover: none)` on) — the B2 recipe.
   const cli = (...args: string[]) => {
-    const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+    const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if (!result.success) throw new Error('B3 provider command failed')
     return result.data
   }

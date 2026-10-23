@@ -115,3 +115,63 @@ test('a checkout that is itself a task worktree pins scratch outside the worktre
     for (const dir of [fixture, ...created]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   }
 });
+
+// Node's own rmSync does not retry on Windows: Node 22 fails at once with EBUSY, and Node 24 throws
+// `EPERM, Permission denied` without retrying and never pauses between the tries it does make
+// (src/node_file.cc). Every test cleanup relies on TEST_DIR_RM_OPTIONS' retry, so the bootstrap
+// supplies it on Windows for every Node version – once, however often it is imported – keeps it
+// bounded so a folder that stays held still fails, and leaves rmSync untouched elsewhere.
+test('on Windows rmSync retries a briefly held folder, wrapped once and still bounded; elsewhere it is untouched', () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'rm-retry-'));
+  try {
+    mkdirSync(join(fixture, 'scripts'));
+    const copy = join(fixture, 'scripts', 'test-local-state.mjs');
+    copyFileSync(bootstrap, copy);
+    const result = JSON.parse(execFileSync(process.execPath, [
+      '--import', importArg(bootstrap), '--input-type=module', '-e', `
+        import fs from 'node:fs';
+        import { join } from 'node:path';
+        import { spawn } from 'node:child_process';
+        const base = ${JSON.stringify(fixture)};
+        const wrapped = fs.rmSync.xezRetry === true;
+        const first = fs.rmSync;
+        await import(${JSON.stringify(pathToFileURL(copy).href)});
+        const once = fs.rmSync === first;
+        // A child that keeps its working folder and an open file inside the folder for holdMs.
+        const held = async (name, holdMs) => {
+          const dir = join(base, name);
+          fs.mkdirSync(join(dir, 'sub'), { recursive: true });
+          fs.writeFileSync(join(dir, 'sub', 'held.txt'), 'held');
+          const child = spawn(process.execPath, ['-e', "require('fs').openSync('held.txt', 'r'); console.log('ready'); setTimeout(() => {}, " + holdMs + ')'], { cwd: join(dir, 'sub'), stdio: ['ignore', 'pipe', 'ignore'] });
+          await new Promise((ready) => child.stdout.once('data', ready));
+          return { dir, child };
+        };
+        const remove = (dir, options) => {
+          try { fs.rmSync(dir, { recursive: true, force: true, ...options }); return 'removed'; } catch (err) { return err.code; }
+        };
+        const ended = (child) => new Promise((done) => (child.exitCode !== null ? done() : child.once('exit', done)));
+        let retried = null, bounded = null;
+        if (process.platform === 'win32') {
+          const brief = await held('brief', 800);
+          retried = remove(brief.dir, { maxRetries: 10, retryDelay: 100 });
+          await ended(brief.child);
+          const long = await held('long', 20000);
+          bounded = remove(long.dir, { maxRetries: 2, retryDelay: 50 });
+          long.child.kill();
+          await ended(long.child);
+        }
+        console.log(JSON.stringify({ wrapped, once, retried, bounded }));
+      `,
+    ], { cwd: root, encoding: 'utf8' }));
+    assert.equal(result.once, true, 'a second bootstrap import must not wrap rmSync again');
+    if (onWindows) {
+      assert.equal(result.wrapped, true, 'Windows rmSync must carry the bootstrap retry on every Node version');
+      assert.equal(result.retried, 'removed', 'a folder held for under a second must be removed within the retry budget');
+      assert.ok(['EBUSY', 'EPERM'].includes(result.bounded), `a folder held past the budget must still fail, got ${result.bounded}`);
+    } else {
+      assert.equal(result.wrapped, false, "Linux and macOS keep Node's own rmSync");
+    }
+  } finally {
+    rmSync(fixture, TEST_DIR_RM_OPTIONS);
+  }
+});

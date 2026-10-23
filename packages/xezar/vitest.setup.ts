@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach } from 'vitest'
-// Each worker needs the Node 22 Windows rmSync retry this shared bootstrap installs (#963).
+// Each worker needs the Windows rmSync retry this shared bootstrap installs (#963).
 import '../../scripts/test-local-state.mjs'
 
 // Nothing in this suite may write to the developer's own `~/.xezar`. Most cases pin

@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { runAgentBrowserCli } from './agent-browser-cli'
 import subagents from './fixtures/subagents-run.record.json'
 import thread from './fixtures/thread-run.record.json'
 
@@ -196,7 +197,7 @@ beforeAll(async () => {
   project = await bootProjectId(url)
   browser = AgentBrowser.open(sessionId)
   const cli = (...args: string[]) => {
-    const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+    const result = JSON.parse(runAgentBrowserCli(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { timeout: 60_000 }))
     if (!result.success) throw new Error('B5 provider command failed')
     return result.data
   }
