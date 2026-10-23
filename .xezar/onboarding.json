@@ -530,7 +530,7 @@
     ".xezar/docs/leader-guide.md": {
       "sha256": "e9296c3ee0bf7adf75631af8959deb7aa43f79299a2c88fa4feaa484a5564ac5",
       "origin": "generated",
-      "patch": "LP-3"
+      "patch": "LP-5"
     },
     ".xezar/docs/local-patches.md": {
       "sha256": "6b40ebeb721fb9a6bb05e8ec5a73549b05c946a6bfda74f38af2806543296ddf",
@@ -555,7 +555,7 @@
       "origin": "copied",
       "kitSource": "docs/recovery.md",
       "kitBlob": "c4d445cfacd31eb125e013d883604858617342fb",
-      "patch": "LP-4"
+      "patch": "LP-5"
     },
     ".xezar/docs/routing.md": {
       "sha256": "206852ee23ac0ea40d04baba447f8f6baaa1d56c7550a22aab303b6ca95b261e",
