@@ -6,4 +6,4 @@
   one that does not exist (`+09:30`). The new-task pictures show every composer option with the
   workflow picker closed, the MCP connection picture shows its card and heading below the page
   header, and the Agent accounts section of the guide says which part of the pane its picture
-  shows. (#1172, #1173, #1174, #1175, #1176)
+  shows. (#1190)
