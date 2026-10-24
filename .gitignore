@@ -23,9 +23,9 @@ coverage/
 .ai/cezar/
 .ai/qa/cez-home/
 
-# locally installed agent skills (per-machine installs, not repo content)
+# locally installed agent skills (per-machine installs, not repo content). The skills lock file
+# is ignored by the xezar-onboarding block at the end of this file.
 .agents/
-skills-lock.json
 
 # Agent-pipeline working records. These are per-run logs, handoffs, design drafts and
 # checkpoint screenshots — useful on the machine that produced them, noise in a public
@@ -34,30 +34,17 @@ skills-lock.json
 .ai/specs/
 .ai/analysis/
 
-# agent-pipeline scratch state (worktrees, per-run QA artifacts, test-env working files)
+# agent-pipeline scratch state (worktrees and other per-run working files)
 .ai/tmp/
-.ai/qa/artifacts_*/
-.ai/qa/test-env.json
-.ai/qa/test-env.lock/
-# Any app log an agent parks here, not just the generated test-env ones — a narrower
-# `test-env-*.log` let a hand-named boot log get swept into a commit by the autosave.
-.ai/qa/*.log
-.ai/qa/.build-cache
-.ai/qa/xez-home/
-# The empty agent-config sandbox test-env-up.sh points CLAUDE_CONFIG_DIR and CODEX_HOME
-# at, so a test boot reads no developer's real agent settings. Credential-
-# adjacent: a login run while that env is active writes real tokens here. Guarded by the
-# stateDirs check in packages/xezar/src/tracked-files.test.ts as well as by this rule.
-.ai/qa/agent-home/
 
-# Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json).
-# Only the shared .claude/settings.json and the project's own skills are tracked; everything else
-# stays local. Installed xez-* skills stay ignored by the rule further down.
+# Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json,
+# installed skills). Only the shared .claude/settings.json is tracked; everything else stays local.
+# The project's own skills live in .xezar/skills, not here. packages/xezar/src/tracked-files.test.ts
+# fails on any other tracked .claude/ path.
 .claude/*
 !.claude/settings.json
-!.claude/skills
 
-# mock-agent output from dry-run e2e (scripts/mock-claude.mjs appends here)
+# mock-agent output from dry-run e2e (packages/xezar/scripts/mock-claude.mjs appends here)
 /notes.md
 
 # macOS finder metadata
@@ -69,7 +56,13 @@ skills-lock.json
 # local agent scratch — investigation notes, evidence, drafts
 /.local/
 
-# Legacy QA contains only local data; new producers use .local/qa.
+# Legacy QA contains only local data; new producers use .local/qa. This one rule covers everything
+# that used to be listed under .ai/qa/ one by one: per-run artifacts_*/, test-env.json and
+# test-env.lock/, every *.log an agent parks there (a narrower `test-env-*.log` once let a hand-named
+# boot log reach a commit), .build-cache and xez-home/. It also covers agent-home/, the empty
+# agent-config sandbox that test-env-up.sh pointed CLAUDE_CONFIG_DIR and CODEX_HOME at. That one is
+# credential-adjacent: a login run while that env is active writes real tokens there. It is guarded
+# by the stateDirs check in packages/xezar/src/tracked-files.test.ts as well as by this rule.
 /.ai/qa/
 
 # xezar-onboarding: start — the xez-* skills are installed per machine, never committed.
