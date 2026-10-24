@@ -56,7 +56,9 @@ Account registrations and selections live in a file of their own, never in xezar
 
 The second one can be committed, so a clone starts with the same account names and directories; the sign-ins themselves stay on each machine. In that layout the pane also says whether the accounts of your personal machine-wide setup were copied into this project and how many could still be — a count, never their names — with a **Copy _n_ accounts** button. That button is the only thing on the page that copies; nothing happens on load, and `xezar accounts import-global` runs the same merge from a terminal. An account whose directory does not exist on this machine reads **Unavailable** there, and a task that asks for it is refused before the agent starts rather than quietly run under another login.
 
-![Global Agent accounts settings](../screenshots/0.31.0/settings-accounts-dark-1280.png)
+The picture shows the top of the pane: the **Plan limits** block and **Defaults for new projects**. The per-agent groups described above follow further down the page. The sample data has one Claude Code login that can work, one that is out until its reset time and one whose limits xezar could not read, so the plan-limits chip in the sidebar shows `1/3` for Claude Code; [To read and refresh plan limits](10-settings-reference.md#to-read-and-refresh-plan-limits) explains each status.
+
+![Global Agent accounts settings: the Plan limits block and Defaults for new projects, above the per-agent groups](../screenshots/0.31.0/settings-accounts-dark-1280.png)
 
 ## To pin an account's model and effort
 

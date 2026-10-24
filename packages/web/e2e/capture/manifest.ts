@@ -32,7 +32,7 @@ export const SHOT_STATES: readonly ShotState[] = [
   { name: 'task-thread', shows: 'A running task thread: earlier tool calls opened, command output, the screenshot the agent took, and a test run in progress', variants: all4 },
   { name: 'task-changes', shows: 'The Changes tab of a task with a multi-file diff', variants: both1280 },
   { name: 'compare-variants', shows: 'Two variants of one task that took different approaches, side by side', variants: both1280 },
-  { name: 'new-task', shows: 'The new-task composer: Worktree on and Autonomous visible; at 1280 the workflow picker is open too', variants: [['dark', 1280], ['light', 1280], ['dark', 375]] },
+  { name: 'new-task', shows: 'The new-task composer with a prompt typed and its task options: Worktree on, Autonomous and Follow-ups', variants: [['dark', 1280], ['light', 1280], ['dark', 375]] },
   { name: 'review-gate', shows: 'A task parked at review with the review panel and the Draft PR action', variants: dark1280 },
   { name: 'all-tasks', shows: 'All tasks across two projects, grouped', variants: both1280 },
   { name: 'repo-git', shows: 'The repository Git view: the branch, its GitHub remote and the commit history', variants: dark1280 },
