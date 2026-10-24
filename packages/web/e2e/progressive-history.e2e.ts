@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -8,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import { largeThreadEvents } from './fixtures/make-large-thread'
 import record from './fixtures/thread-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 const artifactsDir = resolve(repoRoot, '.local/qa/artifacts_e2e')
@@ -69,30 +69,6 @@ const events = [...contextPrefix, ...largeThreadEvents(300)].map((event, index) 
   seq: index + 1,
   ts: new Date(Date.parse('2026-07-30T00:00:00.000Z') + index * 10).toISOString(),
 }))
-
-function freePort(): Promise<number> {
-  return new Promise((resolvePort, reject) => {
-    const probe = createServer()
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => resolvePort(port))
-    })
-  })
-}
-
-async function waitForHealth(baseUrl: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${baseUrl}/api/v1/health`)).ok) return
-    } catch {
-      // Server startup is expected to race the first probes.
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250))
-  }
-  throw new Error(`xezar e2e: fixture server never answered at ${baseUrl}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess
