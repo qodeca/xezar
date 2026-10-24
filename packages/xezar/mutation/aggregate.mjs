@@ -311,7 +311,7 @@ export function renderMarkdown(result, context = {}, lock = undefined) {
     for (const problem of [...result.problems, ...(lock?.problems ?? [])]) lines.push(`- ${problem}`)
     lines.push(
       '',
-      'Known survivors are tracked in #338 and #353 — compare the per-file table below with those before filing a new one.',
+      'Known survivors are tracked in #338, and the gate itself in #443 — compare the per-file table below with those before filing a new one.',
       '',
     )
   }

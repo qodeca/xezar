@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { installRecordPath, readInstallRecord } from './install-record.ts';
 
 /** The committed `.xezar/onboarding.json` read: present, absent, and every malformed shape. */
@@ -11,6 +12,10 @@ describe('readInstallRecord', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'xez-install-record-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   const write = (content: string) => {
