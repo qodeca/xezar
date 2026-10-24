@@ -1,6 +1,7 @@
 import './scripts/test-local-state.mjs'
-import { availableParallelism } from 'node:os'
 import { defineConfig } from 'vitest/config'
+
+import { TEST_MAX_WORKERS } from './scripts/test-concurrency.mjs'
 
 // Four packages, one `npm test`. Each owns its own vitest config — this file only names
 // them, so `npm test -w <pkg>` and the whole-repo run execute the identical setup:
@@ -13,26 +14,16 @@ import { defineConfig } from 'vitest/config'
 // A package missing from this list is a package whose `*.test.ts` files never run, however
 // right they look (#61 — `contract` was in exactly that state).
 
-// One `npm test` must not take the whole machine. Vitest's own default is
-// `availableParallelism() - 1` workers, which is right for a laptop running ONE suite and
-// catastrophic for a cockpit running several gate runs at once: ten concurrent gates on an
-// 18-core box meant ~180 worker processes, and the symptom was starvation — unrelated
-// suites timing out (909s on a single file), a different 17 files failing every run.
-//
-// The cap is `min(4, availableParallelism() - 1)`, which is deliberately a **no-op on CI**:
-// a 2-core GitHub runner already resolves to 1 and a 4-core one to 3, so this only bites on
-// a machine with more than 5 cores — exactly the machine that can run many gates at once.
-// Four was reasoned, not measured: at the default `maxParallel` of 2 concurrent runs it
-// keeps the fan-out at ~8 of 18 cores, and even at the ten-run worst case it is 2.2x
-// oversubscription instead of 10x.
+// One `npm test` must not take the whole machine: the worker cap, `min(4, availableParallelism() - 1)`,
+// and the reasoning behind it live in scripts/test-concurrency.mjs, which every package config and
+// the node:test launcher read too, so a package run on its own (`npm test -w <pkg>`) and the
+// node:test suites are capped exactly like this one.
 //
 // Both runtime overrides still win: `--maxWorkers=N` on the command line, and
 // `VITEST_MAX_WORKERS`, which vitest applies AFTER config resolution.
-const MAX_WORKERS = Math.max(1, Math.min(4, availableParallelism() - 1))
-
 export default defineConfig({
   test: {
-    maxWorkers: MAX_WORKERS,
+    maxWorkers: TEST_MAX_WORKERS,
     // The suites are still being grown; a project that currently matches no file must not
     // fail the validation gate. Root-level only — vitest rejects this inside a project.
     passWithNoTests: true,
