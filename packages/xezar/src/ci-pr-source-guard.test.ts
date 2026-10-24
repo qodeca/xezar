@@ -167,4 +167,12 @@ describe('dependency update pull requests', () => {
       expect(Object.values(update.groups ?? {}).map((g) => g['update-types'])).toEqual([['minor', 'patch']]);
     }
   });
+
+  it('never proposes an @types/node major, and leaves room for the majors behind the weekly group', () => {
+    const npm = config.updates.find((u) => u['package-ecosystem'] === 'npm') as Record<string, unknown>;
+    // @types/node tracks the engines.node floor, so a later major would type APIs that floor lacks.
+    expect(npm.ignore).toContainEqual({ 'dependency-name': '@types/node', 'update-types': ['version-update:semver-major'] });
+    // The default cap (5) hides every major once the weekly group and a few majors are open.
+    expect(npm['open-pull-requests-limit']).toBeGreaterThan(5);
+  });
 });
