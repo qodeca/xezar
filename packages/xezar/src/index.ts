@@ -27,6 +27,7 @@ import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
 // Type-only: erased at run time, so the MCP module stays a lazy import (N-07).
 import type { ServiceDispatch } from './mcp/service-adapter.ts';
+import type { McpProjectContextSource } from './mcp/session-binding.ts';
 // Type-only imports inside, so this static import does not load the MCP module either.
 import { followProjectDoors } from './mcp/project-doors.ts';
 import type { McpJournalRow, ProviderStatus } from '@qodeca/xezar-contract';
@@ -1045,6 +1046,13 @@ async function serveCommand(
   let projectDoors: { close(): void } | undefined;
   /** Every project context the server builds, so a Windows shutdown can hold their runs (#963). */
   let projectContexts: { ids(): string[]; peek(id: string): { manager: RunManager } | undefined } | undefined;
+  // OD-1: the MCP doors bind every session through the contexts the cockpit serves from. Set
+  // synchronously by `onContexts` inside `startServer`, before any door opens; a lookup that still
+  // finds none fails closed (the binding reads it as `unavailable`).
+  let mcpResolver: McpProjectContextSource | undefined;
+  const mcpContexts: McpProjectContextSource = {
+    context: (id) => (mcpResolver ? mcpResolver.context(id) : Promise.reject(new Error('project contexts are not ready'))),
+  };
   let stopping = false;
   const server = startServer({
     repoRoot,
@@ -1073,8 +1081,9 @@ async function serveCommand(
     },
     // Every project built later gets its own subscription, taken before ITS recovery, and
     // released when its context is disposed (#467, PR 3).
-    onContexts: (contexts) => {
+    onContexts: (contexts, mcp) => {
       projectContexts = contexts;
+      mcpResolver = mcp;
       terminal.onContexts(contexts);
       // Every project built after boot gets the MCP door the boot project has (#557): opened when
       // its context is built, closed when it is disposed. The boot project is skipped — its door is
@@ -1085,6 +1094,7 @@ async function serveCommand(
           const handle = await startMcpSocket({
             projectId: ctx.id,
             version,
+            contexts: mcpContexts,
             service: app,
             store: ctx.store,
             workspaceEvents,
@@ -1199,6 +1209,7 @@ async function serveCommand(
     void startMcpSocket({
       projectId: bootProjectId,
       version,
+      contexts: mcpContexts,
       service: app,
       store,
       workspaceEvents,
@@ -1307,6 +1318,8 @@ async function serveCommand(
 async function startMcpSocket(opts: {
   projectId: string;
   version: string;
+  /** Required: the binding check (OD-1) is on by default on every production door. */
+  contexts: McpProjectContextSource;
   service: ServiceDispatch | undefined;
   store: RunStore;
   workspaceEvents: WorkspaceEventBus;
@@ -1328,6 +1341,7 @@ async function startMcpSocket(opts: {
     return await startMcpService({
       projectId: opts.projectId,
       version: opts.version,
+      contexts: opts.contexts,
       store: opts.store,
       workspaceEvents: opts.workspaceEvents,
       providerBaseline: opts.providerBaseline,
