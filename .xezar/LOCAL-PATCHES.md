@@ -25,4 +25,4 @@ wording and moved to LP-5 on 2026-10-23).
 - Reason: no release skill renamed `BACKWARD_COMPATIBILITY.md` § 9 entries headed `Unreleased` (0.31.0 shipped two), and the 90-day design expiry had no actor and measured `git log`, which repository-wide sweeps reset; the skill now holds both checks, and the expiry reads the date the design README records itself
 - Upstream: local only
 - Since: 2026-10-24
-- Confirmed: no
+- Confirmed: yes
