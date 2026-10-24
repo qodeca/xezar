@@ -82,6 +82,7 @@ import {
   updateAgentProfileInputSchema,
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
+  automationLogSinceSchema,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { AgentQuotaStore } from '../workspace/agent-quota.ts';
@@ -290,6 +291,11 @@ import {
   resolveGetRequest,
 } from './static-ui.ts';
 
+/** OD-1: the project context an MCP session is bound through (`McpProjectContextSource`). */
+export interface McpContextResolver {
+  context(projectId: string): Promise<ProjectContext>;
+}
+
 export interface ServerDeps {
   repoRoot: string;
   store: RunStore;
@@ -427,7 +433,7 @@ export interface ServerDeps {
    * project's lifecycle out of the server for one subscriber — the map it already builds is
    * offered. Optional and observe-only: no caller, no change.
    */
-  onContexts?: (contexts: ProjectContexts) => void;
+  onContexts?: (contexts: ProjectContexts, mcp: McpContextResolver) => void;
   /**
    * One safe diagnostic per failed HTTP request (#467, PR 3) — a 4xx a handler RETURNED as well
    * as a 5xx something threw. Additive and optional: without it not one middleware is
@@ -510,7 +516,7 @@ const automationLogQuerySchema = z.object({
   automationId: z.string().optional(),
   result: automationLogResultSchema.optional(),
   event: automationEventSchema.optional(),
-  since: z.string().datetime().optional(),
+  since: automationLogSinceSchema.optional(),
   cursor: z.coerce.number().int().positive().optional(),
   // Optional, not `.default(100)`: `AutomationStore.logs` already clamps `limit ?? 100` into
   // 1..100, so the default here was a second copy of it — and a defaulted key is REQUIRED in the
@@ -1355,7 +1361,20 @@ export function createApp(deps: ServerDeps) {
   contexts.onContextBuilt((ctx) => providerRuntimeAuth.watch(ctx.store));
   // Offered AFTER this server's own subscriptions, so a terminal renderer attaching here sees a
   // store the service is already watching rather than one mid-wiring (#467, PR 3).
-  deps.onContexts?.(contexts);
+  // OD-1: what an MCP session binding resolves its project through. A non-boot project is the lazy
+  // map's own context. The boot project never enters that map — building it there would open its
+  // state a second time — so it is the boot context itself, carrying the registry's realpath'd root
+  // (the binding compares realpaths, and `bootRoot` is however git or the shell spelled the folder).
+  // No `default` alias here: a binding names a registry id or nothing.
+  const mcpContexts: McpContextResolver = {
+    context: async (projectId) => {
+      if (projectId !== (await resolveBootProject())) return contexts.context(projectId);
+      const row = (await registryRows({ projectId }))[0];
+      if (!row) throw new ProjectContextError('unknown-project', projectId);
+      return { ...bootContext, id: row.id, root: row.root };
+    },
+  };
+  deps.onContexts?.(contexts, mcpContexts);
 
   // The transition out of `checking` (#464 P2): a setup run that reached `done` having finished
   // its promised scope stamps `lastChecked`, which is what makes `set-up`, `changed` and the
@@ -1761,7 +1780,7 @@ export function createApp(deps: ServerDeps) {
   // statement because Hono accumulates its route types through the chain: a
   // statement's return value is discarded, so `typeof app` would record nothing
   // and `hc<AppType>` would have no endpoint to offer. `createApp` mounts this
-  // under both `/api` (the frozen legacy spelling) and `/api/v1`.
+  // once, in the workspace table under `/api/v1`.
   const healthRoutes = new Hono().get('/health', async (c) => c.json(await readHealth()));
 
   // The push twin of the poll it replaced (#369): while at least one cockpit
@@ -3669,9 +3688,10 @@ export function createApp(deps: ServerDeps) {
     });
 
   // ---- chained family: workflows (project-scoped) --------------------------
-  // One chained expression, mounted by `createApp` into BOTH the legacy `api`
-  // table and the versioned `v1` one — see `healthRoutes` for why the chain
-  // shape (not the statement shape) is what carries the types.
+  // One chained expression, mounted by `createApp` into the project `v1` table
+  // (served under `/api/v1/p/:projectId` and the unscoped `/api/v1` alias) —
+  // see `healthRoutes` for why the chain shape (not the statement shape) is
+  // what carries the types.
   const workflowsRoutes = new Hono<ProjectApiEnv>()
     .get('/workflows', async (c) => c.json(await loadWorkflows(c.get('project').root)))
 

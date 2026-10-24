@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Guide 02 — Tasks and runs (docs/guide/02-tasks-and-runs.md), one continuous scripted journey
@@ -41,30 +41,6 @@ import { GuideBrowser } from './guide-browser'
  * never clicked), Notes (the handoff Markdown a finished run always has), and Continue last,
  * since it is the one action that moves the run out of `done`.
  */
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the guide-02 server never answered at ${url}`)
-}
 
 async function waitForStatus(url: string, id: string, wanted: string[], tries = 160): Promise<string> {
   let seen = '(never read)'
@@ -135,7 +111,7 @@ beforeAll(async () => {
     // parked-at-review step reproducible rather than depending on whatever the operator exports.
     { env: fixtureServeEnv(dataRoot, { XEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'guide-02 server' })
 
   browser = GuideBrowser.open(`e2e-guide-02-${process.pid}`)
   browser.setViewport(1440, 900)

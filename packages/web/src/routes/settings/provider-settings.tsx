@@ -13,6 +13,7 @@ import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
+import { copyText } from '@/lib/clipboard-result'
 import { providerStatusFor } from '@/lib/provider-status'
 import { RUNNER_LABEL } from '@/lib/runner-label'
 
@@ -164,12 +165,9 @@ export function ProviderSettings() {
   })
 
   const copyCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command)
-      toast('Command copied')
-    } catch {
-      toast('Could not copy the command', { tone: 'danger' })
-    }
+    const result = await copyText(command)
+    if (result.ok) toast('Command copied')
+    else toast('Could not copy the command', { tone: 'danger' })
   }
 
   return (

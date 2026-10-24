@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Show details on an agent-account row names the login's kind (#867 AC-36, #908 design review).
@@ -40,7 +40,7 @@ beforeAll(async () => {
   execFileSync('git', ['init', '-q', '-b', 'main', root])
   execFileSync('git', ['-C', root, '-c', 'user.name=al', '-c', 'user.email=al@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture'])
   mkdirSync(join(root, '.xez-home'), { recursive: true })
-  const port = await new Promise<number>((done, fail) => { const s = createServer(); s.once('error', fail); s.listen(0, '127.0.0.1', () => { const a = s.address(); const n = typeof a === 'object' && a ? a.port : 0; s.close(() => done(n)) }) })
+  const port = await freePort()
   url = `http://localhost:${port}`
   server = spawn(process.execPath, [xezarCli, 'serve', '--repo', root, '--port', String(port), '--no-open'], {
     // The agents' own homes are pinned inside the data root too: Show details also opens the
@@ -48,9 +48,7 @@ beforeAll(async () => {
     env: fixtureServeEnv(root, { CLAUDE_CONFIG_DIR: join(root, 'home/.claude'), CODEX_HOME: join(root, 'home/.codex') }),
     stdio: 'ignore',
   })
-  let healthy = false
-  for (let n = 0; n < 60; n++) { try { if ((await fetch(`${url}/api/v1/health`)).ok) { healthy = true; break } } catch {} await new Promise((r) => setTimeout(r, 250)) }
-  if (!healthy) throw new Error('account-limits fixture server did not start')
+  await waitForHealth(url, { label: 'account-limits fixture server' })
   // A dry-run check answers at once; waiting for it here keeps the rendered row off "not checked yet".
   await fetch(`${url}/api/v1/workspace/agent-quota/refresh`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url }, body: '{}' })
   browser = AgentBrowser.open(sessionId)

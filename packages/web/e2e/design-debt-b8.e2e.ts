@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
@@ -15,6 +14,7 @@ import {
   xezarCli,
 } from './agent-browser'
 import record from './fixtures/subagents-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Design-debt batch B8 in a real browser — the image preview (#453, A06 / AC-8 / T-8).
@@ -263,34 +263,14 @@ beforeAll(async () => {
     'utf8',
   )
 
-  const port = await new Promise<number>((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const found = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(found))
-    })
-  })
+  const port = await freePort()
   url = `http://localhost:${port}`
   server = spawn(
     process.execPath,
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
-  let healthy = false
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) {
-        healthy = true
-        break
-      }
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  if (!healthy) throw new Error('design-debt-b8: the fixture server never answered')
+  await waitForHealth(url, { label: 'design-debt-b8 fixture server' })
   project = await bootProjectId(url)
 
   browser = AgentBrowser.open(sessionId)

@@ -19,8 +19,7 @@ import { GuideBrowser } from './guide-browser'
  * files reuse — capture-derived fixtures always own their data), seeds the same workspace, then
  * calls each state's `Scenario` for its assertions only. It never shoots a screenshot, never reads
  * or writes `SCREENSHOT_DIR`, and never touches `allShotFiles()`/`docs-screenshots.test.ts`'s
- * on-disk budget: a state's visible facts are asserted the same way whether it has shipped a
- * picture already or is still `plannedFor` a future release.
+ * on-disk budget: a state's visible facts are asserted the same way whatever pictures are on disk.
  *
  * Locator rule (browser-test-spec.md § Locator rule): every `expect(...)` inside `SCENARIOS` uses
  * only an ARIA role with an accessible name, an associated accessible label, or literal visible

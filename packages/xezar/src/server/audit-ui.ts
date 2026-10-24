@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { AuditProxyUser } from '@qodeca/xezar-contract';
 import { answerRefusal, auditAction } from '../mcp/audit-inventory.ts';
-import { proxyUserOf } from '../mcp/audit-redaction.ts';
 import { AuditTrail, doorAuditWarning, settlementForStatus, type AuditChannel, type AuditScope } from '../mcp/audit-trail.ts';
 import { staleRejectionIn } from '../mcp/stale-write.ts';
 import { ensureProjectDataIgnored, projectDataDir } from '../project-data-paths.ts';
@@ -97,15 +96,6 @@ export function isLoopbackPeer(address: unknown): boolean {
   if (typeof address !== 'string') return false;
   const v4 = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4) || address === '::1';
-}
-
-/**
- * § 9: trim, strip C0/C1 controls and DEL, cap at 128 code units, omit an empty result. The door
- * itself does not call it: it hands the trusted raw header to the audit seam, which applies this
- * same rule (`proxyUserOf` in `mcp/audit-redaction.ts`) for every record.
- */
-export function sanitizeProxyUser(raw: string | undefined): AuditProxyUser | undefined {
-  return proxyUserOf(raw);
 }
 
 /**

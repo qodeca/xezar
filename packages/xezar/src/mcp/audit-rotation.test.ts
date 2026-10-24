@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { countFileLockPolls } from '../core/file-lock-polls.testkit.ts';
@@ -479,15 +479,26 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
   });
 
   it('serializes writers inside one process without waiting on its own file lock, however the folder is spelled', async () => {
-    const trail = new AuditTrail({ projectId: PROJECT, dataDir });
-    // The same folder reached through a `..` detour: one queue, because the queue keys the absolute path.
-    const detour = join(dataDir, '..', 'xezar');
-    const channels = [trail.channel('ui'), new AuditTrail({ projectId: PROJECT, dataDir: detour }).channel('mcp')];
-    const started = Date.now();
+    // Counted, not timed (#1105 row 3). A `< 2 s` bound here measured the runner, not the queue: a
+    // slow Windows runner spent 2.0–2.6 s on 20 honest appends. The guarantee is that no writer of
+    // this process ever waits for the file lock while another writer of this process holds it, and
+    // nothing outside this test touches the lock – so one poll interval spent waiting IS a wait on
+    // our own lock, whatever the runner's speed. A self-wait past the 2 s bound would also drop the
+    // record with the one warning, so `warn` must stay silent.
+    const lockPolls = countFileLockPolls();
+    const warn = vi.fn();
+    const trail = new AuditTrail({ projectId: PROJECT, dataDir }, { warn });
+    // The same folder spelled relative to the working folder: one queue, because the queue keys the
+    // absolute path. (A `..` detour built with `join` is normalised before it reaches the queue, so
+    // it never exercised that key.) Where no relative path exists – another Windows drive – this is
+    // the absolute path again, and the test still checks the serialization.
+    const detour = relative(process.cwd(), dataDir);
+    const channels = [trail.channel('ui'), new AuditTrail({ projectId: PROJECT, dataDir: detour }, { warn }).channel('mcp')];
     const records = await Promise.all(
       Array.from({ length: 20 }, (_, i) => channels[i % 2]!.record({ action: 'run.pin', resource: { kind: 'run', id: `r-${i}` } }, { outcome: 'applied' })),
-    );
-    expect(Date.now() - started).toBeLessThan(2_000);
+    ).finally(() => lockPolls.restore());
+    expect(lockPolls.count()).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
     expect(records.map((record) => record?.seq)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
     expect(recordsOf(auditTrailPath(dataDir)).map((record) => (record as AuditActionRecord).resource?.id)).toEqual(
       Array.from({ length: 20 }, (_, i) => `r-${i}`),

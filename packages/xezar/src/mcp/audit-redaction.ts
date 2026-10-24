@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   auditActionRecordSchema,
   type AuditActionRecord,
@@ -7,6 +6,7 @@ import {
   type AuditResource,
 } from '@qodeca/xezar-contract';
 import { redactSecrets } from '../core/secret-redaction.ts';
+import { canonicalDigest } from './canonical-json.ts';
 import type { AuditedOperation, AuditSettlement } from './audit-trail.ts';
 
 /**
@@ -468,18 +468,9 @@ function fieldNamesOf(names: readonly string[], clean: (value: string) => string
   return [...kept].sort().slice(0, 64);
 }
 
-/**
- * D-06 § 5.4's canonical form: object keys sorted by code unit at every level, arrays in order,
- * `undefined` keys dropped, and a byte blob replaced by `{ sha256, bytes }` so the digest covers
- * bytes, never a path. A non-finite number is refused (zod refuses it upstream).
- */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-/** SHA-256, lowercase hex, of `canonicalJson(payload)`. */
+/** SHA-256, lowercase hex, of the audited payload's canonical JSON (D-06 § 5.4, `canonical-json.ts`). */
 export function payloadDigest(payload: unknown): string {
-  return createHash('sha256').update(canonicalJson(payload)).digest('hex');
+  return canonicalDigest(payload);
 }
 
 function safeDigest(payload: unknown): string | undefined {
@@ -488,24 +479,4 @@ function safeDigest(payload: unknown): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function canonicalize(value: unknown): unknown {
-  if (value instanceof Uint8Array) {
-    return { bytes: value.byteLength, sha256: createHash('sha256').update(value).digest('hex') };
-  }
-  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('non-finite number in payload');
-  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol') {
-    throw new Error(`${typeof value} in payload`);
-  }
-  if (value === null || typeof value !== 'object') return value;
-  const withJson = value as { toJSON?: () => unknown };
-  if (typeof withJson.toJSON === 'function') return canonicalize(withJson.toJSON());
-  if (Array.isArray(value)) return value.map((item) => (item === undefined ? null : canonicalize(item)));
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) {
-    const item = (value as Record<string, unknown>)[key];
-    if (item !== undefined) out[key] = canonicalize(item);
-  }
-  return out;
 }

@@ -48,7 +48,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { nativeFieldClass } from '@/components/ui/input'
 import { quotaLoginName } from '@/lib/agent-quota'
-import { RUNNER_LABEL } from '@/lib/runner-label'
+import { RUNNER_LABEL, RUNNER_ORDER } from '@/lib/runner-label'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
@@ -147,7 +147,7 @@ export function AccountsSection() {
 /** Every agent gets a group, including one that cannot carry a second login: the group is where
  *  its install state and config folder live, and hiding an agent would just move the question
  *  "is it set up?" somewhere else. */
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen']
+const PROVIDERS: readonly ProviderId[] = RUNNER_ORDER
 
 /** The id of an agent group's heading — the target of the problem summary's jump links. */
 const groupHeadingId = (provider: ProviderId) => `accounts-agent-${provider}`

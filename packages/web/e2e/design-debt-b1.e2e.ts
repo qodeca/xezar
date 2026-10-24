@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -14,6 +13,7 @@ import {
   stopFixtureServer,
 } from './agent-browser'
 import record from './fixtures/subagents-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Design-debt batch B1 in a real browser — the half of AC-1 that jsdom cannot give (#453).
@@ -78,30 +78,6 @@ type Target = { name: string; w: number; h: number }
 type Overlay = { name: string; owner: Rect; overlay: Rect | null; overlapping: string[] }
 type Overflow = { route: string; scrollWidth: number; innerWidth: number }
 type Sweep = { targets: Target[]; chips: Target[]; overlays: Overlay[]; overflow: Overflow[] }
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the design-debt-b1 server never answered at ${url}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess
@@ -600,7 +576,7 @@ beforeAll(async () => {
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'design-debt-b1 server' })
   bootProject = await bootProjectId(baseUrl)
 
   browser = AgentBrowser.open(sessionId)
@@ -640,11 +616,11 @@ describe('B1 geometry at 375px: every phone target is 44 x 44 for real', () => {
     // would otherwise pass both.
     //
     // `tabs` is deliberately absent from this list, not merely uncovered: PR #827 retired the
-    // tabbed accounts layout for one stacked list per agent, and `TabsTrigger` now has no importer
-    // left anywhere in the cockpit — `design-debt-b1.test.tsx`'s REQUIRE_TAP still spells the 44px
-    // floor on `tabs.tsx` itself, so the primitive stays correct if it is ever used again, but
-    // there is nothing left for a real browser to measure. The case below pins that absence; the
-    // day something imports Tabs again, restore 'tabs' to this list too.
+    // tabbed accounts layout for one stacked list per agent, `TabsTrigger` lost its last importer,
+    // and `components/ui/tabs.tsx` itself was deleted on 2026-10-24 (known-gaps G-20, retired;
+    // `design-debt-b1.test.tsx` keeps it on its dead-primitive list). There is nothing left for a
+    // real browser to measure. The case below pins that absence; the day a surface re-adds Tabs,
+    // it goes back into REQUIRE_TAP there and into this list here.
     const measured = sweepOf('comfortable').targets.map((target) => target.name.toLowerCase())
     const overlays = sweepOf('comfortable').overlays.map((sample) => sample.name.toLowerCase())
     const covered = [...measured, ...overlays].join(' | ')

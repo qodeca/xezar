@@ -8,6 +8,7 @@ import type {
 } from '@qodeca/xezar-api-client'
 import { useConfig, useHealth, useProjects, useRuns, useWorkspaceConfig } from '@/api/queries'
 import { Link, useActiveProjectId } from '@/lib/project-router'
+import { RUNNER_ORDER } from '@/lib/runner-label'
 import { SettingsField } from './settings-field'
 
 /**
@@ -75,7 +76,7 @@ const STATUS_TEXT: Record<McpCapability['status'], string> = {
   'read-only': 'Read-only',
 }
 
-const RUNNER_CHECKS = new Set(['claude', 'codex', 'qwen'])
+const RUNNER_CHECKS = new Set<string>(RUNNER_ORDER)
 
 /** Why the GitHub area is closed, or null when it is open — discovery's classification. */
 function githubGap(health: CapabilityFacts['health']): { reason: string; next: string } | null {

@@ -130,7 +130,7 @@ export const mcpJournalCursorSchema = z.string().min(1).max(MCP_JOURNAL_CURSOR_M
 export type McpJournalCursor = z.infer<typeof mcpJournalCursorSchema>;
 
 /** A replay read: everything strictly after `cursor`, or from the oldest retained row without one. */
-export const mcpJournalReadInputSchema = z.object({
+const mcpJournalReadInputSchema = z.object({
   cursor: mcpJournalCursorSchema.optional(),
   limit: z.number().int().min(1).max(MCP_JOURNAL_PAGE_ROWS).optional(),
 });

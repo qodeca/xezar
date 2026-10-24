@@ -4,7 +4,6 @@ import {
   LONG_PATH_PROBE_TIMEOUT_MS,
   LONG_PATHS_FIX,
   defaultProbeRunner,
-  isPathTooLong,
   longPathNoticeText,
   parseGitLongPaths,
   parseLongPathsRegistry,
@@ -146,11 +145,6 @@ describe('withLongPathHint', () => {
   const GIT_DETAIL = "fatal: cannot create 'x': Filename too long";
   const NODE_DETAIL = 'ENAMETOOLONG: name too long, open x';
 
-  it('recognises both spellings of "too long"', () => {
-    expect(isPathTooLong(GIT_DETAIL)).toBe(true);
-    expect(isPathTooLong(NODE_DETAIL)).toBe(true);
-    expect(isPathTooLong('fatal: invalid reference: main')).toBe(false);
-  });
   it("appends the long-path fix to Git's \"Filename too long\" on win32, saying the setting MAY be off", () => {
     expect(withLongPathHint(GIT_DETAIL, 'win32')).toBe(
       `${GIT_DETAIL}. This path is too long for Windows; long file paths may be off. ${LONG_PATHS_FIX}`,

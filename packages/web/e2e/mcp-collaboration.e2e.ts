@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdtempSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { freePort } from './fixture-server'
 
 /**
  * The cockpit half of A-08 (#116): a human in the open cockpit and a leader over MCP work on the same
@@ -113,18 +113,6 @@ class Leader {
       return result.structuredContent ?? { text }
     }
   }
-}
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
 }
 
 async function until<T>(read: () => Promise<T | undefined> | T | undefined, what: string, ms = 30_000): Promise<T> {

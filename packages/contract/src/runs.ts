@@ -815,11 +815,6 @@ export const attachmentInputSchema = z.object({
 });
 export type AttachmentInput = z.input<typeof attachmentInputSchema>;
 
-/** @deprecated Attachments are no longer images only — use `attachmentInputSchema`. Kept because
- *  the `images` key it validates is the wire contract and did not change name. */
-export const imageInputSchema = attachmentInputSchema;
-export type ImageInput = AttachmentInput;
-
 /**
  * The KEYS of `POST /runs`' body, before the XOR refinement that `createRunInputSchema` adds.
  *

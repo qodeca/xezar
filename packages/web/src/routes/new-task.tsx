@@ -211,7 +211,7 @@ export function NewTaskRoute() {
     autoAppliedRef.current = resolved.applied
     if (resolved.text !== draftTextRef.current) update({ text: resolved.text })
     // `autoText` is a derived STRING — this fires when the assigned set changes, not every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `autoText` is a derived string; `update` must not re-run this
   }, [autoText, sourcesReady])
 
   const providers = useProviderStatus()
@@ -328,7 +328,7 @@ export function NewTaskRoute() {
     // search, not window.location — MemoryRouter under test never touches the window.)
     if (search.toString() !== '') void navigate('/new', { replace: true })
     // mount-only: search is intentionally the initial URL, captured before the replace
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount-only: `search` is the initial URL
   // The prefill toast waits for the pickers' data: whether the skill exists decides the
   // wording, and the unknown-skill case rewrites the draft the way legacy did (intent into
   // the text, quick-task as the source — its planner resolves skills from prose).
@@ -352,7 +352,7 @@ export function NewTaskRoute() {
         '[data-slot="composer"] button[aria-label="Start task"], [data-slot="composer"] button[aria-label="Plan task"]',
       )
       ?.focus()
-  }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps -- one-shot: fires once when the prefill notice meets loaded pickers
 
   const submit = async (text: string, images: AttachmentInput[]) => {
     if (!providersReady || runner === null) {

@@ -16,7 +16,6 @@ import {
   instanceStateOf,
   instanceUrl,
   ownCockpitOrigin,
-  ownCockpitUrl,
   parseInstanceAddress,
   recordOwnListen,
   type HealthProbe,
@@ -505,18 +504,17 @@ describe('instance liveness: the own cockpit address (#819 item 8)', () => {
     const { server, port } = await listening();
     expect(recordOwnListen(server, true)).toEqual({ host: '127.0.0.1', port });
     expect(ownCockpitOrigin()).toBe(`http://127.0.0.1:${port}`);
-    expect(ownCockpitUrl('a b')).toBe(`http://127.0.0.1:${port}/p/a%20b/`);
   });
 
   // Break: a guessed address when nothing can vouch for one.
   it('knows nothing before a listen, in hosted mode, or for a socket with no port', async () => {
-    expect(ownCockpitUrl('p')).toBeUndefined();
+    expect(ownCockpitOrigin()).toBeUndefined();
     const { server } = await listening();
     expect(recordOwnListen(server, false)).toBeNull();
     expect(ownCockpitOrigin()).toBeUndefined();
     expect(recordOwnListen({ address: () => '/tmp/some.sock' }, true)).toBeNull();
     expect(recordOwnListen({ address: () => null }, true)).toBeNull();
-    expect(ownCockpitUrl('p')).toBeUndefined();
+    expect(ownCockpitOrigin()).toBeUndefined();
   });
 
   // P7-AC6. Break: the address reaching `GET /api/v1/health`, whose answer any web page can read

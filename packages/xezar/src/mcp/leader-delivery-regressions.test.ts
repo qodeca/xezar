@@ -12,9 +12,10 @@ import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { EventCatalog, withEventOrigin, expectEventTransition } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
-import { EchoGuard, attachLeaderFeed } from './echo-guard.ts';
+import { EchoGuard, isOwnEcho } from './echo-guard.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
-import { runDecisionProjection, runVersion, guardedRunMutation } from './stale-write.ts';
+import { runDecisionProjection } from '../runs/decision-projection.ts';
+import { runVersion, guardedRunMutation } from './stale-write.ts';
 import { executionControlTool } from './tools/execution-control.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
 import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
@@ -42,7 +43,8 @@ beforeEach(() => {
   catalog = EventCatalog.attach({ journal, store, workspaceEvents: { on: () => () => {} } });
   guard = new EchoGuard({ projectId: 'xezar' });
   delivered = [];
-  unsubscribe = attachLeaderFeed({ journal, guard, deliver: row => delivered.push(row) });
+  // The production feed: the project's journal with the echo rule `LeaderDelivery.deliver` applies.
+  unsubscribe = journal.subscribe(row => { if (!isOwnEcho(row, guard)) delivered.push(row); });
   sent = vi.fn(() => true);
   cancelled = vi.fn(() => true);
   const manager = { isActive: () => true, sendMessage: sent, cancel: cancelled } as unknown as RunManager;
@@ -121,7 +123,7 @@ describe('leader delivery incidents (#449, #530)', () => {
 });
 
 async function expectPush(outcome: McpJournalRow, nextCursor: string) {
-  // Exercise the actual attached-Claude push filter as well as EchoGuard's admission rule.
+  // Exercise the actual attached-Claude push path end to end, echo filter included.
   // Attach after the rows exist, so the controller's initial floor is at the journal head.
   const push = vi.fn(async () => {});
   const delivery = new LeaderDelivery({ projectId: 'xezar', projectRoot: root, journal, guard,

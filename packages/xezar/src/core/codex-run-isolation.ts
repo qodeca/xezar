@@ -25,6 +25,8 @@
  * `CODEX_HOME` — and a list xezar never loaded must not read as "nothing to switch off". So an
  * answer without a config fails the run closed instead of starting it with servers nobody saw.
  */
+import { asRecord } from './records.ts';
+
 export interface CodexRunIsolation {
   /** The `config` override `thread/start` and `thread/resume` carry. */
   readonly config: Record<string, unknown>;
@@ -328,8 +330,4 @@ export function codexIsolationNote(isolation: CodexRunIsolation): string | null 
     );
   }
   return parts.length > 0 ? parts.join(' ') : null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

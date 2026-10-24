@@ -67,6 +67,7 @@ import {
   type WorkspaceConfigResponse,
   type WorkspaceUiState,
   type McpDiscoveryCockpit,
+  automationLogSinceSchema,
 } from '@qodeca/xezar-contract';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
@@ -695,7 +696,7 @@ const automationLogQueryInputSchema = z.strictObject({
   automationId: z.string().min(1).max(128).optional(),
   result: automationLogResultSchema.optional(),
   event: automationEventSchema.optional(),
-  since: z.string().datetime().optional().describe('ISO timestamp; only newer rows.'),
+  since: automationLogSinceSchema.optional().describe('ISO timestamp; only newer rows.'),
   cursor: z.number().int().positive().optional().describe('Row sequence to continue from.'),
   limit: z.number().int().min(1).max(100).optional(),
 });

@@ -124,6 +124,26 @@
       {
         "pattern": "scripts/xezar-leader-settings.json",
         "why": "The leader session's permissions, including its right to merge pull requests."
+      },
+      {
+        "pattern": "packages/xezar/src/core/secret-redaction.ts",
+        "why": "Scrubs credentials from run transcripts and state before they reach disk or the API."
+      },
+      {
+        "pattern": "packages/xezar/src/core/agent-env.ts",
+        "why": "The least-privilege environment every agent backend starts with; decides which host secrets a run can see."
+      },
+      {
+        "pattern": "packages/xezar/src/core/read-only-lock.ts",
+        "why": "The read-only policy the agent hooks enforce; decides which commands a read-only step may run."
+      },
+      {
+        "pattern": "packages/xezar/scripts/*-hook.mjs",
+        "why": "The shipped read-only hook bundles and the scripts that build them; the Codex bundle's bytes are trusted by hash in users' profiles."
+      },
+      {
+        "pattern": "packages/xezar/scripts/check-pack.mjs",
+        "why": "The check that decides what the published npm archive may contain."
       }
     ]
   }

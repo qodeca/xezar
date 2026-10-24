@@ -235,6 +235,22 @@ describe('ProviderSettings', () => {
     expect(writeText).toHaveBeenCalledWith('codex login --device-auth')
   })
 
+  it('says the copy failed, without throwing, when the browser has no clipboard', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    serve({
+      connectCode: 409,
+      connect: { error: 'No terminal emulator was found.', command: 'codex login --device-auth' },
+    })
+    renderSettings()
+    fireEvent.click(await within(card('codex')).findByRole('button', { name: 'Connect' }))
+
+    const fallback = await screen.findByRole('region', { name: 'Codex manual sign-in' })
+    fireEvent.click(within(fallback).getByRole('button', { name: 'Copy command' }))
+
+    const failure = await screen.findByText('Could not copy the command')
+    expect(failure.closest('[data-slot="toast"]')?.getAttribute('data-tone')).toBe('danger')
+  })
+
   it('removes a manual command once Check again verifies the provider is connected', async () => {
     serve({
       connectCode: 409,

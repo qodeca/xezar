@@ -1,7 +1,6 @@
 import {
   providerAuthChecksDisabled,
   type ProviderId,
-  type ProviderStatus,
   type ProviderStatusResponse,
 } from './provider-auth.ts';
 
@@ -18,8 +17,4 @@ export function applyProviderEnablement(
       enabled: !disabled.has(row.provider),
     })),
   };
-}
-
-export function isProviderUsable(row: ProviderStatus): boolean {
-  return row.enabled !== false && row.status === 'connected';
 }

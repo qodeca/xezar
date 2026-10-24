@@ -61,6 +61,8 @@ import {
   type CodexUiMapperState,
 } from './codex-ui-mapper.ts';
 import { xezCacheDir } from '../paths.ts';
+// Codex executes hook commands through a shell, so every generated path must be one shell word.
+import { shellQuote } from './shell-env.ts';
 
 export interface CodexRunnerOptions {
   /** Override the binary name/path; defaults to `codex` on PATH. */
@@ -1365,11 +1367,6 @@ async function canonicalPath(path: string): Promise<string> {
   } catch {
     return resolve(path);
   }
-}
-
-/** Codex executes hook commands through a shell, so every generated path must be one shell word. */
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 /** One PowerShell word: a single-quoted string, which expands nothing; `'` is written `''`. */

@@ -36,6 +36,7 @@ import type {
   UiToolItem,
 } from './ui-events.ts';
 import { toolDisplay } from './tool-display.ts';
+import { isRecord } from './records.ts';
 
 /** The two reasoning delta channels, accumulated separately — see
  *  `CodexUiMapperState.reasonings`. */
@@ -845,10 +846,6 @@ function codexUsage(raw: Record<string, unknown>): TokenUsage | undefined {
 }
 
 // ---- tiny guards --------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;

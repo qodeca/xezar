@@ -4,7 +4,6 @@ import { MODEL_DISCOVERY_RUNNERS, runnerDiscoversModels } from '@qodeca/xezar-ap
 import type { BackendCheck, Skill, WorkflowDef } from '@qodeca/xezar-api-client'
 
 import {
-  buildAutomationTask,
   availableRunners,
   buildCreateRunBody,
   MODELS_BY_RUNNER,
@@ -361,7 +360,6 @@ describe('buildCreateRunBody — the exact POST /api/v1/runs payloads legacy sen
       images: [],
     }
     expect(buildCreateRunBody(opts).model).toBeUndefined()
-    expect(buildAutomationTask(opts).model).toBeUndefined()
   })
 
   it('omits runner when the chosen connected runner equals the server default', () => {
@@ -464,28 +462,6 @@ describe('pushRecentSource (recency, #picker)', () => {
 
   it('handles an undefined starting list', () => {
     expect(pushRecentSource(undefined, s('a'))).toEqual([s('a')])
-  })
-})
-
-describe('buildAutomationTask', () => {
-  it('uses the New task serializer while dropping one-shot transport fields', () => {
-    expect(buildAutomationTask({
-      task: 'Review {{github.url}}',
-      source: { source: 'skill', ref: 'xez-code-review' },
-      model: 'opus',
-      runner: 'claude',
-      defaultRunner: 'claude',
-      variants: 2,
-      images: [{ mediaType: 'image/png', data: 'ignored' }],
-      autonomous: true,
-      todoId: 'ignored',
-    })).toEqual({
-      prompt: 'Review {{github.url}}',
-      steps: [{ id: 'task', name: 'xez-code-review', skill: 'xez-code-review', prompt: '{{task}}' }],
-      model: 'opus',
-      variants: 2,
-      autonomous: true,
-    })
   })
 })
 

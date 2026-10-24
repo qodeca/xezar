@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * #484 end-to-end: skill search must rank the (almost-)exact match to the TOP wherever it is
@@ -20,30 +20,6 @@ import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureSer
 
 const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-skill-search-${process.pid}`
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the skill-search server never answered at ${url}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess
@@ -94,7 +70,7 @@ beforeAll(async () => {
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'skill-search server' })
 
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(1440, 900)

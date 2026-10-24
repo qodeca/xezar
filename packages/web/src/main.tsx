@@ -1,36 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setApiBaseUrl } from '@qodeca/xezar-api-client'
+import { resolveApiBase } from './api/api-base'
 import { App } from './app'
 import { installChunkReloadGuard } from './lib/chunk-reload'
+import { requireRootContainer } from './root-container'
 import './styles/index.css'
 
-/**
- * Where the API lives, resolved before anything can fetch.
- *
- * Empty — same origin — is the bundled cockpit's case and the default: the service serves this
- * page and owns `/api/v1/*` under the same authority. The two overrides exist for the case this
- * whole split was for, a cockpit talking to a service somewhere else:
- *
- * - `VITE_XEZ_API_BASE` bakes it in at build time, for a bundle shipped separately.
- * - `<meta name="xez-api-base" content="…">` sets it at RUN time, so an operator can point a
- *   deployed bundle at a different service without rebuilding it. It wins, because the HTML is
- *   served per deployment while the bundle is baked once.
- */
-function resolveApiBase(): string {
-  const meta = document.querySelector('meta[name="xez-api-base"]')?.getAttribute('content')
-  return meta?.trim() || import.meta.env.VITE_XEZ_API_BASE || ''
-}
-
+// Where the API lives – the run-time meta tag over the build-time value over same origin – set
+// before anything can fetch. The precedence is documented and tested in `api/api-base.ts`.
 setApiBaseUrl(resolveApiBase())
 
 // A tab opened before an upgrade asks for code files the new build no longer has; reload it once.
 installChunkReloadGuard()
 
-const container = document.getElementById('root')
-if (!container) throw new Error('xezar: #root container is missing from index.html')
-
-createRoot(container).render(
+createRoot(requireRootContainer()).render(
   <StrictMode>
     <App />
   </StrictMode>,

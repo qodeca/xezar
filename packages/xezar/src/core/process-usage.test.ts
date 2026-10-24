@@ -78,6 +78,13 @@ describe('aggregateTreeUsage', () => {
     // pid 900 (999999 KB) is a sibling under init, not under 500 — must not be counted.
     expect(aggregateTreeUsage(procs, 500)?.rssBytes).toBe(175000 * 1024);
   });
+
+  it('sums CPU over the tree too, and treats a leaf as a one-process tree of its own', () => {
+    // Ported from the retired scripts/test-process-usage.mjs, the cases this file did not cover.
+    expect(aggregateTreeUsage(procs, 500)).toEqual({ cpuPct: 17, rssBytes: 175000 * 1024, procCount: 3 });
+    expect(aggregateTreeUsage(procs, 502)).toEqual({ cpuPct: 2, rssBytes: 25000 * 1024, procCount: 1 });
+    expect(aggregateTreeUsage(procs, 900)).toEqual({ cpuPct: 99, rssBytes: 999999 * 1024, procCount: 1 });
+  });
 });
 
 /**

@@ -7,6 +7,7 @@ import { repoChipOf } from '@/components/app-shell-container'
 import { CenteredState } from '@/components/centered-state'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
+import { copyText } from '@/lib/clipboard-result'
 import { bookmarkletUrl } from '@/lib/bookmarklet'
 import { useActiveProjectId } from '@/lib/project-router'
 import { orderSkills } from '@/lib/skills'
@@ -149,12 +150,9 @@ function BookmarkletRow({ label, url, hint }: { label: string; url: string; hint
     anchor.current?.setAttribute('href', url)
   }, [url])
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      toast('Bookmarklet URL copied.')
-    } catch {
-      toast('Copy failed — drag the button instead.', { tone: 'danger' })
-    }
+    const result = await copyText(url)
+    if (result.ok) toast('Bookmarklet URL copied')
+    else toast('Copy failed — drag the button instead.', { tone: 'danger' })
   }
   return (
     <div data-slot="bm-row" className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">

@@ -2258,7 +2258,7 @@ audit digest, and single-project mode stops writing machine-wide keys into the c
   `hosted-docs.test.ts` ties each documented port-precedence and basic-auth-gate claim to the
   harness case that observes it. `docs/testing/coverage-gaps.md` links the two axes. (#547)
 - 📝 **The OpenCode runner's 2026-09-19 qualification is recorded, and its routing rows now match
-  the evidence.** [`.xezar/docs/opencode-qualification-2026-09-19.md`](.xezar/docs/opencode-qualification-2026-09-19.md)
+  the evidence.** [`.xezar/docs/opencode-qualification-2026-09-19.md`](https://github.com/qodeca/xezar/blob/v0.19.0/.xezar/docs/opencode-qualification-2026-09-19.md)
   reports the day's 12 OpenCode runs — 11 read-only tasks across five workflow types, all completed
   on three models, and a writing retrial that reached a sealed evidence set on the fixed build
   before a post-denial stall (#692) stopped it at handoff — with the two defects the trial found
@@ -4234,7 +4234,7 @@ Xezar is an **independent application**, not an upgrade of Cezar. It keeps its o
 owns. An existing Cezar install keeps working, untouched, side by side.
 
 Everything a user has to change is listed in
-[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
+[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](https://github.com/qodeca/xezar/blob/v0.10.1/BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
 The short version:
 
 - `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
@@ -4846,9 +4846,6 @@ A stabilization release that hardens single-project mode and sharpens the cockpi
 - @pat-lewczuk
 
 # 0.9.0 (2026-07-21)
-
-## Highlights
-<!-- TODO: Highlights — auto-update-changelog leaves this blank for the human author to fill in. -->
 
 ## ✨ Features
 - ✨ Edit the coding agents' own config files (global vs local, raw + highlighted). (#418) *(@pkarw)*

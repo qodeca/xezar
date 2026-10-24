@@ -1,15 +1,24 @@
-import { chmod, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import { isXezarSkillsSource, SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService } from './skills-update.ts';
 
 const oldDryRun = process.env.XEZ_DRY_RUN;
 afterEach(() => { if (oldDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = oldDryRun; });
 
+/** Every scratch root a case made, removed after it so no fixture outlives its test. */
+const scratchRoots: string[] = [];
+afterEach(async () => { await Promise.all(scratchRoots.splice(0).map((dir) => rm(dir, TEST_DIR_RM_OPTIONS))); });
+async function scratchRoot(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  scratchRoots.push(root);
+  return root;
+}
+
 async function fixture(project: unknown, global?: unknown) {
-  const root = await mkdtemp(join(tmpdir(), 'xez-skills-update-'));
+  const root = await scratchRoot('xez-skills-update-');
   const home = join(root, 'home'); const repo = join(root, 'repo');
   await mkdir(join(home, '.agents'), { recursive: true }); await mkdir(repo);
   if (project !== undefined) await writeFile(join(repo, 'skills-lock.json'), typeof project === 'string' ? project : JSON.stringify(project));
@@ -173,7 +182,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('never creates the machine-global mirror directory for a check or an apply', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-skills-update-noagents-'));
+    const root = await scratchRoot('xez-skills-update-noagents-');
     const home = join(root, 'home'); const repo = join(root, 'repo');
     await mkdir(home, { recursive: true }); await mkdir(repo);
     await writeFile(join(repo, 'skills-lock.json'), JSON.stringify({ skills: { alpha: { source: 'qodeca/xezar-skills' } } }));
@@ -202,7 +211,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('degrades the global scope only when the machine-global mirror path is not a folder', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-skills-update-badagents-'));
+    const root = await scratchRoot('xez-skills-update-badagents-');
     const home = join(root, 'home'); const repo = join(root, 'repo');
     await mkdir(home, { recursive: true }); await mkdir(repo);
     await writeFile(join(home, '.agents'), 'not a directory');

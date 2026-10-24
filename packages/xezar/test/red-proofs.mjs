@@ -14,6 +14,13 @@
  * tests are guards that pin behaviour this change did not touch, and knowing which is which is
  * the whole point of running this.
  *
+ * WORKTREE-ONLY TOOL. Each case writes a defect into a TRACKED source file and puts the original
+ * bytes back from memory afterwards. Run it only inside your own isolated working copy (Git
+ * worktree), never in a primary checkout that other sessions or agents read: while a case runs the
+ * file is broken, and if the process dies mid-case (Ctrl-C, crash, timeout) the defect stays in
+ * the file. Check `git status` after every run. Its cases are tied to #467-era source text, so a
+ * `find:` anchor that no longer matches reports the case as DEFECT-NOT-APPLICABLE, never a pass.
+ *
  * Usage:  node packages/xezar/test/red-proofs.mjs [name...]     (no names = every case)
  */
 

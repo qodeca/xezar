@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
-import { detectEnvironment, readHostGithubToken } from './backend-detect.js';
+import { detectEnvironment } from './backend-detect.js';
 
 /**
  * #45 (gap R6) — `detectEnvironment()` is where AGENTS.md's zero-config promise is kept:
@@ -312,31 +312,5 @@ describe('the XEZ_DRY_RUN short-circuit', () => {
       version: 'mock (XEZ_DRY_RUN=1)',
     });
     expect(execHook.calls.map((c) => c.file)).not.toContain('codex');
-  });
-});
-
-describe('readHostGithubToken', () => {
-  it('returns the token a logged-in gh prints', async () => {
-    reply('gh', { kind: 'ok', stdout: 'gho_from_gh\n' });
-    vi.stubEnv('GITHUB_TOKEN', 'gho_from_env');
-
-    expect(await readHostGithubToken()).toBe('gho_from_gh');
-  });
-
-  it('falls back to GITHUB_TOKEN when gh is absent', async () => {
-    vi.stubEnv('GITHUB_TOKEN', ' gho_from_env \n');
-
-    expect(await readHostGithubToken()).toBe('gho_from_env');
-  });
-
-  it('falls back to GITHUB_TOKEN when gh answers with an empty token', async () => {
-    reply('gh', { kind: 'ok', stdout: '\n' });
-    vi.stubEnv('GITHUB_TOKEN', 'gho_from_env');
-
-    expect(await readHostGithubToken()).toBe('gho_from_env');
-  });
-
-  it('returns null when neither gh nor the environment has one', async () => {
-    expect(await readHostGithubToken()).toBeNull();
   });
 });

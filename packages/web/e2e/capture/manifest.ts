@@ -1,5 +1,5 @@
 /**
- * The 0.18.0 screenshot contract — one row per cockpit state, with the theme × width variants
+ * The docs screenshot contract — one row per cockpit state, with the theme × width variants
  * each state is captured in.
  *
  * Source: the #448 plan's § 3.2 table (19 states). The plan's prose says "40 files", but its own
@@ -18,23 +18,9 @@ export type Width = 1280 | 375
 export interface ShotState {
   /** File-name stem: `<name>-<theme>-<width>.png`. */
   name: string
-  /** What the picture shows, in words — copied into docs/screenshots/0.18.0/README.md. */
+  /** What the picture shows, in words — copied into the README.md the harness writes beside the pictures. */
   shows: string
   variants: ReadonlyArray<readonly [Theme, Width]>
-  /**
-   * Set when a state is PLANNED for a release whose pictures have not been shot yet (#453 B8).
-   *
-   * The two readers of this file want different answers and used to get the same one. The unit
-   * test asks "is every listed picture on disk, a PNG and inside its budget" — a contract about
-   * what SHIPPED — while the capture harness asks "what should I shoot next time". Adding a
-   * planned state to one list answered both questions with "missing file", so the debt a new
-   * capture is supposed to show could not be written down without turning the fast gate red.
-   *
-   * A state carrying `plannedFor` is therefore outside `allShotFiles()` (the on-disk contract)
-   * and inside `allPlannedShotFiles()` (what to shoot). The docs wave that re-captures the set
-   * moves `SCREENSHOT_DIR` to the new version and deletes these markers in the same commit.
-   */
-  plannedFor?: string
 }
 
 const both1280 = [['dark', 1280], ['light', 1280]] as const
@@ -61,8 +47,7 @@ export const SHOT_STATES: readonly ShotState[] = [
   { name: 'settings-resources', shows: 'Global Settings → Resources: parallel tasks, monitoring sessions and limits', variants: dark1280 },
   { name: 'settings-mcp-connection', shows: 'Project Settings → MCP connection with the leader status', variants: dark1280 },
   { name: 'command-palette', shows: 'The ⌘K command palette open', variants: dark1280 },
-  // Shot for the first time in 0.16.0 (#453 B8, un-planned here). The registered-projects table is
-  // the one documented surface the 0.15.0 set never pictured, and it is also where G-30 lives:
+  // Shot since 0.16.0 (#453 B8). The registered-projects table is also where G-30 lives:
   // below `md` it scrolls sideways inside its box instead of reflowing as cards, squeezing the
   // Project column to 60 px. The phone variants are the point of the row — a debt nobody has a
   // picture of keeps being read as a small one, and whoever fixes G-30 needs a before shot to
@@ -74,8 +59,13 @@ export const SHOT_STATES: readonly ShotState[] = [
   },
 ]
 
-/** Where the PNGs and the GIF live, relative to the repository root. */
-export const SCREENSHOT_DIR = 'docs/screenshots/0.18.0'
+/**
+ * Where the PNGs and the GIF live, relative to the repository root. The last segment is the
+ * xezar version the pictures were taken from: the capture pins the version chip to it, and its
+ * generated README is titled with it. A re-capture for a later release moves this path, every
+ * reference in README.md and docs/guide/, and deletes the old folder in the same change.
+ */
+export const SCREENSHOT_DIR = 'docs/screenshots/0.31.0'
 
 /** Per-file budget for a still, in bytes (the plan's "≤ 300 KB"). */
 export const SHOT_MAX_BYTES = 300 * 1024
@@ -92,18 +82,9 @@ export function shotFileName(name: string, theme: Theme, width: Width): string {
   return `${name}-${theme}-${width}.png`
 }
 
-function filesOf(states: readonly ShotState[]): string[] {
-  return states.flatMap((state) =>
+/** The pictures that must be on disk in `SCREENSHOT_DIR`, and what the capture harness shoots. */
+export function allShotFiles(): string[] {
+  return SHOT_STATES.flatMap((state) =>
     state.variants.map(([theme, width]) => shotFileName(state.name, theme, width)),
   )
-}
-
-/** The pictures that must be on disk in `SCREENSHOT_DIR` — the shipped contract. */
-export function allShotFiles(): string[] {
-  return filesOf(SHOT_STATES.filter((state) => state.plannedFor === undefined))
-}
-
-/** Everything a re-capture should shoot, planned states included. */
-export function allPlannedShotFiles(): string[] {
-  return filesOf(SHOT_STATES)
 }

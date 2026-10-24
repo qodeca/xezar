@@ -108,7 +108,21 @@ jobs:
           sums() { if command -v sha256sum >/dev/null 2>&1 && sha256sum --version >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
           (cd "$PACK_DIR" && sums -- *.tgz > SHA256SUMS && cat SHA256SUMS)
 
-      # The tarball, its checksum and the four stamped manifests (the bump PR commits those).
+      # The release script also restamps the "Describes xezar X." documentation footers to the new
+      # version and names the pages it changed in `stampedDocs`. They travel next to the manifests,
+      # because the version-bump PR commits both.
+      - name: Collect the restamped documentation pages
+        env:
+          PACK_DIR: ${{ runner.temp }}/release-package
+          STAMPED_DOCS: ${{ steps.pack.outputs.stampedDocs }}
+        run: |
+          for file in $STAMPED_DOCS; do
+            mkdir -p "$PACK_DIR/manifests/$(dirname "$file")"
+            cp "$file" "$PACK_DIR/manifests/$file"
+          done
+
+      # The tarball, its checksum, the four stamped manifests and the restamped documentation
+      # pages (the bump PR commits those).
       - name: Upload the release tarball
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -226,9 +240,10 @@ jobs:
       # `main` is PR-only, so a release never pushes a commit to it directly.
       #   - `existing` (the version is already on main via its own PR) records nothing new here;
       #     the tag + Release above capture the release point.
-      #   - patch/minor/major bump the manifests to a version that is NOT yet on main, so they
-      #     open a follow-up PR with the bump instead of pushing. It runs after a published
-      #     release even when the GitHub Release step failed: each is recoverable on its own.
+      #   - patch/minor/major bump the manifests (and the documentation footers) to a version that
+      #     is NOT yet on main, so they open a follow-up PR with the bump instead of pushing. It runs
+      #     after a published release even when the GitHub Release step failed: each is
+      #     recoverable on its own.
       - name: Open version-bump PR (patch/minor/major only)
         id: bump-pr
         if: ${{ !cancelled() && steps.publish.outcome == 'success' && inputs.bump != 'existing' }}
@@ -243,7 +258,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           cp -R "$PACK_DIR/manifests/packages/." packages/
-          git add packages/contract/package.json packages/api-client/package.json packages/web/package.json packages/xezar/package.json
+          # The restamped documentation pages. Only docs/ is copied, so only docs/ can change.
+          if [ -d "$PACK_DIR/manifests/docs" ]; then cp -R "$PACK_DIR/manifests/docs/." docs/; fi
+          git add packages/contract/package.json packages/api-client/package.json packages/web/package.json packages/xezar/package.json docs
           git commit -m "chore(release): v${VERSION}"
           git push origin "$BRANCH"
           gh pr create --base "$BASE_BRANCH" --head "$BRANCH" \

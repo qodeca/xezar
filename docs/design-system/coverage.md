@@ -160,7 +160,6 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/ui/sheet.tsx` | Sheet | components.md §1 Sheet | Documented |
 | `packages/web/src/components/ui/skeleton.tsx` | Skeleton | components.md §1 Skeleton | Documented |
 | `packages/web/src/components/ui/switch.tsx` | Switch | components.md §1 Switch | Documented |
-| `packages/web/src/components/ui/tabs.tsx` | Tabs | components.md §1 Tabs | Documented with known gap (G-20: no importer since #819 PR 9) |
 | `packages/web/src/components/ui/textarea.tsx` | Textarea | components.md §1 Textarea | Documented (G-07 retired) |
 | `packages/web/src/components/ui/toaster.tsx` | Toaster | components.md §1 Toaster | Documented with known gap (G-16 wording; the danger tone's ink now clears AA) |
 | `packages/web/src/components/ui/tooltip.tsx` | Tooltip | components.md §1 Tooltip | Documented |

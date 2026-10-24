@@ -55,8 +55,14 @@ the diff to the security-review row. The risk is not removed; it is made visible
   `.github/workflows/` and `.env.example`.
 - **The product's own boundaries.** `packages/xezar/src/server/` (the HTTP surface, its loopback
   and origin guards, the bind host), `packages/xezar/src/mcp/` (the leader's tools and session
-  binding), `packages/xezar/src/agent-config/` (the agents' own config files) and
-  `packages/xezar/src/workspace/` (per-user state and the project registry).
+  binding), `packages/xezar/src/agent-config/` (the agents' own config files),
+  `packages/xezar/src/workspace/` (per-user state and the project registry),
+  `packages/xezar/src/core/secret-redaction.ts` (credentials scrubbed from run transcripts and
+  state), `packages/xezar/src/core/agent-env.ts` (the least-privilege environment every agent
+  backend starts with), `packages/xezar/src/core/read-only-lock.ts` (the read-only policy the
+  agent hooks enforce), `packages/xezar/scripts/*-hook.mjs` (the shipped read-only hook bundles
+  and their build scripts; the Codex bundle is trusted by hash in users' profiles) and
+  `packages/xezar/scripts/check-pack.mjs` (what the published npm archive may contain).
   These product paths are not in the kit's own list: they are routed by `security.trustBoundaries`
   in `.xezar/pipeline/config.json`, read from the base branch and machine-routed like the kit's
   own; an invalid list routes the change to review.

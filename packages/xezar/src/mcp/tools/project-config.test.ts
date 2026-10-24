@@ -2579,6 +2579,11 @@ describe('project_config: automations', () => {
     expect(foreign.json).not.toContain(id);
 
     expect(Array.isArray(value(await invoke({ action: 'get_automation_log', logQuery: { automationId: id, limit: 5 } })).records)).toBe(true);
+    // A minute-only `since` still passes the MCP schema AND the HTTP route it forwards to: zod 4.6
+    // made `datetime()` require seconds, and this public input must not narrow (#1160).
+    for (const since of ['2026-10-24T09:30Z', '2026-10-24T09:30:00Z', '2026-10-24T09:30:00.123Z']) {
+      expect(Array.isArray(value(await invoke({ action: 'get_automation_log', logQuery: { automationId: id, since } })).records)).toBe(true);
+    }
     expect((await invoke({ action: 'retry_automation_receipt', receiptId: 'no-such-receipt' })).structured.status).toBe(404);
     expect(value(await invoke({ action: 'delete_automation', automationId: id }))).toEqual({ deleted: true, automationId: id });
     expect(value(await invoke({ action: 'list_automations' })).automations).toEqual([]);

@@ -71,6 +71,18 @@ Three Windows settings the suites rely on:
   after 10 minutes. On Node 24 it bounds single tests only, not a test file whose process outlives
   its tests – that is the #1136 hang, which this option does not fix.
 
+## Red-proof driver (worktree only)
+
+`packages/xezar/test/red-proofs.mjs` proves a set of #467-era regression tests go red without
+their fix (AGENTS.md § Changing a mechanism that already works). Run it as
+`node packages/xezar/test/red-proofs.mjs [case-name...]`; no names runs every case.
+
+**Run it only inside your own task worktree, never in a primary checkout.** Each case writes a
+deliberate defect into a tracked source file, runs the owning test, then writes the original bytes
+back. While a case runs the file is broken for anyone else reading that checkout, and if the
+process is interrupted the defect stays. Run `git status` afterwards. It is not part of the gate or
+of CI, and nothing calls it.
+
 ## Detailed documents
 
 | Document | What it covers |

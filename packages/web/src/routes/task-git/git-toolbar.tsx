@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { GitAction, GitActionBar, GitActionId } from '@/lib/git-actions'
+import { prefersReducedMotion } from '@/lib/use-desktop'
 import { isHttpUrl } from '@/lib/utils'
 
 import { BranchChip, DiffViewToggles } from './diff-controls'
@@ -184,10 +185,7 @@ function useAnimatedNumber(target: number): number {
   useEffect(() => {
     const from = fromRef.current
     if (from === target) return
-    const reduced =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduced || typeof requestAnimationFrame !== 'function') {
+    if (prefersReducedMotion() || typeof requestAnimationFrame !== 'function') {
       fromRef.current = target
       setValue(target)
       return

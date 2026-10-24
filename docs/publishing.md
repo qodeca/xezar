@@ -25,7 +25,7 @@ The workflow has two jobs, so the publish rights never meet third-party code:
 
 | Job | Permissions | What it runs |
 |---|---|---|
-| `build` | `contents: read` | `npm ci`, the gate, the build, `test:package`, then `node scripts/release.mjs <bump> --pack-destination <dir>`: stamps the manifests and packs the tarball. Uploads the tarball, its `SHA256SUMS` and the four stamped manifests as the `release-package` artifact. |
+| `build` | `contents: read` | `npm ci`, the gate, the build, `test:package`, then `node scripts/release.mjs <bump> --pack-destination <dir>`: stamps the manifests, restamps the documentation footers and packs the tarball. Uploads the tarball, its `SHA256SUMS`, the four stamped manifests and the restamped documentation pages as the `release-package` artifact. |
 | `publish` | environment `production`; `id-token: write`, `contents: write`, `pull-requests: write` | Installs nothing and runs no package script. Downloads `release-package`, re-checks the SHA-256, runs `npm publish <tarball> --provenance`, creates the tag and GitHub Release, then opens the version-bump PR. |
 
 `packages/xezar/src/release/publishing-surface.test.ts` fails the build if `NPM_TOKEN` or
@@ -127,13 +127,16 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 3. The `build` job then, in order: installs, runs `typecheck` + `npm test` + `test:unit`, builds,
    runs the packaged-CLI E2E (`test:package` — it packs the real tarball, installs it into an
    isolated consumer and runs the CLI from it), stamps the version and packs the release tarball.
+   Stamping covers the four manifests and every "Describes xezar X." footer in `docs/` outside
+   the dated records (`packages/xezar/src/release/doc-footers.ts` names the pages; the footer
+   unit test holds them to the manifest version).
    The `publish` job (it waits for the `production` approval) publishes
    exactly that tarball to npm with `--tag latest` and `--provenance`, and right after that
    creates the `v<version>` tag and GitHub Release at the released commit. The run summary lists
    each of the three – npm, tag and Release, bump PR – with what its own step really did.
 4. For `patch`/`minor`/`major` it then opens a `release/v<version>` PR carrying the manifest
-   bump, because `main` is PR-only. The tag already exists at this point, so a failure here
-   leaves only the PR to open by hand. Merge it with a merge commit so `main` matches the registry. That PR is opened
+   bump and the restamped documentation footers in one commit, because `main` is PR-only. The
+   tag already exists at this point, so a failure here leaves only the PR to open by hand. Merge it with a merge commit so `main` matches the registry. That PR is opened
    by the Actions bot, so its CI sits at **action_required** until a maintainer approves the run
    (`gh run list --branch release/v<version>`, then approve it in the Actions tab or with
    `gh api -X POST repos/qodeca/xezar/actions/runs/<id>/approve`). Nothing is wrong; GitHub holds
@@ -195,7 +198,8 @@ first, and `npm view @qodeca/xezar version` catches up afterwards – from about
 to around a quarter of an hour in the cases observed here. Wait a few minutes and ask again before
 concluding that nothing published.
 
-**After a bump release, the manifests keep naming the previous version on purpose.** A
+**After a bump release, the manifests and the documentation footers keep naming the previous
+version on purpose.** A
 `patch`/`minor`/`major` run stamps the version during the release run instead of committing it
 beforehand, so the commit the tag points at can still hold the previous number. The version-bump
 pull request brings the repository in line afterwards. Until that lands, "`main` says 0.17.0 and
@@ -237,7 +241,7 @@ Then:
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |
-| The version-bump PR was not opened (the tag and Release exist) | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — and open the PR yourself. |
+| The version-bump PR was not opened (the tag and Release exist) | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — change every "Describes xezar X." footer the release restamps to the new version (the footer unit test, `packages/xezar/src/release/guide-footer-version.test.ts`, lists any you miss), and open the PR yourself. |
 
 Whatever the state, inspect the registry **before** re-dispatching. The workflow does not check
 whether a version already exists; npm will reject the duplicate with `E403`, but only after the

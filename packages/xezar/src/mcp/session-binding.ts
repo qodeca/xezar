@@ -232,7 +232,7 @@ function lookupRun(ctx: ProjectContext, runId: unknown, projectId: string): RunR
 /** Realpath + device/inode of a directory, or null when it is gone or not a directory. */
 function rootIdentity(root: string): RootIdentity | null {
   try {
-    const realpath = realpathSync(root);
+    const realpath = realpathSync.native(root);
     const stats = statSync(realpath);
     if (!stats.isDirectory()) return null;
     return { realpath, dev: stats.dev, ino: stats.ino };

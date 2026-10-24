@@ -33,17 +33,6 @@ export interface RunIndexRead {
 }
 
 /**
- * The same read as `readRunIndexFromDisk`, with the count of records it had to leave out. Per
- * record, like `RunStore.open`: one unreadable row (damaged, or written by a newer xezar) drops
- * that row alone, never the project's whole history from the index. Read-only: nothing is written,
- * not even the backup the store keeps.
- */
-export function readRunIndexReport(dataDir: string): RunIndexRead {
-  const { runs, dropped } = readRunIndex(dataDir);
-  return { runs, dropped };
-}
-
-/**
  * `readRunIndexFromDisk`, plus whether the file could be read in full.
  *
  * `readable: false` means the project HAS a `runs.json` that could not be read, could not be
@@ -57,6 +46,11 @@ export function readRunIndexFromDiskChecked(dataDir: string): { runs: RunRecord[
   return { runs, readable: readable && dropped === 0 };
 }
 
+/**
+ * One read-only pass, per record like `RunStore.open`: one unreadable row (damaged, or written by a
+ * newer xezar) drops that row alone, never the project's whole history from the index. Nothing is
+ * written, not even the backup the store keeps.
+ */
 function readRunIndex(dataDir: string): RunIndexRead & { readable: boolean } {
   const indexPath = join(dataDir, 'runs.json');
   if (!existsSync(indexPath)) return { runs: [], dropped: 0, readable: true };

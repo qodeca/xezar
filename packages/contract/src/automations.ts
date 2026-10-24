@@ -129,6 +129,11 @@ export const automationRuntimeStateSchema = z.object({
 });
 export type AutomationRuntimeState = z.infer<typeof automationRuntimeStateSchema>;
 
+/** The automation log's `since` filter (MCP `logQuery.since` and the HTTP `since` query). zod 4.6
+ *  made `datetime()` require seconds (RFC 3339); the second branch keeps the minute-only form
+ *  (`2026-10-24T09:30Z`) these public inputs accepted before, so the bump narrows nothing. */
+export const automationLogSinceSchema = z.union([z.string().datetime(), z.string().datetime({ precision: -1 })]);
+
 /** What one poll decided about one candidate. `baseline` and `preview` are bookkeeping rows: no
  *  task was launched and none was meant to be. */
 export const automationLogResultSchema = z.enum([

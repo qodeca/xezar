@@ -20,7 +20,7 @@ import { QwenCodeInboxAdapter } from './adapters/qwen-code.ts';
 import { isQwenClientName } from './qwen-messaging.ts';
 import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
 import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
-import type { EchoGuard } from './echo-guard.ts';
+import { isOwnEcho, type EchoGuard } from './echo-guard.ts';
 import {
   EVENT_CONTROLLER_HEARTBEAT_MS,
   EventController,
@@ -1020,7 +1020,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   #isEcho(row: McpJournalRow): boolean {
-    return row.origin === 'leader' && row.causedBy !== null && this.#opts.guard?.isOwn(row.causedBy) === true;
+    return isOwnEcho(row, this.#opts.guard);
   }
 
   #liveController(): EventController | undefined {

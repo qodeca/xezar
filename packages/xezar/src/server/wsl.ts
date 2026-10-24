@@ -73,16 +73,6 @@ export function toWindowsPath(posixPath: string, distro: string = wslDistroName(
   return backslashed ? `\\\\wsl$\\${distro}\\${backslashed}` : `\\\\wsl$\\${distro}`;
 }
 
-/** The reverse of the UNC case above: `\\wsl$\<Distro>\…` or `\\wsl.localhost\<Distro>\…` →
- *  the POSIX path WSL-side tools expect. Anything else (a plain `C:\…`, an unrecognized UNC
- *  share) passes through unchanged — it isn't a WSL path to begin with. */
-export function toPosixPath(windowsPath: string): string {
-  const match = /^\\\\(?:wsl\$|wsl\.localhost)\\[^\\]+(\\.*)?$/i.exec(windowsPath);
-  if (!match) return windowsPath;
-  const rest = match[1] ?? '';
-  return `/${rest.replace(/^\\+/, '').split('\\').join('/')}`;
-}
-
 /** The translation actually used at launch time: prefer the real `wslpath -w` (it knows about
  *  every mount, not just `/mnt/<drive>`), falling back to the pure `toWindowsPath` above when
  *  `wslpath` is missing or errors — degrade, never throw. */

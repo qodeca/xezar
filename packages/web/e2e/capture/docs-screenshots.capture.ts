@@ -47,7 +47,7 @@ import {
  *   npm run capture:screenshots -w @qodeca/xezar-web
  *   npm run capture:screenshots -w @qodeca/xezar-web -- -t tasks-list   # one state
  *
- * Output goes straight to `SCREENSHOT_DIR` (`docs/screenshots/0.18.0/`). Nothing here asserts
+ * Output goes straight to `SCREENSHOT_DIR` (`docs/screenshots/<version>/`, see `manifest.ts`). Nothing here asserts
  * product behaviour; the `expect`s only refuse to write a picture of the wrong state.
  */
 

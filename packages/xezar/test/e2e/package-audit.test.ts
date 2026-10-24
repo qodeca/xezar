@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile as execFileCallback, spawn } from 'node:child_process';
+import { execFile as execFileCallback, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,14 +41,30 @@ const auditOf = async (repo: string): Promise<AuditLine[]> => {
   return (await readFile(path, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line) as AuditLine);
 };
 
-async function waitFor<T>(probe: () => Promise<T | undefined>, ms: number, what: string): Promise<T> {
+/**
+ * Poll `probe` until it answers. `context` (optional) is read when the wait fails, so a timeout says
+ * what the awaited process printed rather than only that the time ran out.
+ */
+async function waitFor<T>(probe: () => Promise<T | undefined>, ms: number, what: string, context?: () => string): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
     const value = await probe();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}${context ? `\n${context()}` : ''}`);
     await sleep(100);
   }
+}
+
+/**
+ * Drain a long-running child's output into one transcript. An unread pipe is not free: once its
+ * buffer fills, the child's next write blocks, so a chatty child can stall before it ever does the
+ * thing a test waits for – and a stalled or crashed child left nothing to read when the wait failed.
+ */
+function transcriptOf(child: ChildProcess): () => string {
+  let text = '';
+  child.stdout?.on('data', (chunk: Buffer) => { text += chunk.toString('utf8'); });
+  child.stderr?.on('data', (chunk: Buffer) => { text += chunk.toString('utf8'); });
+  return () => `exit: ${child.exitCode ?? child.signalCode ?? 'still running'}\n--- output ---\n${text}`;
 }
 
 async function gitRepo(dir: string): Promise<void> {
@@ -186,7 +202,15 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     // serve: recorded once the server owns its listening socket.
     const serve = spawn(process.execPath, [cli, 'serve', '--no-open', '--port', '0', '--repo', repo], { cwd: consumer, env, stdio: ['ignore', 'pipe', 'pipe'] });
     children.push(serve);
-    await waitFor(async () => ((await added(seen)).length > 0 ? true : undefined), 60_000, 'the cli.serve record');
+    const serveTranscript = transcriptOf(serve);
+    // #1105 row 10: this wait used to run its full 60 s blind and fail as "timed out" with nothing
+    // else – serve's output was never read, and a serve that had already exited was waited on anyway.
+    // An exited serve now fails the wait at once, and every failure carries serve's own output.
+    await waitFor(async () => {
+      if ((await added(seen)).length > 0) return true;
+      if (serve.exitCode !== null || serve.signalCode !== null) throw new Error(`serve exited before its cli.serve record\n${serveTranscript()}`);
+      return undefined;
+    }, 60_000, 'the cli.serve record', serveTranscript);
     await expectRows([['cli.serve', 'applied']]);
   } finally {
     // Wait for each killed CLI to exit: Windows refuses to remove a folder a live process still holds (#963).

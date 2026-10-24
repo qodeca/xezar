@@ -695,6 +695,3 @@ function seqOf(line: Buffer): number | undefined {
     return undefined;
   }
 }
-
-/** Re-exported: the digest the seam keeps (`audit-redaction.ts`). */
-export { canonicalJson, payloadDigest } from './audit-redaction.ts';

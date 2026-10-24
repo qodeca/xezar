@@ -225,7 +225,7 @@ export function GhostCodeBackdrop() {
   const [cycle, setCycle] = useState(0)
   const motionSafe = useMotionSafe()
   // A fresh random scene each loop — `cycle` is the retrigger, not data the scene reads.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `cycle` only retriggers a new random scene
   const scene = useMemo(() => buildScene(), [cycle])
   useEffect(() => {
     // Under reduced motion the CSS renders the scene static — re-rolling it would be churn.
