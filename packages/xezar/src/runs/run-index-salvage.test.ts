@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readRunIndexFromDisk, readRunIndexReport } from './run-index.ts';
+import { readRunIndexFromDisk, readRunIndexFromDiskChecked } from './run-index.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const GOOD = (id: string) => ({
@@ -24,7 +24,7 @@ describe('the read-only run index keeps every record that parses', () => {
   });
   afterEach(() => rmSync(dataDir, TEST_DIR_RM_OPTIONS));
 
-  it('one unreadable row drops that row alone and is counted', () => {
+  it('one unreadable row drops that row alone and marks the file not fully readable', () => {
     writeFileSync(
       join(dataDir, 'runs.json'),
       JSON.stringify([GOOD('a'), { ...GOOD('bad'), status: 'from-a-newer-build' }, GOOD('b')]),
@@ -32,17 +32,18 @@ describe('the read-only run index keeps every record that parses', () => {
     );
     // The workspace index reads through this: before per-record reading it answered [].
     expect(readRunIndexFromDisk(dataDir).map((r) => r.id)).toEqual(['a', 'b']);
-    const read = readRunIndexReport(dataDir);
+    const read = readRunIndexFromDiskChecked(dataDir);
     expect(read.runs.map((r) => r.id)).toEqual(['a', 'b']);
-    expect(read.dropped).toBe(1);
+    expect(read.readable).toBe(false);
   });
 
   it('a clean file drops nothing; a missing or non-array file contributes nothing', () => {
-    expect(readRunIndexReport(dataDir)).toEqual({ runs: [], dropped: 0 });
+    // No file: a project nobody has run a task in yet, which is readable and empty.
+    expect(readRunIndexFromDiskChecked(dataDir)).toEqual({ runs: [], readable: true });
     writeFileSync(join(dataDir, 'runs.json'), '{"not": "a list"}', 'utf8');
-    expect(readRunIndexReport(dataDir)).toEqual({ runs: [], dropped: 0 });
+    expect(readRunIndexFromDiskChecked(dataDir)).toEqual({ runs: [], readable: false });
     writeFileSync(join(dataDir, 'runs.json'), JSON.stringify([GOOD('a')]), 'utf8');
-    expect(readRunIndexReport(dataDir).dropped).toBe(0);
-    expect(readRunIndexReport(dataDir).runs).toHaveLength(1);
+    expect(readRunIndexFromDiskChecked(dataDir).readable).toBe(true);
+    expect(readRunIndexFromDiskChecked(dataDir).runs).toHaveLength(1);
   });
 });

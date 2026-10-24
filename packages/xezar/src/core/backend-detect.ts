@@ -146,15 +146,3 @@ async function probeGit(): Promise<BackendCheck> {
     return { name: 'git', available: false, hint: 'install git' };
   }
 }
-
-/** The host's GitHub token: logged-in `gh` first, `GITHUB_TOKEN` fallback. */
-export async function readHostGithubToken(): Promise<string | null> {
-  try {
-    const { stdout } = await launchFileAsync('gh', ['auth', 'token'], { timeout: 10_000 });
-    const token = stdout.trim();
-    if (token) return token;
-  } catch {
-    // fall through to the env var
-  }
-  return process.env.GITHUB_TOKEN?.trim() || null;
-}

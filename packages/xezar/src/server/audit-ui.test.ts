@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUDIT_TRAIL_FILE } from '../mcp/audit-trail.ts';
-import { AUDIT_ROUTE, auditRouteDescriptor, createUiAuditDoor, isLoopbackPeer, sanitizeProxyUser, type UiAuditDeps } from './audit-ui.ts';
+import { AUDIT_ROUTE, auditRouteDescriptor, createUiAuditDoor, isLoopbackPeer, type UiAuditDeps } from './audit-ui.ts';
+// § 9: the door hands the trusted raw header to the audit seam, which sanitizes it for every record.
+import { proxyUserOf } from '../mcp/audit-redaction.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
@@ -166,12 +168,12 @@ describe('the ui audit door (#306 part 2)', () => {
     });
 
     it('sanitizes: control characters stripped, 128 UTF-16 code units, never half a surrogate pair', () => {
-      expect(sanitizeProxyUser('a\u0000b\u001fc\u007fd\u0085e')).toEqual({ value: 'abcde', trust: 'asserted-by-proxy' });
-      expect(sanitizeProxyUser('x'.repeat(200))?.value).toHaveLength(128);
+      expect(proxyUserOf('a\u0000b\u001fc\u007fd\u0085e')).toEqual({ value: 'abcde', trust: 'asserted-by-proxy' });
+      expect(proxyUserOf('x'.repeat(200))?.value).toHaveLength(128);
       const emoji = `${'x'.repeat(127)}\u{1F600}`;
-      expect(sanitizeProxyUser(emoji)?.value).toBe('x'.repeat(127));
-      expect(sanitizeProxyUser('\u0001\u0002')).toBeUndefined();
-      expect(sanitizeProxyUser(undefined)).toBeUndefined();
+      expect(proxyUserOf(emoji)?.value).toBe('x'.repeat(127));
+      expect(proxyUserOf('\u0001\u0002')).toBeUndefined();
+      expect(proxyUserOf(undefined)).toBeUndefined();
     });
 
     it('isLoopbackPeer accepts only loopback address forms', () => {
