@@ -1038,13 +1038,9 @@
               }
             },
             "modelsLocked": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "memoryLimitMb": {
@@ -1072,23 +1068,15 @@
               ]
             },
             "liveTitleUpdates": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "reviewGate": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "plannerModel": {
@@ -1162,23 +1150,15 @@
               "maxLength": 4096
             },
             "skillsAutoUpdate": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "followups": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "agentEnvPassthrough": {
@@ -1201,23 +1181,15 @@
               "type": "object",
               "properties": {
                 "autonomous": {
-                  "anyOf": [
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
+                  "type": [
+                    "boolean",
+                    "null"
                   ]
                 },
                 "worktree": {
-                  "anyOf": [
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
+                  "type": [
+                    "boolean",
+                    "null"
                   ]
                 }
               },
@@ -1592,13 +1564,9 @@
         },
         "version": {
           "description": "write_agent_config: the version from the read you based the edit on; null when the file does not exist yet.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ]
         },
         "yaml": {
@@ -1906,7 +1874,7 @@
               "description": "ISO timestamp; only newer rows.",
               "type": "string",
               "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
             },
             "cursor": {
               "description": "Row sequence to continue from.",

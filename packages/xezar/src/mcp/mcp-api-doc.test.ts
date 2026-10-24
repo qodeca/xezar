@@ -111,6 +111,9 @@ function typeOf(schema: Json | undefined): string {
   if (Array.isArray(schema.enum)) return schema.enum.map((v: unknown) => code(String(v))).join(' \\| ');
   if (schema.const !== undefined) return code(JSON.stringify(schema.const));
   if (Array.isArray(schema.anyOf)) return schema.anyOf.map((s: Json) => typeOf(s)).join(' or ');
+  // zod 4.6 writes a nullable scalar as `type: ["boolean", "null"]` instead of an `anyOf` pair;
+  // both mean the same, so the table reads the same.
+  if (Array.isArray(schema.type)) return schema.type.map(String).join(' or ');
   if (schema.type === 'array') return `array of ${typeOf(schema.items)}`;
   return String(schema.type ?? 'any');
 }
