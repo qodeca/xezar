@@ -22,6 +22,32 @@ function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
 }
 
 /**
+ * Run a child to the end and report how it ended – exit code, signal, timeout kill and output –
+ * instead of resolving on success and rejecting on everything else. For a command that is
+ * EXPECTED to fail, so the test can assert the one failure it expects and print any other.
+ */
+async function settleExec(
+  file: string,
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number },
+): Promise<{ code: number | null; timedOut: boolean; output: string }> {
+  const describe = (stdout: unknown, stderr: unknown): string => `--- stdout ---\n${String(stdout ?? '')}\n--- stderr ---\n${String(stderr ?? '')}`;
+  try {
+    const result = await execFile(file, args, options);
+    return { code: 0, timedOut: false, output: describe(result.stdout, result.stderr) };
+  } catch (error) {
+    const failure = error as { code?: unknown; killed?: boolean; signal?: string | null; stdout?: unknown; stderr?: unknown; message?: string };
+    // A spawn failure (ENOENT, EACCES) carries a string `code` and no exit status: rethrow it as is.
+    if (typeof failure.code !== 'number' && !failure.killed) throw error;
+    return {
+      code: typeof failure.code === 'number' ? failure.code : null,
+      timedOut: failure.killed === true,
+      output: `${failure.message ?? ''}\nsignal: ${failure.signal ?? 'none'}\n${describe(failure.stdout, failure.stderr)}`,
+    };
+  }
+}
+
+/**
  * Every file in a tree keyed by its relative path, so two states of the same
  * directory can be compared byte-for-byte. `.git` is skipped: git rewrites its
  * own bookkeeping for reasons that have nothing to do with the command run.
@@ -284,7 +310,12 @@ if (args.join(' ') === 'auth status --json') {
 `,
       { mode: 0o755 },
     );
-    await execFile(
+    // The run is EXPECTED to fail – the shim's agent turn is a revoked-token rejection – so the CLI
+    // exits 1. That expected failure used to be swallowed with `.catch(() => undefined)`, and the
+    // swallow hid every other outcome too: a CLI killed by the timeout, a crash before the run was
+    // saved, a refusal. Windows CI then reported only "creates exactly one run, 1 !== 2" with no
+    // trace of why (#1105 row 10). Every outcome is now settled and named, with the CLI's own output.
+    const authRun = await settleExec(
       process.execPath,
       [cliPath, 'run', 'exercise runtime auth rejection', '--repo', fixtureRepo],
       {
@@ -297,11 +328,13 @@ if (args.join(' ') === 'auth status --json') {
         timeout: 60_000,
         maxBuffer: 10 * 1024 * 1024,
       },
-    ).catch(() => undefined);
+    );
+    assert.equal(authRun.timedOut, false, `the runtime-auth run was killed by its 60 s bound\n${authRun.output}`);
+    assert.equal(authRun.code, 1, `the runtime-auth run must end as a failed run (exit 1)\n${authRun.output}`);
     const runsAfterAuthFailure = JSON.parse(
       await readFile(join(fixtureRepo, '.local', 'xezar', 'runs.json'), 'utf8'),
     ) as Array<{ id: string }>;
-    assert.equal(runsAfterAuthFailure.length, 2, 'the runtime-auth fixture creates exactly one run');
+    assert.equal(runsAfterAuthFailure.length, 2, `the runtime-auth fixture creates exactly one run\n${authRun.output}`);
     const authFailureRun = runsAfterAuthFailure.at(0);
     assert.ok(authFailureRun, 'the auth-failure fixture creates a run');
     const authFailureEvents = (await readFile(
