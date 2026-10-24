@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { createServer } from 'node:net'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Guide 14 — Remote access (docs/guide/14-remote-access.md), § "To choose local or hosted mode".
@@ -21,30 +21,6 @@ import { GuideBrowser } from './guide-browser'
  * installation lifecycle is manual with a dated record. This file asserts only the one
  * capability-driven UI difference a dry-run browser can honestly show.
  */
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the hosted-mode fixture server never answered at ${url}`)
-}
 
 let browser: GuideBrowser
 let server: ChildProcess
@@ -61,7 +37,7 @@ beforeAll(async () => {
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot, { XEZ_REMOTE: '1' }), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'hosted-mode fixture server' })
   bootProject = await bootProjectId(baseUrl)
 
   browser = GuideBrowser.open(`e2e-guide-14-${process.pid}`)
