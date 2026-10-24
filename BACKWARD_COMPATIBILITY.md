@@ -73,8 +73,9 @@ that the built cockpit ships inside it. Nothing publishes automatically (`docs/p
 ## 8. Deprecation
 
 A surface above is removed only after a deprecation that names the replacement and the release it
-goes in, recorded under `docs/deprecations/` with an upgrade note keyed by the symptom a user will
-see. How long the notice runs is the owner's decision for each case.
+goes in, recorded under `docs/deprecations/` (created with its first record) with an upgrade note
+keyed by the symptom a user will see. How long the notice runs is the owner's decision for each
+case.
 
 Exception (#1046, owner decision in #1041): the `pi` and `opencode` backends and leader clients
 were removed in one release, without a deprecation release, once Qwen Code passed the parity proof
