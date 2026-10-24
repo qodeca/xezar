@@ -32,7 +32,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationsPref = { enabled: false }
  *  the server's ui-state schema is a passthrough, so this can meet any shape ever written. */
 export function normalizeNotifications(raw: unknown): NotificationsPref {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-  return { enabled: obj.enabled === true }
+  return obj.enabled === true ? { enabled: true } : { ...DEFAULT_NOTIFICATIONS }
 }
 
 // ---- permission, with "no API at all" as a first-class answer ------------------------------
