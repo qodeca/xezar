@@ -1,4 +1,11 @@
-import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar-api-client'
+import { resumeCommand as sharedResumeCommand, runnerSchema, type Runner } from '@qodeca/xezar-api-client'
+
+/**
+ * Every backend id, in the order the cockpit lists them — ONE list for the whole cockpit, taken
+ * straight from the contract's `runnerSchema` so a backend added or removed there reaches every
+ * list (provider status, auth alerts, the Accounts groups, the MCP capability checks) at once.
+ */
+export const RUNNER_ORDER: readonly Runner[] = runnerSchema.options
 
 /**
  * The product name behind each backend id — ONE definition for the whole cockpit.

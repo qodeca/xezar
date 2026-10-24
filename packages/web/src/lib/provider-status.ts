@@ -1,6 +1,6 @@
 import type { ProviderStatus, ProviderStatusResponse, Runner } from '@qodeca/xezar-api-client'
+import { RUNNER_ORDER } from './runner-label'
 
-const RUNNER_ORDER: readonly Runner[] = ['claude', 'codex', 'qwen']
 const PROVIDER_STATES = new Set(['connected', 'disconnected', 'not-installed', 'unknown'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {

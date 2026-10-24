@@ -209,6 +209,13 @@ function plaintext(code: string): SynHighlight {
   }
 }
 
+/**
+ * Past this many lines a view skips syntax highlighting — plaintext beats jank. ONE cap for every
+ * surface (the diff, the file preview and the editor), so the same file never highlights in one
+ * place and not in another.
+ */
+export const HIGHLIGHT_MAX_LINES = 1500
+
 export interface HighlightOptions {
   /**
    * Shiki's per-line wall-clock budget in milliseconds (its `tokenizeTimeLimit`, default 500;

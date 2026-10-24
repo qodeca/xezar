@@ -6,7 +6,6 @@ import {
   REFERENCE_CONFLICT,
   REFERENCE_STATUS,
   referenceStatusPresentation,
-  referenceStatusText,
   type ReferenceStatusTone,
 } from './reference-status'
 
@@ -139,23 +138,5 @@ describe('referenceStatusPresentation', () => {
     // The rollback case: a newer bundle wrote this into sessionStorage, the tab then reloaded an
     // older one. It must land on the neutral chip, not on an `undefined` that a render dereferences.
     expect(referenceStatusPresentation('queued-for-merge' as ReferenceStatus)).toBeUndefined()
-  })
-})
-
-describe('referenceStatusText', () => {
-  it('joins the label and the hint with an em dash', () => {
-    expect(referenceStatusText('merged')).toBe('Merged — this landed on its base branch')
-    expect(referenceStatusText('checks-failing')).toBe(
-      'Checks failing — CI is red on the latest commit',
-    )
-  })
-
-  it('produces one non-empty sentence for every status', () => {
-    for (const status of ALL_STATUSES) {
-      const text = referenceStatusText(status)
-      expect(text, status).toContain(' — ')
-      expect(text.startsWith(REFERENCE_STATUS[status].label), status).toBe(true)
-      expect(text.endsWith(REFERENCE_STATUS[status].hint), status).toBe(true)
-    }
   })
 })
