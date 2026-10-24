@@ -27,7 +27,7 @@ A design folder moves through five statuses: **Draft → In review → Approved 
 | **In review** | The `design-review` run or a human reviewer posts the `## Design review` comment on the PR. | Whoever posts the comment. |
 | **Approved** | The README's own `## Design review` section links that comment and every finding has a disposition: fixed, filed as a `bug` issue labelled `needs-design`, or accepted with a reason. No finding may be left blank. | The PR that fills the section. |
 | **Implemented (PR #n)** | The PR that ships the surface is merged; the row names it. Post-merge housekeeping, not a gate. | The implementing PR, or the next PR that touches this file. |
-| **Archived** | A Draft or In review design untouched for 90 days. The row stays and the folder stays; the README's Status line says Archived and why. | Release prep, or whoever notices. |
+| **Archived** | A Draft or In review design whose README records no activity for 90 days. The row stays and the folder stays; the README's Status line says Archived and why. | Release prep (its design-expiry check), or whoever notices. |
 
 Three more statuses describe how the shipped surface relates to the mockup:
 
@@ -38,6 +38,8 @@ Three more statuses describe how the shipped surface relates to the mockup:
 | **Superseded** | A later design, or a later shipped surface, replaces this one. The Status line names the replacement; the folder stays as history. | The PR that adds the replacement. |
 
 Two reversals: an Approved design with no implementing PR within two releases reverts to Draft, because the cockpit moved on and the review no longer describes it; an Archived design that is picked up again re-enters at Draft.
+
+The 90-day and two-release clocks run from the dates the design README records itself – its Date row, its Status line, a dated revision or a dated `## Design review` entry – never from `git log`, because repository-wide sweeps (renames, link fixes, history notes) touch every folder without moving a design forward. So a PR that moves a design forward updates the date its README records, and a sweep that only renames or fixes links leaves it alone. The check and its steps are in [`docs/design-system/lifecycle.md`](../docs/design-system/lifecycle.md) (the Expiry row).
 
 The row below and the design README's own Status line must agree; the PR that changes one changes both. Every design README ends with a `## Design review` section that reads "Pending" until the review lands (`docs/design-system/new-designs.md` §8).
 

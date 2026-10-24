@@ -773,7 +773,8 @@
       "sha256": "a48b6bf76ca5194dd561a3dc984dc327f448e1a779dc12dc074ae8ffee2b1dda",
       "origin": "copied",
       "kitSource": "skills/xezar-release-prep.md",
-      "kitBlob": "e2d4a690f8a008c969914ae1e4ca3a54f03941a9"
+      "kitBlob": "e2d4a690f8a008c969914ae1e4ca3a54f03941a9",
+      "patch": "LP-6"
     },
     ".xezar/skills/xezar-release-publish.md": {
       "sha256": "8e33a0e91d74de15ce4099b5303dd32be84ff0c145c8648d2f381e470ec78e58",
