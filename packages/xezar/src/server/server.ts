@@ -1761,7 +1761,7 @@ export function createApp(deps: ServerDeps) {
   // statement because Hono accumulates its route types through the chain: a
   // statement's return value is discarded, so `typeof app` would record nothing
   // and `hc<AppType>` would have no endpoint to offer. `createApp` mounts this
-  // under both `/api` (the frozen legacy spelling) and `/api/v1`.
+  // once, in the workspace table under `/api/v1`.
   const healthRoutes = new Hono().get('/health', async (c) => c.json(await readHealth()));
 
   // The push twin of the poll it replaced (#369): while at least one cockpit
@@ -3669,9 +3669,10 @@ export function createApp(deps: ServerDeps) {
     });
 
   // ---- chained family: workflows (project-scoped) --------------------------
-  // One chained expression, mounted by `createApp` into BOTH the legacy `api`
-  // table and the versioned `v1` one — see `healthRoutes` for why the chain
-  // shape (not the statement shape) is what carries the types.
+  // One chained expression, mounted by `createApp` into the project `v1` table
+  // (served under `/api/v1/p/:projectId` and the unscoped `/api/v1` alias) —
+  // see `healthRoutes` for why the chain shape (not the statement shape) is
+  // what carries the types.
   const workflowsRoutes = new Hono<ProjectApiEnv>()
     .get('/workflows', async (c) => c.json(await loadWorkflows(c.get('project').root)))
 

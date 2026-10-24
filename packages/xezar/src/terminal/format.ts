@@ -14,8 +14,6 @@
 
 /** `—`, the placeholder for a value xezar does not have. Never printed for "the value is zero". */
 export const MISSING = '—';
-/** The ASCII stand-in when the terminal is not UTF-8. */
-export const MISSING_ASCII = '-';
 
 /**
  * A duration as a person reads it: `41s`, `2m 23s`, `1h 02m`.
@@ -66,12 +64,6 @@ export function formatCost(usd: number): string {
 export function formatLocalTime(at: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
-}
-
-/** Local `HH:MM` — the form a "resumes at" line uses. */
-export function formatLocalClockTime(at: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 /** UTC ISO-8601 with milliseconds — the one timestamp form plain output uses. */

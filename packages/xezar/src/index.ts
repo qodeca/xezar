@@ -240,8 +240,7 @@ const GLOBAL_OPTIONS = {
   quiet: { type: 'boolean', short: 'q', default: false },
   // Registered globally, like `--single-project`, because `parseArgs` is strict: a
   // subcommand that does not use the setting — `xez mcp` — must still ACCEPT the flag
-  // rather than die on an unknown option (#467, spec § 3.3). PR 1 only resolves the
-  // value; nothing reads it yet, and the help text lands with the behaviour in PR 2.
+  // rather than die on an unknown option (#467, spec § 3.3).
   instance: { type: 'string' },
   repo: { type: 'string' },
   // `xezar lease gates --status-file <path>` (#672). Registered globally for the same reason

@@ -251,9 +251,6 @@ export const leaderPushParamsSchema = z.object({
 });
 export type LeaderPushParams = z.infer<typeof leaderPushParamsSchema>;
 
-/** What the bridge answers a `leader/push`: the notification was written to the client's stdout. */
-export const leaderPushResultSchema = z.object({ pushed: z.literal(true) });
-
 /** Service → bridge. */
 export const ipcResponseSchema = z.discriminatedUnion('ok', [
   z.object({ v: z.number().int(), id: z.number().int().nullable(), ok: z.literal(true), result: z.unknown() }),

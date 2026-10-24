@@ -14,8 +14,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 /**
  * The typed client, end to end (spec 2026-07-23-independent-server-web-packages, Phase 1).
  *
- * This is the test the hand-written mirror (`packages/api-client/src/dto/types.ts`) and its drift guard
- * exist to replace. It proves the two halves of the claim "the routes ARE the contract":
+ * This is the test that replaced the hand-written DTO mirror (since deleted) and its drift guard. It proves the two halves of the claim "the routes ARE the contract":
  *
  *   1. RUNTIME — a client built from `AppType` reaches the real handlers and gets the real
  *      answers. The client's `fetch` is wired straight into the app, so no port is opened and
