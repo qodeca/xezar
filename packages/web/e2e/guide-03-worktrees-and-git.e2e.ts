@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Guide 03 — Worktrees and Git (docs/guide/03-worktrees-and-git.md): the composer's Worktree
@@ -25,30 +25,6 @@ import { GuideBrowser } from './guide-browser'
  * serialization are covered by `packages/xezar/src/workflows/run-isolation.test.ts:54-147`. This
  * file asserts only what a real dry-run server's own UI makes visible.
  */
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the guide-03 fixture server never answered at ${url}`)
-}
 
 async function bootFixture(git: boolean, tag: string): Promise<{
   server: ChildProcess
@@ -71,7 +47,7 @@ async function bootFixture(git: boolean, tag: string): Promise<{
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'guide-03 fixture server' })
   const bootProject = await bootProjectId(baseUrl)
   return { server, dataRoot, baseUrl, bootProject }
 }

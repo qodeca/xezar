@@ -1,10 +1,10 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { freePort } from './fixture-server'
 
 /**
  * #118 — the COCKPIT half of A-20 (requirements § 9): with the cockpit open, a leader mutates
@@ -42,18 +42,6 @@ let projectId: string
 let runId: string
 /** A value planted in the page: still there means the page never reloaded. */
 const MARKER = `a20-${process.pid}-${Date.now()}`
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const found = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(found))
-    })
-  })
-}
 
 async function waitFor<T>(what: string, probe: () => Promise<T | undefined> | T | undefined, timeoutMs = 30_000): Promise<T> {
   const deadline = Date.now() + timeoutMs

@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Guide 08 — Inbox, notifications and templates (docs/guide/08-inbox-notifications-templates.md):
@@ -24,30 +24,6 @@ import { GuideBrowser } from './guide-browser'
  * `packages/web/src/lib/notifications.test.ts`. This file never requests real notification
  * permission — only the dry-run-honest inbox list itself.
  */
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the guide-08 fixture server never answered at ${url}`)
-}
 
 async function bootFixture(followups: boolean, tag: string): Promise<{
   server: ChildProcess
@@ -84,7 +60,7 @@ async function bootFixture(followups: boolean, tag: string): Promise<{
     [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot, followups ? { XEZ_FOLLOWUPS: '1' } : {}), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'guide-08 fixture server' })
   const bootProject = await bootProjectId(baseUrl)
   return { server, dataRoot, baseUrl, bootProject }
 }

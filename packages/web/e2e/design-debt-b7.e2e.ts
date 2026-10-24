@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { runAgentBrowserCli } from './agent-browser-cli'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Design-debt batch B7 in a real browser — the remaining routes and feature panels (#453, AC-7 /
@@ -182,15 +182,13 @@ beforeAll(async () => {
     { id: 'b7-note', summary: 'The release notes mention a removed flag', action: 'note' },
   ], null, 2))
 
-  const port = await new Promise<number>((done, fail) => { const s = createServer(); s.once('error', fail); s.listen(0, '127.0.0.1', () => { const a = s.address(); const n = typeof a === 'object' && a ? a.port : 0; s.close(() => done(n)) }) })
+  const port = await freePort()
   url = `http://localhost:${port}`
   server = spawn(process.execPath, [xezarCli, 'serve', '--repo', root, '--port', String(port), '--no-open'], {
     env: fixtureServeEnv(root, { XEZ_REVIEW_GATE: '1', XEZ_AUTOMATIONS: '1', XEZ_FOLLOWUPS: '1' }),
     stdio: 'ignore',
   })
-  let healthy = false
-  for (let n = 0; n < 60; n++) { try { if ((await fetch(`${url}/api/v1/health`)).ok) { healthy = true; break } } catch {} await new Promise((r) => setTimeout(r, 250)) }
-  if (!healthy) throw new Error('B7 fixture server did not start')
+  await waitForHealth(url, { label: 'design-debt-b7 fixture server' })
   project = await bootProjectId(url)
 
   const gh = await api<{ available: boolean; issues: Array<{ number: number }>; prs: Array<{ number: number }> }>('/api/v1/github')

@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * The task Commits tab's virtualization (`routes/task-git/commit-list.tsx`), in a real browser,
@@ -43,30 +43,6 @@ let baseUrl: string
 /** The newest commit's sha — the only one the fixture gives a real diff (the rest are
  *  `--allow-empty` for speed), so the routing test must click THAT row specifically. */
 let newestSha = ''
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
-}
 
 /**
  * A worktree on `xez/…` carrying COMMITS commits past `main` — the shape the tab reads.

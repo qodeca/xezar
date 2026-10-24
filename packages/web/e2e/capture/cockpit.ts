@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { fixtureServeEnv, xezarCli } from '../agent-browser'
 import { createFixtureRepo } from './fixture-repo'
+import { freePort } from '../fixture-server'
 
 /**
  * The capture harness's own xezar: a `serve` over a throwaway workspace, with every opt-in
@@ -28,18 +28,6 @@ export interface Cockpit {
   /** The sandboxed HOME the server runs with. */
   home: string
   server: ChildProcess
-}
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
 }
 
 export async function bootCockpit(): Promise<Cockpit> {

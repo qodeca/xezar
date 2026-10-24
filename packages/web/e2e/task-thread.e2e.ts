@@ -1,12 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * The task thread (`/tasks/:id`, R3 Steps 1.1 + 1.2) in a real browser, against a real xezar
@@ -29,30 +29,6 @@ const sessionId = `e2e-thread-${process.pid}`
  *  assertions cover the edited-title path rather than echoing the raw auto-summary. */
 const RUN = { ...record, titleSummary: 'Explain what xezar does' }
 const RUN_ID: string = RUN.id
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess
