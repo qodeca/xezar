@@ -151,4 +151,4 @@ xezar you used before, or change their `runner` and `backend` values – see
 
 Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

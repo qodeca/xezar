@@ -23,7 +23,7 @@ the next start stops those leftovers before the task resumes (#982).
 ## A Qwen Code leader on Windows gets no pushed events
 
 A documented limit of Qwen Code, not xezar work: the owner decided on 2026-10-17 that a Windows Qwen
-Code leader is pull-only for 0.30.0 ([#1086](https://github.com/qodeca/xezar/issues/1086)).
+Code leader is pull-only since 0.30.0 ([#1086](https://github.com/qodeca/xezar/issues/1086)).
 
 Qwen Code 0.25.2 opens no cross-session inbox on Windows, so its xezar bridge has nothing to push to.
 The leader reads with `leader_events` `read` and acknowledges with `ack`, and the
