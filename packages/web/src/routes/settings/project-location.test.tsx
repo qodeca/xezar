@@ -1,10 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
+import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
 /**
@@ -74,6 +75,7 @@ function renderAt(entry: string) {
     <QueryClientProvider client={seededClient()}>
       <MemoryRouter initialEntries={[entry]}>
         <AppRoutes />
+        <Toaster />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -98,6 +100,7 @@ async function openWithMenu(): Promise<string[]> {
 
 afterEach(() => {
   cleanup()
+  act(() => resetToasts())
   vi.unstubAllGlobals()
 })
 
@@ -132,6 +135,22 @@ describe('the project folder in settings', () => {
     fireEvent.click(copy)
 
     expect(writeText).toHaveBeenCalledWith(ROOT)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain('Project folder copied'),
+    )
+  })
+
+  it('without a clipboard (plain http) the copy does not throw and the toast shows the path', async () => {
+    // A page served over plain http has no `navigator.clipboard` at all. The old handler called
+    // `navigator.clipboard.writeText` synchronously and threw before its `.catch` existed.
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    renderAt('/settings')
+    const copy = await screen.findByTitle('Copy the project folder path')
+
+    expect(() => fireEvent.click(copy)).not.toThrow()
+
+    await waitFor(() => expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(ROOT))
+    expect(document.querySelector('[data-slot="toast"]')?.textContent).not.toContain('copied')
   })
 
   it('"Open with" lists the machine\'s apps, minus the agent CLIs', async () => {
