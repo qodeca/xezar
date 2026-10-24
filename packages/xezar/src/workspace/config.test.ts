@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { uniqueTmpPath } from '../platform/atomic-write.ts';
 import { workspaceConfigPath } from '../paths.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import {
   DEFAULT_MEMORY_LIMIT_MB,
-  atomicTmpPath,
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
   effectiveComposerDefault,
@@ -242,8 +242,8 @@ describe('workspace config', () => {
     // share `~/.xezar/` — a fixed `${path}.tmp` would let one writer O_TRUNC
     // the other's staging file mid-write and rename corruption into place.
     const path = workspaceConfigPath();
-    const a = atomicTmpPath(path);
-    const b = atomicTmpPath(path);
+    const a = uniqueTmpPath(path);
+    const b = uniqueTmpPath(path);
     expect(a).not.toBe(b); // unique per call, even within one process
     for (const tmp of [a, b]) {
       expect(tmp.startsWith(`${path}.`)).toBe(true); // stays in the target's directory

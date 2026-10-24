@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
-import { uniqueTmpPath, writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import {
   activeStateLayout,
@@ -619,23 +619,6 @@ function warnOncePerState(path: string, raw: string | null, message: string): vo
   if (warnedStates.get(path) === state) return;
   warnedStates.set(path, state);
   console.warn(message);
-}
-
-/**
- * The tmp path an atomic write stages through — UNIQUE PER WRITE, never a
- * fixed `${path}.tmp`. `~/.xezar/` is shared by every xezar process on the
- * machine (a `serve` per repo, `xezar run`s, a settings PUT), and two writers
- * staging through the same tmp name interleave: writer B's `O_TRUNC` open can
- * empty the file between writer A's write and rename, so A renames a
- * truncated/half-written file into place — and B's own rename then throws
- * `ENOENT` on the name A consumed. The pid + random suffix gives every writer
- * its own staging file, so the only cross-process contention left is the
- * rename itself, which is atomic.
- *
- * @deprecated use `uniqueTmpPath` from `platform/atomic-write.ts` (#963); kept for existing importers.
- */
-export function atomicTmpPath(path: string): string {
-  return uniqueTmpPath(path);
 }
 
 /** Atomic JSON write (`0600`, dir `0700`) via a per-writer tmp + rename —

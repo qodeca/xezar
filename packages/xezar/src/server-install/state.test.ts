@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { serverStatePath } from '../paths.ts';
 import {
   acquireLock,
   deleteServerState,
-  firstIncompleteStep,
   isResolved,
   listServerInstances,
   loadServerState,
@@ -54,14 +53,25 @@ describe('server state', () => {
     expect(loadServerState().steps.deps?.status).toBe('done');
   });
 
-  it('firstIncompleteStep skips done and skipped, stops at pending/failed', () => {
+  it('saves through its own staging file, so a leftover fixed `.tmp` neither blocks nor survives the write', () => {
+    // A fixed `${path}.tmp` let two writers interleave and let a stale staging entry fail every save.
+    const path = serverStatePath();
+    mkdirSync(`${path}.tmp`, { recursive: true });
+    const s = freshServerState();
+    s.primaryPort = 4999;
+    saveServerState(s);
+    expect(loadServerState().primaryPort).toBe(4999);
+    const dir = dirname(path);
+    expect(readdirSync(dir).filter((name) => name.startsWith(`${basename(path)}.`) && name !== `${basename(path)}.tmp`)).toEqual([]);
+  });
+
+  it('isResolved treats done and skipped as resolved, pending and failed as not', () => {
     const s = freshServerState();
     s.steps = {
       a: { status: 'done', created: null },
       b: { status: 'skipped', created: null },
       c: { status: 'failed', created: null },
     };
-    expect(firstIncompleteStep(['a', 'b', 'c', 'd'], s)).toBe('c');
     expect(isResolved(s.steps.a)).toBe(true);
     expect(isResolved(s.steps.b)).toBe(true);
     expect(isResolved(s.steps.c)).toBe(false);

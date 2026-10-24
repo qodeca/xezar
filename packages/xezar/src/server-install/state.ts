@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -7,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { renameReplacingSync } from '../platform/atomic-write.ts';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { basename, dirname } from 'node:path';
 import {
   DEFAULT_SERVER_INSTANCE,
@@ -86,14 +85,7 @@ export function saveServerState(state: ServerState, instance: string = DEFAULT_S
   const path = serverStatePath(instance);
   const dir = dirname(path);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  renameReplacingSync(tmp, path);
-  try {
-    chmodSync(path, 0o600); // best-effort — ignored on some filesystems
-  } catch {
-    // non-fatal
-  }
+  writeFileAtomicSync(path, `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
 }
 
 /**
@@ -115,14 +107,6 @@ export function deleteServerState(instance: string): void {
 /** A step is resolved (needs no run on resume) when it is done or skipped. */
 export function isResolved(outcome: StepOutcome | undefined): boolean {
   return outcome?.status === 'done' || outcome?.status === 'skipped';
-}
-
-/**
- * First step id in `orderedIds` that is not yet resolved — the resume point.
- * `undefined` means every step is resolved (install complete).
- */
-export function firstIncompleteStep(orderedIds: readonly string[], state: ServerState): string | undefined {
-  return orderedIds.find((id) => !isResolved(state.steps[id]));
 }
 
 export class LockHeldError extends Error {}

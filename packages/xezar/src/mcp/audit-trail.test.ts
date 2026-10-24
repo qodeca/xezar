@@ -9,11 +9,11 @@ import {
   AuditRejection,
   AuditTrail,
   auditTrailPath,
-  canonicalJson,
-  payloadDigest,
   settlementForStatus,
   type AuditedOperation,
 } from './audit-trail.ts';
+import { payloadDigest } from './audit-redaction.ts';
+import { canonicalJson } from './canonical-json.ts';
 
 /**
  * #102 — the audit trail. The four acceptance cases are the first four `describe` blocks; the rest

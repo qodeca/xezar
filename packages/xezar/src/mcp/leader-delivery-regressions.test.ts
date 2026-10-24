@@ -14,7 +14,8 @@ import { EventCatalog, withEventOrigin, expectEventTransition } from './event-ca
 import { EventJournal } from './event-journal.ts';
 import { EchoGuard, isOwnEcho } from './echo-guard.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
-import { runDecisionProjection, runVersion, guardedRunMutation } from './stale-write.ts';
+import { runDecisionProjection } from '../runs/decision-projection.ts';
+import { runVersion, guardedRunMutation } from './stale-write.ts';
 import { executionControlTool } from './tools/execution-control.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
 import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
