@@ -4,6 +4,11 @@
  * the protocol layer (paseo's pattern), never in components, so the thread,
  * activity groups and notifications all say the same thing.
  *
+ * Lives in the contract so the service and the cockpit share ONE
+ * implementation: the runners' mappers stamp `title`/`toolKind` onto each
+ * tool item, and the api-client re-exports this function for any consumer
+ * that needs the same wording.
+ *
  * Pure function over untrusted input: tool inputs come off the wire and may
  * be null, partial (streamed incrementally) or arbitrarily malformed —
  * `toolDisplay` must never throw.

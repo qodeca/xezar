@@ -34,8 +34,8 @@ import type {
   UiMessageItem,
   UiReasoningItem,
   UiToolItem,
-} from './ui-events.ts';
-import { toolDisplay } from './tool-display.ts';
+} from '@qodeca/xezar-contract';
+import { toolDisplay } from '@qodeca/xezar-contract';
 import { isRecord } from './records.ts';
 
 /** The two reasoning delta channels, accumulated separately — see

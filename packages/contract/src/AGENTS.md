@@ -6,6 +6,8 @@ Cross-repository rules and the task-routing index are in the root `AGENTS.md`.
 
 **One zod definition per shape, type inferred — never a hand-written interface.** Add the schema here FIRST, then chain the route and validate through the trio; `contract-parity*.test.ts` proves the schema and the route agree in both directions, and `typed-bodies.test.ts` proves the route reached `AppType` at all. See § The HTTP API in detail below for why a loose `app.get(…)` disappears.
 
+The single owner-approved exception is the agent-event protocol: `ui-events.ts` and `tool-display.ts` are hand-written TypeScript because they describe SSE frames no route validates (see `../README.md` § The one exception). It is not a precedent for any other shape.
+
 ## The HTTP API in detail
 
 The four invariants are summarized in root `AGENTS.md` § The HTTP API; this is the reasoning behind them.

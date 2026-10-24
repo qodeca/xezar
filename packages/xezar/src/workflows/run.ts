@@ -78,7 +78,7 @@ import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
-import type { UiEvent } from '../core/ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 import { isReadOnlyStep } from '../core/read-only-lock.ts';
 import { authorEvidenceBrief, snapshotAuthorEvidence } from '../runs/author-evidence.ts';
 import {

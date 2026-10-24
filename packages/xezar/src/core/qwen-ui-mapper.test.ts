@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { UiEvent } from './ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 import {
   createQwenUiState,
   isQwenRefusal,

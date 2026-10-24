@@ -16,11 +16,15 @@
  *     can migrate one panel at a time.
  *
  * This module is pure vocabulary: no runtime imports, no runner coupling.
- * Mirrored into `packages/api-client/src/protocol/`.
+ * It is the ONE definition: the service's runners emit these types and the
+ * cockpit consumes them through the api-client, which re-exports this
+ * package. A hand-written interface rather than a zod schema on purpose —
+ * these are SSE frame payloads (`text/event-stream`, which Hono types as a
+ * string body), never validated at a route, and the wire is frozen.
  */
 
-/** The backend that produced a session — mirrors `RunnerId` in
- *  `agent-runner.ts` (kept structurally identical; a type-level test
+/** The backend that produced a session — mirrors the service's `RunnerId`
+ *  (kept structurally identical; a type-level test beside the runners
  *  guards against drift so this module stays dependency-free). */
 export type UiBackend = 'claude' | 'codex' | 'qwen';
 
@@ -260,6 +264,10 @@ export interface UiItemStartedEvent {
  * `item/commandExecution/outputDelta` (`output` — live terminal).
  * claude has no live command output — the tool card fills on completion
  * (per-capability degradation, never per-backend).
+ *
+ * On the wire these are EPHEMERAL: the server coalesces them (~40 ms) onto
+ * the live SSE stream only, so their `seq` values never reappear in a
+ * replay — dedup must use `>`, never sequence-gap detection.
  */
 export interface UiItemDeltaEvent {
   type: 'item.delta';
@@ -314,14 +322,14 @@ export interface UiPermissionResolvedEvent {
   optionId: string;
 }
 
-/** One option in an AskUser question — see `src/core/ask.ts`. */
+/** One option in an AskUser question — see the service's `core/ask.ts`. */
 export interface UiAskOption {
   label: string;
   description?: string;
 }
 
 /** One structured multiple-choice question — modeled on Claude Code's
- *  `AskUserQuestion` (see `src/core/ask.ts`). */
+ *  `AskUserQuestion` (see the service's `core/ask.ts`). */
 export interface UiAskQuestion {
   id?: string;
   header: string;

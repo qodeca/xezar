@@ -18,7 +18,7 @@ import type {
   UiEventType,
   UiItem,
   UiToolItem,
-} from './ui-events.ts';
+} from '@qodeca/xezar-contract';
 
 /** Exact structural equality of two types (the classic conditional trick). */
 type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2)
