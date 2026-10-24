@@ -12,8 +12,8 @@ import type {
   SessionOptions,
 } from './agent-runner.ts';
 
-// Re-exported for backends and the run manager that still import them from here.
-export type { AgentSession, SessionOptions } from './agent-runner.ts';
+// Re-exported for the run manager, which still imports it from here.
+export type { AgentSession } from './agent-runner.ts';
 import { foreignSignalExitMessage, isSignalTerminationExit, isXezarStopExit, trackChildExit } from './agent-runner.ts';
 import { launch } from '../platform/process-launch.ts';
 import { stopChildTree } from '../platform/process-tree.ts';
@@ -32,8 +32,6 @@ import {
   type ClaudeUiMapping,
 } from './claude-ui-mapper.ts';
 import { claudeBashRules, isReadOnlyStep } from './read-only-lock.ts';
-
-export { isReadOnlyStep } from './read-only-lock.ts';
 
 /** Default wall-clock cap for a single run before SIGTERM → SIGKILL.
  *  Interactive sessions pass `timeoutMs: 0` to disable it entirely. */
@@ -505,7 +503,7 @@ export function buildAllowedTools(allowedTools: string[], bashAllowlist?: string
   return out;
 }
 
-function truncate(s: string, max = 200): string {
+export function truncate(s: string, max = 200): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
@@ -622,7 +620,7 @@ function handleClaudeMessage(
 /** Resolves with the child's exit code once it has exited. A child a signal ended has
  *  `exitCode` null and `signalCode` set, and its 'exit'/'close' may have fired before this
  *  listens – so both are checked first, like `trackChildExit` does. Without that, a session
- *  whose step timed out waited out the whole ~27 s safety timer (#1070). */
+ *  whose step timed out waited out the whole ~27 s safety timer (#1070). The Qwen runner uses it too. */
 export function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
   if (child.exitCode != null || child.signalCode != null) return Promise.resolve(child.exitCode);
   return new Promise((resolve) => {

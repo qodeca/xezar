@@ -17,6 +17,7 @@
  *    model whose display name and reasoning options describe this quota alias".
  */
 import { parseUsageLimit } from './usage-limit.ts';
+import { isRecord } from './records.ts';
 
 /** The ordinary bucket's `limit_id` in every Codex answer observed so far. */
 export const CODEX_DEFAULT_LIMIT_ID = 'codex';
@@ -30,10 +31,6 @@ export interface CodexTurnLimit {
   resetAt: Date | null;
   /** The error text the run fails with: names the limit and its reset before Codex's own words. */
   message: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

@@ -40,6 +40,7 @@ import type {
 import { toolDisplay } from './tool-display.ts';
 import { stringifyToolResultContent, toolResultImageBlocks } from './claude-ui-mapper.ts';
 import { QWEN_HOOK_REFUSAL_PREFIX } from './qwen-tool-policy.ts';
+import { isRecord } from './records.ts';
 
 /** The prefix Qwen Code puts on a provider failure it reports as assistant text. */
 export const QWEN_API_ERROR_PREFIX = '[API Error';
@@ -366,10 +367,6 @@ export function qwenTokenUsage(usage: unknown): TokenUsage | undefined {
   const result: TokenUsage = { input, output, total: num(usage.total_tokens) ?? rawInput + output };
   if (cacheRead !== undefined) result.cacheRead = cacheRead;
   return result;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function messageContent(msg: Record<string, unknown>): unknown[] {

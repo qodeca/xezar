@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isWsl, toPosixPath, toWindowsPath, wslDistroName } from './wsl.ts';
+import { isWsl, toWindowsPath, wslDistroName } from './wsl.ts';
 
 describe('isWsl', () => {
   it('is false on any non-Linux platform, regardless of env', () => {
@@ -62,20 +62,5 @@ describe('toWindowsPath', () => {
 
   it('defaults the distro from wslDistroName (env) when not passed explicitly', () => {
     expect(toWindowsPath('/home/pat')).toMatch(/^\\\\wsl\$\\/);
-  });
-});
-
-describe('toPosixPath', () => {
-  it('reverses a \\\\wsl$\\<Distro>\\… UNC path back to POSIX', () => {
-    expect(toPosixPath('\\\\wsl$\\Ubuntu\\home\\pat\\projects\\xezar')).toBe('/home/pat/projects/xezar');
-  });
-
-  it('also reverses the newer \\\\wsl.localhost\\<Distro>\\… form', () => {
-    expect(toPosixPath('\\\\wsl.localhost\\Ubuntu\\home\\pat')).toBe('/home/pat');
-  });
-
-  it('passes through anything that is not a WSL UNC path', () => {
-    expect(toPosixPath('C:\\Users\\pat')).toBe('C:\\Users\\pat');
-    expect(toPosixPath('\\\\some-share\\folder')).toBe('\\\\some-share\\folder');
   });
 });

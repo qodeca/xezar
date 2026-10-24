@@ -164,11 +164,6 @@ export function ownCockpitOrigin(): string | undefined {
   return ownListen ? instanceOrigin(ownListen) : undefined;
 }
 
-/** The project's own page on this cockpit (`…/p/<id>/`), or `undefined` when the address is unknown. */
-export function ownCockpitUrl(projectId: string): string | undefined {
-  return ownListen ? instanceUrl(ownListen, projectId) : undefined;
-}
-
 /**
  * The state machine, as one pure function: two checked facts in, one answer out.
  *

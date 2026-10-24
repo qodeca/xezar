@@ -39,6 +39,7 @@ import type {
   UiUsageUpdatedEvent,
 } from './ui-events.ts';
 import { toolDisplay } from './tool-display.ts';
+import { isRecord } from './records.ts';
 
 export interface ClaudeUiMapperState {
   /** Used when `system/init` lacks `session_id` (the dry-run mock does). */
@@ -633,10 +634,6 @@ export function toolResultImageBlocks(content: unknown): Array<{ media_type: str
 }
 
 // ---- tiny guards ------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function messageContent(msg: Record<string, unknown>): unknown[] {
   const message = isRecord(msg.message) ? msg.message : undefined;
