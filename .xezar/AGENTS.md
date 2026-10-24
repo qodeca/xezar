@@ -2,7 +2,7 @@
 
 This folder is the project's task pipeline: workflows (`workflows/`), the scripts every gate runs
 (`checks/`), the role skills task agents follow (`skills/`), the leader's and the kit's own pages
-(`docs/`), routing (`routing.json`, read only through `checks/route.mjs`), and the pipeline
+(`docs/`; the environment variables the kit's scripts read are in `docs/kit-environment.md`), routing (`routing.json`, read only through `checks/route.mjs`), and the pipeline
 configuration (`pipeline/`). It is committed and reviewed like source. Runtime state never lives
 here: it goes under `.local/xezar/`.
 
