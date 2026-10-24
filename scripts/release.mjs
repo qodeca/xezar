@@ -37,6 +37,12 @@
 // for local rehearsal. The workflow reads `version`/`published` from
 // $GITHUB_OUTPUT and cuts the tag + GitHub Release only on a real publish.
 //
+// DOCUMENTATION FOOTERS. Right after the manifests it restamps every "Describes xezar X." footer
+// in the documentation to the new version (src/release/doc-footers.ts names the pages and the
+// pattern; the footer unit test holds every footer to the manifest version, so a bump that left
+// them behind would fail its own PR). The pages it changed are emitted as `stampedDocs`, so the
+// workflow can carry them into the version-bump PR next to the manifests.
+//
 // PACK MODE (`--pack-destination <dir>`) is how the `Release` workflow uses it: the read-only build
 // job stamps the manifests and packs each publishable package into <dir> (`npm pack
 // --ignore-scripts`, the same file set `npm publish` would send), and the separate publish job —
@@ -51,6 +57,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stampDocFooters } from '../packages/xezar/dist/release/doc-footers.js';
 import { isPublishable } from '../packages/xezar/dist/release/manifests.js';
 import {
   computeStableVersion,
@@ -174,6 +181,20 @@ console.log(
   `release: stamped ${stampedNames.join(' + ')} to ${version} (bump ${bump}, dist-tag latest${dryRun ? ', dry run' : ''})`,
 );
 
+// `stampedDocs` is a space-separated output the workflow expands in a shell loop, so a page name
+// that could split or glob is refused here, before anything is packed or published.
+const stampedDocs = stampDocFooters(repoRoot, version);
+const unsafeDocs = stampedDocs.filter((file) => !/^[\w./-]+$/.test(file));
+if (unsafeDocs.length > 0) {
+  console.error(`release: cannot hand these documentation pages to the workflow (rename them): ${unsafeDocs.join(', ')}`);
+  process.exit(1);
+}
+console.log(
+  stampedDocs.length > 0
+    ? `release: restamped the documentation footers to ${version} in ${stampedDocs.join(', ')}`
+    : `release: every documentation footer already names ${version}`,
+);
+
 // Provenance needs the job's OIDC token (permissions: id-token: write); only meaningful for a
 // real publish from Actions. A trusted-publisher publish attests provenance anyway, but asking
 // for it explicitly keeps the flag honest if this ever runs on another CI.
@@ -242,6 +263,7 @@ if (packDir) {
     version,
     rootName: stamped.xezar.name,
     tarballs: tarballs.join(' '),
+    stampedDocs: stampedDocs.join(' '),
   });
   process.exit(0);
 }
@@ -253,4 +275,5 @@ emitOutput({
   version,
   rootName: stamped.xezar.name,
   publishedNames: published.join(','),
+  stampedDocs: stampedDocs.join(' '),
 });
