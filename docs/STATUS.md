@@ -50,8 +50,8 @@ exception.
 
 ## Request schemas moving to `packages/contract`
 
-[#677](https://github.com/qodeca/xezar/issues/677) closed after wave 1; the remaining schemas have
-no issue yet.
+[#677](https://github.com/qodeca/xezar/issues/677) closed after wave 1; the remaining waves are
+tracked in [#1177](https://github.com/qodeca/xezar/issues/1177).
 
 About half have moved: roughly twenty routes in `packages/xezar/src/server/server.ts` validate
 with a contract schema, while about thirty schemas (some named, some written inline in the
@@ -59,3 +59,12 @@ validator) are still declared there. The two settings routes moved first (wave 1
 `PUT /config` and `PUT /workspace/config` validate with the contract's `setConfigInputSchema` /
 `setWorkspaceConfigInputSchema`, their `server.ts` copies are gone, and
 `contract-parity.requests.test.ts` pins each route against its schema in both directions.
+
+Wave 2 (#1177) removed the identical twins – schemas declared both in `server.ts` and in the
+contract. `POST /projects/checkout`, `PUT /agent-config/:id` and `POST /automations/:id/check` now
+validate with the contract's `checkoutProjectInputSchema`, `setAgentConfigInputSchema` and
+`automationCheckInputSchema` (now `.strict()`, like the route). Four twins remain, each needing a
+schema the contract does not have yet: the automation create and update bodies (the route uses the
+bounded storage schemas in `automations/types.ts`; the contract's `expectedRevision` and `.strict()`
+on update now match the route), and `POST /workflows` and `POST /runs`, whose step schema carries
+Node-side rules (timeout grammar, `claudeSettings` paths) the contract types as plain strings.
