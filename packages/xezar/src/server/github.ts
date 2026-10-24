@@ -15,7 +15,6 @@ export {
   refNumberFromUrl,
   GithubPrNotFoundError,
   searchGithubItems,
-  GH_MAX_LIMIT,
   GH_CHECKS_MAX,
   GH_SEARCH_MAX,
   GH_REF_STATUS_MAX,

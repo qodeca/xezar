@@ -26,7 +26,7 @@
 
 import { createColors } from 'picocolors';
 
-import { MAX_TABLE_ROWS, TASK_STATES, type ActivityLevel, type TaskState } from './activity.ts';
+import { TASK_STATES, type ActivityLevel, type TaskState } from './activity.ts';
 
 type Colors = ReturnType<typeof createColors>;
 
@@ -178,6 +178,3 @@ export function paintLine(
     }
   }
 }
-
-/** Kept beside the table constants so a layout change cannot silently orphan the painter. */
-export const PAINTER_TABLE_ROWS = MAX_TABLE_ROWS;

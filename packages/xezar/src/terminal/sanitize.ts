@@ -30,8 +30,6 @@ import { collectSecretValues, redactSecrets } from '../core/secret-redaction.ts'
 
 /** The ellipsis a cut value ends with. One character, so the budget arithmetic is honest. */
 export const ELLIPSIS = '…';
-/** The ASCII stand-in when the terminal is not UTF-8 (`README.md` § 10.4). */
-export const ELLIPSIS_ASCII = '...';
 
 /**
  * Escape sequences, longest-introducer first.
