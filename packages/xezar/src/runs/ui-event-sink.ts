@@ -21,7 +21,7 @@
  * stream or crash a timer callback.
  */
 
-import type { StopReason, UiEvent, UiItem, UiItemDeltaEvent } from '../core/ui-events.ts';
+import type { StopReason, UiEvent, UiItem, UiItemDeltaEvent } from '@qodeca/xezar-contract';
 
 /** Spec guardrail: coalesce `item.delta` at ~30–50 ms boundaries. */
 export const DELTA_FLUSH_MS = 40;

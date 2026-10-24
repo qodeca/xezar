@@ -46,8 +46,8 @@ arrays, `z.enum`s and union types (`'claude' | 'codex' | 'qwen'`), so search for
 its own rather than for one spelling of the list: `rg -n "'qwen'" packages`, and add the new id
 wherever the hit is a list of runners. Today that includes `runnerSchema`, the check-name enum
 (`packages/contract/src/health.ts`) and `modelDiscoveryRunnerSchema`
-(`packages/contract/src/workspace.ts`) in the contract; `UiBackend` in `ui-events.ts` and its
-api-client mirror; `BackendCheck.name` in `backend-detect.ts`; `PROVIDER_IDS` in
+(`packages/contract/src/workspace.ts`) in the contract; `UiBackend` in
+`packages/contract/src/ui-events.ts`; `BackendCheck.name` in `backend-detect.ts`; `PROVIDER_IDS` in
 `provider-auth.ts`; and the cockpit's `provider` union in
 `packages/web/src/routes/task-thread/thread-state.ts`, among others. The MCP leader-client lists
 spell Claude as `claude-code`, so a hit there is a separate decision.
@@ -377,17 +377,16 @@ does not change backend parity or expose the raw error.
 
 ---
 
-## 3. v2 `UiEvent` — the normalized protocol (`packages/xezar/src/core/ui-events.ts`)
+## 3. v2 `UiEvent` — the normalized protocol (`packages/contract/src/ui-events.ts`)
 
-Pure vocabulary: no runtime imports, no runner coupling. Mirrored into the
-api-client package at `packages/api-client/src/protocol/ui-events.ts`; the mirror is
-**checked**, not trusted. `packages/xezar/src/server/api-types.test.ts` pins every export
-of this file against its twin in both directions, so drift fails `npm run typecheck` (the
-gate) rather than the UI at runtime. An interface is pinned by shape AND by key set,
-because assignability alone cannot see a property that is optional on one side and absent
-on the other. The same file also compares the two EXPORT LISTS at runtime, so a type added
-here and not to the mirror fails before any shape is examined (#190). If that guard is ever
-retired, say so here and in the mirror's own header.
+Pure vocabulary: no runtime imports, no runner coupling. It is defined **once**, in the
+contract package: the service's runners import it from `@qodeca/xezar-contract`, and the
+api-client re-exports the contract, so the cockpit compiles against the same declarations.
+There is no mirror left to drift (the hand-kept api-client copy and the `api-types.test.ts`
+pairs that pinned it were retired together). These are plain TypeScript interfaces rather
+than zod schemas — an owner-approved exception to the contract's zod-only rule — because
+they are SSE frame payloads that no route validates; the wire itself is unchanged and
+frozen.
 
 ### Design rules baked in
 
@@ -566,7 +565,7 @@ messages" tests).
 
 ---
 
-## 5. The tool display model (`packages/xezar/src/core/tool-display.ts`)
+## 5. The tool display model (`packages/contract/src/tool-display.ts`)
 
 `toolDisplay(name, input)` turns a backend tool name + raw input into
 `{ toolKind, title, subtitle? }`, computed **once** in the protocol layer (never
@@ -741,8 +740,8 @@ To be first-class:
    `requestUserInput` — #369).
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
-   `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts`
-   — and add its pair to `api-types.test.ts`, which fails the gate until you do (see §3).
+   `packages/contract/src/ui-events.ts` (one definition, see §3) —
+   `packages/xezar/src/core/ui-events.test.ts` fails the typecheck until it matches `RunnerId`.
 3. **Detection** — a probe in `backend-detect.ts` plus the `BackendCheck`
    name union; degrade gracefully when the CLI is absent (never fail boot). If it
    needs a binary override, add `XEZ_<RUNNER>_BIN` (as `XEZ_QWEN_BIN`) — and per AGENTS.md's zero-config

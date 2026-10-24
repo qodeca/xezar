@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import type { AgentEvent } from './agent-runner.ts';
-import type { UiEvent } from './ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 import {
   claudeTurnStarted,
   createClaudeUiState,

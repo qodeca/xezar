@@ -37,8 +37,8 @@ import type {
   UiToolItem,
   UiTurnCompletedEvent,
   UiUsageUpdatedEvent,
-} from './ui-events.ts';
-import { toolDisplay } from './tool-display.ts';
+} from '@qodeca/xezar-contract';
+import { toolDisplay } from '@qodeca/xezar-contract';
 import { isRecord } from './records.ts';
 
 export interface ClaudeUiMapperState {

@@ -1,6 +1,10 @@
 /**
  * The xezar API contract. See `../README.md` — one zod definition per shape, its TypeScript type
  * inferred from it, shared by the server, the api-client and the cockpit.
+ *
+ * One owner-approved exception to "zod only": the v2 agent-event protocol (`ui-events.ts`) and its
+ * pure display model (`tool-display.ts`). They are SSE frame payloads that no route validates, so
+ * they stay plain TypeScript, but they live here once instead of as a hand-kept api-client mirror.
  */
 export * from './events.ts';
 export * from './api-errors.ts';
@@ -30,3 +34,5 @@ export * from './mcp-audit.ts';
 export * from './mcp-discovery.ts';
 export * from './mcp-api-reference.ts';
 export * from './mcp-leader.ts';
+export * from './ui-events.ts';
+export * from './tool-display.ts';
