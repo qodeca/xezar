@@ -1,6 +1,8 @@
 import '../../scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
+import { vitestMaxWorkers } from '../../scripts/test-concurrency.mjs'
+
 // Node environment, exactly as the api-client next door: this package must stay Node-free AND
 // DOM-free (`types: []`, `lib: ["ES2022"]` in its tsconfig), so a jsdom here would hide an
 // accidental browser-only dependency in the one package both halves of xezar import.
@@ -13,5 +15,8 @@ export default defineConfig({
     name: 'contract',
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // The shared worker cap (scripts/test-concurrency.mjs), so `npm test -w` on this package alone is
+    // capped like the root run; it steps aside when the command line names `--maxWorkers`.
+    maxWorkers: vitestMaxWorkers(),
   },
 })
