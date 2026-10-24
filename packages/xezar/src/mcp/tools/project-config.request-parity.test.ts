@@ -181,7 +181,7 @@ describe('every MCP write action accepts what its route accepts', () => {
     set_prompt_templates:
       'sends one KEY of the ui-state body (`promptTemplates`), not a keyed request object of its own; the schema it reuses IS the contract one (`uiStateSchema.shape.promptTemplates`), so there are no two copies to drift.',
     write_agent_config:
-      'the route still declares its own body schema in `server.ts`; the MCP reuses the contract `setAgentConfigInputSchema` shape. Pair it when that route moves to the contract.',
+      'its body IS the contract schema (`setAgentConfigInputSchema`, the route’s own validator since #1177, pinned in `contract-parity.requests.test.ts`), but it is not a keyed request OBJECT on the tool: `content` and `version` travel as flat arguments beside `fileId`, so there is no shape to compare key-for-key. The route and the door read the same schema, so there are no two copies to drift.',
     save_workflow:
       'the route still declares its own body schema in `server.ts`; the MCP narrows the contract `saveWorkflowInputSchema` to agent steps on purpose. Pair it when that route moves to the contract.',
     create_automation:
