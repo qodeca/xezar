@@ -35,6 +35,50 @@ export const freezeJs = `(() => {
   return true
 })()`
 
+/**
+ * A page INIT script (it runs before the cockpit's own code, on every load) that re-ages the
+ * dry-run plan-limits answer to the browser's clock (#1172).
+ *
+ * The dry-run server answers with a frozen sample (`agent-quota-sample.ts`), taken at a fixed
+ * instant in the past on purpose, so a dry run is deterministic. The cockpit then ages every row
+ * against the real clock, so in a capture every reading is weeks old: the chip reads "stale" and a
+ * login is "out until" a date already gone. This moves every instant in that one answer forward by
+ * the same amount, so the answer reads as if it had just been given — the ages, statuses and
+ * gaps between the times stay the sample's own. Nothing else the page reads is touched.
+ *
+ * The answer reaches the page two ways, both through `JSON.parse`: the HTTP read (`unwrap` in
+ * `api/client.ts` parses the body text) and the `agent-quota` WebSocket topic (`api/ws.ts` parses
+ * each frame, whose `data` is the answer).
+ */
+export const quotaClockJs = `(() => {
+  if (JSON.parse.xezarQuotaClock) return
+  const INSTANT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/
+  const shift = (value, delta) => {
+    if (typeof value === 'string') return INSTANT.test(value) ? new Date(Date.parse(value) + delta).toISOString().replace('.000Z', 'Z') : value
+    if (Array.isArray(value)) return value.map((item) => shift(item, delta))
+    if (value && typeof value === 'object') {
+      for (const key of Object.keys(value)) value[key] = shift(value[key], delta)
+    }
+    return value
+  }
+  const reage = (answer) => {
+    if (!answer || typeof answer !== 'object' || answer.scope !== 'agent-quota' || typeof answer.generatedAt !== 'string') return false
+    const built = Date.parse(answer.generatedAt)
+    if (Number.isNaN(built)) return false
+    // Whole seconds, so every shifted instant keeps the contract's \`…:ssZ\` shape.
+    shift(answer, Math.max(0, Math.floor((Date.now() - built) / 1000) * 1000))
+    return true
+  }
+  const parse = JSON.parse
+  const patched = function (text, reviver) {
+    const value = parse.call(this, text, reviver)
+    if (value && typeof value === 'object' && !reage(value)) reage(value.data)
+    return value
+  }
+  patched.xezarQuotaClock = true
+  JSON.parse = patched
+})()`
+
 export interface RunLook {
   /** The fixed `xez/<id8>` suffix and id prefix this run shows. */
   id8: string
@@ -115,8 +159,10 @@ export function normalizeJs(
     text = text.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (id) => (looks[id]?.id8 ?? lookFor(node)?.id8 ?? '5f3a9c1e') + '-2b7d-4e8a-9c6f-1d2e3f4a5b6c')
     text = text.replace(/xez\\/([0-9a-f]{8})/g, (_m, id8) => 'xez/' + (byId8[id8]?.id8 ?? lookFor(node)?.id8 ?? '5f3a9c1e'))
     text = text.replace(ISO, isoFor)
-    // A clock time on its own, never the time inside an ISO timestamp.
-    text = text.replace(/(?<![T\\d:.])\\b\\d{1,2}:\\d{2}(:\\d{2})?(\\s?[AP]M)?\\b/g, '09:30')
+    // A clock time on its own, never the time inside an ISO timestamp, and never a UTC offset:
+    // \`17:10 CEST (+02:00)\` keeps its \`+02:00\`, because a rewritten offset names a zone that
+    // does not exist (#1173). An offset is a sign right before a two-digit \`hh:mm\`.
+    text = text.replace(/(?:([+-])|(?<![T\\d:.+-]))\\b(\\d{1,2}):\\d{2}(:\\d{2})?(\\s?[AP]M)?\\b/g, (match, sign, hours, seconds, meridiem) => (sign && hours.length === 2 && !seconds && !meridiem ? match : (sign ?? '') + '09:30'))
     const trimmed = text.trim()
     if (/^\\d+(s|m|h|d)( ago)?$/.test(trimmed)) {
       const age = lookFor(node)?.age ?? '4m'
