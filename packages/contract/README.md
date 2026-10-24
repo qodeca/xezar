@@ -29,3 +29,12 @@ Three consumers, one definition:
    `packages/xezar/src/server/contract-parity*.test.ts` – eight files, split by route family – assert
    `z.infer<schema>` and the route's own inferred type are MUTUALLY assignable, so a schema that
    drifts either way fails to compile.
+
+## The one exception: the agent-event protocol
+
+`ui-events.ts` (the v2 `UiEvent` vocabulary) and `tool-display.ts` (its pure `toolDisplay()`
+display model) are plain TypeScript, not zod. They are SSE frame payloads that no route validates,
+and the wire they describe is frozen. The owner approved keeping them here as hand-written types so
+they exist once – the runners import them from this package and the cockpit gets them through the
+api-client re-export – instead of as a server original plus a hand-kept api-client mirror. Rules 1
+and 2 still apply to both files. Do not add another hand-written shape on the strength of this one.

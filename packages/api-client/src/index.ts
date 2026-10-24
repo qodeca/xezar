@@ -17,14 +17,13 @@
  *     this barrel used to carry is gone: every shape is inferred from a zod schema now, and
  *     `packages/xezar/src/server/contract-parity.*.test.ts` checks each schema against the route
  *     it describes in both directions.
- *   - `protocol/*` — the agent event vocabulary the server emits over SSE and the cockpit
- *     renders (a frozen surface, the backward-compatibility promise).
+ *     That includes the v2 agent event vocabulary (`UiEvent` and friends) the server emits over
+ *     SSE and the cockpit renders (a frozen surface, the backward-compatibility promise), and
+ *     its `toolDisplay()` display model — defined once in the contract, no longer mirrored here.
  *   - `utils/*` — pure helpers both sides need, notably the version prefixing and the
  *     `/api/v1` ↔ `/api/v1/p/:projectId` scope prefixing.
  */
 
 export * from './client.ts'
 export * from '@qodeca/xezar-contract'
-export * from './protocol/ui-events.ts'
-export * from './protocol/tool-display.ts'
 export * from './utils/project-scope.ts'

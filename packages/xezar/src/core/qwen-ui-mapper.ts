@@ -36,8 +36,8 @@ import type {
   UiToolItem,
   UiTurnCompletedEvent,
   UiUsageUpdatedEvent,
-} from './ui-events.ts';
-import { toolDisplay } from './tool-display.ts';
+} from '@qodeca/xezar-contract';
+import { toolDisplay } from '@qodeca/xezar-contract';
 import { stringifyToolResultContent, toolResultImageBlocks } from './claude-ui-mapper.ts';
 import { QWEN_HOOK_REFUSAL_PREFIX } from './qwen-tool-policy.ts';
 import { isRecord } from './records.ts';

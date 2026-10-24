@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import type { UiEvent, UiItem } from './ui-events.ts';
+import type { UiEvent, UiItem } from '@qodeca/xezar-contract';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BACKENDS = ['claude', 'codex', 'qwen'] as const;

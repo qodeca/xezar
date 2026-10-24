@@ -22,7 +22,7 @@ import {
 } from './claude-cli-runner.ts';
 import { isReadOnlyStep } from './read-only-lock.ts';
 import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
-import type { UiEvent } from './ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning its real stub binary through the untouched `spawn`. */
