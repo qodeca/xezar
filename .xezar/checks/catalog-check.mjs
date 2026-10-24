@@ -164,11 +164,26 @@ const READER_BASH_PREFIXES = new Set([
 // and Write, keeps a writing tool with another name (NotebookEdit, MultiEdit) out as well.
 const READER_TOOLS = new Set(["Read", "Grep", "Glob", "Bash"]);
 
-// The engine's verdict roles (0.19.0, `TASK_VERDICT_ROLES`, xezar #851). The engine records a verdict
-// packet only from an agent step that DECLARES the role the packet names, so each kit workflow whose
-// skill writes a packet must declare it on its verdict step, or every verdict it writes is refused.
-const VERDICT_ROLES = new Set(["code-review", "design-review", "qa", "architecture-review"]);
-const VERDICT_WORKFLOWS = { "code-review": "code-review", "design-review": "design-review", qa: "qa" };
+// The engine's verdict roles (`TASK_VERDICT_ROLES` in the contract's task-verdict.ts, xezar #851; the
+// last two since #961). The engine records a verdict packet only from an agent step that DECLARES the
+// role the packet names, so each kit workflow whose skill writes a packet must declare it on its
+// verdict step, or every verdict it writes is refused.
+const VERDICT_ROLES = new Set([
+  "code-review",
+  "design-review",
+  "qa",
+  "architecture-review",
+  "security-review",
+  "acceptance-verification",
+]);
+const VERDICT_WORKFLOWS = {
+  "code-review": "code-review",
+  "design-review": "design-review",
+  qa: "qa",
+  "architecture-review": "architecture-review",
+  "security-review": "security-review",
+  "acceptance-verification": "acceptance-verification",
+};
 
 // The kit's reading workflows, by FILE name (not the `name:` field, which a pull request could
 // change). Named, so that a pull request adding a writing tool to one of them fails in plain sight
