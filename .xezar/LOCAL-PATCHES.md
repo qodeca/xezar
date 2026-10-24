@@ -26,3 +26,10 @@ wording and moved to LP-5 on 2026-10-23).
 - Upstream: local only
 - Since: 2026-10-24
 - Confirmed: yes
+
+## LP-7 – record a verdict packet from the architecture, security and acceptance reviews
+- Files: .xezar/workflows/architecture-review.yaml, .xezar/workflows/security-review.yaml, .xezar/workflows/acceptance-verification.yaml, .xezar/skills/xezar-architecture.md, .xezar/skills/xezar-security-review.md, .xezar/skills/xezar-acceptance.md, .xezar/checks/catalog-check.mjs
+- Reason: the engine accepts six verdict roles (`TASK_VERDICT_ROLES`, xezar #961), but the kit declared `verdictRole` only on code-review, design-review and qa, so these three reviews never reached the task record; this patch declares the role on each verdict step, gives each skill a packet section with an example the engine parses, and teaches catalog-check the two newer roles
+- Upstream: local only
+- Since: 2026-10-24
+- Confirmed: yes

@@ -39,7 +39,52 @@ Verdict vocabulary: NO FINDINGS AT THIS HEAD, FINDINGS, BLOCKING FINDINGS. Never
 
 Output: exactly one PR comment whose first line is `## Security review`, posted with `jq -n '{action:"comment",kind:"pr",number:<number>,body:"<text>"}' | bash .local/xezar/cache/kit/checks/gh-write.sh`, the text written as a JSON string with no `$` and no `'` in it – write them `\u0024` and `\u0027` (this step cannot write a file, a heredoc into a script is refused, and nothing may follow the script's name in a pipe), carrying the **full 40-character head SHA you reviewed**, independence as confirmed, not confirmed or unknown, what you read and ran, what you could not assess and why, the verdict and the findings. The verdict holds for that SHA only: if the head moves, it is void and the comment says so in advance. A check you could not make is unknown, never a pass.
 
-The engine records a machine-readable verdict packet only from a step that declares its role — code review, design review, QA or architecture review — and this is not one of them. Write no packet, and never borrow another role's: a packet under the wrong role puts a verdict on the task record that says something you did not judge. The comment is the whole delivery, and the leader reads it there.
+## Record the verdict on the task record
+
+This step declares `verdictRole: security-review` in its workflow, and the engine records a verdict packet only under the role the step declares. After the `## Security review` comment is posted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. It is the machine-readable half of the same report, never a replacement for the comment. Never write a packet for a review you stopped because independence is not confirmed: that stop posts no verdict, so there is none to record.
+
+Write it with `jq -n '{kind:"packet",packet:<packet>}' | bash .local/xezar/cache/kit/checks/verdict-write.sh`: one JSON request piped into the script with nothing after its name, never a heredoc, which this step's shell refuses. It writes a temporary file and renames it onto the final name, and it refuses a packet over 40 KB or one that is not JSON, so a refusal reaches you rather than the engine. Never redirect into the final path, and never `mv`.
+
+Order matters: post the comment, then attempt the labels, then write the packet. This role moves no label, so there is nothing to attempt, but the packet still records what the labels were, and it cannot honestly be written before the comment it summarises exists.
+
+```json
+{
+  "id": "security-review-<short sha>",
+  "role": "security-review",
+  "verdict": "FINDINGS",
+  "reviewedHeadSha": "<the full 40-character sha you reviewed>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" },
+  "findings": [
+    {
+      "id": "S-1",
+      "severity": "major",
+      "file": "src/server/upload.ts",
+      "line": 88,
+      "title": "an uploaded file name reaches the path join unchecked",
+      "body": "A name holding .. segments writes outside the upload folder.",
+      "fingerprint": "e41b07c3a9d25f6801aa"
+    },
+    { "id": "S-2", "severity": "nit", "title": "the refusal log line carries the full request header" }
+  ],
+  "findingsOmitted": 0
+}
+```
+
+`role` is `security-review` and nothing else: a packet under another role's name puts a verdict on the task record that you did not give, and the engine refuses it from this step anyway. `verdict` is one of `NO FINDINGS AT THIS HEAD`, `FINDINGS` or `BLOCKING FINDINGS`, the same words as the comment's verdict line. Leave `taskId`, `stepId` and `recordedAt` out: `verdict-write.sh` stamps the two ids from the step's environment (`review` here) and `recordedAt` from the clock, and refuses a packet that names a different task or step. `id` is stable for THIS report: re-writing it with identical content is a no-op, and the same id with different content is refused. `reviewedHeadSha` is never abbreviated and never the branch's current head when that is not what you read.
+
+`labels` is evidence, not intent. `requestedAdd` and `requestedRemove` stay empty, because you asked for nothing. Read the labels back with `gh pr view <number> --json labels` and set `"state": "verified"` with `observed` (what you read) and `observedAt`; when you could not read them, set `"state": "unavailable"` and leave the `observed` key out entirely, because an empty `observed` reads as "we looked and there were none".
+
+### The findings
+
+`findings` is the machine-readable half of the findings your comment already carries. Write it from the SAME working list you wrote the comment from — never by parsing your own comment back, and never into a second file. Finding S-*n* of the comment is `"id": "S-<n>"` here, in the same order with the same severity. A finding names the attacker's path, never a working exploit and never a secret, in the packet exactly as in the comment. `severity` is lower-case `blocker`, `major`, `minor` or `nit`; `file` is repo-relative and `line` is the first line of the location, and both are omitted when the finding is about the change as a whole (a `line` without a `file` is refused). `title` is one headline and `body` ONE sentence of what is wrong; the argument stays in the comment, which `evidenceUrl` addresses. `fingerprint` is optional: a short stable hash of `file`, `severity` and `title`, at most 64 characters, never derived from the line. `findings` and `findingsOmitted` are a pair, written both or neither.
+
+**A bounded list is counted, never silently short.** At most 20 findings, and at most 16 KB of serialized `findings`; a packet over either bound is refused whole. When you have more than fits, order by severity (`blocker`, `major`, `minor`, `nit`) and then by the order they appear in the comment, include what fits, set `findingsOmitted` to the number left out, and add this sentence to the posted comment:
+
+`N findings are in this comment and not in the machine-readable packet`
+
+The comment always carries EVERY finding, and `findingsOmitted` is `0` when the list is complete.
 
 ## Shared contract
 
