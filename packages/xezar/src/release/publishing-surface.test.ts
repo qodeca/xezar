@@ -207,7 +207,8 @@ describe('publishing surface', () => {
       readFileSync(join(repoRoot, 'packages', 'xezar', 'package.json'), 'utf8'),
     ) as Record<string, unknown> & { files: string[]; devDependencies: Record<string, string> };
     const stryker = (deps: unknown) => Object.keys((deps ?? {}) as Record<string, string>).filter((n) => n.startsWith('@stryker-mutator/'));
-    expect(stryker(manifest.devDependencies)).toEqual(['@stryker-mutator/core', '@stryker-mutator/vitest-runner']);
+    // `api` is type-only: the three Stryker configs import their option types from it.
+    expect(stryker(manifest.devDependencies)).toEqual(['@stryker-mutator/api', '@stryker-mutator/core', '@stryker-mutator/vitest-runner']);
     for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'bundleDependencies', 'bundledDependencies']) {
       expect(stryker(manifest[field]), `${field} must not name Stryker`).toEqual([]);
     }

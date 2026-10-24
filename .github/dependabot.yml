@@ -13,8 +13,18 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # The default cap is 5 open PRs. With the weekly group and a few majors waiting for review, the
+    # cap fills up and every further major (the ones that most need a person) is never proposed.
+    open-pull-requests-limit: 10
     commit-message:
       prefix: chore(deps)
+    # `@types/node` follows the oldest Node major the packages support (`engines.node`), not the
+    # newest: types from a later major let code call APIs the supported floor lacks. Move its major
+    # by hand, together with `engines.node`.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
     groups:
       npm-minor-and-patch:
         update-types:
