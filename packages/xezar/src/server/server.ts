@@ -82,6 +82,7 @@ import {
   updateAgentProfileInputSchema,
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
+  automationLogSinceSchema,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { AgentQuotaStore } from '../workspace/agent-quota.ts';
@@ -510,7 +511,7 @@ const automationLogQuerySchema = z.object({
   automationId: z.string().optional(),
   result: automationLogResultSchema.optional(),
   event: automationEventSchema.optional(),
-  since: z.string().datetime().optional(),
+  since: automationLogSinceSchema.optional(),
   cursor: z.coerce.number().int().positive().optional(),
   // Optional, not `.default(100)`: `AutomationStore.logs` already clamps `limit ?? 100` into
   // 1..100, so the default here was a second copy of it — and a defaulted key is REQUIRED in the

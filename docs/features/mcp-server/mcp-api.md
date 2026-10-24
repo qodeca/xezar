@@ -432,7 +432,7 @@ Unknown arguments are rejected.
 | `logQuery.automationId` | string | no | min length 1, max length 128 |  |
 | `logQuery.result` | `launched` \| `no-match` \| `duplicate` \| `rate-limited` \| `error` \| `baseline` \| `preview` | no |  |  |
 | `logQuery.event` | `pull_request.opened` \| `issue.opened` \| `issue.labeled` \| `issue.unlabeled` | no |  |  |
-| `logQuery.since` | string | no | pattern `^(?:(?:\d\d[2468][048]\|\d\d[13579][26]\|\d\d0[48]\|[02468][048]00\|[13579][26]00)-02-29\|\d{4}-(?:(?:0[13578]\|1[02])-(?:0[1-9]\|[12]\d\|3[01])\|(?:0[469]\|11)-(?:0[1-9]\|[12]\d\|30)\|(?:02)-(?:0[1-9]\|1\d\|2[0-8])))T(?:(?:[01]\d\|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$` | ISO timestamp; only newer rows. |
+| `logQuery.since` | string | no | pattern `^(?:(?:\d\d[2468][048]\|\d\d[13579][26]\|\d\d0[48]\|[02468][048]00\|[13579][26]00)-02-29\|\d{4}-(?:(?:0[13578]\|1[02])-(?:0[1-9]\|[12]\d\|3[01])\|(?:0[469]\|11)-(?:0[1-9]\|[12]\d\|30)\|(?:02)-(?:0[1-9]\|1\d\|2[0-8])))T(?:(?:[01]\d\|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$`, pattern `^(?:(?:\d\d[2468][048]\|\d\d[13579][26]\|\d\d0[48]\|[02468][048]00\|[13579][26]00)-02-29\|\d{4}-(?:(?:0[13578]\|1[02])-(?:0[1-9]\|[12]\d\|3[01])\|(?:0[469]\|11)-(?:0[1-9]\|[12]\d\|30)\|(?:02)-(?:0[1-9]\|1\d\|2[0-8])))T(?:(?:[01]\d\|2[0-3]):[0-5]\d(?:Z))$` | ISO timestamp; only newer rows. |
 | `logQuery.cursor` | integer | no | max 9007199254740991 | Row sequence to continue from. |
 | `logQuery.limit` | integer | no | min 1, max 100 |  |
 | `runId` | string | no | min length 1, max length 128 | remove_worktree: the task's run id. |
