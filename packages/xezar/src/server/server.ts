@@ -83,6 +83,9 @@ import {
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
   automationLogSinceSchema,
+  automationCheckInputSchema,
+  checkoutProjectInputSchema,
+  setAgentConfigInputSchema,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { AgentQuotaStore } from '../workspace/agent-quota.ts';
@@ -511,7 +514,6 @@ const automationEditableSchema = z
   .strict();
 const automationCreateSchema = automationEditableSchema.extend({ enable: z.boolean().optional() });
 const automationUpdateSchema = automationEditableSchema.extend({ expectedRevision: z.number().int().positive() });
-const automationCheckRequestSchema = z.object({ mode: z.enum(['preview', 'execute']) }).strict();
 const automationLogQuerySchema = z.object({
   automationId: z.string().optional(),
   result: automationLogResultSchema.optional(),
@@ -3018,7 +3020,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(body);
     })
 
-    .post('/projects/checkout', jsonZodValidator(() => checkoutSchema, { message: 'url must be a GitHub repository' }), ui.route('project.registry.clone', { project: 'registered' }), async (c) => {
+    .post('/projects/checkout', jsonZodValidator(() => checkoutProjectInputSchema, { message: 'url must be a GitHub repository' }), ui.route('project.registry.clone', { project: 'registered' }), async (c) => {
       if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('adding projects'), 409);
       }
@@ -3302,12 +3304,8 @@ export function createApp(deps: ServerDeps) {
   // clone finishes, and the dialog's liveness comes from `checkout-progress`
   // events on the workspace stream. `checkoutId` is the cockpit's own
   // correlation token, echoed on every event so two tabs cloning at once never
-  // render each other's progress.
-  const checkoutSchema = z.object({
-    url: z.string().trim().min(1).max(512),
-    name: z.string().trim().max(128).optional(),
-    checkoutId: z.string().trim().max(128).optional(),
-  });
+  // render each other's progress. The body is the contract's
+  // `checkoutProjectInputSchema` (#1177), pinned by `contract-parity.requests.test.ts`.
   // ---- workspace settings (multi-project spec, step 2.7) -------------------
   // WORKSPACE-level routes: single-mount (never mirrored under /api/p/),
   // same-origin. The config routes carry the settings UI's slice of
@@ -3983,7 +3981,7 @@ export function createApp(deps: ServerDeps) {
     // The body is validated as MIDDLEWARE, which is what puts it in the route type — and moves
     // the 400 ahead of this route's 404: `POST /automations/<unknown>/check` with a malformed
     // body now answers 400 rather than 404. Nothing else about either answer changed.
-    .post('/automations/:id/check', jsonZodValidator(() => automationCheckRequestSchema), ui.route('automation.checkExecute', { resource: { kind: 'automation', param: 'id' }, select: (body) => (body?.mode === 'execute' ? 'automation.checkExecute' : undefined) }), async (c) => {
+    .post('/automations/:id/check', jsonZodValidator(() => automationCheckInputSchema), ui.route('automation.checkExecute', { resource: { kind: 'automation', param: 'id' }, select: (body) => (body?.mode === 'execute' ? 'automation.checkExecute' : undefined) }), async (c) => {
       const project = c.get('project');
       const store = project.automationStore;
       const automation = store.get(c.req.param('id'));
@@ -6201,10 +6199,8 @@ export function createApp(deps: ServerDeps) {
   // (skillsRepos…) survive and schema defaults are never materialized into
   // the file. All fields optional + additive: `null` (and `''` for the
   // R6 keys) clears a knob back to its default.
-  const setAgentConfigSchema = z.object({
-    content: z.string().max(2_000_000),
-    version: z.string().nullable(),
-  });
+  // The agent-config write body is the contract's `setAgentConfigInputSchema` (#1177), which the
+  // MCP `write_agent_config` door reads too; `contract-parity.requests.test.ts` pins the pair.
 
   // ---- chained family: agent-config (project-scoped) -----------------------
   // Agent config is project-scoped (spec #404, adapted to the multi-project
@@ -6235,7 +6231,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(read);
     })
 
-    .put('/agent-config/:id', localHandoffRoute, jsonZodValidator(setAgentConfigSchema), ui.route('agentConfig.write', { resource: { kind: 'agent-config', param: 'id' } }), async (c) => {
+    .put('/agent-config/:id', localHandoffRoute, jsonZodValidator(setAgentConfigInputSchema), ui.route('agentConfig.write', { resource: { kind: 'agent-config', param: 'id' } }), async (c) => {
       // Config files may define hooks and MCP commands, so writes remain a
       // local-machine capability and are re-gated on every request.
       if (!capabilities().localHandoff) {

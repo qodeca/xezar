@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AgentEvent } from './agent-runner.ts';
-import type { UiEvent, UiItem } from './ui-events.ts';
+import type { UiEvent, UiItem } from '@qodeca/xezar-contract';
 import { codexSessionStarted, createCodexUiState, mapCodexNotification } from './codex-ui-mapper.ts';
 import { CodexAppServerRunner } from './codex-app-server-runner.ts';
 

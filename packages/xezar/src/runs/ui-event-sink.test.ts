@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { UiEvent, UiItem, UiToolItem } from '../core/ui-events.ts';
+import type { UiEvent, UiItem, UiToolItem } from '@qodeca/xezar-contract';
 import { createCodexUiState, mapCodexNotification } from '../core/codex-ui-mapper.ts';
 import { RunStore } from './store.ts';
 import { closeStoreAndRemove } from './store.testkit.ts';

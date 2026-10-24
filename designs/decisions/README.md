@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft, revision 2 (2026-09-14) – the five-reviewer verdict and the owner interview applied; waiting for the first `design-review` verdict (see [§18](#18-design-review)); the open decisions are OD-1..OD-8 in the requirements, none of which changes the mockup |
+| **Status** | Draft, revision 2 (2026-09-14), on hold – the five-reviewer verdict and the owner interview are applied. The feature is not implemented (the requirements record it as not built), and no issue schedules it. **Owner:** the project owner. **Next step:** the owner schedules the feature with an issue, or lets the design expire. A scheduled revision moves `styles.css` onto the rhythm tokens ([#435](https://github.com/qodeca/xezar/issues/435)) and then asks for the first `design-review` (see [§18](#18-design-review)). The open decisions are OD-1..OD-8 in the requirements, and none of them changes the mockup. If nothing moves, the release-prep design-expiry check archives this design 90 days after 2026-09-14 |
 | **Date** | 2026-09-14 |
 | **Mockup** | Open [`index.html`](index.html) in a browser. No build or server needed. |
 | **Replaces** | Nothing. Today no surface exists for this. |

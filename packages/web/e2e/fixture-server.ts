@@ -79,8 +79,14 @@ export async function waitForHealth(url: string, options: WaitForHealthOptions =
   throw new Error(`xezar e2e: the ${label} never answered at ${url}`)
 }
 
+export interface BootFixtureServerOptions {
+  /** Extra environment for `xezar serve`, on top of `fixtureServeEnv` — an opt-in flag such as
+   *  `XEZ_FOLLOWUPS` or `XEZ_AUTOMATIONS` that the shared test env leaves at its default. */
+  env?: Record<string, string>
+}
+
 /** Boot `xezar serve` over a fresh `createFixtureRepo` checkout and wait until it answers. */
-export async function bootFixtureServer(): Promise<FixtureServer> {
+export async function bootFixtureServer(options: BootFixtureServerOptions = {}): Promise<FixtureServer> {
   // `/tmp`, not `os.tmpdir()`: inside a xezar task TMPDIR sits under the repository, and the
   // realpath keeps `/private/tmp` and `/tmp` from reading as two different roots on macOS.
   const base = process.platform === 'win32' ? tmpdir() : '/tmp'
@@ -96,7 +102,7 @@ export async function bootFixtureServer(): Promise<FixtureServer> {
   const server = spawn(
     process.execPath,
     [xezarCli, 'serve', '--repo', root, '--port', String(port), '--no-open'],
-    { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, options.env), stdio: 'ignore' },
   )
   for (let attempt = 0; ; attempt += 1) {
     try {

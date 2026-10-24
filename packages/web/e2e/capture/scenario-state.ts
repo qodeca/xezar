@@ -379,15 +379,16 @@ export const SCENARIOS: Record<string, Scenario> = {
     expect(ctx.guide.hasRole('checkbox', 'Worktree'), 'xezar screenshot-states: new-task Worktree control missing').toBe(true)
     expect(ctx.guide.hasRole('checkbox', 'Autonomous'), 'xezar screenshot-states: new-task Autonomous control missing').toBe(true)
 
-    // On a phone the open picker covers the Worktree and Autonomous toggles, so the phone shot
-    // shows the toggles and the desktop shots show the picker.
-    if (width === 375) {
-      wait(ctx.browser, exists('[data-slot="worktree-toggle"][aria-checked="true"]'))
-      return
-    }
+    wait(ctx.browser, exists('[data-slot="worktree-toggle"][aria-checked="true"]'))
+    if (width === 375) return
+    // The picker lists the project's workflows. It is checked, then closed again before the shot:
+    // open, it covers the composer's second row of options and cuts a chip in half (#1174).
     ctx.browser.click('[data-slot="source-pill"]')
     wait(ctx.browser, exists('[data-slot="source-option"][data-source-kind="workflow"][data-source-ref="ship-a-fix"]'))
     expect(ctx.guide.hasRole('option', 'ship-a-fix'), 'xezar screenshot-states: new-task workflow option missing').toBe(true)
+    ctx.browser.press('Escape')
+    wait(ctx.browser, `document.querySelector('[data-slot="source-option"]') === null`)
+    expect(ctx.guide.hasRole('checkbox', 'Follow-ups'), 'xezar screenshot-states: new-task Follow-ups control missing').toBe(true)
   },
 
   'review-gate': async (ctx, theme) => {
@@ -576,12 +577,30 @@ export const SCENARIOS: Record<string, Scenario> = {
     wait(ctx.browser, exists('[data-slot="mcp-leader-client"] [data-value="qwen"]'))
     ctx.browser.click('[data-slot="mcp-leader-client"] [data-value="qwen"]')
     wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader-client"] [data-value="qwen"]').getAttribute('aria-checked') === 'true'`)
-    // The card's top, not only the leader status further down — a center scroll cut off the
-    // "Owning client" row above it (design review NB-2).
-    ctx.browser.evaluate(`document.querySelector('[data-slot="mcp-leader"]').scrollIntoView({ block: 'start' })`)
-    // A sub-pixel rounding offset (e.g. -0.5) is still "at the top", not cut off; only a real
-    // scroll-past (the old center scroll's multi-hundred-pixel cutoff) should fail this.
-    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader"]').getBoundingClientRect().top > -2`)
+    // The card's top and its "Connection status" heading, not only the leader status further
+    // down — a center scroll cut off the "Owning client" row (design review NB-2), and a
+    // `scrollIntoView({ block: 'start' })` hid both under the sticky page header (#1175). So the
+    // heading is scrolled to just below that header, and the check measures against the header's
+    // bottom edge, never against the top of the window.
+    // The Settings section list stays out of the picture: it scrolls with the page, and the card
+    // sits about 2,700 px below it, so no scroll position shows both at 1280 × 800.
+    const below = `(document.querySelector('[data-route] > header')?.getBoundingClientRect().bottom ?? 0)`
+    const heading = `[...document.querySelectorAll('h2, h3')].find((h) => h.textContent.trim() === 'Connection status')`
+    ctx.browser.evaluate(`(() => {
+      const heading = ${heading}
+      let scroller = heading.parentElement
+      while (scroller && !(scroller.scrollHeight > scroller.clientHeight && getComputedStyle(scroller).overflowY !== 'visible')) {
+        scroller = scroller.parentElement
+      }
+      scroller.scrollTop += heading.getBoundingClientRect().top - ${below} - 8
+      return true
+    })()`)
+    wait(ctx.browser, `(() => {
+      const top = ${below}
+      const card = document.querySelector('[data-slot="mcp-leader"]').getBoundingClientRect()
+      // A sub-pixel rounding offset (e.g. 0.5) is still "below the header", not cut off.
+      return ${heading}.getBoundingClientRect().top >= top - 1 && card.top >= top - 1 && card.bottom <= innerHeight + 1
+    })()`)
 
     expect(ctx.guide.hasRole('heading', 'Connection status'), 'xezar screenshot-states: MCP connection heading missing').toBe(true)
     expect(ctx.guide.hasRole('button', 'Attach leader'), 'xezar screenshot-states: Attach leader control missing').toBe(true)

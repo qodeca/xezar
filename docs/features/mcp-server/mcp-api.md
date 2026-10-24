@@ -424,7 +424,7 @@ Unknown arguments are rejected.
 | `update` | object | no |  | update_automation: a new name and/or prompt plus expectedRevision from your last read; everything else is kept. |
 | `update.name` | string | no | min length 1 |  |
 | `update.prompt` | string | no | min length 1 |  |
-| `update.expectedRevision` | number | yes |  |  |
+| `update.expectedRevision` | integer | yes | max 9007199254740991 |  |
 | `mode` | `preview` \| `execute` | no |  | check_automation: preview counts matches; execute launches them. |
 | `checkId` | string | no | min length 1, max length 128 |  |
 | `receiptId` | string | no | min length 1, max length 128 |  |

@@ -112,7 +112,7 @@ run.
   nothing of that body is persisted, the `resources` key sent with it included. It does NOT show the change
   taking effect without a restart: for the same reason as the bullet above, the shared world's
   semaphore is built with a fixed limit loader. The per-tool suite
-  (`tools/project-config.test.ts`, "the workspace-settings write") observes the refreshed
+  (`tools/project-config.workspace.test.ts`, "the workspace-settings write") observes the refreshed
   snapshot, the `loadConfig` merge and the per-call read against a semaphore that really loads.
 - **The shared preference bag.** P-46 proves the presentation write (#677 B3) through both doors.
   It does NOT show the cockpit rendering the result, and one half of I-132 is served by nobody: the
@@ -122,7 +122,7 @@ run.
 - **The provider switch.** P-47 proves the on/off half of I-115 (#677 B4) through both doors. It
   does NOT exercise the RETRY half: this world's provider auth is stubbed as connected, so no
   runtime authentication incident exists to clear. The per-tool suite
-  (`tools/project-config.test.ts`, "the provider switch") drives that half against a provider auth
+  (`tools/project-config.providers.test.ts`, "the provider switch") drives that half against a provider auth
   that carries one — the incident cleared is the one the status route reported, a stale one is
   answered by the route's own 409, and no answer carries the incident id. The other half of the
   record that P-47 does not serve is Connect, which stays refused (P-29) for its own boundary.

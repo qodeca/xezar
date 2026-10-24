@@ -37,6 +37,12 @@ agent-browser) and then its own fixture server. It is not part of `npm run test:
   `mock/repo` reads `acme/demo-shop`, the author `mock` reads as a person, the fake draft
   PR URL reads as a PR on that repository, and a mocked agent's `mock (…)` version reads as a
   version number.
+- **The plan-limits sample is re-aged.** A dry run answers plan limits with a fixed sample taken
+  at a fixed past instant; the capture browser moves every time in that answer forward to its
+  own clock, so the readings are minutes old rather than weeks and a reset time is still ahead.
+  The sample's statuses stay as they are: one Claude Code login can work, one is out until its
+  reset and one cannot be read; one Codex login can work and one is an API-key login that does
+  not report limits.
 - Animations are stopped, and the floating toasts, backdrops and the thread's "Jump to latest"
   pill are hidden, so no capture lands on a random frame.
 - The Tasks table folds Model, Cost, CPU and Mem; with every column open it is wider than 1280 px
@@ -63,9 +69,9 @@ agent-browser) and then its own fixture server. It is not part of `npm run test:
 | [`task-changes-light-1280.png`](task-changes-light-1280.png) | The Changes tab of a task with a multi-file diff | light | 1280 × 800 |
 | [`compare-variants-dark-1280.png`](compare-variants-dark-1280.png) | Two variants of one task that took different approaches, side by side | dark | 1280 × 800 |
 | [`compare-variants-light-1280.png`](compare-variants-light-1280.png) | Two variants of one task that took different approaches, side by side | light | 1280 × 800 |
-| [`new-task-dark-1280.png`](new-task-dark-1280.png) | The new-task composer: Worktree on and Autonomous visible; at 1280 the workflow picker is open too | dark | 1280 × 800 |
-| [`new-task-light-1280.png`](new-task-light-1280.png) | The new-task composer: Worktree on and Autonomous visible; at 1280 the workflow picker is open too | light | 1280 × 800 |
-| [`new-task-dark-375.png`](new-task-dark-375.png) | The new-task composer: Worktree on and Autonomous visible; at 1280 the workflow picker is open too | dark | 375 × 812 |
+| [`new-task-dark-1280.png`](new-task-dark-1280.png) | The new-task composer with a prompt typed and its task options: Worktree on, Autonomous and Follow-ups | dark | 1280 × 800 |
+| [`new-task-light-1280.png`](new-task-light-1280.png) | The new-task composer with a prompt typed and its task options: Worktree on, Autonomous and Follow-ups | light | 1280 × 800 |
+| [`new-task-dark-375.png`](new-task-dark-375.png) | The new-task composer with a prompt typed and its task options: Worktree on, Autonomous and Follow-ups | dark | 375 × 812 |
 | [`review-gate-dark-1280.png`](review-gate-dark-1280.png) | A task parked at review with the review panel and the Draft PR action | dark | 1280 × 800 |
 | [`all-tasks-dark-1280.png`](all-tasks-dark-1280.png) | All tasks across two projects, grouped | dark | 1280 × 800 |
 | [`all-tasks-light-1280.png`](all-tasks-light-1280.png) | All tasks across two projects, grouped | light | 1280 × 800 |
