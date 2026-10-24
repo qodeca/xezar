@@ -59,6 +59,16 @@ A new top-level name under `.local/xezar/` is listed in `STATE_NAME_ENTRIES`
 (`packages/xezar/src/local-xezar-top-level-names.ts`) in the same change; #1001 adds the
 `claude-settings/` directory (pinned step hooks), and a new directory is additive.
 
+Scheduled removal (recorded 2026-10-24, owner decision OD-10, tracking #563): the read-only
+alias `.local/xezar/mcp-audit.ndjson`, the audit trail xezar 0.13.0–0.15.0 wrote, is the one
+exception to "the old shape keeps being read". Since 0.16.0 it is read only while `audit.ndjson`
+does not exist, with a one-line deprecation notice ("removal not before 0.18.0"). Its reader is
+removed in 0.33.0, through a pull request that links #563, and not earlier. *Replacement:*
+`.local/xezar/audit.ndjson`, which every release since 0.16.0 writes. *Symptom:* in a project that
+still has only the old file, the audit trail reads as empty and the notice is no longer printed.
+*Way forward:* nothing is converted and the old file is never deleted or rewritten; keep or archive
+it by hand. The removing release records the change in § 9.
+
 ## 6. Environment variables
 
 The `XEZ_*` variables and their defaults, as `.env.example` documents them. Renaming one, removing
