@@ -34,6 +34,7 @@ import { projectLeaderChanged, registerProjectLeader } from './project-leaders.t
 import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
+import type { McpProjectContextSource } from './session-binding.ts';
 import { staleRejectionIn } from './stale-write.ts';
 import { errorResult, textResult, type McpToolResult } from './tool.ts';
 import { tools } from './tools/index.ts';
@@ -59,6 +60,12 @@ export interface StartMcpServiceOptions {
   /** The project's own store — the one the cockpit writes. The catalog listens to it, and
    *  receipts reconcile a run against it. */
   readonly store?: RunStore;
+  /**
+   * The cockpit's project context map (OD-1). Every session is bound to this project through it and
+   * every tool call re-checks that the project folder is still the one bound. Production always
+   * passes it; a test that composes the service without a cockpit may leave it out.
+   */
+  readonly contexts?: McpProjectContextSource;
   /** The host-wide workspace bus: the catalog's E-06 source (`provider-status`). */
   readonly workspaceEvents?: WorkspaceEventSource;
   /** Provider rows as they are now — the catalog's E-06 baseline. A failure means "no baseline". */
@@ -148,6 +155,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(delivery ? { leaderControl: delivery } : {}),
       },
       door: parts.door,
+      ...(opts.contexts ? { contexts: opts.contexts } : {}),
       // The owner claims live beside the store the cockpit writes (D-02.8).
       dataDir,
       ownership,
