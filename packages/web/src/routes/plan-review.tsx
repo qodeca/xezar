@@ -35,7 +35,8 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
 
-import { moveStep, planTaskLine, removeStep, stepHint, type PendingPlan } from './new-task-plan'
+import { moveStep, removeStep } from '@/lib/workflow-builder'
+import { planTaskLine, stepHint, type PendingPlan } from './new-task-plan'
 
 /**
  * The plan review overlay (spec 008 parity, Implementation Plan step 14): a FULL-SCREEN surface
