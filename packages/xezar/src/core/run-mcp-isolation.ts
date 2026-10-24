@@ -44,6 +44,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isXezarBridge } from './codex-run-isolation.ts';
 import { parseJsonc } from './qwen-settings.ts';
+import { asRecord } from './records.ts';
 
 /** What one scan of a client's project-scope MCP files found. */
 export interface McpScan {
@@ -267,8 +268,4 @@ export function writeMcpOverlay(name: string, content: unknown): McpOverlayFile 
 
 function sorted(values: Iterable<string>): string[] {
   return [...values].sort();
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

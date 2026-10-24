@@ -13,7 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pidExists } from '../platform/process-proof.ts';
 import { signalPid } from '../platform/process-table.ts';
 import type { AgentEvent, AgentRunSpec } from './agent-runner.ts';
-import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION, waitForExit } from './qwen-runner.ts';
+import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION } from './qwen-runner.ts';
+// The Qwen runner waits on its per-turn process with the Claude runner's helper.
+import { waitForExit } from './claude-cli-runner.ts';
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
 import { qwenWorkspaceLooseningMessage, qwenWorkspaceLoosenings, scanQwenProjectEnv } from './qwen-run-config.ts';
 import { settingsFromObject, type QwenSettings } from './qwen-settings.ts';

@@ -8,6 +8,7 @@ import { writeFileAtomic } from '../platform/atomic-write.ts';
 import { isInsideByIdentity, samePath } from '../platform/path-identity.ts';
 import { isDrivePath } from '../platform/path-syntax.ts';
 import { launchFile } from '../platform/process-launch.ts';
+import { shellQuote } from '../core/shell-env.ts';
 
 /**
  * Repository-owned Claude Code hooks for one workflow step (#1001, packing #901 and #936).
@@ -141,11 +142,6 @@ const PROJECT_DIR_PREFIX = /^(?:\$CLAUDE_PROJECT_DIR|\$\{CLAUDE_PROJECT_DIR\})\/
 /** Whitespace and shell operators split words, so `a;.x/y.sh` or `2>/dev/null` is read as separate words. */
 const WORD_SEPARATORS = /(\s+|[;&|<>()]+)/;
 const SEPARATOR_ONLY = /^(?:\s+|[;&|<>()]+)$/;
-
-/** Single-quote for the POSIX shell Claude Code runs hook commands in. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 /** Refusal-only containment: it may widen a refusal, never grant anything. */
 function isInside(path: string, root: string): boolean {

@@ -13,6 +13,7 @@
  * it is never an explicit option.
  */
 import { z } from 'zod';
+import { isRecord } from './records.ts';
 
 export const askOptionSchema = z
   .object({
@@ -94,10 +95,6 @@ export const ASK_MARKER_RE = /XEZ:ASK[ \t]+(\{[\s\S]*\})\s*$/;
 /** Looser than `ASK_MARKER_RE` so diagnostics can distinguish a malformed
  * trailing marker from ordinary assistant prose. */
 const ASK_MARKER_CANDIDATE_RE = /XEZ:ASK[ \t]+([\s\S]*)$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function hasOwn(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);

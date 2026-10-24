@@ -57,10 +57,6 @@ export function codexReadOnlyLockState(
     : 'live-mismatch';
 }
 
-export function activeCodexReadOnlyLock(payload: unknown, record: unknown, now = Date.now()): boolean {
-  return codexReadOnlyLockState(payload, record, now) === 'active';
-}
-
 export interface CodexHookOutput {
   readonly hookSpecificOutput: {
     readonly hookEventName: 'PreToolUse';
