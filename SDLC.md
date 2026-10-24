@@ -695,7 +695,7 @@ Full list: `CODE_REVIEW.md` § Security.
 ### Architecture review here
 
 Adding a package, a runner backend, a persisted format or a public route family. Decisions are
-recorded under `docs/architecture/`.
+recorded under `docs/features/decisions/`.
 
 ### Acceptance here
 
@@ -715,7 +715,7 @@ After the merge, on `develop`.
 7. Verify with `npm view @qodeca/xezar version` and the tag.
 
 Recovery: never unpublish; ship a new patch and move the `dist-tag`. Detail: `docs/publishing.md`.
-Incident notes: `docs/runbooks/`.
+Incident notes: `docs/lessons/`.
 
 ### Extra project rules
 
@@ -790,5 +790,5 @@ records the evidence and updates this row.
 ### Known gaps to fix outside this file
 
 - The issue templates do not ask for priority or risk.
-- `docs/architecture/`, `docs/runbooks/` and `docs/deprecations/` (named by
-  `BACKWARD_COMPATIBILITY.md` § 8) do not exist yet; each is created with its first record.
+- `docs/deprecations/` (named by `BACKWARD_COMPATIBILITY.md` § 8) does not exist yet; it is
+  created with its first record.
