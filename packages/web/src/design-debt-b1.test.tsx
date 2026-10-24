@@ -153,8 +153,9 @@ describe('B1 geometry: primitives carry the absolute phone target floor', () => 
   it('every primitive that sizes a row or a control spells the floor on the axes that need it', () => {
     // A guard against the floor being added to four files and forgotten in the fifth — and, since
     // B1-QA-1, against it being added on ONE AXIS and called done. The old sweep accepted any of
-    // the three spellings anywhere in the file, so `tabs.tsx` passed on `min-h-tap` alone while a
-    // two-character tab label rendered 30.88px wide at ultra. Which axes a primitive needs
+    // the three spellings anywhere in the file, so `tabs.tsx` (deleted since, see the dead-primitive
+    // list below) passed on `min-h-tap` alone while a two-character tab label rendered 30.88px wide
+    // at ultra. Which axes a primitive needs
     // is a property of how its control is sized, so it is stated per file rather than guessed:
     //
     //  - `both`    the control is content-sized on BOTH axes, so a short label can shrink it.
@@ -170,7 +171,6 @@ describe('B1 geometry: primitives carry the absolute phone target floor', () => 
       { file: 'input.tsx', axes: 'height' },
       { file: 'sheet.tsx', axes: 'overlay' },
       { file: 'switch.tsx', axes: 'overlay' },
-      { file: 'tabs.tsx', axes: 'both' },
     ]
     const NEEDED = {
       both: ['min-h-tap', 'min-w-tap'],
@@ -466,8 +466,12 @@ describe('B1 contrast: required small text clears AA on the surface it sits on',
 // DEAD PRIMITIVES — removed, and removed from the ledger in the same change
 // ---------------------------------------------------------------------------
 
-describe('B1 inventory: the four primitives with no importers are gone', () => {
-  const REMOVED = ['card.tsx', 'scroll-area.tsx', 'select.tsx', 'separator.tsx']
+describe('dead primitives: the ones with no importers are gone, and stay gone', () => {
+  // The four #453 B1 deleted, plus `tabs.tsx`, unused since #819 PR 9 and deleted by the owner's
+  // 2026-10-24 cleanup decision (known-gaps G-20, now retired). A surface that genuinely switches
+  // panels re-adds the shadcn primitive in its own change, with its components.md and coverage.md
+  // rows, and takes it off this list.
+  const REMOVED = ['card.tsx', 'scroll-area.tsx', 'select.tsx', 'separator.tsx', 'tabs.tsx']
 
   it('the files no longer exist', () => {
     const present = primitiveSources()

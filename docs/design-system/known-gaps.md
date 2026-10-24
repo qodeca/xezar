@@ -26,11 +26,14 @@ Every row now has exactly one of three dispositions, stated in its own last bull
   rendered Markdown's phone targets (G-36, G-45), **#595** phone and desktop layout (G-26, G-27,
   G-28, G-30, G-32, G-33, G-37), **#596** accessibility (G-06, G-31, G-39), **#597** the two diff
   endpoints' status words (G-41, server work), **#598** shared helpers and copy rows (G-14, G-15,
-  G-16, G-42).
-- **Kept, with a reason** — three rows: **G-20** (dead primitives; adding or deleting a catalogued
-  component file belongs to one commit, which has merged), **G-35** (the palette hint, whose own
+  G-16, G-42). Two of those owners have since moved, both on 2026-10-14: #596 was closed into
+  **#1003** (the accessibility pack, which now owns G-06, G-31 and G-39), and G-15 and G-16 moved
+  from #598 to **#1004** (the wording pack).
+- **Kept, with a reason** — two rows: **G-35** (the palette hint, whose own
   rule is conditional on a keyboard-help surface that does not exist) and **G-47** (single-project
-  mode's accepted deviations from its mockup, added after B8 by #600 PR4). **G-49** (the plan-limits
+  mode's accepted deviations from its mockup, added after B8 by #600 PR4). A third, **G-20** (dead
+  primitives), was kept at B8 and retired on 2026-10-24, when the owner chose to delete its last
+  subject, `components/ui/tabs.tsx`. **G-49** (the plan-limits
   cockpit's deviations from its mockup, #867) was added later on the same terms.
 - **Open, not yet filed** — three rows added on 2026-10-23 by a docs audit: **G-50** (two page
   header spellings; the rule is an owner decision), **G-51** (the violet accent's focus ring is
@@ -42,10 +45,14 @@ reason it stays; the three 2026-10-23 rows still need an owner. Two rows to read
 small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real user-visible failure mode.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
-the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47, G-49, G-50, G-51 and G-52 are live** (26
-rows); **G-01 to G-05, G-07 to G-13, G-17 to G-19, G-21 to G-25, G-29, G-34, G-40, G-43, G-44 and
-G-48 are retired** (26 numbers); and **the next free id is G-53**. **G-23** (small text below AA
+the highest ever used. **G-06, G-14, G-15, G-16, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47, G-49, G-50, G-51 and G-52 are live** (25
+rows); **G-01 to G-05, G-07 to G-13, G-17 to G-25, G-29, G-34, G-40, G-43, G-44 and
+G-48 are retired** (27 numbers); and **the next free id is G-53**. **G-20** (dead primitives) was
+retired on 2026-10-24 by deletion, on the owner's decision rather than a fix: `components/ui/tabs.tsx`,
+unused since #819 PR 9, is gone with its `components.md` entry, its `coverage.md` row and its
+specimen, and `design-debt-b1.test.tsx` lists it with the four primitives #453 B1 deleted, so it
+stays deleted until a surface that genuinely switches panels re-adds it in its own change. **G-23** (small text below AA
 contrast in the light theme) was retired on 2026-10-23: both of its halves closed on 2026-10-19
 (fix/cockpit-a11y) – the accent no longer colours text in the light theme, and the light
 `--success`, `--danger` and `--violet` were darkened to clear 4.5:1 on every light surface they
@@ -80,7 +87,7 @@ issue arrives by id.
 - **Rule**: the `focus-visible` ring.
 - **Fix**: restyle the two close buttons; gate the tooltip animation.
 - **Also found (#453 batch B6, Git tabs)**: a third idiom – none. The rows of both Git trees (`routes/task-git/changes-tree.tsx`, `files-tree.tsx`) carry no focus-visible class at all, so they wear the browser's default ring while the diff file header and the expandable gap row beside them wear the cockpit ring. Focus stays visible, so nothing is lost; it is a consistency gap. Found by the #574 design review (NB-5). Owner: B8 reconciliation of #453.
-- **Final disposition (#453 B8, 2026-09-17)**: mostly fixed, remainder filed as **#596**. Both close buttons (`components/ui/dialog.tsx`, `sheet.tsx`) wear the `focus-visible:ring-[3px] focus-visible:ring-ring/50` idiom and the tooltip's animation is `motion-safe:` gated, so the two original divergences are gone. What is left is the Git tree rows carrying no focus-visible class at all; focus stays visible, so it is a consistency gap, and both trees are B6's files. Re-read on 2026-09-18: the `focus-visible:ring-[3px]` idiom is on the eight primitives and 78 sites outside `components/ui`.
+- **Final disposition (#453 B8, 2026-09-17)**: mostly fixed, remainder filed as **#1003** (first #596, closed into #1003 on 2026-10-14). Both close buttons (`components/ui/dialog.tsx`, `sheet.tsx`) wear the `focus-visible:ring-[3px] focus-visible:ring-ring/50` idiom and the tooltip's animation is `motion-safe:` gated, so the two original divergences are gone. What is left is the Git tree rows carrying no focus-visible class at all; focus stays visible, so it is a consistency gap, and both trees are B6's files. Re-read on 2026-09-18: the `focus-visible:ring-[3px]` idiom is on the eight primitives and 78 sites outside `components/ui`.
 
 ### G-14 Duplicated shell helpers
 
@@ -130,15 +137,8 @@ is gone says so and keeps its line so the history reads.
 - **Status (#453 batch B5, thread, composer and launch menus)**: `run-header.tsx` (the resume hint, the terminal fallback and the worktree path) and `review-panel.tsx` (the manual merge line) copy through `copyText`; a refusal toasts the payload ("Run manually: …", "Path: …"), never "copied". Their toasts are fragments: "Command copied", "No terminal found — command copied", "Worktree path copied" (writing.md §13). Still open (B6, B7): `routes/task-git/task-changes.tsx` and `routes/skills.tsx`.
 - **Status (#453 batch B6, Git tabs)**: `routes/task-git/task-changes.tsx`'s terminal fallback copies through `copyText` and toasts the same fragment as the run header (“No terminal found — command copied”); a refusal shows “Run manually: …”. Still open (B7): `routes/skills.tsx`.
 - **Status (#453 batch B7, remaining routes)**: the fragments lost their period – "Team skills refreshed" (`routes/skills.tsx`), "xezar-skills updated" and "Some skill updates failed" (`components/skills-import-panel.tsx`), "Deleted “{name}”" (`routes/workflows/workflows.tsx`). The Workflows YAML Copy goes through `copyText`: it flips to "Copied" only when the clipboard took the text, and a refusal toasts "Could not copy the YAML — select it below instead". `writing.md` §13 still quotes the old "Team skills refreshed." (G-44).
-- **Final disposition (#453 B8, 2026-09-17)**: one site left, filed as **#598**. All three hand-rolled copy helpers now go through `copyText` (`lib/clipboard-result.ts`) and the fragments lost their periods. The holdout is `routes/settings/bookmarklets-section.tsx` — "Bookmarklet URL copied." is a fragment with a period, and it is also the last copy site that does not ask `copyText`, so a refused clipboard is still reported there as a copy.
-
-### G-20 Dead primitives
-
-- **Differs**: `components/ui/tabs.tsx` has zero importers (see Also below). The four primitives this row first listed – `card.tsx`, `scroll-area.tsx`, `select.tsx` and `separator.tsx` – were deleted by #453 B1 (`b310e8db`), and `design-debt-b1.test.tsx` keeps them gone.
-- **Rule**: do not use `Tabs` until a surface genuinely switches panels (its components.md entry says what to use instead).
-- **Also (#819 PR 9, 2026-09-21)**: `components/ui/tabs.tsx` became unused when the Agent accounts pane, its only user, stacked its four agents instead of tabbing them (`designs/agent-accounts-onboarding` DG-1). Kept on the terms below: `components.md` still documents it, so a surface that genuinely switches panels can adopt it.
-- **Fix**: delete or adopt.
-- **Final disposition (#453 B8, 2026-09-17)**: kept, with a reason. (Corrected: B1 had already deleted the four files this row listed, so the row's remaining subject is `tabs.tsx`, which became unused later, in #819.) #453 gives adding and deleting catalogued component files to batch B1 in a single commit, so that mirror and coverage ownership stays in one place, and B1 has merged — no later batch may delete a primitive. An unused primitive is harmless while the rule holds: its entry in `components.md` names what to use instead and `design-system-drift.test.ts` keeps the coverage rows honest. Revisit when a surface genuinely wants `Tabs`; deleting it is a `decisions.md` record, not a silent removal.
+- **Final disposition (#453 B8, 2026-09-17)**: one site left, filed as **#1004** (first #598; the row moved to #1004 on 2026-10-14). All three hand-rolled copy helpers now go through `copyText` (`lib/clipboard-result.ts`) and the fragments lost their periods. The holdout is `routes/settings/bookmarklets-section.tsx` — "Bookmarklet URL copied." is a fragment with a period, and it is also the last copy site that does not ask `copyText`, so a refused clipboard is still reported there as a copy.
+- **Status (2026-10-24 cleanup)**: the holdout is fixed. `routes/settings/bookmarklets-section.tsx` copies through `copyText` and toasts "Bookmarklet URL copied" (no period); a refused or missing clipboard toasts "Copy failed — drag the button instead.". The same change moved the two other settings copy sites onto `copyText`: `project-location.tsx`, whose `navigator.clipboard.writeText(…)` threw before its `.catch` existed when the page had no clipboard (plain http), and `provider-settings.tsx`. Rendered unit tests in `routes/settings/*.test.tsx` pin both outcomes with `navigator.clipboard` undefined. No browser pass yet, so the row stays live under #1004 until one retires it.
 
 ### G-26 The thread header shows scrolled content through it
 
@@ -171,7 +171,7 @@ is gone says so and keeps its line so the history reads.
 - **Differs**: a conflicting pull request's panel takes `role="dialog"` so its "Resolve conflicts" button can be reached (`role={action ? 'dialog' : 'tooltip'}` on the `PopoverContent` with `data-slot="reference-status-card"` in `components/reference-chip.tsx`), but the dialog has no accessible name, so axe-core 4.12.1 reports `aria-dialog-name` on every surface, density and theme; the chip that opens it is named. Pre-existing on `main`; found by the axe pass for #453 B4 design-review finding B-1.
 - **Rule**: a `role="dialog"` always carries a name, for example `aria-labelledby` pointing at the text that already heads it.
 - **Fix**: name the panel from its first line (the reference and its status) and add the axe rule to the B4 browser pass. Owner: B8 reconciliation of #453; `reference-chip.tsx` is outside the B4 source change.
-- **Final disposition (#453 B8, 2026-09-17)**: filed as **#596**. This is the most serious row left — a live axe-core `aria-dialog-name` violation on every surface, density and theme — and the fix is small (`aria-labelledby` pointing at the line that already heads the panel). It stays filed rather than fixed because `reference-chip.tsx` is B4's file and #453 AC-0 holds each batch to its own manifest; B8's brief named four deferred gaps to fix and this was not one of them. It should be picked up first of the six.
+- **Final disposition (#453 B8, 2026-09-17)**: filed as **#1003** (first #596, closed into #1003 on 2026-10-14). This is the most serious row left — a live axe-core `aria-dialog-name` violation on every surface, density and theme — and the fix is small (`aria-labelledby` pointing at the line that already heads the panel). It stays filed rather than fixed because `reference-chip.tsx` is B4's file and #453 AC-0 holds each batch to its own manifest; B8's brief named four deferred gaps to fix and this was not one of them. It should be picked up first of the six.
 - **Re-read (2026-10-23, source only)**: still open. The `PopoverContent` takes `role="dialog"` when it holds an action and carries no `aria-label` or `aria-labelledby`, so this is a live **WCAG 2.2 success criterion 4.1.2 (Name, Role, Value, level A)** failure, not only an axe-core warning. No browser re-run in this change.
 
 ### G-32 The phone run header opens partly under the top bar
@@ -225,7 +225,7 @@ is gone says so and keeps its line so the history reads.
 - **Differs**: in the task Changes tree (`data-slot="tree-file"` rows in `routes/task-git/changes-tree.tsx`) an added or copied file is marked only by a green file icon and a renamed file carries no mark at all, while the diff card beside it spells "copied" and "renamed" in words. [README.md](README.md) rule 10 puts the word first and colour second, and colour alone is not readable for a reader who cannot tell the two greens apart; the icon is `aria-hidden`, so the row carries no accessible status either. Pre-existing; found by the #574 design review (NB-3).
 - **Rule**: a status is a word, or an accessible name; colour only ever repeats it.
 - **Fix**: give each row an `aria-label` carrying the status, or a short status word beside the file name, matching the diff card's vocabulary. Owner: B8 reconciliation of #453.
-- **Final disposition (#453 B8, 2026-09-17)**: filed as **#596**. `changes-tree.tsx` is B6's file. Whoever fixes it should read **#597** first: the two surfaces currently disagree about what to CALL a change, and adding a status word to the tree would entrench one of the two names.
+- **Final disposition (#453 B8, 2026-09-17)**: filed as **#1003** (first #596, closed into #1003 on 2026-10-14). `changes-tree.tsx` is B6's file. Whoever fixes it should read **#597** first: the two surfaces currently disagree about what to CALL a change, and adding a status word to the tree would entrench one of the two names.
 
 ### G-41 The same change is named two different things on two surfaces
 

@@ -616,11 +616,11 @@ describe('B1 geometry at 375px: every phone target is 44 x 44 for real', () => {
     // would otherwise pass both.
     //
     // `tabs` is deliberately absent from this list, not merely uncovered: PR #827 retired the
-    // tabbed accounts layout for one stacked list per agent, and `TabsTrigger` now has no importer
-    // left anywhere in the cockpit — `design-debt-b1.test.tsx`'s REQUIRE_TAP still spells the 44px
-    // floor on `tabs.tsx` itself, so the primitive stays correct if it is ever used again, but
-    // there is nothing left for a real browser to measure. The case below pins that absence; the
-    // day something imports Tabs again, restore 'tabs' to this list too.
+    // tabbed accounts layout for one stacked list per agent, `TabsTrigger` lost its last importer,
+    // and `components/ui/tabs.tsx` itself was deleted on 2026-10-24 (known-gaps G-20, retired;
+    // `design-debt-b1.test.tsx` keeps it on its dead-primitive list). There is nothing left for a
+    // real browser to measure. The case below pins that absence; the day a surface re-adds Tabs,
+    // it goes back into REQUIRE_TAP there and into this list here.
     const measured = sweepOf('comfortable').targets.map((target) => target.name.toLowerCase())
     const overlays = sweepOf('comfortable').overlays.map((sample) => sample.name.toLowerCase())
     const covered = [...measured, ...overlays].join(' | ')

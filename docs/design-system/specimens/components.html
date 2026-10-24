@@ -34,7 +34,7 @@
 
 <main class="doc">
   <h1>Components</h1>
-  <p class="lead">The shadcn primitives in <code>packages/web/src/components/ui/</code> and the shared components in <code>packages/web/src/components/</code>, with selected variants and states (the disabled Tabs trigger is not drawn). Each entry names its source; the props, do/don't and accessibility notes are in <a class="link" href="../components.md">components.md</a>. Press Tab anywhere to see the focus ring.</p>
+  <p class="lead">The shadcn primitives in <code>packages/web/src/components/ui/</code> and the shared components in <code>packages/web/src/components/</code>, with selected variants and states. Each entry names its source; the props, do/don't and accessibility notes are in <a class="link" href="../components.md">components.md</a>. Press Tab anywhere to see the focus ring.</p>
 
   <h2>1. Primitives</h2>
 
@@ -181,13 +181,6 @@
     <span class="state"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="On"></button><small>on</small></span>
     <span class="state"><button class="switch sm" type="button" role="switch" aria-checked="true" aria-label="Small on"></button><small>sm</small></span>
     <span class="state"><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Disabled" disabled></button><small>disabled</small></span>
-  </div>
-
-  <h3>Tabs</h3>
-  <div class="src">ui/tabs.tsx · default (filled list) and line variant · the trigger carries the 44 px phone floor, so the horizontal track is <code>h-fit</code> below <code>md</code></div>
-  <div class="frame pad stack">
-    <div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true">Steps</button><button type="button" role="tab" aria-selected="false">Changes</button><button type="button" role="tab" aria-selected="false">Git</button></div>
-    <div class="tabs line" role="tablist"><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">History</button></div>
   </div>
 
   <h3>Skeleton</h3>
