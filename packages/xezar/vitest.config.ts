@@ -1,6 +1,8 @@
 import '../../scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
+import { vitestMaxWorkers } from '../../scripts/test-concurrency.mjs'
+
 // The service + CLI suite: Node ESM, no DOM, no bundler. `test/` is deliberately NOT included
 // — those are the node:test suites (`npm run test:unit`, `npm run test:package`), which pack
 // and install the real tarball and must not run inside the fast unit gate.
@@ -9,6 +11,9 @@ export default defineConfig({
     name: 'server',
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // The shared worker cap (scripts/test-concurrency.mjs), so `npm test -w` on this package alone is
+    // capped like the root run; it steps aside when the command line names `--maxWorkers`.
+    maxWorkers: vitestMaxWorkers(),
     // Vitest's 5 000 ms default is a unit-test clock, and this is not a unit suite: its cases
     // spawn a real agent CLI, open loopback sockets and run `git worktree add`. The default was
     // the single largest source of meaningless red gates — of 1 012 sealed gate attempts between
