@@ -38,7 +38,11 @@ export interface FixtureServer {
   stop(): Promise<void>
 }
 
-function freePort(): Promise<number> {
+/**
+ * A free TCP port on the loopback interface, found by letting the OS pick one for a throwaway
+ * listener and closing it again. The one copy every browser spec boots its server on.
+ */
+export function freePort(): Promise<number> {
   return new Promise((done, fail) => {
     const probe = createServer()
     probe.once('error', fail)
@@ -48,6 +52,31 @@ function freePort(): Promise<number> {
       probe.close(() => done(port))
     })
   })
+}
+
+export interface WaitForHealthOptions {
+  /** How many probes, 250 ms apart, before giving up. Default 60 (about 15 s). */
+  attempts?: number
+  /** Names the server in the failure message: `the <label> never answered at <url>`. */
+  label?: string
+}
+
+/**
+ * Wait until a spec-booted `xezar serve` answers `GET /api/v1/health`, probing every 250 ms.
+ * Throws `xezar e2e: the <label> never answered at <url>` once `attempts` probes have failed.
+ * The budget is the caller's: a spec that needs longer passes its own `attempts`.
+ */
+export async function waitForHealth(url: string, options: WaitForHealthOptions = {}): Promise<void> {
+  const { attempts = 60, label = 'fixture server' } = options
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      if ((await fetch(`${url}/api/v1/health`)).ok) return
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`xezar e2e: the ${label} never answered at ${url}`)
 }
 
 /** Boot `xezar serve` over a fresh `createFixtureRepo` checkout and wait until it answers. */
