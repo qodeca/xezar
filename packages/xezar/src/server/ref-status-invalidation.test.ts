@@ -19,7 +19,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
  * Everything else about a reference has to be polled: GitHub cannot push to a cockpit with no
  * public endpoint. But waiting out a TTL to notice OUR OWN merge is self-inflicted staleness — for
  * up to a minute every chip would keep showing the pre-merge status of a pull request the user
- * just watched this server merge. These tests pin the wiring; `forge/github.test.ts` pins what
+ * just watched this server merge. These tests pin the wiring; `forge/github-ref-status.test.ts` pins what
  * `forgetRefStatus` and `refNumberFromUrl` actually do.
  *
  * Driven through `XEZ_DRY_RUN=1`, so no `gh` is touched: the assertion is that the routes CALL
