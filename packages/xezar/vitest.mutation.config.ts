@@ -2,6 +2,8 @@ import '../../scripts/test-local-state.mjs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
+import { SERVER_TEST_BUDGETS } from './vitest.budgets.ts'
+
 // The test set the MCP mutation run (`npm run test:mutation:mcp`, stryker.config.mjs) kills
 // mutants with: the MCP suites alone, the same files `npm run test:coverage:mcp` measures.
 // A mutant another suite happens to kill was never aimed at by an MCP test. Its own file, not vitest.config.ts with a filter, because Stryker hands vitest a
@@ -18,6 +20,8 @@ export default defineConfig({
       'src/server/mcp-*.test.ts',
       'src/server/stale-write-routes*.test.ts',
     ],
+    // The server suite's test, hook and poll budgets – see vitest.budgets.ts for why.
+    ...SERVER_TEST_BUDGETS,
     setupFiles: ['./vitest.setup.ts'],
     // One CLASS of test is left out, and only here: the `AGENTS.md — …` guards that read an
     // adapter's own source as TEXT and assert the text never says `process.`. Stryker instruments

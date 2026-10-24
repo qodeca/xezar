@@ -2,6 +2,8 @@ import '../../scripts/test-local-state.mjs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
+import { SERVER_TEST_BUDGETS } from './vitest.budgets.ts'
+
 // The test set the read-only lock mutation run (`npm run test:mutation:lock`,
 // stryker.lock.config.mjs) kills mutants with: the suites aimed at the lock and the Qwen Code tool
 // policy, in process. Its own file for the reasons `vitest.mutation.config.ts` gives: Stryker hands
@@ -18,6 +20,8 @@ export default defineConfig({
       'src/core/qwen-hook-command.test.ts',
       'src/core/codex-read-only-hook.test.ts',
     ],
+    // The server suite's test, hook and poll budgets – see vitest.budgets.ts for why.
+    ...SERVER_TEST_BUDGETS,
     setupFiles: ['./vitest.setup.ts'],
   },
 })

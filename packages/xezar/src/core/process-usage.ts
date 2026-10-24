@@ -11,7 +11,7 @@
  *    single `ps` every tick, and the timer is unref()ed and stopped the
  *    moment the registry empties, so an idle cockpit spawns nothing;
  *  - parsing + tree aggregation are pure functions, testable against canned
- *    `ps` output (scripts/test-process-usage.mjs).
+ *    `ps` output (src/core/process-usage.test.ts).
  */
 
 import {

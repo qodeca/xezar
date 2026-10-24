@@ -3,12 +3,13 @@
  * Sort the nightly MCP mutation gate's survivors into NEW, ALREADY SEEN and KNOWN (#377, PR 2).
  *
  * A score says the gate is above or below its floor. It cannot say whether tonight's survivors are
- * the ones #338 and #353 already track, or a test that got weaker today. That second question is
+ * the ones #338 already tracks, or a test that got weaker today. That second question is
  * the one somebody can act on, so the `report` job answers it with three groups:
  *
  *   - KNOWN        — in the STARTING LIST, the survivors of the first complete nightly run on `main`
  *                    (run 34999068325 on `fe33541`), committed at `docs/testing/mcp-mutation-survivors.json`.
- *                    An entry there may carry the issue that tracks it (#338, #353); the tag stays.
+ *                    An entry there may carry the issue that tracks it (#338, or the
+ *                    closed #353, kept as history); the tag stays.
  *   - ALREADY SEEN — not in the starting list, but a survivor of the PREVIOUS complete run on the
  *                    default branch too.
  *   - NEW          — in neither. These are what the early note on the tracking issue lists.

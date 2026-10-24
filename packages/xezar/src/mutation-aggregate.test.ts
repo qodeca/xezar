@@ -270,7 +270,11 @@ describe('summing the shards into one verdict (#377)', () => {
       readReport: (s) => reportFor(plan.shards[s - 1]!.files, { Killed: 1, Survived: 9 }),
       root: REPO_ROOT,
     });
-    expect(agg.renderMarkdown(below)).toContain('#338 and #353');
+    const markdown = agg.renderMarkdown(below);
+    expect(markdown).toContain('#338');
+    expect(markdown).toContain('#443');
+    // #353 is closed: the report must not send a reader to a finished issue.
+    expect(markdown).not.toContain('#353');
   });
 
   it('names the artifact each shard uploads, which is how the report job finds them', () => {
