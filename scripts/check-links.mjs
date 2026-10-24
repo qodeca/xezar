@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 // Offline relative-link/anchor checker for Markdown docs. No network, no dependencies.
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const designsRoot = resolve(root, 'designs');
-const roots = ['docs', 'README.md', 'designs'].map((p) => resolve(root, p));
+// The root Markdown files and every tracked AGENTS.md are what agents read first, so they are
+// checked too. AGENTS.md files come from git so ignored worktrees and node_modules stay out.
+const rootDocs = readdirSync(root).filter((name) => extname(name) === '.md');
+const agentsDocs = execFileSync('git', ['ls-files', '-z', '--', 'AGENTS.md', '**/AGENTS.md'], { cwd: root, encoding: 'utf8' })
+  .split('\0')
+  .filter(Boolean);
+const roots = ['docs', 'designs', ...rootDocs, ...agentsDocs].map((p) => resolve(root, p));
 const walk = (path) => {
   if (!existsSync(path)) return [];
   if (statSync(path).isFile()) return extname(path) === '.md' ? [path] : [];
