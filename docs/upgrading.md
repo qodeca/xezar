@@ -1,8 +1,11 @@
 # Upgrading from older releases
 
 The [CHANGELOG](../CHANGELOG.md) is the complete record of every release, and it calls out each
-breaking change. This page keeps the longer upgrade notes for **0.15.0 and 0.16.0** only – the
-changes that needed a paragraph of explanation. It is not extended for every release.
+breaking change. This page keeps a short upgrade note for each release that changed something you
+may have to act on: 0.31.0, 0.30.0, 0.20.0, 0.16.0 and 0.15.0. Each breaking change, with its symptom
+and the way forward, is recorded once in
+[Backward compatibility § 9](../BACKWARD_COMPATIBILITY.md#9-recorded-breaking-changes); the notes
+below point there instead of repeating it.
 
 To see how far you have to read, compare the version you run with the one you would get:
 
@@ -16,6 +19,47 @@ Then read the CHANGELOG from your installed version forward.
 If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
 still names them, and lists each file and field to change. See
 [Moving from pi or OpenCode](guide/18-moving-from-pi-or-opencode.md).
+
+## Upgrading to 0.31.0
+
+Two breaking changes, both for a cockpit reached from another machine or another web page. Local
+use on your own machine is unchanged.
+
+- **Health is same-origin only.** A script running in a browser page on another origin can no
+  longer read `GET /api/v1/health`; a native client such as `curl` or the MCP bridge still can.
+  The remote address it reports no longer carries an embedded user name or password.
+- **A hosted cockpit narrows what a remote request may change.** It answers `403` to a host name
+  it does not know, refuses to save the browse folder, the projects folder, the extra variables
+  agents receive and the instance mode from a remote browser, and does not list hidden folders.
+  List the public name in `XEZ_ALLOWED_HOSTS` or re-run `xezar server-install --domain`, and
+  change those four settings on the machine that runs the cockpit.
+
+The details are in
+[Backward compatibility § 9](../BACKWARD_COMPATIBILITY.md#9-recorded-breaking-changes) and in
+the CHANGELOG's 0.31.0 Breaking section.
+
+## Upgrading to 0.30.0
+
+The pi and OpenCode backends and leader clients are removed. While any saved setting or task
+record still names `pi` or `opencode`, every command that saves settings or records refuses to
+start and lists each file and field to change, and the cockpit does not open such a project.
+Change each value to `qwen`, `claude` or `codex`, or remove it; stored data is never converted
+for you. Follow [Moving from pi or OpenCode](guide/18-moving-from-pi-or-opencode.md), and see
+[Backward compatibility § 9](../BACKWARD_COMPATIBILITY.md#9-recorded-breaking-changes) for the
+full list of removed ids, variables and files.
+
+## Upgrading to 0.20.0
+
+- **Node.js 22 is the minimum.** Upgrade from Node 20 to Node.js 22 or the current LTS.
+- **Setup runs the newer onboarding only.** A project last checked against the older setup
+  templates is offered one re-check; a project that carries `.xezar/onboarding.json` reads as set
+  up. See [To re-check after an update](guide/01-getting-started.md#to-re-check-after-an-update).
+- **Windows only:** the project folder is spelled `C:\…` in health, the start banner and audit
+  records; a team skill source on a network share is refused; and a workflow check step runs in
+  Git for Windows' Git Bash rather than whichever `bash` is found first.
+
+Each item, with its symptom and the way forward, is in
+[Backward compatibility § 9](../BACKWARD_COMPATIBILITY.md#9-recorded-breaking-changes).
 
 ## Upgrading to 0.16.0
 

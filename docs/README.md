@@ -8,7 +8,7 @@ project documentation. Use the table to find the part you need.
 | [guide/](guide/README.md) | The 18-part user guide: getting started, tasks, settings and references. | Users |
 | [server-install/](server-install/README.md) | Host xezar on a server and reach it from another machine. | Users |
 | [project-layout.md](project-layout.md) | Where a project's kit and working files live, and how to move a project from the old `.ai/xezar/` layout by hand; a contributor appendix covers how the engine resolves them. | Users; appendix for contributors |
-| [upgrading.md](upgrading.md) | Longer upgrade notes for 0.15.0 and 0.16.0; the CHANGELOG is the full record. | Users |
+| [upgrading.md](upgrading.md) | Upgrade notes for 0.31.0, 0.30.0, 0.20.0, 0.16.0 and 0.15.0, linking each breaking change to its record; the CHANGELOG is the full record. | Users |
 | [STATUS.md](STATUS.md) | Known gaps and unfinished migrations, with how far each has got. | Maintainers |
 | [publishing.md](publishing.md) | How a release reaches npm through the manual Release workflow. | Maintainers |
 | [releases/](releases/0.14.0-definition-of-done.md) | What "done" means for a release beyond its features, and how it was assessed for 0.14.0 — the only release with a recorded definition-of-done so far. | Maintainers and reviewers |
