@@ -84,7 +84,7 @@ were removed in one release, without a deprecation release, once Qwen Code passe
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
-- **Unreleased – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
+- **0.31.0 – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
   narrowed** (§2). Health no longer sends `access-control-allow-origin: *` or answers the CORS
   preflight with `access-control-allow-private-network`; its only cross-origin reader, the old
   bookmarklet port probe, was retired earlier. `repo.remote` (on health and the repository route)
@@ -95,7 +95,7 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   read health over HTTP or the WebSocket; a native client (`curl`, the MCP bridge) is unaffected.
   *Way forward:* read health from a native client or from the cockpit's own origin. The owner
   approved removing the health CORS headers on 2026-10-18.
-- **Unreleased – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
+- **0.31.0 – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
   mode (`XEZ_REMOTE=1` or a non-loopback bind) three things that used to succeed are refused. The
   owner approved shipping this without a §8 deprecation notice (2026-10-18), because the changes
   fix security holes. A `Host` name that is
