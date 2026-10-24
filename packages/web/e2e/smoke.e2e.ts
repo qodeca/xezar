@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -567,41 +566,21 @@ describe('mobile shell', () => {
 })
 
 /**
- * The global SSE stream, end to end: a real `/api/v1/events`, a real EventSource, a real reducer.
+ * The global SSE stream: a real `/api/v1/events` answering a real EventSource on this origin.
  *
- * The interesting half is not that a socket opens — it is that a server-side change reaches the
- * rendered UI with nobody reloading anything. The inbox is the one path this suite can drive for
- * free: `.local/xezar/todos.json` is a documented external contract (agents append to it via
- * `XEZ_TODOS_FILE`), the server watches the file and re-broadcasts the whole array on `todos`, and
- * the nav badge renders whatever the todos query holds. So writing that file *is* a live event —
- * no fixture invented, nothing mocked.
+ * That a server-side change reaches the rendered UI with nobody reloading anything is proven in
+ * `inbox.e2e.ts` ("live-updates the inbox badge…"), on a spec-owned `XEZ_FOLLOWUPS=1` fixture:
+ * the inbox is the one path the suite can drive for free, and this shared server boots with it
+ * off, as a default xezar does.
  *
  * The `run` path is deliberately not asserted here: proving a live run's `run` events land would
  * need a run that actually executes, and XEZ_DRY_RUN's mock agent is not a fixture this step has.
  * The jsdom tests cover those reducers against the exact payloads the server sends.
  */
 describe('global SSE stream', () => {
-  // Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-  const dataDir = resolve(import.meta.dirname, '../../../.local/xezar')
-  const todosFile = resolve(dataDir, 'todos.json')
-  const BADGE = '[data-slot="nav-badge"]'
-  let previousTodos: string | null = null
-
   beforeAll(() => {
     browser.setViewport(DESKTOP.width, DESKTOP.height)
-    previousTodos = existsSync(todosFile) ? readFileSync(todosFile, 'utf8') : null
   })
-
-  afterAll(() => {
-    // Never leave a developer's inbox holding this test's entries.
-    if (previousTodos === null) rmSync(todosFile, { force: true })
-    else writeFileSync(todosFile, previousTodos, 'utf8')
-  })
-
-  function writeTodos(items: Array<Record<string, string>>): void {
-    mkdirSync(dataDir, { recursive: true })
-    writeFileSync(todosFile, JSON.stringify(items, null, 2), 'utf8')
-  }
 
   it('holds an open stream the server accepts', () => {
     browser.goto(baseUrl + scoped('/'))
@@ -609,47 +588,12 @@ describe('global SSE stream', () => {
     // A second stream, opened from the page, against the same endpoint the app uses: it proves
     // `/api/v1/events` really speaks SSE to this origin (readyState 1 = OPEN) and keeps the socket up
     // rather than answering and closing. That the *app's* own stream is open is what the badge test
-    // below proves — an EventSource is not reachable from outside the bundle, and a test-only
-    // handle hung off `window` to reach it would be scaffolding, not evidence.
+    // in inbox.e2e.ts proves — an EventSource is not reachable from outside the bundle, and a
+    // test-only handle hung off `window` to reach it would be scaffolding, not evidence.
     browser.evaluate(`window.__xezProbe = new EventSource('/api/v1/events'), true`)
     browser.waitForFunction(`window.__xezProbe.readyState === 1`)
     expect(browser.evaluate('window.__xezProbe.readyState')).toBe(1)
     browser.evaluate(`window.__xezProbe.close(), delete window.__xezProbe, true`)
-  })
-
-  it('live-updates the inbox badge from a server-side change, with no reload', ({ skip }) => {
-    skip(
-      !followupsAvailable,
-      'the shared environment has the opt-in inbox disabled; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
-    )
-    writeTodos([])
-    browser.goto(baseUrl + scoped('/'))
-    // The shell is up and its queries have answered — so the app's stream effect has run too.
-    browser.waitForFunction(`document.querySelector('[data-slot="repo-chip"]') !== null`)
-    expect(browser.count(BADGE)).toBe(0)
-
-    // An agent files two follow-ups while the page just sits there.
-    writeTodos([
-      { id: 'e2e-1', summary: 'Review the PR' },
-      { id: 'e2e-2', summary: 'Rerun the checks' },
-    ])
-
-    // No goto: if this ever passes, it passed because file watch → SSE → reducer → badge worked.
-    // (Debounced ~300ms server-side, so this waits rather than samples.)
-    browser.waitForFunction(`document.querySelector('${BADGE}')?.textContent === '2'`)
-    expect(browser.text(BADGE)).toBe('2')
-
-    browser.screenshot(`${artifactsDir}/inbox-badge-live.png`)
-
-    // And the reverse: the payload is the whole inbox, so emptying it empties the badge.
-    writeTodos([])
-    browser.waitForFunction(`document.querySelector('${BADGE}') === null`)
-    expect(browser.count(BADGE)).toBe(0)
-
-    // The stream outliving several seconds of this is the "stays alive" assertion: the shell is
-    // still the shell, not a blank root left by a handler that threw.
-    expect(browser.isVisible('[data-slot="sidebar"]')).toBe(true)
-    expect(browser.text('[data-slot="sidebar"] nav')).toContain('Inbox')
   })
 })
 

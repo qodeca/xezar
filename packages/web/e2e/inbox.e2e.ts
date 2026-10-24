@@ -1,17 +1,24 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, readTestEnv } from './agent-browser'
+import { bootFixtureServer, type FixtureServer } from './fixture-server'
 
 /**
- * The inbox (R6 Step 1.2) end-to-end against the shared dry-run environment.
+ * The inbox (R6 Step 1.2) end to end, in both of its states.
+ *
+ * The default-off state runs against the shared dry-run environment, which boots without the
+ * opt-in exactly like a default xezar does. The enabled state runs against a spec-owned fixture
+ * booted with `XEZ_FOLLOWUPS=1` (`bootFixtureServer`), so it runs on every `test:e2e` instead of
+ * skipping unless someone exported the flag for the whole shared server.
  *
  * Reachability: the inbox is `todos.json`-driven and the server watches the file — so this
- * suite seeds real entries exactly like smoke.e2e.ts's SSE-badge test does (same data-dir
- * resolution, same save/restore discipline) and asserts real cards render LIVE over the
- * stream, no reload. Dismiss is honestly reachable (DELETE only rewrites todos.json, which
- * this suite restores) and is exercised below. Run is a client-side navigation to a prefilled
+ * suite seeds real entries in the data dir of the server under test and asserts real cards
+ * (and the nav badge) render LIVE over the stream, no reload. Dismiss is honestly reachable
+ * (DELETE only rewrites the fixture's own todos.json) and is exercised below; the shared
+ * server's todos.json, which the default-off case writes, is restored in `afterAll`. Run is a
+ * client-side navigation to a prefilled
  * `/new` (#374 — it no longer POSTs `/api/v1/todos/:id/start` itself, so no run is ever created
  * just by clicking it) but a full new-task submit is its own surface with its own coverage, so
  * the Run flow past the navigation stays unit-pinned in routes/inbox.test.tsx.
@@ -51,9 +58,9 @@ afterAll(() => {
   browser?.close()
 })
 
-function writeTodos(items: Array<Record<string, string>>): void {
-  mkdirSync(dataDir, { recursive: true })
-  writeFileSync(todosFile, JSON.stringify(items, null, 2), 'utf8')
+function writeTodos(items: Array<Record<string, string>>, file = todosFile): void {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(items, null, 2), 'utf8')
 }
 
 describe('the inbox against the live dry-run server', () => {
@@ -77,14 +84,31 @@ describe('the inbox against the live dry-run server', () => {
     )
     expect(browser.count(CARD)).toBe(0)
   })
+})
 
-  it('an enabled empty inbox renders the shared CenteredState template', ({ skip }) => {
-    skip(
-      !followupsAvailable,
-      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
-    )
-    writeTodos([])
-    browser.goto(`${baseUrl}/inbox`)
+/**
+ * The enabled inbox, on a spec-owned `XEZ_FOLLOWUPS=1` fixture. The fixture's data dir is
+ * `<checkout>/.local/xezar`, so `todos.json` there is the file the fixture server watches; the
+ * whole root is deleted in `afterAll`, so nothing needs restoring.
+ */
+describe('the inbox opted in (spec-owned XEZ_FOLLOWUPS=1 fixture)', () => {
+  let fixture: FixtureServer
+  let fixtureTodos: string
+  const inboxUrl = () => `${fixture.baseUrl}/p/${fixture.projectId}/inbox`
+  const write = (items: Array<Record<string, string>>) => writeTodos(items, fixtureTodos)
+
+  beforeAll(async () => {
+    fixture = await bootFixtureServer({ env: { XEZ_FOLLOWUPS: '1' } })
+    fixtureTodos = join(fixture.root, '.local/xezar/todos.json')
+  }, 90_000)
+
+  afterAll(async () => {
+    await fixture?.stop()
+  })
+
+  it('an enabled empty inbox renders the shared CenteredState template', () => {
+    write([])
+    browser.goto(inboxUrl())
     browser.waitForFunction(
       `document.querySelector('[data-route="inbox"] [data-slot="centered-state"]') !== null`,
     )
@@ -93,13 +117,9 @@ describe('the inbox against the live dry-run server', () => {
     expect(browser.count(CARD)).toBe(0)
   })
 
-  it('real cards render LIVE from a server-side todos.json write — no reload', ({ skip }) => {
-    skip(
-      !followupsAvailable,
-      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
-    )
+  it('real cards render LIVE from a server-side todos.json write — no reload', () => {
     // An agent files two follow-ups while the page just sits there on /inbox.
-    writeTodos([
+    write([
       {
         id: 'e2e-inbox-1',
         ts: new Date().toISOString(),
@@ -137,19 +157,54 @@ describe('the inbox against the live dry-run server', () => {
     browser.screenshot(`${artifactsDir}/inbox-cards.png`)
   })
 
-  it('Dismiss checks the entry off — card gone, server inbox down to one', async ({ skip }) => {
-    skip(
-      !followupsAvailable,
-      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
-    )
+  it('Dismiss checks the entry off — card gone, server inbox down to one', async () => {
     browser.click(`${CARD}[data-id="e2e-inbox-1"] [data-action="todo-dismiss"]`)
 
     browser.waitForFunction(`document.querySelectorAll('${CARD}').length === 1`)
     expect(browser.count(`${CARD}[data-id="e2e-inbox-2"]`)).toBe(1)
 
     // The server agreed: the DELETE landed in todos.json, not just in the query cache.
-    const res = await fetch(`${baseUrl}/api/v1/todos`)
+    const res = await fetch(`${fixture.baseUrl}/api/v1/todos`)
     const items = (await res.json()) as Array<{ id: string }>
     expect(items.map((item) => item.id)).toEqual(['e2e-inbox-2'])
+  })
+
+  /**
+   * The global SSE stream, end to end (moved here from smoke.e2e.ts, which only had the shared,
+   * default-off server): a server-side `todos.json` write reaches the nav badge with nobody
+   * reloading anything. `todos.json` is a documented external contract (agents append to it via
+   * `XEZ_TODOS_FILE`), the server watches the file and re-broadcasts the whole array on `todos`,
+   * and the badge renders whatever the todos query holds — so writing that file *is* a live event.
+   */
+  it('live-updates the inbox badge from a server-side change, with no reload', () => {
+    const BADGE = '[data-slot="nav-badge"]'
+    write([])
+    browser.goto(`${fixture.baseUrl}/p/${fixture.projectId}/`)
+    // The shell is up and its queries have answered — so the app's stream effect has run too.
+    browser.waitForFunction(`document.querySelector('[data-slot="repo-chip"]') !== null`)
+    expect(browser.count(BADGE)).toBe(0)
+
+    // An agent files two follow-ups while the page just sits there.
+    write([
+      { id: 'e2e-1', summary: 'Review the PR' },
+      { id: 'e2e-2', summary: 'Rerun the checks' },
+    ])
+
+    // No goto: if this ever passes, it passed because file watch → SSE → reducer → badge worked.
+    // (Debounced ~300ms server-side, so this waits rather than samples.)
+    browser.waitForFunction(`document.querySelector('${BADGE}')?.textContent === '2'`)
+    expect(browser.text(BADGE)).toBe('2')
+
+    browser.screenshot(`${artifactsDir}/inbox-badge-live.png`)
+
+    // And the reverse: the payload is the whole inbox, so emptying it empties the badge.
+    write([])
+    browser.waitForFunction(`document.querySelector('${BADGE}') === null`)
+    expect(browser.count(BADGE)).toBe(0)
+
+    // The stream outliving several seconds of this is the "stays alive" assertion: the shell is
+    // still the shell, not a blank root left by a handler that threw.
+    expect(browser.isVisible('[data-slot="sidebar"]')).toBe(true)
+    expect(browser.text('[data-slot="sidebar"] nav')).toContain('Inbox')
   })
 })
