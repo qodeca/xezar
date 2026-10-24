@@ -18,7 +18,7 @@ Two rules hold for every suite:
 
 | Suite | Command | Needs first | Operating systems | CI job | Time limits |
 | --- | --- | --- | --- | --- | --- |
-| Unit (server, cockpit, api-client, contract) | `npm test` | `npm ci` | Linux, macOS, Windows | `verify` and `cross-platform` in `ci.yml` | job: 20 min (`verify`); `cross-platform` 20 min Linux, 30 min macOS, 45 min Windows |
+| Unit (server, cockpit, api-client, contract) | `npm test` | `npm ci` | Linux, macOS, Windows | `verify` and `cross-platform` in `ci.yml` | job: 20 min (`verify`); `cross-platform` 30 min macOS, 45 min Windows (Windows and macOS only; Linux runs in `verify`) |
 | node:test core | `npm run test:unit` | `npm ci` | Linux, macOS, Windows (see [Windows known gaps](#windows-known-gaps)) | `verify`, `cross-platform` | `--test-timeout=600000` (10 min) per test; job limits as above |
 | Packaged CLI | `npm run test:package` | `npm run build` (it packs the tarball) | Linux, macOS, Windows | `verify`, `cross-platform` | job limits as above |
 | Cockpit browser e2e | `npm run test:e2e` | `npm ci`; `sh` on `PATH` (Git Bash on Windows); network on the first run to fetch agent-browser and Chrome for Testing | CI: Linux only. Local: Linux, macOS, Windows (7 files fail on Windows, [#1137](https://github.com/qodeca/xezar/issues/1137)) | `ui-e2e` in `ci.yml` | 1 200 s whole suite, 60 s per file and per test, 30 min job |

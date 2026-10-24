@@ -371,30 +371,29 @@ jobs:
           retention-days: 7
 
   # Cross-platform verify (#963). The five older required checks are read by exact name, so none is
-  # renamed or folded in. ubuntu-latest on Node 22 (the engines floor) must pass; windows-latest and
-  # macos-latest on Node 22 and 24 are required checks on main (`fail-fast: false`). Those legs name
-  # a Node major, never `lts/*`: a required check must not change Node major on its own. `lts/*` runs as an
-  # informational canary only, so a new LTS shows up here before anyone pins it. Steps after install run even if an earlier one failed,
-  # so one red leg still reports every step. Step commands run in bash on every OS (Git Bash on
-  # Windows); npm itself still runs package scripts through cmd.exe there.
+  # renamed or folded in. windows-latest and macos-latest on Node 22 (the engines floor) and 24 are
+  # required checks on `develop` and `main` (`fail-fast: false`) and run on every pull request and
+  # push. Those legs name a Node major, never `lts/*`: a required check must not change Node major on
+  # its own. Linux is covered by `verify` alone; a second Ubuntu leg here only repeated it.
+  # The `lts/*` legs are informational canaries that run only on a push to `develop`, so a new LTS
+  # shows up there before anyone pins it, without adding two runners to every pull request. They
+  # are never required: a required check that does not run on pull requests would block every merge.
+  # Steps after install run even if an earlier one failed, so one red leg still reports every step.
+  # Step commands run in bash on every OS (Git Bash on Windows); npm itself still runs package
+  # scripts through cmd.exe there.
   cross-platform:
     name: Cross-platform verify (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
-    # 20 mirrors `verify`; 45 (Windows) and 30 (macOS) are first estimates, not measurements –
-    # replace them with measured values after the first runs.
-    timeout-minutes: ${{ matrix.timeout }}
-    continue-on-error: ${{ matrix.informational }}
+    # Measured over 14-15 green runs of each leg on 2026-10-24 (CI runs 40081148202..40108867838):
+    # Windows took 17-32 min (average 26-28), macOS 7-23 min (average 16-18). The limits keep about
+    # 40 % (Windows) and 30 % (macOS) headroom over the slowest of those runs.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
+    continue-on-error: ${{ matrix.node == 'lts/*' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: ubuntu-latest, node: '22', informational: false, timeout: 20 }
-          - { os: windows-latest, node: '22', informational: false, timeout: 45 }
-          - { os: windows-latest, node: '24', informational: false, timeout: 45 }
-          - { os: windows-latest, node: 'lts/*', informational: true, timeout: 45 }
-          - { os: macos-latest, node: '22', informational: false, timeout: 30 }
-          - { os: macos-latest, node: '24', informational: false, timeout: 30 }
-          - { os: macos-latest, node: 'lts/*', informational: true, timeout: 30 }
+        os: [windows-latest, macos-latest]
+        node: ${{ fromJSON(github.event_name == 'push' && github.ref == 'refs/heads/develop' && '["22", "24", "lts/*"]' || '["22", "24"]') }}
     defaults:
       run:
         shell: bash
