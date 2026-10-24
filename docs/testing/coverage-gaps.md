@@ -184,7 +184,7 @@ HTTP API.
 | Task-table Tool Name / Model columns (recorded vs inherited, verbatim model, mixed-chain `+N`, the phone card) | cockpit unit | `lib/runner-label.test.ts`; `routes/tasks-overview.test.tsx` (the "Tool Name and Model columns" describe); `routes/global-tasks.test.tsx` (same describe) | C |
 | Per-project table reads the PROJECT config, not health's boot-project answer | cockpit unit | `routes/tasks-overview.test.tsx` — "takes the Tool column's default runner from the PROJECT config, not from health" | C |
 | **Root vitest worker cap (`maxWorkers`)** | none | `vite-config.test.ts` guards the cockpit's chunking config; nothing guards the root `vitest.config.ts` cap, and the cap is a deliberate no-op on CI, so removing it is green everywhere. Its SIBLING config guard now exists — `e2e-file-parallelism.test.ts` pins that the e2e config deletes `VITEST_MAX_WORKERS` (#162) — which is the shape this row is asking for, applied to the other file | **N** |
-| **App shell boot (`main.tsx`)** | cockpit unit for `app.tsx` only | `app.test.tsx:175-270` pins the provider stack, the routed outlet, one SSE stream, one health subscription and the error boundary (#50); `main.tsx` is still **absent from the coverage report** | **P** |
+| App shell boot (`main.tsx`) | cockpit unit | `app.test.tsx:175-270` pins the provider stack, the routed outlet, one SSE stream, one health subscription and the error boundary (#50). `main.tsx` is now wiring only: its API-base precedence lives in `api/api-base.ts` (`api/api-base.test.ts`) and its missing-`#root` throw in `root-container.ts` (`root-container.test.ts`) | C |
 
 ### 3.4 Run and workflow lifecycle
 
@@ -254,7 +254,7 @@ helpers and JSON data the report now also carries are left out of every row.
 | `packages/web/src/components/` | 95.7 % | 88.3 % | 3.3 |
 | `packages/web/src/lib/` | 98.9 % | 94.7 % | 3.3 |
 | `packages/web/src/routes/` | 94.0 % | 86.6 % | 3.3 |
-| `packages/web/src/` (loose files) | 100 % | 98.2 % | 3.3 (`app.tsx`, `routes.tsx`; `main.tsx` is absent from the report — see R11) |
+| `packages/web/src/` (loose files) | 100 % | 98.2 % | 3.3 (`app.tsx`, `routes.tsx`; `main.tsx` is absent from the report, but its logic moved to tested modules — see R11) |
 | `packages/web/src/assets/` | – | – | **Excluded**: static image assets, no executable code |
 | `packages/web/src/styles/` | – | – | **Excluded**: one CSS file, no executable code |
 | `packages/contract/src/` | 99.0 % | 92.7 % | Risk 2, gap R2 |
@@ -517,9 +517,9 @@ epic #42, and every child issue maps back to exactly one row.
 
 **All twenty child issues are closed, and this table has been re-audited against them.** Each row
 below was checked by reading the closing commit and the test file it added, not by looking at a
-percentage. Nineteen rows are struck through because a test now covers the behaviour the row
-names; one (R11) is struck only in part, and says which part survives. R9 was closed in part at
-first and fully later, by `guide-07-github-automations.e2e.ts`.
+percentage. Every row is struck through because a test now covers the behaviour the row names. Two were
+closed in part at first and fully later: R9 by `guide-07-github-automations.e2e.ts`, and R11 once
+`main.tsx`'s own logic moved into tested modules.
 
 Two warnings that outlived the audit, because they are what this table is *for*:
 
@@ -542,7 +542,7 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | ~~R8~~ | ~~`handoff.ts` at 36.4 % branches~~ — **closed** | fixed by #47: the marker vocabulary and every parser branch (case, indentation, fenced code, truncated payload) are read directly, so the 100 % is backed by assertions. A co-located test file existed at `e437c24` as well — the original "none found" reading was simply wrong | `handoff.test.ts:61-168` (markers), `:170-304` (journal); BC §8 | #47 |
 | ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. The BROWSER-level flow followed: `guide-07-github-automations.e2e.ts` boots its own fixture with `XEZ_AUTOMATIONS=1` (`:80`) and drives create → enable → execution log in the `ui-e2e` CI job. `automations.e2e.ts:55-58` still self-skips without that variable, so its browser-level preview step stays ungated; the unit level covers preview | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice; `guide-07-github-automations.e2e.ts:80,130` | #48 |
 | ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-295`; `routes.test.tsx:206-207` | #49 |
-| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed in part** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx` itself is still absent from the report, so its own logic — the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` precedence in `resolveApiBase()` (`main.tsx:20-23`) and the missing-`#root` throw (`main.tsx:30-31`) — has no test found in the suites examined | `app.test.tsx:175,193,209,241,254,270` | #50 |
+| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx`'s own logic then moved out of the untested entry point: the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` over same-origin precedence is `resolveApiBase()` in `api/api-base.ts`, and the missing-`#root` throw is `requireRootContainer()` in `root-container.ts`. `main.tsx` itself stays absent from the report, and now holds only wiring | `app.test.tsx:175,193,209,241,254,270`; `api/api-base.test.ts` (meta wins, blank meta is absent, same-origin default); `root-container.test.ts` | #50 |
 | ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51 | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
 | ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
 | ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
