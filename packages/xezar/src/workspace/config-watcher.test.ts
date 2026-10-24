@@ -8,7 +8,8 @@ import { RunStore } from '../runs/store.ts';
 import { startServer } from '../server/server.ts';
 import { activeStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { atomicTmpPath, workspaceConfigBackupPath } from './config.ts';
+import { uniqueTmpPath } from '../platform/atomic-write.ts';
+import { workspaceConfigBackupPath } from './config.ts';
 import { workspaceConfigLockPath } from './config-lock.ts';
 import {
   CONFIG_WATCH_DEBOUNCE_MS,
@@ -112,9 +113,9 @@ describe('workspace config watcher', () => {
       const refresh = vi.fn(async () => undefined);
       const handle = startWorkspaceConfigWatcher({ target: { refresh }, path });
       const lock = workspaceConfigLockPath(path);
-      const tmp = atomicTmpPath(path);
+      const tmp = uniqueTmpPath(path);
       const bak = workspaceConfigBackupPath(path);
-      const bakTmp = atomicTmpPath(bak);
+      const bakTmp = uniqueTmpPath(bak);
       const burst = [
         lock,
         `${lock}${FILE_LOCK_TAKEOVER_GUARD_SUFFIX}`,
@@ -148,7 +149,7 @@ describe('workspace config watcher', () => {
       for (const file of [
         lock,
         `${lock}${FILE_LOCK_TAKEOVER_GUARD_SUFFIX}`,
-        atomicTmpPath(path),
+        uniqueTmpPath(path),
         workspaceConfigBackupPath(path),
         join(dir, 'agent-accounts.json'),
         join(dir, 'ui-state.json'),

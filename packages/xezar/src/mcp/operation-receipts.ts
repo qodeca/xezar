@@ -26,8 +26,8 @@
  * required. Nothing here runs at boot unless a caller opens the store, and opening never throws.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { renameReplacingSync } from '../platform/atomic-write.ts';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
@@ -42,7 +42,6 @@ import {
   type ReconcileKind,
   type ReconcilePredicate,
 } from '@qodeca/xezar-contract';
-import { atomicTmpPath } from '../workspace/config.ts';
 import { AUTO_RESUME_MISSED_WINDOW_MS, MAX_AUTO_RESUMES } from '../workflows/run.ts';
 
 /** The append-only journal: one line per phase transition. The durable record (D-06 § 7.2). */
@@ -821,12 +820,5 @@ function safeJson(line: string): unknown {
 
 /** Per-writer tmp path + rename, `0600` — the `config.ts` discipline, not a fixed `.tmp` (D-06 § 13.1). */
 function writeAtomic(path: string, content: string): void {
-  const tmp = atomicTmpPath(path);
-  writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 });
-  renameReplacingSync(tmp, path);
-  try {
-    chmodSync(path, 0o600);
-  } catch {
-    // best-effort on filesystems without modes
-  }
+  writeFileAtomicSync(path, content, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
 }

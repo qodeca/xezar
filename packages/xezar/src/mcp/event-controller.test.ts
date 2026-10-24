@@ -22,6 +22,20 @@ import {
 import { EventJournal } from './event-journal.ts';
 import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
+/** Paths whose atomic write fails, so a test can make the controller's state unwritable without
+ *  depending on how the write stages its temporary file. Everything else writes for real. */
+const failingWrites = vi.hoisted(() => new Set<string>());
+vi.mock('../platform/atomic-write.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../platform/atomic-write.ts')>();
+  return {
+    ...actual,
+    writeFileAtomicSync: (...args: Parameters<typeof actual.writeFileAtomicSync>) => {
+      if (failingWrites.has(args[0])) throw Object.assign(new Error(`EACCES: permission denied, open '${args[0]}'`), { code: 'EACCES' });
+      return actual.writeFileAtomicSync(...args);
+    },
+  };
+});
+
 /**
  * #107 — the non-model event controller. The three acceptance tests of the issue are the first
  * three `describe` blocks; the rest pin the D-05 cursor rules the controller implements.
@@ -48,6 +62,7 @@ afterEach(() => {
   for (const controller of controllers.splice(0)) controller.close();
   for (const owner of owners.splice(0)) owner.dispose();
   for (const journal of journals.splice(0)) journal.close();
+  failingWrites.clear();
   vi.useRealTimers();
   rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
@@ -647,7 +662,7 @@ describe('the D-05 § 6.6 cursors', () => {
 
   it('keeps delivering in memory and warns once when its cursor state cannot be written', async () => {
     const journal = openJournal();
-    mkdirSync(join(dataDir, 'mcp', 'event-controller.json.tmp'));
+    failingWrites.add(join(dataDir, 'mcp', 'event-controller.json'));
     const owner = ownerFor();
     await owner.acquire('session-a');
     const client = new FakeClient();

@@ -404,6 +404,25 @@ describe('the per-project event journal (#103)', () => {
       expect(page(journal.read()).events).toEqual([]);
     });
 
+    it('a leftover fixed `.tmp` entry beside the index or the rows blocks neither the fresh index nor a compaction', () => {
+      // A crashed writer used to leave `<file>.tmp` behind, and the next write staged through that same
+      // name. Each write now stages through its own name, so the leftover is inert.
+      mkdirSync(`${indexFile()}.tmp`, { recursive: true });
+      const warn = vi.fn();
+      const fresh = openJournal({ warn });
+      expect(fresh.append(event(1))?.journalSeq).toBe(1);
+      expect(warn).not.toHaveBeenCalled();
+      fresh.close();
+      open.splice(0);
+
+      writeFixture(2 * MCP_JOURNAL_RETAINED_ROWS, T0 - 30 * DAY);
+      mkdirSync(`${rowsFile()}.tmp`, { recursive: true });
+      const compacted = openJournal({ now: () => T0, warn });
+      expect(readFileSync(rowsFile(), 'utf8').trim().split('\n')).toHaveLength(MCP_JOURNAL_RETAINED_ROWS);
+      expect(compacted.oldestSeq).toBe(MCP_JOURNAL_RETAINED_ROWS + 1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it('starts fresh, silently, when the state was simply deleted', () => {
       const warn = vi.fn();
       const journal = openJournal({ warn });
