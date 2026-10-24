@@ -67,6 +67,53 @@ describe('the PR source guard', () => {
   });
 });
 
+describe('the cross-platform matrix', () => {
+  // Branch protection on develop and main reads these four by exact name. A required check that
+  // does not run on a pull request blocks every merge, so they must come out of the matrix on
+  // `pull_request`; the `lts/*` canaries run only on a push to develop (OD-12).
+  const REQUIRED = [
+    'Cross-platform verify (windows-latest, Node 22)',
+    'Cross-platform verify (windows-latest, Node 24)',
+    'Cross-platform verify (macos-latest, Node 22)',
+    'Cross-platform verify (macos-latest, Node 24)',
+  ];
+  const job = (read('ci.yml').jobs['cross-platform'] as unknown) as {
+    name: string;
+    if?: string;
+    'continue-on-error': string;
+    strategy: { matrix: { os: string[]; node: string; include?: unknown; exclude?: unknown } };
+  };
+  const { matrix } = job.strategy;
+  const branches = /^\$\{\{ fromJSON\(github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop' && '(\[[^']*\])' \|\| '(\[[^']*\])'\) \}\}$/.exec(matrix.node);
+  const legs = (event: 'pull_request' | 'push-develop') => {
+    const nodes = JSON.parse(branches![event === 'push-develop' ? 1 : 2]!) as string[];
+    return matrix.os.flatMap((os) =>
+      nodes.map((node) => job.name.replace('${{ matrix.os }}', os).replace('${{ matrix.node }}', node)),
+    );
+  };
+
+  it('chooses its Node versions from the event alone, with nothing else reshaping the matrix', () => {
+    expect(branches, matrix.node).not.toBeNull();
+    expect(matrix.include).toBeUndefined();
+    expect(matrix.exclude).toBeUndefined();
+    expect(job.if).toBeUndefined();
+  });
+
+  it('runs exactly the four required legs on a pull request, and no Ubuntu leg', () => {
+    expect(legs('pull_request')).toEqual(REQUIRED);
+  });
+
+  it('adds the informational lts/* canaries only on a push to develop', () => {
+    expect(legs('push-develop')).toEqual([
+      ...REQUIRED.slice(0, 2),
+      'Cross-platform verify (windows-latest, Node lts/*)',
+      ...REQUIRED.slice(2),
+      'Cross-platform verify (macos-latest, Node lts/*)',
+    ]);
+    expect(job['continue-on-error']).toBe("${{ matrix.node == 'lts/*' }}");
+  });
+});
+
 describe('the browser provider CI and the local setup download and run', () => {
   const job = read('ci.yml').jobs['ui-e2e']!;
   const PIN = join(REPO_ROOT, 'scripts/agent-browser-pin.sh');

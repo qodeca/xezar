@@ -670,8 +670,8 @@ enforcement, so this limit is an instruction, not a guard.
 in `validation.commands`, and `.xezar/checks/repository-checks.sh`. There is no lint step. The
 required CI checks are the five in `ci.requiredChecks`. Branch protection on `develop` and `main`
 also requires the four Windows and macOS legs on Node 22 and 24 of the cross-platform matrix, and
-`main` also requires `PR source guard`. The Linux Node 22 leg runs on every pull request without
-being required, and the LTS legs are informational.
+`main` also requires `PR source guard`. Linux runs only in the required checks; the informational
+LTS canary legs run only on a push to `develop`, never on a pull request.
 
 ### Gates in this project
 
