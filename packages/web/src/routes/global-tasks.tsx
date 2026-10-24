@@ -315,7 +315,7 @@ export function GlobalTasksRoute() {
     return () => clearTimeout(timer)
     // `setFilters` is re-created every render (it closes over `setSearchParams` only, which is
     // stable) — depending on it would restart the timer on every render and never fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `setFilters` changes every render; depending on it never lets the timer fire
   }, [queryDraft])
 
   // Statuses the server already had, riding along with the rows that carry the references — so
