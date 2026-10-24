@@ -25,10 +25,9 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
    CI runs the full gate on your pull request (`npm run test:unit`, `npm run build`,
    `npm run test:package`, the browser suite, the MCP coverage floor, the hosted-server and
    two-project harnesses), so you do not have to.
-   It also repeats the validation steps on Linux with Node 22 and on Windows and macOS with Node 22
-   and 24. The Windows and macOS legs on Node 22 and 24 are required checks; the Linux Node 22 leg
-   runs on every pull request but is informational, not required, and so are the current-LTS
-   canary legs.
+   It also repeats the validation steps on Windows and macOS with Node 22 and 24; those four legs
+   are required checks. Linux is covered by the main gate job. Informational current-LTS canary
+   legs on Windows and macOS run only after a merge into `develop`, never on a pull request.
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
 5. Open a pull request against `develop`. `main` holds released work only and takes release
    pull requests, never feature work.
