@@ -11,12 +11,11 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { closeStoreAndRemove } from '../runs/store.testkit.ts';
+import { runDecisionProjection } from '../runs/decision-projection.ts';
 import {
-  canonicalJson,
   guardedMutation,
   guardedRunMutation,
   runVersion,
-  runDecisionProjection,
   versionToken,
 } from './stale-write.ts';
 
@@ -331,16 +330,6 @@ describe('the token', () => {
       versionToken({ ref, projection: { b: { d: [1, 2], c: 2 }, a: 1, e: undefined } }),
     );
     expect(versionToken({ ref, projection: { d: [1, 2] } })).not.toBe(versionToken({ ref, projection: { d: [2, 1] } }));
-  });
-});
-
-describe('canonicalJson', () => {
-  it('sorts keys by code unit at every level, including integer-like keys', () => {
-    expect(canonicalJson({ b: 1, a: { 9: 'x', 10: 'y' } })).toBe('{"a":{"10":"y","9":"x"},"b":1}');
-  });
-
-  it('keeps array order and writes undefined array items as null, like JSON.stringify', () => {
-    expect(canonicalJson([3, undefined, { z: undefined, y: null }])).toBe('[3,null,{"y":null}]');
   });
 });
 

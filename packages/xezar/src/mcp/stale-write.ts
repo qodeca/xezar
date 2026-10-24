@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   MCP_EXECUTION_FAILED_GUIDANCE,
   MCP_STALE_VERSION_GUIDANCE,
@@ -11,7 +10,7 @@ import {
 } from '@qodeca/xezar-contract';
 import type { RunRecord, RunStore } from '../runs/store.ts';
 import { runDecisionProjection } from '../runs/decision-projection.ts';
-export { runDecisionProjection } from '../runs/decision-projection.ts';
+import { canonicalDigest } from './canonical-json.ts';
 
 /**
  * Stale-write rejection for leader mutations (#100) — the mechanism D-06 chose for N-03
@@ -56,33 +55,9 @@ export interface VersionedSnapshot {
   readonly projection: unknown;
 }
 
-/**
- * JSON with object keys sorted by UTF-16 code unit at every level, arrays kept in order, no
- * whitespace, and `undefined`-valued keys dropped — D-06 § 5.4 step 4, so a token does not depend
- * on the order in which a record's keys happened to be assigned.
- *
- * Serialized by hand rather than by rebuilding an object for `JSON.stringify`: an engine iterates
- * integer-like keys (`"10"`, `"9"`) numerically whatever order they were inserted in, which is not
- * code-unit order.
- */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
-  }
-  if (value !== null && typeof value === 'object') {
-    const parts: string[] = [];
-    for (const key of Object.keys(value).sort()) {
-      const item = (value as Record<string, unknown>)[key];
-      if (item !== undefined) parts.push(`${JSON.stringify(key)}:${canonicalJson(item)}`);
-    }
-    return `{${parts.join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
-}
-
 /** The token a read hands out and a mutation must echo back. Opaque to every client. */
 export function versionToken(snapshot: VersionedSnapshot): string {
-  const digest = createHash('sha256').update(canonicalJson(snapshot.projection)).digest('hex').slice(0, 12);
+  const digest = canonicalDigest(snapshot.projection).slice(0, 12);
   const seq = snapshot.seq === undefined ? '-' : String(snapshot.seq);
   return `${MCP_VERSION_TOKEN_TAG}:${snapshot.ref.kind}:${snapshot.ref.id}:${seq}:${digest}`;
 }

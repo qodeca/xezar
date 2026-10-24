@@ -28,6 +28,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { canonicalDigest, isPlainRecord } from './canonical-json.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
@@ -215,48 +216,16 @@ export function predictRunId(projectId: string, operationId: string): string {
 
 /**
  * `sha256(canonical(payload))`, lowercase hex (D-06 § 5.4). The payload must already be the
- * action's zod-parsed value. Canonical form: object keys sorted by UTF-16 code unit at every level,
- * arrays in order, no whitespace, `undefined` object keys dropped, and every binary blob replaced
- * by `{ bytes, sha256 }` so the digest covers the BYTES, never a path. Non-finite numbers and
- * values JSON cannot carry are refused rather than silently coerced.
+ * action's zod-parsed value. The canonical form is `canonical-json.ts`'s: keys sorted by UTF-16
+ * code unit, binary blobs as `{ bytes, sha256 }`, and values JSON cannot carry refused rather than
+ * silently coerced. `digestExclude` drops top-level keys first.
  */
 export function payloadDigest(payload: unknown, digestExclude: readonly string[] = []): string {
   let value = payload;
-  if (digestExclude.length > 0 && isPlainObject(payload)) {
+  if (digestExclude.length > 0 && isPlainRecord(payload)) {
     value = Object.fromEntries(Object.entries(payload).filter(([key]) => !digestExclude.includes(key)));
   }
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object') return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || value === undefined) return 'null';
-  switch (typeof value) {
-    case 'boolean':
-      return value ? 'true' : 'false';
-    case 'string':
-      return JSON.stringify(value);
-    case 'number':
-      if (!Number.isFinite(value)) throw new TypeError('payload digest: non-finite number');
-      return JSON.stringify(value);
-    case 'object':
-      break;
-    default:
-      throw new TypeError(`payload digest: unsupported ${typeof value}`);
-  }
-  if (value instanceof Uint8Array) {
-    return canonicalJson({ bytes: value.byteLength, sha256: createHash('sha256').update(value).digest('hex') });
-  }
-  if (value instanceof Date) return JSON.stringify(value.toISOString());
-  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
-  if (!isPlainObject(value)) throw new TypeError('payload digest: unsupported object type');
-  const keys = Object.keys(value).filter((key) => value[key] !== undefined).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  return canonicalDigest(value);
 }
 
 /**
