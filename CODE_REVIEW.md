@@ -23,7 +23,7 @@ process around the review — who reviews, how many rounds, when it merges — i
 - **Tests that name the break.** A new or changed behaviour test names the regression it guards
   and the author recorded a failing run (`SDLC.md` § Review loop). A test that passes with and
   without the fix is a guard, and the pull request says so.
-- **The HTTP contract.** Every response shape is a zod schema in `packages/contract`; routes are
+- **The HTTP contract.** Every request and response shape is a zod schema in `packages/contract`; routes are
   chained into a family builder; bodies, params and queries are validated as middleware; all under
   `/api/v1`. A widened schema that hides a route mismatch is a defect.
 - **Compatibility.** A change to a surface in `BACKWARD_COMPATIBILITY.md` keeps the old shape

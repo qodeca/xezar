@@ -1,14 +1,14 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-23.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-25.
 
 ## The nightly mutation run is not reliably green yet
 
 [#443](https://github.com/qodeca/xezar/issues/443), the tracking issue for the nightly mutation
 gate (`.github/workflows/mutation.yml`), is still open. #1123 re-planned the jobs and added the read-only lock
 scope on 2026-10-20; since then the runs on 2026-10-21 and 2026-10-22 passed, and the runs on
-2026-10-20 and 2026-10-23 failed.
+2026-10-20, 2026-10-23 and 2026-10-24 failed.
 Read the latest run or #443 for the current state before relying on a score.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
@@ -16,7 +16,7 @@ Read the latest run or #443 for the current state before relying on a score.
 A documented limit, not planned work: the owner kept it as is on 2026-10-15, because the next start already stops the leftovers. [#881](https://github.com/qodeca/xezar/issues/881) is closed.
 
 On Windows, `xezar serve` stops the programs its tracked children started before it exits (see
-`packages/xezar/src/AGENTS.md` § Platform layer, Processes). On Linux and macOS the exit is still
+`packages/xezar/src/platform/AGENTS.md` § Processes). On Linux and macOS the exit is still
 immediate: what the children started is not stopped at shutdown. For runs still marked `running`,
 the next start stops those leftovers before the task resumes (#982).
 

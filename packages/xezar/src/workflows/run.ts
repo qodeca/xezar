@@ -5452,8 +5452,8 @@ export class RunManager {
    *  a Codex read-only step's sandbox cannot write git. Read at spawn, so a PR a previous step
    *  reported (`applyMarkerRefs`) counts. When the run knows none, the key is removed rather than
    *  inherited: a nested xezar's own value would name another task's PR. Deliberately NOT
-   *  `XEZ_TASK_ID`: the process sweeper attributes programs by it (src/AGENTS.md § Run process
-   *  sweep), and the kit derives the task from the worktree directory. */
+   *  `XEZ_TASK_ID`: the process sweeper attributes programs by it (src/runs/AGENTS.md § Run
+   *  process sweep), and the kit derives the task from the worktree directory. */
   private checkStepEnv(runId: string): NodeJS.ProcessEnv {
     const { XEZ_PR_NUMBER: _inherited, ...env } = process.env;
     const prNumber = this.store.getRun(runId)?.prNumber;

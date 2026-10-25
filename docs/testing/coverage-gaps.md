@@ -183,7 +183,7 @@ HTTP API.
 | The e2e suite's one-worker pin, and its deletion of `VITEST_MAX_WORKERS` | cockpit unit | `e2e-file-parallelism.test.ts` — one case per half: the env var is neutralized, and `fileParallelism: false` still states the intent declaratively | C |
 | Task-table Tool Name / Model columns (recorded vs inherited, verbatim model, mixed-chain `+N`, the phone card) | cockpit unit | `lib/runner-label.test.ts`; `routes/tasks-overview.test.tsx` (the "Tool Name and Model columns" describe); `routes/global-tasks.test.tsx` (same describe) | C |
 | Per-project table reads the PROJECT config, not health's boot-project answer | cockpit unit | `routes/tasks-overview.test.tsx` — "takes the Tool column's default runner from the PROJECT config, not from health" | C |
-| **Root vitest worker cap (`maxWorkers`)** | none | `vite-config.test.ts` guards the cockpit's chunking config; nothing guards the root `vitest.config.ts` cap, and the cap is a deliberate no-op on CI, so removing it is green everywhere. Its SIBLING config guard now exists — `e2e-file-parallelism.test.ts` pins that the e2e config deletes `VITEST_MAX_WORKERS` (#162) — which is the shape this row is asking for, applied to the other file | **N** |
+| Test worker cap (`maxWorkers`, node:test concurrency) | server unit | `test-concurrency-cap.test.ts` (#1187) pins the wiring, not timing: `scripts/test-concurrency.mjs` resolves `min(4, availableParallelism() - 1)`, the root and every package `vitest.config.ts` declare it (stepping aside for a command-line `--maxWorkers`), and `test:unit` / `test:package` start through `scripts/node-test.mjs`. The cap is a deliberate no-op on CI, which is why a wiring guard is the only useful one | C |
 | App shell boot (`main.tsx`) | cockpit unit | `app.test.tsx:175-270` pins the provider stack, the routed outlet, one SSE stream, one health subscription and the error boundary (#50). `main.tsx` is now wiring only: its API-base precedence lives in `api/api-base.ts` (`api/api-base.test.ts`) and its missing-`#root` throw in `root-container.ts` (`root-container.test.ts`) | C |
 
 ### 3.4 Run and workflow lifecycle
@@ -276,7 +276,7 @@ without it (*inferred*: the limit is about the path's length) – and the fix's 
 `socket-dir.ts` (4 lines), is one of the 27 `platform/` files. `--coverage.reportOnFailure` only
 makes sure a red test would still leave a report; none was red. The workspace table and the file
 table carry these numbers ONLY — two snapshots in one table get quoted interchangeably — while
-section 5 keeps the `e437c24` value beside each row, because there the movement is the point. The
+section 5's closed rows (now in git history) kept the `e437c24` value beside each row, because there the movement was the point. The
 previous snapshot was 2026-09-10, on `feature/coverage-16-files`, after the sixteen-file pass
 described below: 93.7 % lines and 84.7 % branches over 363 files.
 
@@ -489,7 +489,7 @@ reports an error, a tool result that carries a refusal or an image. Those are th
 sees when something goes wrong, so they are the ones to add next (*inferred* priority).
 
 Files absent from the report entirely: `packages/xezar/src/index.ts`,
-`packages/xezar/src/core/ui-events.ts`, `packages/xezar/src/server/app-type.ts`,
+`packages/xezar/src/core/ui-events.ts` (in `packages/contract/src/ui-events.ts` since #1184), `packages/xezar/src/server/app-type.ts`,
 `packages/xezar/src/server/forge/types.ts`,
 `packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/main.tsx` and
 `packages/web/src/components/diff/types.ts`, as on 2026-09-10. The `types.ts` and `app-type.ts`
@@ -502,7 +502,7 @@ entries are type-only modules and are **excluded** as not testable. New since th
   the same reason;
 - `packages/web/src/components/ui/tabs.tsx`, which nothing imports – the same dead shadcn
   scaffolding as the four `components/ui/*` primitives #453 batch B1 deleted (`card.tsx`,
-  `scroll-area.tsx`, `select.tsx`, `separator.tsx`). It is not deleted here; that is a separate change.
+  `scroll-area.tsx`, `select.tsx`, `separator.tsx`). It was not deleted in this pass; #1157 deleted it later.
 
 `update-check.ts`, `app.tsx` and `task-commits.tsx` joined the report before 2026-09-10 and are
 still in it.
@@ -511,46 +511,7 @@ still in it.
 
 ## 5. Ranked gap list
 
-Ranked by regression risk – likelihood a change breaks it, how bad that is for a user, and how
-invisible the breakage would be to the current gates. Each row maps to exactly one child issue of
-epic #42, and every child issue maps back to exactly one row.
-
-**All twenty child issues are closed, and this table has been re-audited against them.** Each row
-below was checked by reading the closing commit and the test file it added, not by looking at a
-percentage. Every row is struck through because a test now covers the behaviour the row names. Two were
-closed in part at first and fully later: R9 by `guide-07-github-automations.e2e.ts`, and R11 once
-`main.tsx`'s own logic moved into tested modules.
-
-Two warnings that outlived the audit, because they are what this table is *for*:
-
-- **A percentage moving is not a closed row.** Some numbers below rose because a test was written
-  for them; others rose because an unrelated suite happened to load more of the file. Only the
-  cited test file closes a row.
-- **These verdicts are code-reading, not measurement.** "A test exists and asserts the named
-  behaviour" was established by opening each file. Whether it passes is a separate question that
-  `npm test` answers.
-
-| # | Gap | Why it ranks here | Evidence | Issue |
-|---|---|---|---|---|
-| ~~R1~~ | ~~Browser e2e suite never runs in CI, and its skip path exits 0~~ — **closed** | fixed by #128: a separate `ui-e2e` job runs the suite and passes only on a literal `TEST_E2E_STATUS=passed` line, so the skip path fails the job instead of reading green | `ci.yml` `ui-e2e` job | #60 |
-| ~~R2~~ | ~~`packages/contract` has no vitest project and no tests~~ — **closed** | fixed by #120: the root config lists four projects and the package has four test files as of 2026-09-15 | `vitest.config.ts` | #61 |
-| ~~R3~~ | ~~`xezar init` has no test at any level~~ — **closed** | `project-kit-cli.test.ts` spawns the real CLI and covers both the scaffold and the never-overwrite half | `project-kit-cli.test.ts:20,29` | #62 |
-| ~~R4~~ | ~~`xezar serve` boot path has no CLI-level test~~ — **closed** | fixed by #43: the packaged CLI boots its default command and all three named behaviours are asserted | `test/e2e/package-cli.test.ts` (requested port, then auto-pick off a squatted one), the “cleaned 1 orphaned worktree” and `.local/.gitignore` assertions | #43 |
-| ~~R5~~ | ~~`server/git.ts` at 27.6 % branches~~ — **closed** | fixed by #44: 16 repository-shape cases, so the rise to 86.2 % branches is deliberate, not incidental | `server/git.test.ts:66-250` — nested dir, detached HEAD, bare repo, submodule, linked worktree, deleted dir | #44 |
-| ~~R6~~ | ~~`backend-detect.ts` probes only asserted for `pi`~~ — **closed** | fixed by #45: every agent CLI is probed by name, with a timeout, and with the missing/non-zero case parameterised over all five binaries | `core/backend-detect.test.ts:115-131,141-155,176-207` | #45 |
-| ~~R7~~ | ~~`workflows/load.ts` at 40 % branches~~ — **closed** | fixed by #46: per-file degradation and built-in restoration both asserted | `workflows/load.test.ts:47,61,70,87,115` (degradation), `:180,199,216` (built-ins come back) | #46 |
-| ~~R8~~ | ~~`handoff.ts` at 36.4 % branches~~ — **closed** | fixed by #47: the marker vocabulary and every parser branch (case, indentation, fenced code, truncated payload) are read directly, so the 100 % is backed by assertions. A co-located test file existed at `e437c24` as well — the original "none found" reading was simply wrong | `handoff.test.ts:61-168` (markers), `:170-304` (journal); BC §8 | #47 |
-| ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. The BROWSER-level flow followed: `guide-07-github-automations.e2e.ts` boots its own fixture with `XEZ_AUTOMATIONS=1` (`:80`) and drives create → enable → execution log in the `ui-e2e` CI job. The always-skipped browser case in `automations.e2e.ts` was deleted (§ 3.3): its preview step needs a signed-in `gh` the dry-run forge does not replace, and the unit level covers preview | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice; `guide-07-github-automations.e2e.ts:80,130` | #48 |
-| ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-295`; `routes.test.tsx:206-207` | #49 |
-| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx`'s own logic then moved out of the untested entry point: the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` over same-origin precedence is `resolveApiBase()` in `api/api-base.ts`, and the missing-`#root` throw is `requireRootContainer()` in `root-container.ts`. `main.tsx` itself stays absent from the report, and now holds only wiring | `app.test.tsx:175,193,209,241,254,270`; `api/api-base.test.ts` (meta wins, blank meta is absent, same-origin default); `root-container.test.ts` | #50 |
-| ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51 | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
-| ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
-| ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
-| ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
-| ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts` | #56 |
-| ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
-| ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
-| ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts` (via `execute`), the `runContinuation` case and its four guards | #59 |
+Every gap in this list (rows R1–R20, epic #42) is closed, each by a test that covers the behaviour its row named; the rows, their evidence and the closing issues are in the git history of this file, which is where the R-numbers cited elsewhere on this page and in test comments point.
 
 ---
 
@@ -561,9 +522,9 @@ now run in CI as their own `ui-e2e` job, so a cockpit journey in section 3.3 who
 an `e2e/*.e2e.ts` file is gated after all. (The commits tab used to be the clearest example of one;
 since #49 it has a cockpit unit test as well, so it is no longer an example of anything.) The one
 exception this paragraph used to name, the enabled automations flow (R9), is gated too:
-`guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture. Only
-`automations.e2e.ts`'s browser-level preview step still self-skips, because neither
-`scripts/e2e.sh` nor the CI job sets that variable for the shared instance.
+`guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture. The browser-level
+preview step that used to self-skip in `automations.e2e.ts` was deleted in the 2026-10-24 cleanup
+(#1189, § 3.3): it needs a signed-in `gh`, and the unit level covers preview.
 
 **Covered only by manual QA.** `SDLC.md` § The QA gate states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
@@ -686,55 +647,7 @@ shipped until #352; 10.9 is the re-measurement that turned it green.
 
 ### 10.2 Measured – before and after this change
 
-Measured 2026-09-11. Before: revision `11a6df3`, 915 tests. After: this branch, 939 tests – twenty-four new, seven of them
-added because the mutation sample (10.3) named a gap and six because checking #311's diff showed the
-`service.ts` and `index.ts` gaps were not leaving (10.6) – plus five in the contract project, which
-this command does not run (10.5). Same command both times.
-
-| File | Lines before | Branches before | Lines after | Branches after |
-|---|---|---|---|---|
-| `adapters/codex.ts` | 75.5 | 73.7 | 75.5 | 73.7 **below** |
-| `api-reference.ts` | 100.0 | 77.3 | 100.0 | 77.3 **below** |
-| `service.ts` | 92.6 | 78.4 | **94.7** | **90.2** |
-| `index.ts` | 86.6 | 79.8 | 86.6 | **80.7** |
-| `bridge.ts` | 87.5 | 71.4 | **92.1** | **80.0** |
-| `tools/results-evidence.ts` | 98.5 | 79.5 | **98.5** | **80.6** |
-| `tools/handoff-git.ts` | 94.9 | 77.0 | **97.0** | **81.6** |
-| `adapters/claude-code.ts` | 94.4 | 82.1 | 94.4 | 82.1 |
-| `tools/project-config.ts` | 98.4 | 82.4 | 98.4 | 82.4 |
-| `adapters/opencode.ts` | 95.4 | 83.2 | 95.4 | 83.2 |
-| `operation-receipts.ts` | 94.8 | 84.5 | 94.8 | 84.5 |
-| `tools/work-organisation.ts` | 97.2 | 84.9 | 97.2 | 84.9 |
-| `tools/task-reads.ts` | 94.1 | 77.1 | **98.4** | **85.0** |
-| `tools/leader-events.ts` | 92.3 | 86.1 | 92.3 | 86.1 |
-| `tools/task-create.ts` | 97.3 | 87.0 | 97.3 | 87.0 |
-| `tools/local-handoff.ts` | 100.0 | 87.3 | 100.0 | 87.3 |
-| `event-journal.ts` | 98.9 | 87.6 | 98.9 | 87.6 |
-| `event-controller.ts` | 93.7 | 87.7 | 93.7 | 87.7 |
-| `tools/execution-control.ts` | 98.9 | 88.7 | 98.9 | 88.7 |
-| `reconnect.ts` | 96.5 | 88.8 | 96.5 | 88.8 |
-| `stale-write.ts` | 100.0 | 89.8 | 100.0 | 89.8 |
-| `service-adapter.ts` | 97.8 | 92.3 | 97.8 | 92.3 |
-| `resource-ownership.ts` | 98.0 | 92.5 | 98.0 | 92.5 |
-| `event-catalog.ts` | 97.2 | 92.6 | 97.2 | 92.6 |
-| `tools/discovery.ts` | 97.1 | 89.7 | **97.1** | **93.1** |
-| `audit-trail.ts` | 99.0 | 92.7 | **99.0** | **94.8** |
-| `echo-guard.ts` | 100.0 | 96.0 | 100.0 | 96.0 |
-| `session-binding.ts` | 100.0 | 97.0 | 100.0 | 97.0 |
-| `connection-file.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `ipc.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `project-catalogs.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `protocol.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `tool.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `tools/index.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-
-Bold marks a number that moved. Two files where a real gap was closed did not move at all –
-`connection-file.ts` was already at 100 %, and `resource-ownership.ts` stayed at 92.5 % – which is
-the point of 10.3: the percentage could not see either gap, before or after.
-
-Aggregate after: 96.0 % lines, 85.3 % branches (before: 95.3 / 83.7). Every file that moved, moved because a test in
-10.3's list reaches a behaviour it did not reach before – none moved because a test called
-something and asserted nothing.
+Measured 2026-09-11 and since superseded; the dated before/after table is in the git history of this file.
 
 ### 10.3 The quality finding: a sampled mutation run
 
@@ -980,8 +893,7 @@ before anything was authored – and that step was removed (#378). The first man
 2026-09-15 was red on a missing-shard failure (#443); no scheduled run had occurred at the
 2026-09-15 observation. That dated state was later overtaken: the first complete six-of-six nightly
 on `main` ran at `fe33541`, recorded as the starting list in § 10.8 (run
-[34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325)). See 10.11 for the run
-IDs and limits.
+[34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325)).
 
 Four things made the release path the wrong position, and none of them is about the gate's
 quality:
@@ -1269,136 +1181,19 @@ multi-module tests, and first of all after the first night that runs with this c
 
 ### 10.9 Re-measured on `main` after #311 – the floor is green (#352)
 
-The floor shipped with #335 and was red from that day: three thresholds failed on `main` at
-`d8c1dc4`. #311 closed the `codex.ts` half by merging (`7bcb258`); #352 closed the last one. A gate
-that is red the day it ships is not a gate, so this is the record that it is not any more.
-
-**Measured 2026-09-12, branch `xez/692d3584` off `7bcb258`, `npm run test:coverage:mcp`, exit 0 –
-45 test files, 931 tests, no `ERROR:` line.** Aggregate 97.03 % lines, 86.06 % branches. The two
-files listed below:
-
-| File | Lines before (`d8c1dc4`) | Branches before | Lines now | Branches now |
-|---|---|---|---|---|
-| `api-reference.ts` | 100.0 | 77.3 **below** | 100.0 | **100.0** |
-| `adapters/codex.ts` | 75.5 **below** | 73.7 **below** | **96.4** | **82.7** |
-
-Only `api-reference.ts` moved because of a test written here (`api-reference.test.ts`, three cases,
-seven named breaks shown red – see 10.6, which also records the mutation that survives that 100 %
-branch figure). `codex.ts` moved because #311 merged: its 15 uncovered
-lines were the ones #311 deletes, and #311's own `adapters/codex.test.ts` reaches the rest. Nothing
-was added to `codex.ts` in #352, and #338 still owns the kept lines.
-
-Every remaining MCP file is at or above 80/80 as of this measurement. The three nearest the floor
-are `bridge.ts` (92.1 / **80.0**), `index.ts` (87.7 / 80.2) and `tools/results-evidence.ts` (98.5 /
-80.6); `bridge.ts` at exactly 80.0 means one new uncovered branch there turns the gate red again.
-The two files #311 added are measured here for the first time: `leader-delivery.ts` (100.0 / 84.1)
-and `project-leaders.ts` (100.0 / 100.0).
-
-**Completed sequencing (#550).** `npm run test:coverage:mcp` runs in its own unconditional CI job
-on every pull request, rather than as a sixth local canonical-gate command. This keeps the main
-lane independent and ensures the job always reports a status that can be required; its hard
-10-minute timeout bounds installation and test execution on a GitHub-hosted 2-core runner.
+Measured 2026-09-12: the floor turned green on `main` after #311 and #352, and `npm run test:coverage:mcp` has run in its own unconditional CI job on every pull request since #550; the dated table is in the git history of this file.
 
 ### 10.10 Re-measured for the MCP leader door (#450)
 
-**Measured 2026-09-15, branch `xez/4c4428fa` off `646bf37`, `npm run test:coverage:mcp -- --testTimeout=30000`,
-exit 0 – 56 test files, 1325 tests, no `ERROR:` line.** Aggregate 97.39 % lines, 86.82 % branches
-(97.33 / 86.28 on `646bf37`, same command). The 30 s test timeout is needed on a loaded host: the
-baseline run failed once on a `task-create` case at the 5 s default and passed with it. Every file
-the change touches, before → after (lines / branches):
-
-| File | Before | After |
-|---|---|---|
-| `bridge.ts` | 93.7 / 81.9 | 94.2 / 84.4 |
-| `index.ts` | 86.5 / 80.0 | 86.6 / 80.3 |
-| `service.ts` | 93.0 / 84.6 | 93.3 / 85.6 |
-| `leader-delivery.ts` | 99.1 / 86.3 | 99.3 / 91.1 |
-| `tools/leader-events.ts` | 95.3 / 93.2 | 97.5 / 97.1 |
-| `event-controller.ts`, `protocol.ts`, `ipc.ts`, `tool.ts`, the four adapters, `discovery.ts` and the seven tools whose not-connected text changed | unchanged | unchanged |
-
-`index.ts` (80.3 branches) is now the file nearest the floor. Each new #450 test was also shown red
-against a named break of the source it guards (47 breaks, every one red; the list is in the PR body).
+Measured 2026-09-15 and since superseded; the dated before/after table is in the git history of this file.
 
 ### 10.11 Full per-file inventory — 2026-09-15, source baseline `bb271fc`
 
-**This baseline predates the #450 merge (`8aa1312`).** It is the whole 40-file inventory the MCP
-floor covers, which 10.10 does not repeat; for the files #450 touched, 10.10’s after-column is the
-newer number and supersedes the row below.
-
-`npm run test:coverage:mcp` **passed**, 55 test files / 1,273 tests, 65.99 seconds.
-Source and coverage configuration match `main` at `bb271fc`; the working diff was documentation only.
+Superseded by later measurements; the dated record is in the git history of this file.
 
 ### 10.12 Re-measured for CI enrollment (#550)
 
-**Measured 2026-09-17, branch `xez/f190f64a` off `7db8fd9` (0.15.0), `npm run test:coverage:mcp`,
-exit 0 – 61 test files, 2,070 tests passed (21 expected fail), no `ERROR:` line. Wall clock 85.00s**
-(`time -p`: `real 85.00`, `user 230.69`, `sys 110.75`) on this machine. Aggregate 94.12 % statements,
-87.14 % branches, 94.72 % functions, 97.45 % lines. Every MCP file is at or above the 80/80 floor;
-the floor is green on `main` today, so #550 enrolls it in CI without lowering any threshold. This is
-a local measurement, not the GitHub-hosted 2-core runner the new `MCP per-file coverage` CI job
-actually runs on; the job's own 10-minute timeout (`.github/workflows/ci.yml`) bounds `npm ci` plus
-test execution there, and its first real pull-request run is the authoritative runner-time reading.
-The command’s 40 included source files all meet **80 % lines and 80 % branches**; no exemption is active.
-Aggregate: **97.33 % lines, 86.28 % branches**. At this baseline the nearest branch floor is
-`mcp/index.ts` at exactly 80 %, so one uncovered branch can make it fail; 10.10 measures it at 80.3 %
-after #450. `bridge.ts` is at 81.87 % here, superseding 10.9’s ranking and itself superseded by
-10.10’s 84.4 %. The historical tables above retain their dates; quote this table only for this
-revision.
-
-Paths below are relative to `packages/xezar/`. Scope at that revision was the root `package.json`
-command as it stood then (it no longer includes the pi file):
-`src/mcp/**` plus `scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`.
-
-| File | Lines % | Branches % |
-| --- | ---: | ---: |
-| `scripts/pi-leader-extension.ts` | 100.00 | 82.85 |
-| `src/mcp/api-reference.ts` | 100.00 | 100.00 |
-| `src/mcp/audit-trail.ts` | 98.97 | 94.79 |
-| `src/mcp/bridge.ts` | 93.72 | 81.87 |
-| `src/mcp/connection-file.ts` | 100.00 | 100.00 |
-| `src/mcp/echo-guard.ts` | 100.00 | 96.00 |
-| `src/mcp/event-catalog.ts` | 97.18 | 92.62 |
-| `src/mcp/event-controller.ts` | 94.34 | 92.39 |
-| `src/mcp/event-journal.ts` | 98.90 | 87.61 |
-| `src/mcp/index.ts` | 86.50 | 80.00 |
-| `src/mcp/ipc.ts` | 100.00 | 100.00 |
-| `src/mcp/leader-delivery.ts` | 99.09 | 86.28 |
-| `src/mcp/operation-receipts.ts` | 94.77 | 85.38 |
-| `src/mcp/project-catalogs.ts` | 100.00 | 100.00 |
-| `src/mcp/project-leaders.ts` | 100.00 | 100.00 |
-| `src/mcp/protocol.ts` | 100.00 | 100.00 |
-| `src/mcp/reconnect.ts` | 99.32 | 91.39 |
-| `src/mcp/resource-ownership.ts` | 97.95 | 92.45 |
-| `src/mcp/service-adapter.ts` | 97.77 | 92.30 |
-| `src/mcp/service.ts` | 92.95 | 84.61 |
-| `src/mcp/session-binding.ts` | 100.00 | 96.96 |
-| `src/mcp/stale-write.ts` | 100.00 | 89.79 |
-| `src/mcp/tool.ts` | 100.00 | 100.00 |
-| `src/mcp/adapters/claude-code.ts` | 100.00 | 94.73 |
-| `src/mcp/adapters/codex-link.ts` | 100.00 | 81.60 |
-| `src/mcp/adapters/codex.ts` | 98.23 | 84.12 |
-| `src/mcp/adapters/opencode.ts` | 95.87 | 84.39 |
-| `src/mcp/adapters/pi-link.ts` | 94.11 | 85.36 |
-| `src/mcp/adapters/pi.ts` | 100.00 | 90.00 |
-| `src/mcp/tools/discovery.ts` | 97.14 | 93.10 |
-| `src/mcp/tools/execution-control.ts` | 98.91 | 88.65 |
-| `src/mcp/tools/handoff-git.ts` | 96.96 | 82.18 |
-| `src/mcp/tools/index.ts` | 100.00 | 100.00 |
-| `src/mcp/tools/leader-events.ts` | 95.34 | 93.18 |
-| `src/mcp/tools/local-handoff.ts` | 100.00 | 87.35 |
-| `src/mcp/tools/project-config.ts` | 98.39 | 82.67 |
-| `src/mcp/tools/results-evidence.ts` | 98.55 | 80.58 |
-| `src/mcp/tools/task-create.ts` | 97.33 | 86.95 |
-| `src/mcp/tools/task-reads.ts` | 98.43 | 85.04 |
-| `src/mcp/tools/work-organisation.ts` | 97.20 | 84.88 |
-
-**Mutation scheduling is separate evidence.** #433 added `mutation.yml` on 2026-09-15. As observed
-on 2026-09-15, GitHub listed two manual dispatches and no scheduled run: the first
-([34967462757](https://github.com/qodeca/xezar/actions/runs/34967462757)) failed with missing shard
-results; [#443](https://github.com/qodeca/xezar/issues/443) tracks that failure. The second dispatch
-was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not the current CI score.
-No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
-coverage command proves a successful nightly mutation run.
+Measured 2026-09-17 at 0.15.0: 61 test files and 2,070 tests in 85.00 s locally, every MCP file at or above the 80/80 floor, so #550 enrolled the command in CI without lowering a threshold. The dated per-file table, which still lists the since-deleted pi and OpenCode files, is in the git history of this file.
 
 ### 10.13 A second scope: the read-only lock
 
@@ -1473,7 +1268,7 @@ Registration metadata identifies the existing handler guards; valid fixtures rea
 
 ### Reuse for #306 QA (no browser required)
 
-1. Use a checkout on Linux, macOS or Windows with Node 22+ and run `npm ci`.
+1. Use a checkout on Linux, macOS or Windows with Node 22.13+ and run `npm ci`.
 2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
 3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
 4. Run it again to check fresh homes, OS-assigned ports and cleanup.

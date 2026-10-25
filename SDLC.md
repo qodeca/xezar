@@ -628,7 +628,7 @@ The file kinds and their rules are in `.xezar/docs/campaign-notes.md`.
 | Fact | Value |
 |---|---|
 | Product | xezar (`@qodeca/xezar` on npm): a local cockpit, a CLI plus a browser GUI, that runs AI coding agents in parallel, each in its own git worktree |
-| Stack | TypeScript (strict, ESM), Node 22+, four npm workspaces (`xezar`, `contract`, `api-client`, `web`), Hono, Zod, React 19, Vite, Vitest |
+| Stack | TypeScript (strict, ESM), Node 22+ for the published package and 22.13+ to develop, four npm workspaces (`xezar`, `contract`, `api-client`, `web`), Hono, Zod, React 19, Vite, Vitest |
 | Tracker | GitHub issues and pull requests, `qodeca/xezar` |
 | Pipeline | Xezar. The leader is the session started with `scripts/xezar-leader.sh`; its rules are in `.xezar/docs/leader-guide.md` |
 | Machine sources | Gate and labels: `.xezar/pipeline/config.json`, `.xezar/pipeline/labels.json`. Routing: `.xezar/routing.json` (read only through `route.mjs`). Loops: `.xezar/loops.json` |

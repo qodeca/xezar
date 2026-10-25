@@ -44,7 +44,8 @@ From a published release:
 xezar server-install --platform ubuntu-vps
 ```
 
-Or from a git checkout on the box:
+Or from a git checkout on the box (building from source needs Node.js 22.13 or newer; the
+published package runs on Node.js 22):
 
 ```bash
 git clone https://github.com/qodeca/xezar && cd xezar

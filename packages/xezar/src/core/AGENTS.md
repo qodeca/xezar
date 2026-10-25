@@ -10,7 +10,8 @@ backend-parity rule and the new-runner checklist (§9).
 
 - **One seam.** Every backend is one class behind `AgentRunner`/`AgentSession`, built only through
   `createRunner`, and emits both event streams. Never leak backend-specific types past
-  `packages/xezar/src/core/`.
+  `packages/xezar/src/core/`. The v2 `UiEvent` vocabulary and `toolDisplay()` are not in this
+  folder: they are defined once in `packages/contract/src/ui-events.ts` and `tool-display.ts`.
 - **Never repurpose or remove a shipped backend id.** `claude-cli` is a legacy id kept so old run
   records parse; `createRunner` maps it onto `claude`.
 - **`XEZ_DRY_RUN=1` must keep working** – the bundled mock, no real CLI and no network.
@@ -27,6 +28,3 @@ backend-parity rule and the new-runner checklist (§9).
   xezar's bridge.
 - **`claudeSettings` (#1001)** reaches the Claude runner as `AgentRunSpec.claudeSettingsFile`; its
   rules are in `packages/xezar/src/workflows/AGENTS.md`.
-- **Processes.** Runners start their CLI through `platform/process-launch.ts` and stop it through
-  `stopChildTree` – or `stopChildWithDescendants` for a launcher CLI (`platform/process-tree.ts`);
-  the rules are in `packages/xezar/src/platform/AGENTS.md`.
