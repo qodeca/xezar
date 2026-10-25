@@ -16,7 +16,7 @@ project documentation. Use the table to find the part you need.
 | [testing/](testing/) | The browser suite ([agent-browser.md](testing/agent-browser.md)) with its dry-run exceptions ([browser-dry-run-exceptions.md](testing/browser-dry-run-exceptions.md)) and a dated manual-check record ([browser-manual-checks.md](testing/browser-manual-checks.md)), where local data lives ([local-data.md](testing/local-data.md)), which suite covers which behaviour ([coverage-gaps.md](testing/coverage-gaps.md)), the two-project registry/composition harness ([multi-project-harness.md](testing/multi-project-harness.md)), and the cheapest test level for each multi-project and server-mode risk ([multi-project-test-levels.md](testing/multi-project-test-levels.md), [server-mode-test-levels.md](testing/server-mode-test-levels.md)). | Contributors |
 | [research/](research/) | Dated, point-in-time research reports, such as the Qwen Code backend feasibility study. Not maintained; read the status line first. | Engineers |
 | [lessons/](lessons/changing-working-mechanisms.md) | Worked examples behind the rules in [AGENTS.md](../AGENTS.md). | Contributors and coding agents |
-| [screenshots/](screenshots/) | Images the root README shows. | — |
+| [screenshots/](screenshots/) | Images the root README and the user guide show, captured by the docs capture harness ([testing/agent-browser.md](testing/agent-browser.md#the-docs-capture-harness)). | — |
 | [features/](features/README.md) | The internal engineering and decision record, one directory per feature plus dated requirement records. | Engineers and reviewers |
 
 ## `features/` is a record, not a manual

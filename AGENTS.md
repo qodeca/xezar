@@ -133,8 +133,8 @@ Four npm workspaces under a `private` root that publishes nothing itself. Exactl
 | Path | Package | What it is |
 | --- | --- | --- |
 | `packages/xezar` | `@qodeca/xezar` | The service + CLI, and everything behind them (runs, workflows, agent runners, workspace state). The published artifact: `bin`, plus the built cockpit in `web/dist`. |
-| `packages/contract` | `@qodeca/xezar-contract` | The HTTP contract itself: every request and response as a zod schema with its TypeScript type inferred from it, so no shape is written twice. Node-free and `private`; `packages/xezar/scripts/inline-contract.mjs` folds it into the published CLI. |
-| `packages/api-client` | `@qodeca/xezar-api-client` | The contract between the two: the typed client over `AppType`, the SSE/protocol types, and the scope helpers; re-exports the contract. Node-free by construction and `private`, so the service imports it **only in tests**. |
+| `packages/contract` | `@qodeca/xezar-contract` | The HTTP contract itself: every request and response as a zod schema with its TypeScript type inferred from it, so no shape is written twice, plus the SSE agent-event protocol (`UiEvent`) and its tool display model. Node-free and `private`; `packages/xezar/scripts/inline-contract.mjs` folds it into the published CLI. |
+| `packages/api-client` | `@qodeca/xezar-api-client` | The contract between the two: the typed client over `AppType` and the scope helpers; re-exports the contract, protocol types included. Node-free by construction and `private`, so the service imports it **only in tests**. |
 | `packages/web` | `@qodeca/xezar-web` | The cockpit SPA. Private; its output is an artifact of the service (`vite build` writes into `packages/xezar/web/dist`, which the CLI ships and serves). |
 
 Rules that follow from that (the contract and api-client packaging rules are in `packages/contract/src/AGENTS.md` § Packaging):

@@ -54,6 +54,12 @@ many kit scripts, but they come from the xezar engine, which sets them for each 
 They are part of the product's contract and are described in `.env.example` and
 `AGENT_PROTOCOL.md`, not here.
 
+Two of the product's own settings are also read by kit scripts, and are likewise described in
+`.env.example`: `XEZ_HOME`, where `checks/route.mjs` finds the global `agent-accounts.json`
+(a single-project folder, one holding `.xezar/workspace.json`, uses its own copy instead), and
+`XEZ_DISABLE_REPO_LOCK`, which makes `checks/root-sync-preflight.sh` refuse (`lease.locking-disabled`), because root-sync relies on the
+repository lock it switches off.
+
 ## Adding a variable
 
 A new environment variable that only a kit script reads gets a row in the matching table above,

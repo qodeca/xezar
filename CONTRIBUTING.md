@@ -13,7 +13,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 ## The loop
 
 1. Branch off `develop`, the default branch.
-2. Install and build: `npm install`, then `npm run build`. You need Node 22+ and `git`.
+2. Install and build: `npm install`, then `npm run build`. You need Node 22.13 or newer and `git`.
 3. Make your change, with a test for any change in behaviour.
 4. Run the fast checks locally:
 
@@ -37,7 +37,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 End-to-end, from a fresh clone to a global `xezar` command you can run in **any**
 repo on your machine — no npm publish required.
 
-**1. Prerequisites** — Node 22+ and `git` (plus at least one logged-in agent CLI,
+**1. Prerequisites** — Node 22.13 or newer and `git` (plus at least one logged-in agent CLI,
 as in the README's [Quick start](README.md#quick-start)). On Windows, also read
 [Contributing from Windows](#contributing-from-windows).
 

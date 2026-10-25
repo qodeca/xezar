@@ -330,8 +330,8 @@ xezar --version
 ```
 
 The [CHANGELOG](CHANGELOG.md) is the complete record and calls out every breaking change; read it
-from your installed version forward. Longer notes for the 0.15.0 and 0.16.0 upgrades are in
-[Upgrading from older releases](docs/upgrading.md).
+from your installed version forward. Longer notes for the 0.15.0, 0.16.0, 0.20.0, 0.30.0 and
+0.31.0 upgrades are in [Upgrading from older releases](docs/upgrading.md).
 
 If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
 still names them, and lists each file and field to change. See

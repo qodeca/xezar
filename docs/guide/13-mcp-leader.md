@@ -12,7 +12,7 @@ Requires xezar 0.30.0 or later; run `xezar --version` to check, and see [Getting
 
 The operating rule is **xezar MCP tools for project coordination**. The leader does not drive the cockpit UI or call the HTTP API for ordinary work. It should be attached so project events reach it automatically; `leader_events` is the fallback when it is not attached or needs to catch up. Use `gh` for GitHub facts such as labels, review verdicts and merge state.
 
-A connection is bound to one project, with one owning client at a time. The cockpit remains usable by a person alongside the leader. Configuring MCP, acquiring ownership and attaching for push delivery are distinct: having a config file does not prove the session is connected, and a connected session is not automatically attached.
+A connection is bound to one project, with one owning client at a time. xezar checks that project's folder again before every tool call: if the folder was deleted, moved, re-created at the same path or replaced with a link, the call is refused with `the project folder this MCP session is bound to is missing; restore it or reconnect from the project folder`. The cockpit remains usable by a person alongside the leader. Configuring MCP, acquiring ownership and attaching for push delivery are distinct: having a config file does not prove the session is connected, and a connected session is not automatically attached.
 
 Use these four labels in setup results; none implies the next one:
 

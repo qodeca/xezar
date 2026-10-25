@@ -147,14 +147,12 @@ Standing rules the owner added with `xez-add-rule`, each in their exact words wi
   through `integration-preflight.sh --release`, and every merge into `main` is followed by a
   `backmerge/*` pull request into `develop`. The `PR source guard` CI check refuses anything else
   into `main`. The primary checkout follows `develop`; root-sync targets a `develop` commit.
-- The cut-over (done 2026-10-18, #1100) was two changes that land together: the GitHub default branch becomes `develop`,
-  and `.xezar/config.json` and `.xezar/pipeline/config.json` say `"baseBranch": "develop"` (plus
-  the system prompt's base-branch sentence). Then every checkout runs `git remote set-head origin -a`
-  once and moves to `develop`: `git fetch` never refreshes `origin/HEAD`, and the config guard and
-  routing compare `baseBranch` against it. A checkout whose `origin/HEAD` still names `main` fails
-  those checks until it runs that command.
+- A checkout whose `origin/HEAD` still names `main` fails the config guard and routing, which
+  compare `baseBranch` against it, and `git fetch` never refreshes it: run
+  `git remote set-head origin -a` once in that checkout and move it to `develop`.
 - Hotfixes are done by hand, from `main` (`SDLC.md` § Hotfix): the kit's `hotfix` workflow is not
-  used here, because it branches from `develop`.
+  used here, because it branches from `develop`. Routing agrees: `route.mjs hotfix` answers
+  `handled-by=leader` and lists no lane (#1150), so no hotfix task is dispatched.
 - The gate, in order: `npm ci`, the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`,
   `npm run build`, `npm run test:package`, then the repository checks. One command runs it, in the
   foreground: `bash .xezar/checks/repo-gates.sh`. No lint command exists.

@@ -12,7 +12,7 @@ An older `mcp-audit.ndjson` file, written by xezar 0.13.0–0.15.0, is read-only
 xezar: mcp-audit.ndjson is deprecated; reading it read-only (removal not before 0.18.0)
 ```
 
-— and never writes, renames or deletes it. The two files are never merged, so keep the old one only if you want to consult its earlier entries by hand. xezar 0.31.0 still reads it, read-only, and no removal is scheduled.
+— and never writes, renames or deletes it. The two files are never merged, so keep the old one only if you want to consult its earlier entries by hand. xezar 0.31.0 still reads it, read-only; the reader is scheduled for removal in 0.33.0, after which a project that has only the old file shows an empty trail. The old file is never deleted.
 
 ## The four doors
 

@@ -3,11 +3,17 @@
 Every test suite in this repository, how to run it, what it needs, where CI runs it, and how to
 read a failure. The detailed documents are linked from each row; this page is the map.
 
-Two rules hold for every suite:
+Three rules hold for every suite:
 
 - **Run vitest through npm, never `npx vitest`** – `npx` can fetch a different vitest from the
   registry. To narrow a run, pass vitest's own arguments after `--`, for example
   `npm test -- path/to/one.test.ts`.
+- **One worker cap for every runner** – `min(4, availableParallelism() - 1)`, set once in
+  `scripts/test-concurrency.mjs` and read by the root and every package `vitest.config.ts` and,
+  through the `scripts/node-test.mjs` launcher, by `test:unit` and `test:package`. It is a
+  guarantee, not a tuning knob (AGENTS.md § Validation); `npm test -- --maxWorkers=N` or
+  `VITEST_MAX_WORKERS` override it for one vitest run. `test-concurrency-cap.test.ts` pins the wiring.
+  The browser suite runs one file at a time regardless.
 - **The gate is `bash .xezar/checks/repo-gates.sh`**, run in the foreground. It runs `npm ci`, a
   security scan, `npm run typecheck`, `npm test`, `npm run test:unit`, `npm run build`,
   `npm run test:package` and `.xezar/checks/repository-checks.sh` (which includes
@@ -43,7 +49,7 @@ CI job column says.
 | `npm run test:multi-project` | The printed `result.json` path; `state.json` and the logs are beside it, and a failure keeps the scratch folder | Exit 0 = `PASSED`, exit 1 = `FAILED`, exit 2 = `BLOCKED` (a prerequisite such as the built CLI is missing – not a pass). |
 | `npm run test:coverage:mcp` | The per-file table in the output; the report is in `.local/coverage/mcp/` | Any MCP file under 80 % lines or 80 % branches fails the run. |
 | Mutation gates | The run summary in GitHub Actions; locally `.local/mutation/mcp/index.html` and `.local/mutation/lock/index.html` | The MCP scope fails under 80 % (`stryker.config.mjs`), the lock scope under 68 % (`stryker.lock.config.mjs`). A red night files or updates one issue labelled `mutation-nightly`. |
-| `npm run check:links` | One `file:line → target` line per broken link | Any broken relative link or heading anchor under `docs/`, `README.md` or `designs/`. |
+| `npm run check:links` | One `file:line → target` line per broken link | Any broken relative link or heading anchor in `docs/`, the root Markdown files, every tracked `AGENTS.md`, or a `designs/` README. |
 
 ## Windows known gaps
 

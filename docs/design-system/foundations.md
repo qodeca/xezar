@@ -342,7 +342,7 @@ Rules:
 - Size with `size-*`, never `h-4 w-4` (zero occurrences in the codebase).
 - Decorative icons carry `aria-hidden="true"`. An icon-only control gets `aria-label`.
 - Do not override `strokeWidth`. Lucide's default is the look.
-- Inside `Button`, `CommandItem`, `DropdownMenuItem` and `TabsTrigger` an unsized svg becomes `size-4`
+- Inside `Button`, `CommandItem`, the `DropdownMenu` items and the dialog close button an unsized svg becomes `size-4`
   automatically (`[&_svg:not([class*='size-'])]:size-4`).
 
 ## 9. Layout and reading width
