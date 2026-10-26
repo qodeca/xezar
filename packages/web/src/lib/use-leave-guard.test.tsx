@@ -90,7 +90,13 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup()
   // Let a sentinel removal from an unmounted guard land before the next test rewrites history.
-  await new Promise((resolve) => setTimeout(resolve, 30))
+  // Wait for the removal itself, not a fixed time (#1105): it is three chained timer tasks (the
+  // guard's deferred `history.back()`, then jsdom's two traversal tasks), which outlasted a 30 ms
+  // sleep on a loaded Windows runner. The next test's `pushState` then cancelled the traversal
+  // still in flight, the guard kept waiting for that removal's popstate, and took the next test's
+  // own Back for it – no dialog. The sentinel stays the current entry until the traversal lands
+  // and its popstate has run, so this resolves exactly then (at once when no sentinel was left).
+  await waitFor(() => expect(isSentinel()).toBe(false))
 })
 
 describe('useLeaveGuard — Back and Forward', () => {
