@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { resolveElevatedIpc } from '../platform/elevated-ipc.ts';
 import { processIsElevated } from '../platform/elevation.ts';
 import { samePath } from '../platform/path-identity.ts';
 
@@ -132,13 +133,17 @@ function mcp(cwd: string) {
 /**
  * The doors in the IPC folder, one per line. POSIX: `ls`, as before – `<id>.sock`. Windows (#963):
  * the pipe markers `<id>.pipe`, written after the endpoint, so a marker means the pipe can be dialled
- * – in the administrators-only folder when the test runs elevated, as every GitHub runner step does (#980).
+ * – in the administrators-only %ProgramData% folder when the test runs elevated, as every GitHub
+ * runner step does (#980).
  */
-const IPC = processIsElevated() ? 'ipc-admin' : 'ipc';
+const ipcFolder = (): string => {
+  const user = join(home, 'ipc');
+  return processIsElevated() ? (resolveElevatedIpc(user)?.dir ?? user) : user;
+};
 function ipcDoors(): string {
   if (onWindows) {
     try {
-      return readdirSync(join(home, IPC)).filter((name) => name.endsWith('.pipe')).join('\n');
+      return readdirSync(ipcFolder()).filter((name) => name.endsWith('.pipe')).join('\n');
     } catch {
       return '';
     }
@@ -182,8 +187,10 @@ describe('xez mcp against a real xezar (#86 acceptance)', () => {
   }, 60_000);
 
   it('with the bridge entirely absent, `xez serve` still boots and the cockpit works', async () => {
-    // Make the socket impossible: a plain file where the ipc directory would go.
-    writeFileSync(join(home, IPC), 'not a directory');
+    // Make the socket impossible: a plain file where the user ipc directory would go. (#980: an
+    // elevated engine uses the machine-protected %ProgramData% folder, so on an elevated runner MCP
+    // may still come up – the point of this case is only that `serve` boots and the cockpit works.)
+    writeFileSync(join(home, 'ipc'), 'not a directory');
     const cockpit = await serve();
     const health = (await (await fetch(`${cockpit.base}/api/v1/health`)).json()) as { version?: string };
     expect(typeof health.version).toBe('string');

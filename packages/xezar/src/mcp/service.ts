@@ -5,7 +5,7 @@ import { createConnection, createServer, type Server, type Socket } from 'node:n
 import type { z } from 'zod';
 import { acquireFileLock } from '../core/file-lock.ts';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
-import { checkPrivateDir, ensurePrivateDir } from '../platform/private-dir.ts';
+import { checkPrivateDir, claimAdminFiles, ensurePrivateDir } from '../platform/private-dir.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { cockpitLinks } from './cockpit-address.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
@@ -103,10 +103,14 @@ export interface McpServiceOptions {
 export interface McpPipeSeams {
   readonly ensurePrivateDir?: typeof ensurePrivateDir;
   readonly checkPrivateDir?: typeof checkPrivateDir;
+  /** #980: make Administrators own the files just written to the administrators-only folder. */
+  readonly claimAdminFiles?: typeof claimAdminFiles;
   /** Where a pipe name is listened on. Default: the name itself. */
   readonly listenAt?: (pipeName: string) => string;
   /** #980: does this process run as administrator? Default: `processIsElevated` (asked on Windows only). */
   readonly elevated?: () => boolean;
+  /** #980: how the administrators-only folder is located. Default: the real `%ProgramData%` chain. */
+  readonly resolveAdmin?: (scope: string) => import('../platform/elevated-ipc.ts').ElevatedIpc | null;
 }
 
 /**
@@ -203,7 +207,7 @@ const PIPE_LISTEN_ATTEMPTS = 3;
  * it never is (N-07): see `startMcpService` in ./index.ts.
  */
 export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServiceHandle> {
-  const location = mcpSocketLocation(opts.project, opts.env, opts.platform, undefined, opts.pipe?.elevated);
+  const location = mcpSocketLocation(opts.project, opts.env, opts.platform, undefined, opts.pipe?.elevated, opts.pipe?.resolveAdmin);
   if (location.kind === 'unavailable') throw new Error(location.reason);
   if (location.kind === 'pipe') return listenMcpPipe(location.files, opts);
   const dir = mcpSocketDir(opts.env);
@@ -281,8 +285,9 @@ async function clearStaleSocket(path: string): Promise<void> {
 async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise<McpServiceHandle> {
   assertXezarHomeWriteIsSandboxed(files.dir, opts.env);
   const seams = opts.pipe ?? {};
-  // #980: an elevated engine's folder is the administrators-only one, made and judged as such.
-  const elevation = files.admin ? { elevated: true } : {};
+  // #980: an elevated engine's folder is the administrators-only one under %ProgramData%, made and
+  // judged as such – the whole chain created inside the script with its access list set at creation.
+  const elevation = files.admin ? { elevated: true as const, adminChain: files.adminChain } : {};
   const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid, ...elevation });
   if (!privacy.ok) throw new Error(privacy.message);
   const processStartTime = privacy.startedAt;
@@ -341,6 +346,9 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
     }
     writePipeFiles(files, { v: 1, pipeName, key, pid: process.pid, processStartTime });
     servingPipes.set(files.endpoint, pipeName);
+    // #980: the endpoint and marker must be owned by Administrators, not the account that created
+    // them, or the leader's check refuses them. Best-effort; the check is the real guarantee.
+    if (files.admin) await (seams.claimAdminFiles ?? claimAdminFiles)([files.endpoint, files.marker]);
   } catch (err) {
     server?.close();
     if (opts.ownership === undefined) ownership.dispose();

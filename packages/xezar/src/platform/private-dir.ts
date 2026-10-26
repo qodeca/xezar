@@ -16,16 +16,20 @@
  * nothing, is "not private".
  *
  * An elevated process (#980) uses its own folder, private to ADMINISTRATORS rather than to the user
- * (`elevated: true`; the caller picks the folder with `platform/elevation.ts`). In `ensure` mode the
- * folder gets Full Control for SYSTEM and Administrators only, plus an OWNER RIGHTS entry that
- * leaves an owner nothing but reading the access list, and Administrators as its owner. A
- * non-elevated process holds Administrators for deny only, so it can neither write there nor own
- * what it plants: the folder must be owned by Administrators, and a file by Administrators – or by
- * the user (the built-in Administrator, or a policy that makes the creator the owner) only while the
- * OWNER RIGHTS entry takes away an owner's right to change its access list. No access entry may name
- * the user. A folder that was not yet Administrators-owned is emptied before it is taken over, so
- * nothing planted earlier survives into it. The elevation the check reads must match the folder's
- * kind, or the folder is refused. The standard folder's rules did not change.
+ * (`elevated: true`; the caller picks the folder with `platform/elevated-ipc.ts`, under a
+ * machine-owned `%ProgramData%` parent a normal process cannot rename or swap). In `ensure` mode the
+ * whole chain `…\xezar\ipc-admin\<SID>` is created and repaired IN THIS SCRIPT: each directory is
+ * created with its access list already set (`[IO.Directory]::CreateDirectory(path, security)`), owned
+ * by Administrators and private to SYSTEM and Administrators only — never by a Node `mkdir` that would
+ * leave an inherited, user-reachable window first. The machine-owned ancestor (`%ProgramData%`) is
+ * verified, never created, and must be owned by SYSTEM, Administrators or TrustedInstaller; a level a
+ * normal user pre-created (owned by anyone else) or a reparse point planted at any level STOPS the
+ * walk — nothing is created inside it and nothing is ever deleted or taken over, it is simply
+ * refused. No access entry may name the user, and every file in the folder must be owned by
+ * Administrators or SYSTEM (the engine sets Administrators as the owner of each file it writes):
+ * there is no user-owned-file exception, because a non-elevated process of the same user could
+ * otherwise rewrite the access list of a file it owns. The elevation the check reads must match the
+ * folder's kind, or the folder is refused. The standard folder's rules did not change.
  *
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */
@@ -43,7 +47,19 @@ export type PrivateDirReason =
   | 'elevated'
   | 'not-elevated'
   | 'foreign-owner'
+  | 'untrusted-parent'
   | 'not-private';
+
+/**
+ * Windows (#980): the directories `private-dir.ts` creates and verifies for the administrators-only
+ * folder. `create` — the directories xezar owns (`…\xezar`, `…\ipc-admin`, the leaf), created with
+ * their access list already set, outermost first. `ancestors` — the machine-owned directories only
+ * verified, never created (`%ProgramData%`).
+ */
+export interface AdminChain {
+  readonly create: readonly string[];
+  readonly ancestors: readonly string[];
+}
 
 /** `startedAt`: when asked (`startTimeOf`), that process's start time in ms since the epoch, or
  *  null when it is not running. */
@@ -61,6 +77,11 @@ export interface PrivateDirOptions {
    * elevation does not match.
    */
   elevated?: boolean;
+  /**
+   * Windows (#980), administrators-only folder only: the chain to create and verify. Required when
+   * `elevated` is set; the caller resolves it with `platform/elevated-ipc.ts`.
+   */
+  adminChain?: AdminChain;
 }
 
 /** Test seams. Production passes none. */
@@ -74,15 +95,12 @@ export interface PrivateDirDeps {
 
 const SYSTEM = 'S-1-5-18';
 const ADMINISTRATORS = 'S-1-5-32-544';
-/** OWNER RIGHTS: present in an access list, it replaces what an owner may do implicitly. */
-const OWNER_RIGHTS = 'S-1-3-4';
+/** TrustedInstaller: the owner Windows gives its own machine-wide folders such as `%ProgramData%`. */
+const TRUSTED_INSTALLER = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464';
 /** SDDL's own short names for the well-known SIDs. */
-const ALIASES: Readonly<Record<string, string>> = { SY: SYSTEM, BA: ADMINISTRATORS, OW: OWNER_RIGHTS };
-/**
- * The only rights an OWNER RIGHTS entry may grant in the administrators-only folder: reading the
- * access list (READ_CONTROL, with the SYNCHRONIZE .NET adds to every allow entry). Never WRITE_DAC.
- */
-const OWNER_RIGHTS_MASKS: ReadonlySet<string> = new Set(['RC', '0x20000', '0x120000']);
+const ALIASES: Readonly<Record<string, string>> = { SY: SYSTEM, BA: ADMINISTRATORS };
+/** The owners a machine-owned ancestor of the administrators-only folder may have (#980). */
+const TRUSTED_ANCESTOR_OWNERS: ReadonlySet<string> = new Set([SYSTEM, ADMINISTRATORS, TRUSTED_INSTALLER]);
 const ACL_TIMEOUT_MS = 15_000;
 /** Tests only: the second read on a loaded CI runner (`PATIENT_ACL_READ_FOR_TESTS`). */
 const ACL_TEST_RETRY_TIMEOUT_MS = 60_000;
@@ -96,6 +114,7 @@ const MESSAGES: Readonly<Record<PrivateDirReason, string>> = {
   elevated: 'is for xezar without administrator rights, and this process runs as administrator',
   'not-elevated': 'is for xezar running as administrator, and this process runs without administrator rights',
   'foreign-owner': 'is owned by another account',
+  'untrusted-parent': 'sits under a folder that is not owned by Windows itself (SYSTEM, Administrators or TrustedInstaller), or under a link, so it cannot be trusted',
   'not-private': 'is not private to the current user',
 };
 
@@ -108,11 +127,21 @@ export const ACL_INPUT_ENV = 'PRIVATE_DIR_INPUT';
 
 /**
  * The one script, FIXED text: its input comes through `ACL_INPUT_ENV` as base64 JSON
- * `{ paths, ensure, pid }` (plus `admin: true` for the administrators-only folder, #980), so no
- * path can break out of a string – and a script whose text never
- * changes is scanned once, not on every run (a new script text measured about 4 s on first run
- * here, the same text 0.6 s). The first path is the folder, the rest are files in it. One line
- * per fact: `sid`, `elevated`, `drive`, `started` (when a pid is asked), then `sddl <i>`.
+ * `{ paths, ensure, pid }` (plus `admin: true`, `create` and `ancestors` for the administrators-only
+ * folder, #980), so no path can break out of a string – and a script whose text never changes is
+ * scanned once, not on every run (a new script text measured about 4 s on first run here, the same
+ * text 0.6 s). The first path is the folder, the rest are files in it. One line per fact: `sid`,
+ * `elevated`, `drive`, `started` (when a pid is asked), then `sddl <i>`; for the administrators-only
+ * folder also `rp <i>` (whether a path is a reparse point), `anc <i>` (each verified ancestor) and
+ * `dir <i>` (each created/verified chain directory).
+ *
+ * #980, the administrators-only folder (`admin: true`, elevated only): the chain is CREATED here with
+ * its access list set at creation, never by a Node `mkdir` first. The machine-owned ancestors
+ * (`%ProgramData%`) are only verified; each `create` directory is made with Full Control for SYSTEM
+ * and Administrators, protected from inheritance, owned by Administrators. A reparse point at any
+ * level, or a level a normal user pre-created (owned by anyone but Administrators), STOPS the walk –
+ * nothing is created inside it, nothing is deleted and nothing is taken over. The facts are emitted
+ * for every level so the verdict is re-made in TypeScript (`judgeAclReport`).
  */
 export const ACL_SCRIPT = [
   "$ProgressPreference = 'SilentlyContinue'",
@@ -126,33 +155,43 @@ export const ACL_SCRIPT = [
   'try { $drive = New-Object IO.DriveInfo([IO.Path]::GetPathRoot($paths[0])); "drive $($drive.DriveType) $($drive.DriveFormat)" } catch { "drive Unknown -" }',
   // The process API, not WMI: a second faster, and the same clock on both sides.
   'if ([int]$in.pid -gt 0) { try { "started $([Diagnostics.Process]::GetProcessById([int]$in.pid).StartTime.ToFileTimeUtc())" } catch { "started -" } }',
-  // #980: the administrators-only folder, set only by an elevated process. The access list first –
-  // it locks a non-elevated owner out – then a folder not yet owned by Administrators is emptied
-  // and taken over; one that cannot be emptied keeps its owner, which the check refuses. The list
-  // is written once more after a takeover: CI (#1197, the built-in Administrator) measured the
-  // OWNER RIGHTS entry gone once the owner had changed, and without it every file that account
-  // writes – owned by the account itself – is refused. A fresh object each time: a list object
-  // that was already written may write nothing the second time.
+  // Facts the administrators-only path reads: a path's owner SID, whether it is a reparse point, and
+  // its reparse-flag-plus-SDDL as one string ("missing -" when it is absent or unreadable).
+  'function OwnerOf($p) { try { (New-Object IO.DirectoryInfo($p)).GetAccessControl("Owner").GetOwner([Security.Principal.SecurityIdentifier]).Value } catch { $null } }',
+  'function IsReparse($p) { try { if ((Get-Item -LiteralPath $p -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { "True" } else { "False" } } catch { "True" } }',
+  'function Fact($p) { try { $i = Get-Item -LiteralPath $p -Force; $rp = if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { "True" } else { "False" }; $sec = [Security.AccessControl.AccessControlSections]"Access,Owner"; if ($i -is [IO.DirectoryInfo]) { $s = New-Object Security.AccessControl.DirectorySecurity($p, $sec) } else { $s = New-Object Security.AccessControl.FileSecurity($p, $sec) }; "$rp $($s.GetSecurityDescriptorSddlForm($sec))" } catch { "missing -" } }',
+  // #980: the administrators-only chain, created and repaired only by an elevated process. Each
+  // directory is made with its access list already set; a reparse point or a level owned by anyone
+  // but Administrators stops the walk, so nothing is ever created inside, deleted or taken over.
   'if ($in.ensure -eq $true -and $in.admin -eq $true) {',
   '  if ($elevated) {',
-  '    $dir = New-Object IO.DirectoryInfo($paths[0])',
   '    $adminAcl = {',
   '      $acl = New-Object Security.AccessControl.DirectorySecurity',
   '      $acl.SetAccessRuleProtection($true, $false)',
+  `      $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('${ADMINISTRATORS}')))`,
   `      foreach ($sid in @('${SYSTEM}', '${ADMINISTRATORS}')) {`,
   "        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))",
   '      }',
-  `      $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('${OWNER_RIGHTS}')), 'ReadPermissions', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))`,
   '      $acl',
   '    }',
-  '    $dir.SetAccessControl((& $adminAcl))',
-  `    if ($dir.GetAccessControl('Owner').GetOwner([Security.Principal.SecurityIdentifier]).Value -ne '${ADMINISTRATORS}') {`,
-  '      foreach ($child in @($dir.GetFileSystemInfos())) { try { if ($child -is [IO.DirectoryInfo]) { $child.Delete($true) } else { $child.Delete() } } catch { } }',
-  '      if (@($dir.GetFileSystemInfos()).Count -eq 0) {',
-  '        $own = New-Object Security.AccessControl.DirectorySecurity',
-  `        $own.SetOwner((New-Object Security.Principal.SecurityIdentifier('${ADMINISTRATORS}')))`,
-  '        $dir.SetAccessControl($own)',
-  '        $dir.SetAccessControl((& $adminAcl))',
+  '    $safe = $true',
+  '    foreach ($a in @($in.ancestors | ForEach-Object { [string]$_ })) {',
+  '      if ($safe) {',
+  '        if (-not (Test-Path -LiteralPath $a)) { $safe = $false }',
+  '        elseif ((IsReparse $a) -ne "False") { $safe = $false }',
+  `        elseif (@('${SYSTEM}', '${ADMINISTRATORS}', '${TRUSTED_INSTALLER}') -notcontains (OwnerOf $a)) { $safe = $false }`,
+  '      }',
+  '    }',
+  '    foreach ($d in @($in.create | ForEach-Object { [string]$_ })) {',
+  '      if ($safe) {',
+  '        if (Test-Path -LiteralPath $d) {',
+  '          if ((IsReparse $d) -ne "False") { $safe = $false }',
+  `          elseif ((OwnerOf $d) -ne '${ADMINISTRATORS}') { $safe = $false }`,
+  '          else { (New-Object IO.DirectoryInfo($d)).SetAccessControl((& $adminAcl)) }',
+  '        } else {',
+  '          [IO.Directory]::CreateDirectory($d, (& $adminAcl)) | Out-Null',
+  '          (New-Object IO.DirectoryInfo($d)).SetAccessControl((& $adminAcl))',
+  '        }',
   '      }',
   '    }',
   '  }',
@@ -169,13 +208,52 @@ export const ACL_SCRIPT = [
   '  if ($i -eq 0) { $s = New-Object Security.AccessControl.DirectorySecurity($paths[$i], $sections) } else { $s = New-Object Security.AccessControl.FileSecurity($paths[$i], $sections) }',
   '  "sddl $i $($s.GetSecurityDescriptorSddlForm($sections))"',
   '}',
+  'if ($in.admin -eq $true) {',
+  '  for ($i = 0; $i -lt $paths.Count; $i++) { "rp $i $(IsReparse $paths[$i])" }',
+  '  $anc = @($in.ancestors | ForEach-Object { [string]$_ })',
+  '  for ($i = 0; $i -lt $anc.Count; $i++) { "anc $i $(Fact $anc[$i])" }',
+  '  $cre = @($in.create | ForEach-Object { [string]$_ })',
+  '  for ($i = 0; $i -lt $cre.Count; $i++) { "dir $i $(Fact $cre[$i])" }',
+  '}',
+].join('\n');
+
+/**
+ * The environment variable that carries `OWNER_SCRIPT`'s input. A second, tiny run after the engine
+ * writes its endpoint and marker in the administrators-only folder (#980): it makes Administrators
+ * the OWNER of each file, so no file is owned by the account that created it (a non-elevated process
+ * of the same user could otherwise rewrite the access list of a file it owns). Best-effort – the
+ * leader's check refuses any file still owned by someone else.
+ */
+export const OWNER_INPUT_ENV = 'PRIVATE_DIR_OWNER_INPUT';
+
+export const OWNER_SCRIPT = [
+  "$ProgressPreference = 'SilentlyContinue'",
+  "$ErrorActionPreference = 'Stop'",
+  `$in = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:PRIVATE_DIR_OWNER_INPUT)) | ConvertFrom-Json`,
+  `$admins = New-Object Security.Principal.SecurityIdentifier('${ADMINISTRATORS}')`,
+  'foreach ($p in @($in.paths | ForEach-Object { [string]$_ })) {',
+  '  try {',
+  '    $item = Get-Item -LiteralPath $p -Force',
+  '    if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {',
+  '      $s = New-Object Security.AccessControl.FileSecurity',
+  '      $s.SetOwner($admins)',
+  '      [IO.File]::SetAccessControl($p, $s)',
+  '    }',
+  '  } catch { }',
+  '}',
 ].join('\n');
 
 /** One run's input for `ACL_SCRIPT`: base64 of JSON. Only a positive safe integer is a pid. */
-export function aclInput(paths: readonly string[], ensure: boolean, startTimeOf?: number, admin = false): string {
+export function aclInput(paths: readonly string[], ensure: boolean, startTimeOf?: number, admin = false, chain?: AdminChain): string {
   const pid = startTimeOf !== undefined && Number.isSafeInteger(startTimeOf) && startTimeOf > 0 ? startTimeOf : 0;
-  return Buffer.from(JSON.stringify(admin ? { paths, ensure, pid, admin } : { paths, ensure, pid }), 'utf8').toString('base64');
+  const input = admin
+    ? { paths, ensure, pid, admin, create: chain?.create ?? [], ancestors: chain?.ancestors ?? [] }
+    : { paths, ensure, pid };
+  return Buffer.from(JSON.stringify(input), 'utf8').toString('base64');
 }
+
+/** A directory level's facts: its reparse flag and SDDL, or that it was absent / unreadable. */
+export type DirFact = { readonly reparse: boolean; readonly sddl: string } | 'missing';
 
 /** What one run of the script said. */
 export interface AclReport {
@@ -184,12 +262,22 @@ export interface AclReport {
   driveType?: string;
   driveFormat?: string;
   sddl: Map<number, string>;
+  /** Administrators-only folder (#980): whether each `paths` entry is a reparse point. */
+  reparse: Map<number, boolean>;
+  /** Administrators-only folder (#980): each verified machine-owned ancestor. */
+  ancestors: Map<number, DirFact>;
+  /** Administrators-only folder (#980): each created/verified chain directory. */
+  dirs: Map<number, DirFact>;
   /** Absent: not asked; null: not running. */
   startedAt?: number | null;
 }
 
+function parseDirFact(flag: string, sddl: string): DirFact {
+  return flag === 'missing' ? 'missing' : { reparse: flag === 'True', sddl };
+}
+
 export function parseAclReport(text: string): AclReport {
-  const report: AclReport = { sddl: new Map() };
+  const report: AclReport = { sddl: new Map(), reparse: new Map(), ancestors: new Map(), dirs: new Map() };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     let match: RegExpExecArray | null;
@@ -197,6 +285,9 @@ export function parseAclReport(text: string): AclReport {
     else if ((match = /^elevated (True|False)$/.exec(line))) report.elevated = match[1] === 'True';
     else if ((match = /^drive (\S+) (\S+)$/.exec(line))) [report.driveType, report.driveFormat] = [match[1], match[2]];
     else if ((match = /^sddl (\d+) (\S+)$/.exec(line))) report.sddl.set(Number(match[1]), match[2]!);
+    else if ((match = /^rp (\d+) (True|False)$/.exec(line))) report.reparse.set(Number(match[1]), match[2] === 'True');
+    else if ((match = /^anc (\d+) (True|False|missing) (\S+)$/.exec(line))) report.ancestors.set(Number(match[1]), parseDirFact(match[2]!, match[3]!));
+    else if ((match = /^dir (\d+) (True|False|missing) (\S+)$/.exec(line))) report.dirs.set(Number(match[1]), parseDirFact(match[2]!, match[3]!));
     else if ((match = /^started (\d+|-)$/.exec(line))) report.startedAt = match[1] === '-' ? null : (fileTimeToMs(match[1]) ?? null);
   }
   return report;
@@ -215,13 +306,13 @@ export type PrivateDirMode = 'user' | 'admin';
  * of a kind other than allow/deny, or one that names anyone but the user, SYSTEM or
  * Administrators, or (for the folder) a list still inheriting from its parent; null – fine.
  *
- * `admin` mode (#980): the folder must be owned by Administrators; a file by Administrators, or by
- * the user only while an OWNER RIGHTS entry is present. An allow entry may name only SYSTEM,
- * Administrators, or OWNER RIGHTS with read-the-access-list rights; never the user. The built-in
- * Administrator's own alias `LA` is the user when the user is that account (`-500`).
+ * `admin` mode (#980): the folder must be owned by Administrators; a file by Administrators or
+ * SYSTEM, never by the user (there is no user-owned-file exception – a non-elevated process of the
+ * same user could rewrite the access list of a file it owns). An allow entry may name only SYSTEM or
+ * Administrators; never the user, never OWNER RIGHTS.
  */
 export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: PrivateDirMode = 'user'): 'foreign-owner' | 'not-private' | null {
-  if (mode === 'admin') return judgeAdminSddl(sddl, user, isFolder);
+  if (mode === 'admin') return judgeAdminSddl(sddl, isFolder);
   const owner = /^O:(S-1-[\d-]+|[A-Z]{2})/.exec(sddl)?.[1];
   if (owner === undefined || sidOf(owner) !== user) return 'foreign-owner';
   const dacl = /D:([A-Z]*)((?:\([^)]*\))*)/.exec(sddl);
@@ -239,41 +330,44 @@ export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: P
   return null;
 }
 
-function judgeAdminSddl(sddl: string, user: string, isFolder: boolean): 'foreign-owner' | 'not-private' | null {
-  const sid = (token: string): string => (token === 'LA' && user.endsWith('-500') ? user : sidOf(token));
+function judgeAdminSddl(sddl: string, isFolder: boolean): 'foreign-owner' | 'not-private' | null {
   const ownerToken = /^O:(S-1-[\d-]+|[A-Z]{2})/.exec(sddl)?.[1];
   if (ownerToken === undefined) return 'foreign-owner';
-  const owner = sid(ownerToken);
-  if (owner !== ADMINISTRATORS && (isFolder || owner !== user)) return 'foreign-owner';
+  const owner = sidOf(ownerToken);
+  // The folder must be Administrators-owned; a file may also be SYSTEM-owned. Never the user.
+  if (owner !== ADMINISTRATORS && !(!isFolder && owner === SYSTEM)) return 'foreign-owner';
   const dacl = /D:([A-Z]*)((?:\([^)]*\))*)/.exec(sddl);
   if (!dacl) return 'not-private';
   if (isFolder && !dacl[1]!.includes('P')) return 'not-private';
   const aces = [...dacl[2]!.matchAll(/\(([^)]*)\)/g)].map((m) => m[1]!.split(';'));
   if (aces.length === 0) return 'not-private';
-  let ownerRightsLimited = false;
   for (const ace of aces) {
     if (ace.length !== 6) return 'not-private';
-    const [type, , rights, , , who] = ace as [string, string, string, string, string, string];
+    const [type, , , , , who] = ace as [string, string, string, string, string, string];
     if (type === 'D') continue; // a deny entry grants nothing
     if (type !== 'A') return 'not-private';
-    const named = sid(who);
-    if (named === SYSTEM || named === ADMINISTRATORS) continue;
-    if (named === OWNER_RIGHTS && OWNER_RIGHTS_MASKS.has(rights)) {
-      ownerRightsLimited = true;
-      continue;
-    }
-    return 'not-private';
+    const named = sidOf(who);
+    if (named !== SYSTEM && named !== ADMINISTRATORS) return 'not-private';
   }
-  // An owner may always change its access list unless OWNER RIGHTS says otherwise – and a
-  // non-elevated process of the same user would hold that right over a user-owned file.
-  if (owner === user && !ownerRightsLimited) return 'not-private';
   return null;
+}
+
+/** A machine-owned ancestor (`%ProgramData%`): owned by SYSTEM, Administrators or TrustedInstaller. */
+function judgeAncestorOwner(sddl: string): boolean {
+  const ownerToken = /^O:(S-1-[\d-]+|[A-Z]{2})/.exec(sddl)?.[1];
+  return ownerToken !== undefined && TRUSTED_ANCESTOR_OWNERS.has(sidOf(ownerToken));
 }
 
 /**
  * The verdict on one report for `paths` (the folder first). The rules follow the elevation the
  * report read (#980); `elevated` says which kind of folder `paths[0]` is, and a report whose
  * elevation is not that kind – or is unknown – is refused.
+ *
+ * For the administrators-only folder the verdict also re-makes, in TypeScript, everything the script
+ * did on disk: every machine-owned ANCESTOR must exist, be no reparse point and be owned by
+ * SYSTEM/Administrators/TrustedInstaller; every CHAIN directory and the folder and files in `paths`
+ * must exist, be no reparse point, be owned by Administrators (a file also by SYSTEM) and name no one
+ * but SYSTEM and Administrators in their access list.
  */
 export function judgeAclReport(report: AclReport, paths: readonly string[], elevated = false): PrivateDirResult {
   const folder = paths[0]!;
@@ -282,13 +376,34 @@ export function judgeAclReport(report: AclReport, paths: readonly string[], elev
   const mode: PrivateDirMode = report.elevated ? 'admin' : 'user';
   if (report.driveType === 'Network') return refuse('network-drive', folder);
   if (report.driveFormat !== 'NTFS' && report.driveFormat !== 'ReFS') return refuse('not-ntfs', folder);
+  if (mode === 'admin') {
+    const parent = judgeAdminChain(report);
+    if (parent !== null) return refuse(parent.reason, parent.path);
+  }
   for (let i = 0; i < paths.length; i++) {
     const sddl = report.sddl.get(i);
     if (sddl === undefined) return refuse('not-private', folder);
+    const path = i === 0 ? folder : paths[i]!;
+    if (mode === 'admin' && report.reparse.get(i) !== false) return refuse('reparse-point', path);
     const verdict = judgeSddl(sddl, report.sid, i === 0, mode);
-    if (verdict !== null) return refuse(verdict, i === 0 ? folder : paths[i]!);
+    if (verdict !== null) return refuse(verdict, path);
   }
   return report.startedAt === undefined ? { ok: true } : { ok: true, startedAt: report.startedAt };
+}
+
+/** The ancestors and chain directories of the administrators-only folder; null when all are safe. */
+function judgeAdminChain(report: AclReport): { reason: PrivateDirReason; path: string } | null {
+  for (const [, fact] of report.ancestors) {
+    if (fact === 'missing' || fact.reparse) return { reason: 'untrusted-parent', path: '(ProgramData)' };
+    if (!judgeAncestorOwner(fact.sddl)) return { reason: 'untrusted-parent', path: '(ProgramData)' };
+  }
+  for (const [, fact] of report.dirs) {
+    if (fact === 'missing') return { reason: 'not-private', path: '(chain)' };
+    if (fact.reparse) return { reason: 'reparse-point', path: '(chain)' };
+    const verdict = judgeAdminSddl(fact.sddl, true);
+    if (verdict !== null) return { reason: verdict, path: '(chain)' };
+  }
+  return null;
 }
 
 const defaultIsLink = async (path: string): Promise<boolean> => (await lstat(path)).isSymbolicLink();
@@ -299,16 +414,21 @@ function isUncPath(path: string): boolean {
 
 async function windowsCheck(paths: readonly string[], ensure: boolean, deps: PrivateDirDeps, options: PrivateDirOptions): Promise<PrivateDirResult> {
   const folder = paths[0]!;
+  const elevated = options.elevated === true;
   if (isUncPath(folder)) return refuse('network-drive', folder);
-  try {
-    if (await (deps.isLink ?? defaultIsLink)(folder)) return refuse('reparse-point', folder);
-  } catch {
-    return refuse('not-private', folder);
+  // The administrators-only folder (#980) judges reparse points IN the script (a junction, which
+  // Node's `lstat` does NOT report as a symbolic link, would slip past the check below) and may not
+  // exist yet on a first `ensure`, so its link check is the script's, never Node's.
+  if (!elevated) {
+    try {
+      if (await (deps.isLink ?? defaultIsLink)(folder)) return refuse('reparse-point', folder);
+    } catch {
+      return refuse('not-private', folder);
+    }
   }
   const powershell = powershellPath(deps.env ?? process.env);
   if (powershell === null) return refuse('not-private', folder);
-  const elevated = options.elevated === true;
-  const env = { ...(deps.env ?? process.env), [ACL_INPUT_ENV]: aclInput(paths, ensure, options.startTimeOf, elevated) };
+  const env = { ...(deps.env ?? process.env), [ACL_INPUT_ENV]: aclInput(paths, ensure, options.startTimeOf, elevated, options.adminChain) };
   let failure: unknown = null;
   const readAcl = (timeoutMs: number): Promise<string | null> =>
     (deps.run ?? defaultTableRunner)(powershell, powershellArgs(ACL_SCRIPT), {
@@ -336,7 +456,11 @@ async function windowsCheck(paths: readonly string[], ensure: boolean, deps: Pri
   const verdict = judgeAclReport(report, paths, elevated);
   // A CI runner's account is not one we can inspect by hand: say what the check saw.
   if (testRun && !verdict.ok && report.sid !== undefined) {
-    return { ...verdict, message: `${verdict.message} [test: elevated ${String(report.elevated)}; sddl ${[...report.sddl.values()].join(' | ')}; sid suffix ${report.sid.split('-').pop()}]` };
+    const dirFact = (fact: DirFact | undefined): string => (fact === undefined ? '?' : fact === 'missing' ? 'missing' : `${fact.reparse ? 'rp ' : ''}${fact.sddl}`);
+    const extra = elevated
+      ? `; rp ${[...report.reparse.values()].join(',')}; anc ${[...report.ancestors.values()].map(dirFact).join(' | ')}; dir ${[...report.dirs.values()].map(dirFact).join(' | ')}`
+      : '';
+    return { ...verdict, message: `${verdict.message} [test: elevated ${String(report.elevated)}; sddl ${[...report.sddl.values()].join(' | ')}${extra}; sid suffix ${report.sid.split('-').pop()}]` };
   }
   return verdict;
 }
@@ -357,10 +481,16 @@ function patientForTests(): boolean {
  * Create `dir` if needed and make it private to the current user (or, with `options.elevated`, to
  * Administrators – #980). POSIX: mkdir 0700 + chmod 0700, throwing as `fs` does. Windows: the
  * access list above, answered as a result, never thrown.
+ *
+ * The administrators-only folder (#980) is NOT created by this Node `mkdir` – that would leave a
+ * folder with an inherited, user-reachable access list in place first. Its whole chain is created
+ * inside the script, each level with its access list already set (`windowsCheck`).
  */
 export async function ensurePrivateDir(dir: string, deps: PrivateDirDeps = {}, options: PrivateDirOptions = {}): Promise<PrivateDirResult> {
+  const platform = deps.platform ?? process.platform;
+  if (platform === 'win32' && options.elevated === true) return windowsCheck([dir], true, deps, options);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  if ((deps.platform ?? process.platform) !== 'win32') {
+  if (platform !== 'win32') {
     // mkdir leaves an existing directory's mode alone; this one is ours alone.
     await chmod(dir, 0o700);
     return { ok: true };
@@ -369,8 +499,9 @@ export async function ensurePrivateDir(dir: string, deps: PrivateDirDeps = {}, o
 }
 
 /**
- * Windows: is `dir` still private, and is every file in `files` owned by the user and private?
- * Changes nothing. POSIX: always ok – the socket's own 0600 and the folder's 0700 are the rule there.
+ * Windows: is `dir` still private, and is every file in `files` owned by the user (or by
+ * Administrators – #980) and private? Changes nothing. POSIX: always ok – the socket's own 0600 and
+ * the folder's 0700 are the rule there.
  */
 export async function checkPrivateDir(
   dir: string,
@@ -380,4 +511,23 @@ export async function checkPrivateDir(
 ): Promise<PrivateDirResult> {
   if ((deps.platform ?? process.platform) !== 'win32') return { ok: true };
   return windowsCheck([dir, ...files], false, deps, options);
+}
+
+/**
+ * Windows (#980): make Administrators the OWNER of each administrators-only file the elevated engine
+ * just wrote, so no file is owned by the account that created it. Best-effort and never throws –
+ * the leader's `checkPrivateDir` refuses any file still owned by someone else, so a failure degrades
+ * the elevated MCP rather than weakening it. A no-op off Windows or without a usable PowerShell.
+ */
+export async function claimAdminFiles(paths: readonly string[], deps: PrivateDirDeps = {}): Promise<void> {
+  if ((deps.platform ?? process.platform) !== 'win32' || paths.length === 0) return;
+  const powershell = powershellPath(deps.env ?? process.env);
+  if (powershell === null) return;
+  const env = { ...(deps.env ?? process.env), [OWNER_INPUT_ENV]: Buffer.from(JSON.stringify({ paths }), 'utf8').toString('base64') };
+  await (deps.run ?? defaultTableRunner)(powershell, powershellArgs(OWNER_SCRIPT), {
+    maxBuffer: ACL_MAX_BUFFER,
+    timeoutMs: ACL_TIMEOUT_MS,
+    hide: true,
+    env,
+  }).catch(() => null);
 }

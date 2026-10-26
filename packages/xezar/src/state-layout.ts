@@ -108,12 +108,6 @@ export interface StateLayout {
    * must never land in the committed state directory.
    */
   ipcDir: string;
-  /**
-   * Windows (#980): the MCP rendezvous folder of an ELEVATED cockpit and leader, next to `ipcDir`
-   * and private to Administrators, so a process without administrator rights can neither write
-   * there nor plant anything in it. Created only by an elevated xezar on Windows.
-   */
-  ipcAdminDir: string;
 }
 
 /** The flag that creates the mode's state in the current folder (FR-1.1). */
@@ -215,7 +209,6 @@ export function globalStateLayout(env: NodeJS.ProcessEnv = process.env): StateLa
     dataDir: null,
     cacheDir: globalCacheRoot(),
     ipcDir: join(root, 'ipc'),
-    ipcAdminDir: join(root, 'ipc-admin'),
   };
 }
 
@@ -234,7 +227,6 @@ export function projectStateLayout(projectRoot: string): StateLayout {
     dataDir,
     cacheDir: join(dataDir, 'cache'),
     ipcDir: join(dataDir, 'ipc'),
-    ipcAdminDir: join(dataDir, 'ipc-admin'),
   };
 }
 

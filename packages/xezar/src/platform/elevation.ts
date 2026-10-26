@@ -20,12 +20,17 @@ import { system32Program } from './system-programs.ts';
 const PROBE_TIMEOUT_MS = 5_000;
 const ELEVATED_LABELS = ['S-1-16-12288', 'S-1-16-16384'];
 
+/** A local account SID: `S-1-5-21-…`. The user SID a `whoami /user` line carries. */
+const USER_SID_PATTERN = /"(S-1-[\d-]+)"/;
+
 /** Test seams. Production passes none. */
 export interface ElevationDeps {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   /** `whoami /groups /fo csv /nh`'s output, or null when it could not run. */
   whoami?: (path: string) => string | null;
+  /** `whoami /user /fo csv /nh`'s output, or null when it could not run. */
+  whoamiUser?: (path: string) => string | null;
 }
 
 /** Is an elevated integrity label in this `whoami /groups /fo csv /nh` output? */
@@ -33,9 +38,22 @@ export function whoamiSaysElevated(output: string): boolean {
   return output.split(/\r?\n/).some((line) => ELEVATED_LABELS.some((label) => line.includes(`"${label}"`)));
 }
 
+/** The current user's SID from this `whoami /user /fo csv /nh` output, or null. */
+export function sidFromWhoamiUser(output: string): string | null {
+  return USER_SID_PATTERN.exec(output)?.[1] ?? null;
+}
+
 function runWhoami(path: string): string | null {
+  return runWhoamiArgs(path, ['/groups', '/fo', 'csv', '/nh']);
+}
+
+function runWhoamiUser(path: string): string | null {
+  return runWhoamiArgs(path, ['/user', '/fo', 'csv', '/nh']);
+}
+
+function runWhoamiArgs(path: string, args: readonly string[]): string | null {
   try {
-    return launchFileSync(path, ['/groups', '/fo', 'csv', '/nh'], {
+    return launchFileSync(path, [...args], {
       encoding: 'utf8',
       timeout: PROBE_TIMEOUT_MS,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -55,10 +73,26 @@ export function probeElevation(deps: ElevationDeps = {}): boolean {
   return output !== null && whoamiSaysElevated(output);
 }
 
+/** The uncached user SID (#980), for the per-user administrators-only MCP folder. */
+export function probeUserSid(deps: ElevationDeps = {}): string | null {
+  if ((deps.platform ?? process.platform) !== 'win32') return null;
+  const whoami = system32Program('whoami.exe', deps.env ?? process.env);
+  if (whoami === null) return null;
+  const output = (deps.whoamiUser ?? runWhoamiUser)(whoami);
+  return output === null ? null : sidFromWhoamiUser(output);
+}
+
 let cached: boolean | undefined;
+let cachedSid: string | null | undefined;
 
 /** This process's answer, probed on first use. */
 export function processIsElevated(): boolean {
   cached ??= probeElevation();
   return cached;
+}
+
+/** This process's user SID (#980), probed on first use; null off Windows or when it cannot be read. */
+export function processUserSid(): string | null {
+  if (cachedSid === undefined) cachedSid = probeUserSid();
+  return cachedSid;
 }

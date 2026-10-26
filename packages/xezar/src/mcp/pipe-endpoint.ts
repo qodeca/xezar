@@ -23,7 +23,8 @@ import { lstatSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../platform/atomic-write.ts';
-import { checkPrivateDir, type PrivateDirDeps } from '../platform/private-dir.ts';
+import type { ElevatedIpc } from '../platform/elevated-ipc.ts';
+import { checkPrivateDir, type AdminChain, type PrivateDirDeps } from '../platform/private-dir.ts';
 import { pidExists } from '../platform/process-proof.ts';
 
 /** `\\.\pipe\xezar-mcp-` and 32 lower-case hex characters: the launcher's draft contract. */
@@ -42,28 +43,35 @@ export interface PipeFiles {
   readonly lock: string;
   /** #980: the administrators-only folder of an elevated engine and leader. Absent: the user's. */
   readonly admin?: true;
+  /** #980: the chain `private-dir.ts` creates and verifies for the administrators-only folder. */
+  readonly adminChain?: AdminChain;
   /** #980: the same project's files in the folder of the other elevation. */
   readonly counterpart?: PipeFiles;
 }
 
-export function pipeFiles(dir: string, projectId: string, admin = false): PipeFiles {
+export function pipeFiles(dir: string, projectId: string, admin = false, adminChain?: AdminChain): PipeFiles {
   return {
     dir,
     marker: join(dir, `${projectId}.pipe`),
     endpoint: join(dir, `${projectId}.key`),
     lock: join(dir, `${projectId}.lock`),
     ...(admin ? { admin: true as const } : {}),
+    ...(adminChain ? { adminChain } : {}),
   };
 }
 
 /**
  * #980: the project's files for a process of this elevation – the user's folder, or the
- * administrators-only one – with the other folder's files as the counterpart.
+ * administrators-only one under `%ProgramData%` (`admin`, resolved by `platform/elevated-ipc.ts`) –
+ * with the other folder's files as the counterpart. When `admin` is null the administrators-only
+ * folder could not be located, so an elevated process has no rendezvous and a non-elevated one has
+ * no counterpart to report.
  */
-export function pipeFilesFor(dirs: { readonly user: string; readonly admin: string }, projectId: string, elevated: boolean): PipeFiles {
+export function pipeFilesFor(dirs: { readonly user: string; readonly admin: ElevatedIpc | null }, projectId: string, elevated: boolean): PipeFiles {
   const user = pipeFiles(dirs.user, projectId);
-  const admin = pipeFiles(dirs.admin, projectId, true);
-  return elevated ? { ...admin, counterpart: user } : { ...user, counterpart: admin };
+  const admin = dirs.admin === null ? null : pipeFiles(dirs.admin.dir, projectId, true, { create: dirs.admin.create, ancestors: dirs.admin.ancestors });
+  if (elevated) return admin === null ? user : { ...admin, counterpart: user };
+  return admin === null ? user : { ...user, counterpart: admin };
 }
 
 export const pipeEndpointSchema = z
@@ -197,7 +205,7 @@ export async function openPipeEndpoint(
   if (!alive(endpoint.pid)) return notRunning();
   const check = await checkPrivateDir(files.dir, [files.endpoint, files.marker], deps, {
     startTimeOf: endpoint.pid,
-    ...(files.admin ? { elevated: true } : {}),
+    ...(files.admin ? { elevated: true, adminChain: files.adminChain } : {}),
   });
   if (!check.ok) return { ok: false, kind: 'not-private', message: check.message };
   if (!endpointIsLive(endpoint, check.startedAt)) return notRunning();

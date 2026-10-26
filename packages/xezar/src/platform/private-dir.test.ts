@@ -3,25 +3,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { resolveElevatedIpc } from './elevated-ipc.ts';
 import { processIsElevated } from './elevation.ts';
 import { launchFileAsync } from './process-launch.ts';
+import type { TableRunner } from './process-table.ts';
 import {
   ACL_SCRIPT,
   aclInput,
   checkPrivateDir,
+  claimAdminFiles,
   ensurePrivateDir,
   judgeAclReport,
   judgeSddl,
+  OWNER_SCRIPT,
   parseAclReport,
+  type AdminChain,
 } from './private-dir.ts';
 
 const ME = 'S-1-5-21-1-2-3-1001';
 const OTHER = 'S-1-5-21-1-2-3-1002';
+const TRUSTED_INSTALLER = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464';
 const PRIVATE = `O:${ME}D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;${ME})`;
-/** #980: the administrators-only folder exactly as the elevated `ensure` leaves it (measured SDDL shape). */
-const ADMIN_FOLDER = 'O:BAD:PAI(A;OICI;0x120000;;;OW)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)';
-/** A file an elevated process wrote there: owned by Administrators, every entry inherited. */
-const ADMIN_FILE = 'O:BAD:AI(A;ID;0x120000;;;OW)(A;ID;FA;;;SY)(A;ID;FA;;;BA)';
+/** #980: the administrators-only folder exactly as the elevated `ensure` leaves it – no OWNER RIGHTS. */
+const ADMIN_FOLDER = 'O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)';
+/** A file the elevated engine wrote and claimed: owned by Administrators, every entry inherited. */
+const ADMIN_FILE = 'O:BAD:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)';
+/** A machine-owned ancestor such as `%ProgramData%`: SYSTEM-owned, and users may create children. */
+const PROGRAMDATA = 'O:SYD:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;DCLCRPCR;;;BU)';
 
 describe('judgeSddl (#963)', () => {
   it('accepts a protected list of the user, SYSTEM and Administrators, by alias or by SID', () => {
@@ -55,40 +63,36 @@ describe('judgeSddl (#963)', () => {
 });
 
 describe('judgeSddl for the administrators-only folder (#980)', () => {
-  it('accepts the folder the elevated ensure leaves, and files owned by Administrators', () => {
+  it('accepts the folder the elevated ensure leaves, and files owned by Administrators or SYSTEM', () => {
     expect(judgeSddl(ADMIN_FOLDER, ME, true, 'admin')).toBeNull();
     expect(judgeSddl('O:S-1-5-32-544D:P(A;OICI;FA;;;S-1-5-18)(A;OICI;FA;;;S-1-5-32-544)', ME, true, 'admin')).toBeNull();
     expect(judgeSddl(ADMIN_FILE, ME, false, 'admin')).toBeNull();
+    expect(judgeSddl(ADMIN_FILE.replace('O:BA', 'O:SY'), ME, false, 'admin')).toBeNull();
     // A deny entry grants nothing.
     expect(judgeSddl(`${ADMIN_FOLDER}(D;;FA;;;${ME})`, ME, true, 'admin')).toBeNull();
   });
 
-  it('accepts a file owned by the user only while OWNER RIGHTS takes away its right to change the list', () => {
-    // The built-in Administrator, or a policy that makes the creator the owner.
-    expect(judgeSddl(ADMIN_FILE.replace('O:BA', `O:${ME}`), ME, false, 'admin')).toBeNull();
-    const builtIn = 'S-1-5-21-1-2-3-500';
-    expect(judgeSddl(ADMIN_FILE.replace('O:BA', 'O:LA'), builtIn, false, 'admin')).toBeNull();
-    // Without the OWNER RIGHTS entry, a non-elevated process of the same user could rewrite the list.
-    expect(judgeSddl(`O:${ME}D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)`, ME, false, 'admin')).toBe('not-private');
-    // `LA` is the user only when the user is the built-in Administrator.
-    expect(judgeSddl(ADMIN_FILE.replace('O:BA', 'O:LA'), ME, false, 'admin')).toBe('foreign-owner');
+  it('refuses a file the user owns – there is no user-owned-file exception any more (#980)', () => {
+    // The built-in Administrator (RID 500), or the account that created the file before the claim ran.
+    expect(judgeSddl(ADMIN_FILE.replace('O:BA', `O:${ME}`), ME, false, 'admin')).toBe('foreign-owner');
+    expect(judgeSddl(ADMIN_FILE.replace('O:BA', 'O:LA'), 'S-1-5-21-1-2-3-500', false, 'admin')).toBe('foreign-owner');
+    // A folder must be Administrators-owned; SYSTEM as the folder owner is not enough.
+    expect(judgeSddl(ADMIN_FOLDER.replace('O:BA', 'O:SY'), ME, true, 'admin')).toBe('foreign-owner');
   });
 
   it('refuses a folder not owned by Administrators – what a process without administrator rights could plant', () => {
     expect(judgeSddl(ADMIN_FOLDER.replace('O:BA', `O:${ME}`), ME, true, 'admin')).toBe('foreign-owner');
-    expect(judgeSddl(ADMIN_FOLDER.replace('O:BA', 'O:SY'), ME, true, 'admin')).toBe('foreign-owner');
     expect(judgeSddl(ADMIN_FOLDER.replace('O:BA', `O:${OTHER}`), ME, true, 'admin')).toBe('foreign-owner');
     expect(judgeSddl(ADMIN_FILE.replace('O:BA', `O:${OTHER}`), ME, false, 'admin')).toBe('foreign-owner');
     expect(judgeSddl(ADMIN_FOLDER.replace('O:BA', ''), ME, true, 'admin')).toBe('foreign-owner');
   });
 
-  it('refuses an entry for the user or anyone else, OWNER RIGHTS with more than reading the list, and an inherited folder list', () => {
+  it('refuses an entry for the user or anyone else, an OWNER RIGHTS entry, and an inherited folder list', () => {
     for (const sddl of [
       `${ADMIN_FOLDER}(A;OICI;FA;;;${ME})`, // the user's own entry: a non-elevated process could write
       `${ADMIN_FOLDER}(A;;FR;;;WD)`,
       `${ADMIN_FOLDER}(A;;FA;;;${OTHER})`,
-      ADMIN_FOLDER.replace('0x120000;;;OW', 'FA;;;OW'),
-      ADMIN_FOLDER.replace('0x120000;;;OW', 'WD;;;OW'), // WRITE_DAC
+      `${ADMIN_FOLDER}(A;OICI;0x120000;;;OW)`, // OWNER RIGHTS is no longer trusted at all
       ADMIN_FOLDER.replace('D:PAI', 'D:AI'),
       'O:BAD:P',
       `${ADMIN_FOLDER}(OA;;FA;guid;;BA)`,
@@ -129,95 +133,103 @@ describe('judgeAclReport (#963)', () => {
   });
 
   // #980, the owner's decision: only an elevated cockpit with an elevated leader. Each side checks
-  // the folder of its own elevation; the elevation the check reads must be that folder's kind.
-  describe('the three elevation combinations (#980)', () => {
-    const elevated = [`sid ${ME}`, 'elevated True', 'drive Fixed NTFS', `sddl 0 ${ADMIN_FOLDER}`, `sddl 1 ${ADMIN_FILE}`, `sddl 2 ${ADMIN_FILE}`];
-    const paths = ['C:\\h\\ipc-admin', 'C:\\h\\ipc-admin\\a.key', 'C:\\h\\ipc-admin\\a.pipe'];
+  // the folder of its own elevation, under a machine-owned %ProgramData% parent.
+  describe('the administrators-only folder, chain and elevation (#980)', () => {
+    const paths = ['C:\\ProgramData\\xezar\\ipc-admin\\sid\\h', 'C:\\ProgramData\\xezar\\ipc-admin\\sid\\h\\a.key', 'C:\\ProgramData\\xezar\\ipc-admin\\sid\\h\\a.pipe'];
+    /** A healthy elevated report: the folder + two files private, the chain owned, the ancestor machine-owned. */
+    const healthy = (over: { folder?: string; file?: string; rp?: Partial<Record<number, boolean>>; anc?: string[]; dir?: string[] } = {}): string[] => {
+      const folder = over.folder ?? ADMIN_FOLDER;
+      const file = over.file ?? ADMIN_FILE;
+      const lines = [`sid ${ME}`, 'elevated True', 'drive Fixed NTFS', `sddl 0 ${folder}`, `sddl 1 ${file}`, `sddl 2 ${file}`];
+      for (let i = 0; i < 3; i++) lines.push(`rp ${i} ${over.rp?.[i] ? 'True' : 'False'}`);
+      (over.anc ?? [PROGRAMDATA]).forEach((sddl, i) => lines.push(`anc ${i} ${sddl === 'missing' ? 'missing -' : `False ${sddl}`}`));
+      (over.dir ?? [ADMIN_FOLDER, ADMIN_FOLDER, ADMIN_FOLDER, ADMIN_FOLDER]).forEach((sddl, i) => lines.push(`dir ${i} ${sddl === 'missing' ? 'missing -' : sddl.startsWith('rp:') ? `True ${sddl.slice(3)}` : `False ${sddl}`}`));
+      return lines;
+    };
 
-    it('(b) elevated cockpit and elevated leader: the administrators-only folder passes for both', () => {
-      expect(judgeAclReport(report(elevated.slice(0, 4)), paths.slice(0, 1), true)).toEqual({ ok: true });
-      expect(judgeAclReport(report(elevated), paths, true)).toEqual({ ok: true });
+    it('(b) elevated cockpit and elevated leader: a healthy chain passes for the folder alone and with files', () => {
+      expect(judgeAclReport(report(healthy().filter((l) => !/^sddl [12]/.test(l) && !/^rp [12]/.test(l))), paths.slice(0, 1), true)).toEqual({ ok: true });
+      expect(judgeAclReport(report(healthy()), paths, true)).toEqual({ ok: true });
     });
 
     it('(a) elevated cockpit, leader without administrator rights: the leader may not use the administrators-only folder', () => {
-      // What the non-elevated leader's own check reads there, were it to try.
-      const normal = elevated.map((l) => l.replace('elevated True', 'elevated False'));
+      const normal = healthy().map((l) => l.replace('elevated True', 'elevated False'));
       expect(judgeAclReport(report(normal), paths, true)).toMatchObject({ ok: false, reason: 'not-elevated', message: expect.stringContaining('runs without administrator rights') });
-      // And judged as its own (user) folder, the administrators-owned files are someone else's.
+      // Judged as its own (user) folder, the administrators-owned files are someone else's.
       expect(judgeAclReport(report(normal), paths)).toMatchObject({ ok: false, reason: 'foreign-owner' });
     });
 
     it('(c) cockpit without administrator rights, elevated leader: the user folder refuses an elevated check', () => {
       const userFolder = [`sid ${ME}`, 'elevated True', 'drive Fixed NTFS', `sddl 0 ${PRIVATE}`];
       expect(judgeAclReport(report(userFolder), ['C:\\h\\ipc'])).toMatchObject({ ok: false, reason: 'elevated', message: expect.stringContaining('runs as administrator') });
-      // An unknown elevation is refused in either folder.
-      const unknown = elevated.filter((l) => !l.startsWith('elevated'));
-      expect(judgeAclReport(report(unknown), paths, true)).toMatchObject({ ok: false, reason: 'not-elevated' });
     });
 
-    // #1197 CI, job 121699224728: GitHub's runner account is the built-in Administrator (RID 500), and
-    // what it writes is owned by the account itself (`LA`). The folder arrived without its OWNER
-    // RIGHTS entry, so the files inherited none – and a user-owned file without it is refused: an
-    // owner may otherwise always rewrite its access list. That refusal is the guarantee and stays.
-    describe('the built-in Administrator on a GitHub runner (#1197)', () => {
-      const RUNNER = 'S-1-5-21-1-2-3-500';
-      const ciPaths = ['D:\\t\\ipc-admin', 'D:\\t\\ipc-admin\\xap.key', 'D:\\t\\ipc-admin\\xap.pipe'];
-      const seen = (folder: string, file: string) =>
-        report([`sid ${RUNNER}`, 'elevated True', 'drive Fixed NTFS', `sddl 0 ${folder}`, `sddl 1 ${file}`, `sddl 2 ${file}`]);
-
-      it('refuses the exact report CI saw: files owned by the account, no OWNER RIGHTS entry', () => {
-        const verdict = judgeAclReport(seen('O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)', 'O:LAD:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)'), ciPaths, true);
-        expect(verdict).toMatchObject({ ok: false, reason: 'not-private', message: expect.stringContaining('xap.key') });
-      });
-
-      it('passes the same files once the folder carries the inheritable OWNER RIGHTS entry the ensure writes', () => {
-        expect(judgeAclReport(seen(ADMIN_FOLDER, 'O:LAD:AI(A;ID;0x120000;;;OW)(A;ID;FA;;;SY)(A;ID;FA;;;BA)'), ciPaths, true)).toEqual({ ok: true });
-      });
-
-      it('the ensure writes the full list again after taking the folder over, in a fresh object', () => {
-        const takeover = ACL_SCRIPT.slice(ACL_SCRIPT.indexOf('$dir.SetAccessControl($own)'));
-        expect(takeover.startsWith('$dir.SetAccessControl($own)\n        $dir.SetAccessControl((& $adminAcl))')).toBe(true);
-        // Every write of the administrators-only list builds it anew, OWNER RIGHTS included.
-        const block = ACL_SCRIPT.slice(ACL_SCRIPT.indexOf('$adminAcl = {'), ACL_SCRIPT.indexOf('$dir.SetAccessControl((& $adminAcl))'));
-        expect(block).toContain("SecurityIdentifier('S-1-3-4')), 'ReadPermissions'");
-        expect(ACL_SCRIPT.match(/\$dir\.SetAccessControl\(\(& \$adminAcl\)\)/g)).toHaveLength(2);
-      });
+    it('refuses a reparse point at the leaf, a file, or a chain directory – a swapped junction (#980)', () => {
+      expect(judgeAclReport(report(healthy({ rp: { 0: true } })), paths, true)).toMatchObject({ ok: false, reason: 'reparse-point', message: expect.stringContaining('ipc-admin') });
+      expect(judgeAclReport(report(healthy({ rp: { 2: true } })), paths, true)).toMatchObject({ ok: false, reason: 'reparse-point', message: expect.stringContaining('a.pipe') });
+      // A junction planted as one of the created chain directories.
+      expect(judgeAclReport(report(healthy({ dir: [ADMIN_FOLDER, `rp:${ADMIN_FOLDER}`, ADMIN_FOLDER, ADMIN_FOLDER] })), paths, true)).toMatchObject({ ok: false, reason: 'reparse-point' });
     });
 
-    it('the administrators-only folder keeps every other rule: volume, owner, entries, every file', () => {
-      expect(judgeAclReport(report(elevated.map((l) => l.replace('Fixed NTFS', 'Network NTFS'))), paths, true)).toMatchObject({ reason: 'network-drive' });
-      expect(judgeAclReport(report(elevated.map((l) => l.replace(`sddl 0 ${ADMIN_FOLDER}`, `sddl 0 ${ADMIN_FOLDER.replace('O:BA', `O:${ME}`)}`))), paths, true)).toMatchObject({ reason: 'foreign-owner' });
-      expect(judgeAclReport(report([...elevated.slice(0, 5), `sddl 2 ${ADMIN_FILE}(A;ID;FA;;;${ME})`]), paths, true)).toMatchObject({ reason: 'not-private', message: expect.stringContaining('a.pipe') });
-      expect(judgeAclReport(report(elevated.slice(0, 5)), paths, true)).toMatchObject({ reason: 'not-private' });
+    it('refuses a chain directory a normal user pre-created and owns (#980)', () => {
+      expect(judgeAclReport(report(healthy({ dir: [ADMIN_FOLDER.replace('O:BA', `O:${ME}`), ADMIN_FOLDER, ADMIN_FOLDER, ADMIN_FOLDER] })), paths, true)).toMatchObject({ ok: false, reason: 'foreign-owner' });
+      // A chain directory that does not exist (the walk stopped before creating it) is refused.
+      expect(judgeAclReport(report(healthy({ dir: [ADMIN_FOLDER, 'missing', 'missing', 'missing'] })), paths, true)).toMatchObject({ ok: false, reason: 'not-private' });
+    });
+
+    it('refuses an ancestor that is not owned by Windows, is a reparse point, or is missing (#980)', () => {
+      expect(judgeAclReport(report(healthy({ anc: [PROGRAMDATA.replace('O:SY', `O:${ME}`)] })), paths, true)).toMatchObject({ ok: false, reason: 'untrusted-parent' });
+      expect(judgeAclReport(report(healthy({ anc: ['missing'] })), paths, true)).toMatchObject({ ok: false, reason: 'untrusted-parent' });
+      // TrustedInstaller (what the OS gives the volume root) is accepted.
+      expect(judgeAclReport(report(healthy({ anc: [PROGRAMDATA.replace('O:SY', `O:${TRUSTED_INSTALLER}`)] })), paths, true)).toEqual({ ok: true });
+    });
+
+    it('refuses a file the account still owns, and keeps every other rule – volume and entries', () => {
+      expect(judgeAclReport(report(healthy({ file: ADMIN_FILE.replace('O:BA', `O:${ME}`) })), paths, true)).toMatchObject({ ok: false, reason: 'foreign-owner', message: expect.stringContaining('a.key') });
+      expect(judgeAclReport(report(healthy().map((l) => l.replace('Fixed NTFS', 'Network NTFS'))), paths, true)).toMatchObject({ reason: 'network-drive' });
+      expect(judgeAclReport(report(healthy({ file: `${ADMIN_FILE}(A;ID;FA;;;${ME})` })), paths, true)).toMatchObject({ ok: false, reason: 'not-private' });
     });
   });
 });
 
-describe('the ACL script and its input (#963)', () => {
+describe('the ACL script and its input (#963, #980)', () => {
   it('is fixed text: paths and the pid arrive only in the base64 JSON input, never in the script', () => {
     const evil = "C:\\a'; Remove-Item C:\\ -Recurse; '";
     expect(ACL_SCRIPT).not.toContain('Remove-Item');
     expect(ACL_SCRIPT).toContain('SetAccessControl');
-    expect(ACL_SCRIPT).toContain("'S-1-5-18', 'S-1-5-32-544'");
     expect(JSON.parse(Buffer.from(aclInput([evil], true, 42), 'base64').toString('utf8'))).toEqual({ paths: [evil], ensure: true, pid: 42 });
-    // #980: the administrators-only folder is asked for in the input; the standard input is unchanged.
+    // The non-admin input is unchanged byte for byte.
     expect(Buffer.from(aclInput(['C:\\x'], true, 42), 'base64').toString('utf8')).toBe('{"paths":["C:\\\\x"],"ensure":true,"pid":42}');
-    expect(JSON.parse(Buffer.from(aclInput([evil], true, 42, true), 'base64').toString('utf8'))).toEqual({ paths: [evil], ensure: true, pid: 42, admin: true });
+    // #980: the administrators-only input carries the chain to create and verify.
+    const chain: AdminChain = { create: ['C:\\ProgramData\\xezar', 'C:\\ProgramData\\xezar\\ipc-admin'], ancestors: ['C:\\ProgramData'] };
+    expect(JSON.parse(Buffer.from(aclInput([evil], true, 42, true, chain), 'base64').toString('utf8'))).toEqual({ paths: [evil], ensure: true, pid: 42, admin: true, create: chain.create, ancestors: chain.ancestors });
     for (const pid of [undefined, 0, -1, 1.5, Number.NaN]) {
       expect(JSON.parse(Buffer.from(aclInput(['C:\\x'], false, pid), 'base64').toString('utf8')).pid).toBe(0);
     }
   });
 
-  it('sets the administrators-only list only when asked and only when elevated, owner rights limited, Administrators taking over (#980)', () => {
-    expect(ACL_SCRIPT).toContain('if ($in.ensure -eq $true -and $in.admin -eq $true) {\n  if ($elevated) {');
-    expect(ACL_SCRIPT).toContain("@('S-1-5-18', 'S-1-5-32-544')");
-    expect(ACL_SCRIPT).toContain("SecurityIdentifier('S-1-3-4')), 'ReadPermissions'");
+  it('creates the administrators-only chain with its access list at creation, never deletes or takes over (#980)', () => {
+    // Created in the script, not by a Node mkdir, with the list set at creation.
+    expect(ACL_SCRIPT).toContain('[IO.Directory]::CreateDirectory($d, (& $adminAcl))');
+    // Owned by Administrators, protected, SYSTEM and Administrators only, no OWNER RIGHTS.
     expect(ACL_SCRIPT).toContain("SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))");
-    // The takeover empties the folder first, and never takes over one it could not empty.
-    expect(ACL_SCRIPT.indexOf('$child.Delete')).toBeLessThan(ACL_SCRIPT.indexOf('SetOwner('));
-    expect(ACL_SCRIPT).toContain('if (@($dir.GetFileSystemInfos()).Count -eq 0) {');
+    expect(ACL_SCRIPT).toContain("@('S-1-5-18', 'S-1-5-32-544')");
+    expect(ACL_SCRIPT).not.toContain('S-1-3-4'); // OWNER RIGHTS is gone
+    // It never empties or takes over an unexpected folder.
+    expect(ACL_SCRIPT).not.toContain('GetFileSystemInfos');
+    expect(ACL_SCRIPT).not.toContain('.Delete(');
+    // A reparse point or a non-Administrators owner stops the walk.
+    expect(ACL_SCRIPT).toContain('ReparsePoint');
+    expect(ACL_SCRIPT).toContain("@('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464') -notcontains (OwnerOf $a)");
     // The standard branch is the one before #980.
     expect(ACL_SCRIPT).toContain("} elseif ($in.ensure -eq $true) {\n  $acl = New-Object Security.AccessControl.DirectorySecurity\n  $acl.SetAccessRuleProtection($true, $false)\n  foreach ($sid in @($id.User.Value, 'S-1-5-18', 'S-1-5-32-544')) {");
+  });
+
+  it('the owner script makes Administrators own each file, nothing else', () => {
+    expect(OWNER_SCRIPT).toContain("SecurityIdentifier('S-1-5-32-544')");
+    expect(OWNER_SCRIPT).toContain('$s.SetOwner($admins)');
+    expect(OWNER_SCRIPT).toContain('[IO.File]::SetAccessControl($p, $s)');
+    expect(OWNER_SCRIPT).not.toContain('AddAccessRule');
   });
 });
 
@@ -240,13 +252,15 @@ describe('ensurePrivateDir on Linux and macOS (#963)', () => {
       expect(await checkPrivateDir(dir, [], { platform, run })).toEqual({ ok: true });
     });
   }
+  it('claimAdminFiles and checkPrivateDir are no-ops off Windows', async () => {
+    const run = vi.fn();
+    await claimAdminFiles([join(base, 'x.key')], { platform: 'linux', run });
+    expect(run).not.toHaveBeenCalled();
+  });
 });
 
 // win32-skip(#976): Windows access lists exist on Windows only; the rules above run everywhere
-describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
-  // The folder of this process's own elevation: an elevated runner (every GitHub step) checks the
-  // administrators-only folder, as an elevated xezar would (#980).
-  const own = processIsElevated() ? { elevated: true } : {};
+describe.skipIf(!onWindows || processIsElevated())('ensurePrivateDir on Windows, the user folder (#963)', () => {
   let base = '';
   beforeEach(() => {
     base = mkdtempSync(join(tmpdir(), 'xez-private-'));
@@ -257,9 +271,9 @@ describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
 
   it('makes a folder private, and files created in it pass the check', async () => {
     const dir = join(base, 'ipc');
-    expect(await ensurePrivateDir(dir, {}, own)).toEqual({ ok: true });
+    expect(await ensurePrivateDir(dir)).toEqual({ ok: true });
     writeFileSync(join(dir, 'a.key'), 'x');
-    expect(await checkPrivateDir(dir, [join(dir, 'a.key')], {}, own)).toEqual({ ok: true });
+    expect(await checkPrivateDir(dir, [join(dir, 'a.key')])).toEqual({ ok: true });
   }, 60_000);
 
   // Break: CI's Windows Node 22 leg failed with a bare "is not private to the current user" for a
@@ -278,12 +292,12 @@ describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
 
   it('notices a grant added to the folder later', async () => {
     const dir = join(base, 'ipc');
-    expect(await ensurePrivateDir(dir, {}, own)).toEqual({ ok: true });
+    expect(await ensurePrivateDir(dir)).toEqual({ ok: true });
     const icacls = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe');
     await launchFileAsync(icacls, [dir, '/grant', '*S-1-1-0:(R)'], { encoding: 'utf8' });
-    expect(await checkPrivateDir(dir, [], {}, own)).toMatchObject({ ok: false, reason: 'not-private' });
+    expect(await checkPrivateDir(dir, [])).toMatchObject({ ok: false, reason: 'not-private' });
     // ensure repairs it
-    expect(await ensurePrivateDir(dir, {}, own)).toEqual({ ok: true });
+    expect(await ensurePrivateDir(dir)).toEqual({ ok: true });
   }, 60_000);
 
   it('refuses a junction', async () => {
@@ -291,16 +305,39 @@ describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
     mkdirSync(target);
     const link = join(base, 'link');
     symlinkSync(target, link, 'junction');
-    expect(await ensurePrivateDir(link, {}, own)).toMatchObject({ ok: false, reason: 'reparse-point' });
+    expect(await ensurePrivateDir(link)).toMatchObject({ ok: false, reason: 'reparse-point' });
   });
 
-  it('refuses the folder of the other elevation, and changes nothing there (#980)', async () => {
-    const dir = join(base, 'other');
-    const other = processIsElevated() ? {} : { elevated: true };
-    expect(await ensurePrivateDir(dir, {}, other)).toMatchObject({ ok: false, reason: processIsElevated() ? 'elevated' : 'not-elevated' });
-    if (!processIsElevated()) {
-      // The administrators-only list is set only by an elevated process: the folder is still ours to fix.
-      expect(await ensurePrivateDir(dir)).toEqual({ ok: true });
-    }
+  it('refuses the administrators-only folder for a process without administrator rights (#980)', async () => {
+    // A non-elevated process may not use the administrators-only folder: the check reads its own
+    // (non-elevated) token and refuses before trusting anything. The leaf is pre-created so the
+    // script has a folder to read; the elevated ensure branch is skipped for a non-elevated token,
+    // so the folder's own access list is never changed.
+    const leaf = join(base, 'xezar', 'leaf');
+    mkdirSync(leaf, { recursive: true });
+    const chain: AdminChain = { create: [leaf], ancestors: [base] };
+    const result = await ensurePrivateDir(leaf, {}, { elevated: true, adminChain: chain });
+    expect(result).toMatchObject({ ok: false, reason: 'not-elevated' });
   }, 60_000);
+});
+
+// win32-skip(#976): the administrators-only chain is a Windows access-list test; it also needs an
+// elevated token (every GitHub Windows runner step has one), which a non-elevated machine lacks.
+describe.runIf(onWindows && processIsElevated())('ensurePrivateDir on Windows, the administrators-only folder (#980)', () => {
+  const scope = `xez-test-${process.pid}-${Date.now()}`;
+  const ipc = resolveElevatedIpc(scope);
+  const chain: AdminChain | undefined = ipc ? { create: ipc.create, ancestors: ipc.ancestors } : undefined;
+  afterEach(() => {
+    // Remove only this scope's leaf; the shared machine chain (xezar/ipc-admin/<SID>) stays.
+    if (ipc) rmSync(ipc.dir, { ...TEST_DIR_RM_OPTIONS, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it('creates the %ProgramData% chain owned by Administrators, and a claimed file passes the check', async () => {
+    expect(ipc).not.toBeNull();
+    expect(await ensurePrivateDir(ipc!.dir, {}, { elevated: true, adminChain: chain })).toEqual({ ok: true });
+    const file = join(ipc!.dir, 'a.key');
+    writeFileSync(file, 'x');
+    await claimAdminFiles([file]);
+    expect(await checkPrivateDir(ipc!.dir, [file], {}, { elevated: true, adminChain: chain })).toEqual({ ok: true });
+  }, 90_000);
 });

@@ -36,10 +36,15 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
   afterEach(() => {
     for (const handle of handles.splice(0)) handle.close();
     rmSync(home, TEST_DIR_RM_OPTIONS);
+    // #980: the administrators-only leaf lives under %ProgramData%, not under home; drop this
+    // scope's own leaf so an elevated runner does not accumulate them (the shared chain stays).
+    const admin = files().admin ? files().dir : undefined;
+    if (admin) rmSync(admin, { ...TEST_DIR_RM_OPTIONS, maxRetries: 5, retryDelay: 100 });
   });
 
   const files = () => mcpPipeFiles(project.id, env);
-  const elevation = () => (files().admin ? { elevated: true } : {});
+  // #980: an elevated engine makes and judges the administrators-only %ProgramData% chain.
+  const elevation = () => (files().admin ? { elevated: true as const, adminChain: files().adminChain } : {});
   /** The folder as an earlier engine left it: made private by the same rule the service applies. */
   const prepareFolder = async () => expect(await ensurePrivateDir(files().dir, {}, elevation())).toEqual({ ok: true });
   const listen = async () => {

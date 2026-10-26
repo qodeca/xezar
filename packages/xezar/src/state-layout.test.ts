@@ -65,7 +65,6 @@ describe('resolveStateLayout', () => {
       // SP-2.2 pins it from the other side).
       cacheDir: join(homedir(), '.cache', 'xez'),
       ipcDir: join('/tmp/xez-global', 'ipc'),
-      ipcAdminDir: join('/tmp/xez-global', 'ipc-admin'),
     });
   });
 
@@ -84,7 +83,6 @@ describe('resolveStateLayout', () => {
       // Working files, so `.local/xezar` rather than the committed `.xezar`.
       cacheDir: join(project, '.local', 'xezar', 'cache'),
       ipcDir: join(project, '.local', 'xezar', 'ipc'),
-      ipcAdminDir: join(project, '.local', 'xezar', 'ipc-admin'),
     });
   });
 

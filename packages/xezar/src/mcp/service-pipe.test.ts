@@ -33,9 +33,17 @@ const okEnsure = async (dir: string): Promise<PrivateDirResult> => {
   await mkdir(dir, { recursive: true });
   return { ok: true, startedAt: OWN_START };
 };
+/** #980: the administrators-only folder, injected so the test controls it (no real %ProgramData%). */
+const adminIpcFor = () => {
+  const leaf = join(home, 'ipc-admin');
+  return { dir: leaf, create: [leaf], ancestors: [home] };
+};
+const adminChain = () => ({ create: adminIpcFor().create, ancestors: adminIpcFor().ancestors });
 const seams = (extra: McpPipeSeams = {}): McpPipeSeams => ({
   // A process without administrator rights, whatever the host (#980): the user's own folder.
   elevated: () => false,
+  resolveAdmin: () => adminIpcFor(),
+  claimAdminFiles: async () => undefined,
   ensurePrivateDir: okEnsure,
   checkPrivateDir: async () => ({ ok: true, startedAt: foreignStart }),
   ...(onWindows ? {} : { listenAt: (name: string) => join(sockets, `${name.slice(-12)}.sock`) }),
@@ -85,9 +93,11 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     expect(hello.ok).toBe(true);
     good.destroy();
 
+    // #980: the engine now authenticates the client too, so a wrong key fails the client's own
+    // `auth` step and the engine drops the connection – the bridge sees it close, not a foreign MAC.
     const bad = createConnection(address(handle.path));
     const refused = await pipeHello(bad, { key: Buffer.from(newPipeKey(), 'hex'), pipeName: handle.path }, 5_000);
-    expect(refused).toEqual({ ok: false, failure: 'foreign' });
+    expect(refused).toEqual({ ok: false, failure: 'closed' });
     bad.destroy();
   });
 
@@ -130,16 +140,21 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     expect(readPipeMarker(files().marker)).toBe('missing');
   });
 
-  // #980: an elevated engine makes and judges the administrators-only folder, never the user's.
-  it('an elevated engine listens from the administrators-only folder, asking for it by name', async () => {
+  // #980: an elevated engine makes and judges the administrators-only %ProgramData% folder, never
+  // the user's, creating its whole chain in the script and claiming Administrators ownership of its
+  // files.
+  it('an elevated engine listens from the administrators-only folder, asking for it and claiming its files', async () => {
     const ensured: Array<{ dir: string; options: unknown }> = [];
+    const claimed: string[][] = [];
     const handle = await listen({
       elevated: () => true,
       ensurePrivateDir: async (dir, _deps, options) => (ensured.push({ dir, options }), okEnsure(dir)),
+      claimAdminFiles: async (paths) => void claimed.push([...paths]),
     });
-    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true);
-    expect(ensured).toEqual([{ dir: admin.dir, options: { startTimeOf: process.pid, elevated: true } }]);
+    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true, adminChain());
+    expect(ensured).toEqual([{ dir: admin.dir, options: { startTimeOf: process.pid, elevated: true, adminChain: adminChain() } }]);
     expect(readPipeMarker(admin.marker)).toBe(handle.path);
+    expect(claimed).toEqual([[admin.endpoint, admin.marker]]);
     expect(existsSync(files().dir)).toBe(false);
     handles.splice(0).forEach((h) => h.close());
     await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });

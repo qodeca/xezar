@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { probeElevation, whoamiSaysElevated } from './elevation.ts';
+import { probeElevation, probeUserSid, sidFromWhoamiUser, whoamiSaysElevated } from './elevation.ts';
 
 /** #980: which MCP folder a process uses depends on whether it runs as administrator. */
 
@@ -36,5 +36,27 @@ describe('probeElevation (#980)', () => {
     const whoami = vi.fn(() => row('High', 'S-1-16-12288'));
     expect(probeElevation({ platform: 'win32', env: { SystemRoot: '\\\\server\\share' }, whoami })).toBe(false);
     expect(whoami).not.toHaveBeenCalled();
+  });
+});
+
+describe('the user SID probe (#980)', () => {
+  const env = { SystemRoot: 'C:\\Windows' };
+  const userRow = '"marci-pc\\marci","S-1-5-21-1504711166-3655588297-3458958062-1001","High Mandatory Level"';
+
+  it('reads the current user SID from a whoami /user CSV line', () => {
+    expect(sidFromWhoamiUser(userRow)).toBe('S-1-5-21-1504711166-3655588297-3458958062-1001');
+    expect(sidFromWhoamiUser('')).toBeNull();
+  });
+
+  it('asks whoami /user from System32 on Windows only', () => {
+    const whoamiUser = vi.fn(() => userRow);
+    expect(probeUserSid({ platform: 'win32', env, whoamiUser })).toBe('S-1-5-21-1504711166-3655588297-3458958062-1001');
+    expect(whoamiUser).toHaveBeenCalledWith('C:\\Windows\\System32\\whoami.exe');
+    for (const platform of ['linux', 'darwin'] as const) {
+      const never = vi.fn(() => userRow);
+      expect(probeUserSid({ platform, env, whoamiUser: never })).toBeNull();
+      expect(never).not.toHaveBeenCalled();
+    }
+    expect(probeUserSid({ platform: 'win32', env, whoamiUser: () => null })).toBeNull();
   });
 });
