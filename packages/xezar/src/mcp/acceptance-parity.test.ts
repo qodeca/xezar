@@ -804,6 +804,10 @@ describe('#116 parity and collaboration acceptance — A/B world', { timeout: 18
       await until(w, () => run(w, t1!)?.status === 'waiting', 'the instruction to settle');
 
       // Invalid transition: finish with the review meaning on a waiting task is refused, unchanged.
+      // `waiting` is written before the finished turns' bookkeeping lands (`recordTurnEnd` runs
+      // `git diff --shortstat` and then writes `diffStat`), so freeze only once it has: otherwise a
+      // late `diffStat` from the turns above reads as a change the refusal made (#1105).
+      await w.contextA.manager.turnEndsSettled();
       const frozen = JSON.stringify({ r: run(w, t1!), n: w.a.store.readEvents(t1!).length });
       expect(await mcp(w, 'execution_control', { action: 'finish', runId: t1, finishAs: 'accept_review' })).toMatchObject({ accepted: false, status: 'conflict' });
       expect(JSON.stringify({ r: run(w, t1!), n: w.a.store.readEvents(t1!).length })).toBe(frozen);

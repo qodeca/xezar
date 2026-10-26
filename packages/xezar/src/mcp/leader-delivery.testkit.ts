@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createConnection, createServer as createSocketServer } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { CODEX_CONTROL_SOCKET } from './adapters/codex-link.ts';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, vi } from 'vitest';
@@ -19,14 +18,16 @@ import { runBridge } from './bridge.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { tools } from './tools/index.ts';
 import { onWindows, shortTmpRoot } from '../../test/helpers/platform.ts';
+import { listenCodexControl } from '../../test/helpers/codex-control.ts';
 import { targetFor } from '../../test/helpers/mcp-raw.ts';
 
 export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'qwen'] as const;
 export type DeliveryClient = typeof DELIVERY_CLIENTS[number];
-/** True where this client's peer cannot be built: the Codex and Qwen Code peers listen on a Unix socket
- *  path, which Node cannot do on Windows; attaching those there is a follow-up (#963). Claude Code crosses the
- *  real service, a named pipe on Windows. Always false on POSIX. */
-export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'qwen');
+/** True where this client's peer cannot be built: the Qwen Code peer listens on a Unix socket path, which
+ *  Node cannot do on Windows, and Qwen Code opens no inbox there (#1086). The Codex peer runs on every OS
+ *  (`listenCodexControl`, #977); Claude Code crosses the real service, a named pipe on Windows. Always
+ *  false on POSIX. */
+export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && client === 'qwen';
 
 // Real catalog/journal/controller/adapters; only the external client is a protocol peer.
 // Claude additionally crosses the real IPC service and stdio bridge, recording channel stdout.
@@ -190,10 +191,11 @@ export async function fakeCodexAppServer(opts: FakeCodexAppServer): Promise<void
       });
     });
   });
-  await new Promise<void>(resolve => server.listen(join(home, CODEX_CONTROL_SOCKET), resolve));
+  const unpin = await listenCodexControl(server, home);
   closers.push(async () => {
     for (const client of clients) client.terminate();
     await new Promise<void>(resolve => wss.close(() => resolve()));
     await new Promise<void>(resolve => server.close(() => resolve()));
+    unpin();
   });
 }

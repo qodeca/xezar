@@ -127,7 +127,6 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
   `xezar serve` warns at start-up while either setting is off.
 - Start xezar and your leader agent the same way: both as administrator or both without. An
   elevated xezar serves the MCP leader bridge (`xezar mcp`) only to an elevated leader.
-- Attaching a leader to a running Codex session is not available on Windows yet.
 - To stop `xezar serve`, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the
   programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may
   not be enough to stop everything.

@@ -1,6 +1,6 @@
 # MCP project leader
 
-Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar and the leader the same way – both as administrator or both without; attaching to a running Codex session is not available there yet.
+Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar and the leader the same way – both as administrator or both without.
 
 ## Before setup
 
@@ -118,7 +118,7 @@ qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp
 
 ### Codex
 
-**Prerequisites.** Run Codex and the cockpit on the same machine, trust the project, and use the same Codex home for xezar and the shared app-server: `CODEX_HOME` when set, otherwise `~/.codex`.
+**Prerequisites.** Run Codex and the cockpit on the same machine, trust the project, and use the same Codex home for xezar and the shared app-server: `CODEX_HOME` when set, otherwise `~/.codex`. On Windows, xezar reaches the shared app-server through Codex's own relay, `codex app-server proxy`, which it starts while the leader is attached and stops afterwards: the `codex` command xezar uses for tasks (or `XEZ_CODEX_BIN`) must be available to `xezar serve`, and both run without administrator rights.
 
 **Register `xezar mcp`.** Add this project-scoped block to `.codex/config.toml`:
 

@@ -3460,7 +3460,7 @@ export class RunManager {
         // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
-        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        this.trackTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
@@ -4564,7 +4564,7 @@ export class RunManager {
         // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
-        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        this.trackTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = interactive && sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
@@ -5167,6 +5167,36 @@ export class RunManager {
     const workflow = await this.reviveWorkflow(run);
     const skillName = workflow?.steps.find((s) => stepKind(s) === 'agent' && s.skill)?.skill?.trim();
     this.startNaming(this.autoNameRun(runId, skillName, run.task, { turnText, diffStat: statText }));
+  }
+
+  /** The turn-end bookkeeping still running; only `turnEndsSettled()` reads it. */
+  private readonly turnEndsInFlight = new Set<Promise<void>>();
+
+  /**
+   * Fire `recordTurnEnd` for a finished turn, the one way both turn-end handlers do it: enrolled in
+   * `runsInFlight` so `quiesce()` waits for it (#200), and in `turnEndsInFlight` so
+   * `turnEndsSettled()` can.
+   */
+  private trackTurnEnd(runId: string, turnText: string): void {
+    const bookkeeping = this.recordTurnEnd(runId, turnText);
+    this.trackRun(bookkeeping);
+    this.turnEndsInFlight.add(bookkeeping);
+    const forget = (): void => {
+      this.turnEndsInFlight.delete(bookkeeping);
+    };
+    bookkeeping.then(forget, forget);
+  }
+
+  /**
+   * Resolves once the turn-end bookkeeping of every turn finished so far has written what it
+   * writes (`diffStat`, marker refs, a note). A run reads `waiting` BEFORE that bookkeeping lands –
+   * it runs `git diff --shortstat` in the worktree, which can take seconds on a loaded Windows
+   * machine – so a caller that compares a run record before and after an action waits here first
+   * (#1105). `dispose()` and `quiesce()` are unchanged; a namer it starts is `namingSettled()`'s.
+   * Never rejects.
+   */
+  async turnEndsSettled(): Promise<void> {
+    while (this.turnEndsInFlight.size > 0) await Promise.allSettled([...this.turnEndsInFlight]);
   }
 
   /** The namer calls still running; only `namingSettled()` reads it. */
