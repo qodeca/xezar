@@ -60,6 +60,15 @@ describe('judgeSddl (#963)', () => {
       expect(judgeSddl(sddl, ME, true), sddl).toBe('not-private');
     }
   });
+
+  it('reads `LA` as the user only when the user is the built-in Administrator (RID 500)', () => {
+    const builtIn = 'S-1-5-21-1-2-3-500';
+    // Exactly what an elevated GitHub Windows runner reported (#980).
+    const asRunner = 'O:LAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)';
+    expect(judgeSddl(asRunner, builtIn, true)).toBeNull();
+    expect(judgeSddl(asRunner, ME, true)).toBe('foreign-owner');
+    expect(judgeSddl(`O:${ME}D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;${ME})(A;OICI;FA;;;LA)`, ME, true)).toBe('not-private');
+  });
 });
 
 describe('judgeSddl for the administrators-only folder (#980)', () => {

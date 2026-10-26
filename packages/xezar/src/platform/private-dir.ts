@@ -320,8 +320,10 @@ export type PrivateDirMode = 'user' | 'admin';
  */
 export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: PrivateDirMode = 'user', adminOwnerToo = false): 'foreign-owner' | 'not-private' | null {
   if (mode === 'admin') return judgeAdminSddl(sddl, isFolder);
+  // SDDL spells the built-in Administrator (RID 500) as `LA`: for that account, `LA` is the user.
+  const sidFor = (token: string): string => (token === 'LA' && user.endsWith('-500') ? user : sidOf(token));
   const owner = /^O:(S-1-[\d-]+|[A-Z]{2})/.exec(sddl)?.[1];
-  if (owner === undefined || (sidOf(owner) !== user && !(adminOwnerToo && sidOf(owner) === ADMINISTRATORS))) return 'foreign-owner';
+  if (owner === undefined || (sidFor(owner) !== user && !(adminOwnerToo && sidFor(owner) === ADMINISTRATORS))) return 'foreign-owner';
   const dacl = /D:([A-Z]*)((?:\([^)]*\))*)/.exec(sddl);
   if (!dacl) return 'not-private';
   if (isFolder && !dacl[1]!.includes('P')) return 'not-private';
@@ -332,7 +334,7 @@ export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: P
     if (ace.length !== 6) return 'not-private';
     const [type, , , , , sid] = ace as [string, string, string, string, string, string];
     if (type === 'D') continue; // a deny entry grants nothing
-    if (type !== 'A' || !allowed.has(sidOf(sid))) return 'not-private';
+    if (type !== 'A' || !allowed.has(sidFor(sid))) return 'not-private';
   }
   return null;
 }
