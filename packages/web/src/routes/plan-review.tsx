@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
+import { fileName } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { moveStep, removeStep } from '@/lib/workflow-builder'
@@ -288,7 +289,7 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
         steps,
         ...(overwrite ? { overwrite: true } : {}),
       })
-      toast(`Saved — ${saved.path.split('/').pop() ?? saved.path}`)
+      toast(`Saved — ${fileName(saved.path)}`)
       // The picker on /new lists workflows from this cache — the new chain must appear.
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
       setConfirmOverwrite(false)

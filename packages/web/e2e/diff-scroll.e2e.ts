@@ -72,8 +72,11 @@ function buildFixtureRepo(dir: string): void {
   // machine. Those tools keep writing into it for as long as the server runs — an agent CLI's
   // binary install landed there once mid-run, growing the changeset by 18 files between the
   // count taken at boot and the one the browser later rendered. `home/` is never part of the
-  // changeset this spec builds, so it is excluded rather than measured.
-  writeFileSync(join(dir, '.gitignore'), 'home/\n', 'utf8')
+  // changeset this spec builds, so it is excluded rather than measured. `.xez-home/` is the
+  // pinned XEZ_HOME: on Windows the leader endpoint is announced by regular `ipc/<id>.key` and
+  // `.pipe` files written just after boot (a Unix socket is not a file Git lists), so it is
+  // excluded for the same reason (#1137).
+  writeFileSync(join(dir, '.gitignore'), 'home/\n.xez-home/\n', 'utf8')
   mkdirSync(join(dir, 'src'), { recursive: true })
   const write = (index: number, tag: string) =>
     writeFileSync(
@@ -301,13 +304,19 @@ describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, (
     // last file no longer moves `main`. It says nothing about `overscroll-contain`: a scripted
     // scroll never chains to an ancestor whatever the overscroll-behavior is, and the driver's
     // input ops are pointer-based, with no wheel to send. Wheel chaining stays manual-QA territory.
+    //
+    // `main`'s offset is read again in the same synchronous block, right before the pane scroll:
+    // On Windows `main` read 7 px off after the tree scroll compared with one browser call
+    // earlier (#1137; most likely the virtual list correcting its offset as it measures cards),
+    // and a reading taken a call earlier charges any such drift to the tree.
     const moved = browser.evaluate(`(() => {
       const pane = document.querySelector('[data-slot="changes-tree-pane"]')
+      const before = Math.round(${MAIN}.scrollTop)
       pane.scrollTop = pane.scrollHeight
-      return { paneTop: Math.round(pane.scrollTop), mainTop: Math.round(${MAIN}.scrollTop) }
-    })()`) as { paneTop: number; mainTop: number }
+      return { paneTop: Math.round(pane.scrollTop), before, mainTop: Math.round(${MAIN}.scrollTop) }
+    })()`) as { paneTop: number; before: number; mainTop: number }
 
     expect(moved.paneTop).toBeGreaterThan(0)
-    expect(moved.mainTop, 'scrolling the tree dragged the diff along').toBe(pane!.mainTop)
+    expect(moved.mainTop, 'scrolling the tree dragged the diff along').toBe(moved.before)
   }, 120_000)
 })

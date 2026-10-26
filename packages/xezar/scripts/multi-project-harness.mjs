@@ -226,7 +226,7 @@ function makeRepo(root, name) {
     const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
     if (result.status !== 0) throw new HarnessBlockedError(`git ${args[0]} failed: ${result.stderr.trim()}`);
   }
-  return realpathSync(repo);
+  return realpathSync.native(repo);
 }
 
 // `computeProbe` in workspace/projects.ts caches a project root's status (ok/missing/not-git)
@@ -304,7 +304,9 @@ function assertion(result, name, ok, observed) {
 }
 
 async function main(options = {}) {
-  const scratch = mkdtempSync(join(realpathSync(tmpdir()), 'xez-multi-project-'));
+  // `.native`: on Windows the JS realpath keeps an 8.3 short name (`C:\Users\LONGNA~1\…`) while
+  // xezar stores the long one, and the root comparisons below are plain string equality (#1137).
+  const scratch = mkdtempSync(join(realpathSync.native(tmpdir()), 'xez-multi-project-'));
   const logs = join(scratch, 'logs');
   const home = join(scratch, 'home');
   const stateFile = join(scratch, 'state.json');
@@ -351,10 +353,13 @@ async function main(options = {}) {
     });
     await waitFor('cockpit health', async () => (await api(base, '/api/v1/health')).status === 200 || undefined);
 
-    const bRegisteredAt = Date.now();
     const registered = await api(base, '/api/v1/projects', 'POST', { root: repoB });
     assertion(result, 'repo B registers through the product API', registered.status === 200, registered);
     const projects = await api(base, '/api/v1/projects');
+    // The server stamps its probe-cache entry when the probe FINISHES (`probeRoot`), and the probe
+    // runs git, which can take longer than any fixed margin on Windows. So the cache window is
+    // measured from the last response that may have probed B, never from before the request (#1137).
+    const bProbedAt = Date.now();
     const entries = projects.json.projects;
     const a = entries.find((entry) => entry.root === repoA);
     const b = entries.find((entry) => entry.root === repoB);
@@ -370,14 +375,17 @@ async function main(options = {}) {
     // Missing-root must be checked BEFORE B's first build: a context, once built, is served from
     // the in-memory map and never re-probes disk (`ProjectContexts.context`), so this assertion
     // has to land before "B builds lazily" touches B for the first time or it would pass vacuously.
-    await outlastProbeCache(bRegisteredAt);
+    await outlastProbeCache(bProbedAt);
     const absentB = `${repoB}.missing`;
-    const renamedAwayAt = Date.now();
     renameRetrying(repoB, absentB);
     const missing = await api(base, `/api/v1/p/${b.id}/runs`);
+    const missingProbedAt = Date.now();
+    // A request served from a stale "ok" probe builds B's context, and that recreates
+    // `<B>/.local/xezar/`: the rename back would then fail on a non-empty folder with a bare EPERM.
+    if (existsSync(repoB)) throw new Error(`B was recreated while it was missing (status ${missing.status}): the request was served from a stale probe`);
     renameRetrying(absentB, repoB);
     assertion(result, 'registered missing B is 409 before first build', missing.status === 409, missing);
-    await outlastProbeCache(renamedAwayAt);
+    await outlastProbeCache(missingProbedAt);
     assertion(result, 'B builds lazily on its first scoped request', (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, b.id);
 
     bridgeA = await openBridge('bridge-a', registry, repoA, env, logs);

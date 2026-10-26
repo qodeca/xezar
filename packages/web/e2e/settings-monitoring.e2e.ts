@@ -33,12 +33,17 @@ async function putResources(resources: Partial<WorkspaceConfig['resources']>): P
   if (!response.ok) throw new Error(`workspace config update failed: ${response.status}`)
 }
 
-async function waitForResources(check: (resources: WorkspaceConfig['resources']) => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (check((await workspaceConfig()).resources)) return
+/** Polls the saved config every 250 ms, `attempts` times; true once `check` holds. */
+async function resourcesReach(check: (resources: WorkspaceConfig['resources']) => boolean, attempts = 40): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (check((await workspaceConfig()).resources)) return true
     await new Promise((resolveWait) => setTimeout(resolveWait, 250))
   }
-  throw new Error('workspace resources never reached the expected state')
+  return false
+}
+
+async function waitForResources(check: (resources: WorkspaceConfig['resources']) => boolean): Promise<void> {
+  if (!(await resourcesReach(check))) throw new Error('workspace resources never reached the expected state')
 }
 
 function choose(selector: string, value: string): void {
@@ -77,25 +82,30 @@ describe('global Resources monitoring controls', () => {
     choose('[data-slot="resources-max-monitoring"]', '3')
     await waitForResources((resources) => resources.maxMonitoringSessions === 3)
 
-    choose('[data-slot="resources-monitoring-wake-mode"]', 'interval')
     // The capacity write above invalidates the workspace config, and the refetch that lands a
     // moment later re-renders this form from the server's value — wiping a number typed into
     // the freshly mounted input. Type until it holds, exactly as a reader would, and only then
-    // reach for Save (which stays disabled while the field still matches what is saved).
-    browser.waitForFunction(`(() => {
-      const input = document.querySelector('[data-slot="resources-monitoring-wake-interval"]')
-      if (input === null) return false
-      if (input.value === '7') return true
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
-      setter.call(input, '7')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      return false
-    })()`)
-    browser.waitForFunction(
-      `document.querySelector('[data-action="resources-save-monitoring-wake"]:not([disabled])') !== null`,
-    )
-    browser.click('[data-action="resources-save-monitoring-wake"]')
-    await waitForResources((resources) => resources.monitoringWakeIntervalMinutes === 7)
+    // reach for Save (which stays disabled while the field still matches what is saved). The
+    // refetch can still land between the typing and the click, leaving the click on a disabled
+    // button (1 run in 4 on Windows, #1137), so a save the server never saw is retried.
+    for (let attempt = 1; ; attempt += 1) {
+      choose('[data-slot="resources-monitoring-wake-mode"]', 'interval')
+      browser.waitForFunction(`(() => {
+        const input = document.querySelector('[data-slot="resources-monitoring-wake-interval"]')
+        if (input === null) return false
+        if (input.value === '7') return true
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+        setter.call(input, '7')
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        return false
+      })()`)
+      browser.waitForFunction(
+        `document.querySelector('[data-action="resources-save-monitoring-wake"]:not([disabled])') !== null`,
+      )
+      browser.click('[data-action="resources-save-monitoring-wake"]')
+      if (await resourcesReach((resources) => resources.monitoringWakeIntervalMinutes === 7, 16)) break
+      if (attempt === 3) throw new Error('the wake interval save never reached the server in 3 attempts')
+    }
 
     gotoResources()
     expect(String(browser.evaluate(`document.querySelector('[data-slot="resources-max-monitoring"]').value`))).toBe('3')

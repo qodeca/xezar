@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { fixtureServeEnv, xezarCli } from '../agent-browser'
 import { createFixtureRepo } from './fixture-repo'
@@ -58,6 +59,14 @@ export async function bootCockpit(): Promise<Cockpit> {
     const bin = join(dataRoot, 'bin', name)
     mkdirSync(join(dataRoot, 'bin'), { recursive: true })
     const script = resolve(import.meta.dirname, 'agents', `${name}.mjs`)
+    if (process.platform === 'win32') {
+      // Windows cannot start an extension-less shell script; xezar runs a `.mjs` as
+      // `node <script>` (`platform/command-resolve.ts`), so the wrapper is a module that adds
+      // the same argument and loads the agent in-process (#1137).
+      const module = `${bin}.mjs`
+      writeFileSync(module, `process.argv.splice(2, 0, '--capture-root', ${JSON.stringify(dataRoot)})\nawait import(${JSON.stringify(pathToFileURL(script).href)})\n`)
+      return module
+    }
     writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} --capture-root ${JSON.stringify(dataRoot)} "$@"\n`)
     chmodSync(bin, 0o755)
     return bin
