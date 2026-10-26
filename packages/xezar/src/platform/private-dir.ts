@@ -128,23 +128,31 @@ export const ACL_SCRIPT = [
   'if ([int]$in.pid -gt 0) { try { "started $([Diagnostics.Process]::GetProcessById([int]$in.pid).StartTime.ToFileTimeUtc())" } catch { "started -" } }',
   // #980: the administrators-only folder, set only by an elevated process. The access list first –
   // it locks a non-elevated owner out – then a folder not yet owned by Administrators is emptied
-  // and taken over; one that cannot be emptied keeps its owner, which the check refuses.
+  // and taken over; one that cannot be emptied keeps its owner, which the check refuses. The list
+  // is written once more after a takeover: CI (#1197, the built-in Administrator) measured the
+  // OWNER RIGHTS entry gone once the owner had changed, and without it every file that account
+  // writes – owned by the account itself – is refused. A fresh object each time: a list object
+  // that was already written may write nothing the second time.
   'if ($in.ensure -eq $true -and $in.admin -eq $true) {',
   '  if ($elevated) {',
   '    $dir = New-Object IO.DirectoryInfo($paths[0])',
-  '    $acl = New-Object Security.AccessControl.DirectorySecurity',
-  '    $acl.SetAccessRuleProtection($true, $false)',
-  `    foreach ($sid in @('${SYSTEM}', '${ADMINISTRATORS}')) {`,
-  "      $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))",
+  '    $adminAcl = {',
+  '      $acl = New-Object Security.AccessControl.DirectorySecurity',
+  '      $acl.SetAccessRuleProtection($true, $false)',
+  `      foreach ($sid in @('${SYSTEM}', '${ADMINISTRATORS}')) {`,
+  "        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))",
+  '      }',
+  `      $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('${OWNER_RIGHTS}')), 'ReadPermissions', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))`,
+  '      $acl',
   '    }',
-  `    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('${OWNER_RIGHTS}')), 'ReadPermissions', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))`,
-  '    $dir.SetAccessControl($acl)',
+  '    $dir.SetAccessControl((& $adminAcl))',
   `    if ($dir.GetAccessControl('Owner').GetOwner([Security.Principal.SecurityIdentifier]).Value -ne '${ADMINISTRATORS}') {`,
   '      foreach ($child in @($dir.GetFileSystemInfos())) { try { if ($child -is [IO.DirectoryInfo]) { $child.Delete($true) } else { $child.Delete() } } catch { } }',
   '      if (@($dir.GetFileSystemInfos()).Count -eq 0) {',
   '        $own = New-Object Security.AccessControl.DirectorySecurity',
   `        $own.SetOwner((New-Object Security.Principal.SecurityIdentifier('${ADMINISTRATORS}')))`,
   '        $dir.SetAccessControl($own)',
+  '        $dir.SetAccessControl((& $adminAcl))',
   '      }',
   '    }',
   '  }',

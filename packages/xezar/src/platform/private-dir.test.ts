@@ -155,6 +155,35 @@ describe('judgeAclReport (#963)', () => {
       expect(judgeAclReport(report(unknown), paths, true)).toMatchObject({ ok: false, reason: 'not-elevated' });
     });
 
+    // #1197 CI, job 121699224728: GitHub's runner account is the built-in Administrator (RID 500), and
+    // what it writes is owned by the account itself (`LA`). The folder arrived without its OWNER
+    // RIGHTS entry, so the files inherited none – and a user-owned file without it is refused: an
+    // owner may otherwise always rewrite its access list. That refusal is the guarantee and stays.
+    describe('the built-in Administrator on a GitHub runner (#1197)', () => {
+      const RUNNER = 'S-1-5-21-1-2-3-500';
+      const ciPaths = ['D:\\t\\ipc-admin', 'D:\\t\\ipc-admin\\xap.key', 'D:\\t\\ipc-admin\\xap.pipe'];
+      const seen = (folder: string, file: string) =>
+        report([`sid ${RUNNER}`, 'elevated True', 'drive Fixed NTFS', `sddl 0 ${folder}`, `sddl 1 ${file}`, `sddl 2 ${file}`]);
+
+      it('refuses the exact report CI saw: files owned by the account, no OWNER RIGHTS entry', () => {
+        const verdict = judgeAclReport(seen('O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)', 'O:LAD:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)'), ciPaths, true);
+        expect(verdict).toMatchObject({ ok: false, reason: 'not-private', message: expect.stringContaining('xap.key') });
+      });
+
+      it('passes the same files once the folder carries the inheritable OWNER RIGHTS entry the ensure writes', () => {
+        expect(judgeAclReport(seen(ADMIN_FOLDER, 'O:LAD:AI(A;ID;0x120000;;;OW)(A;ID;FA;;;SY)(A;ID;FA;;;BA)'), ciPaths, true)).toEqual({ ok: true });
+      });
+
+      it('the ensure writes the full list again after taking the folder over, in a fresh object', () => {
+        const takeover = ACL_SCRIPT.slice(ACL_SCRIPT.indexOf('$dir.SetAccessControl($own)'));
+        expect(takeover.startsWith('$dir.SetAccessControl($own)\n        $dir.SetAccessControl((& $adminAcl))')).toBe(true);
+        // Every write of the administrators-only list builds it anew, OWNER RIGHTS included.
+        const block = ACL_SCRIPT.slice(ACL_SCRIPT.indexOf('$adminAcl = {'), ACL_SCRIPT.indexOf('$dir.SetAccessControl((& $adminAcl))'));
+        expect(block).toContain("SecurityIdentifier('S-1-3-4')), 'ReadPermissions'");
+        expect(ACL_SCRIPT.match(/\$dir\.SetAccessControl\(\(& \$adminAcl\)\)/g)).toHaveLength(2);
+      });
+    });
+
     it('the administrators-only folder keeps every other rule: volume, owner, entries, every file', () => {
       expect(judgeAclReport(report(elevated.map((l) => l.replace('Fixed NTFS', 'Network NTFS'))), paths, true)).toMatchObject({ reason: 'network-drive' });
       expect(judgeAclReport(report(elevated.map((l) => l.replace(`sddl 0 ${ADMIN_FOLDER}`, `sddl 0 ${ADMIN_FOLDER.replace('O:BA', `O:${ME}`)}`))), paths, true)).toMatchObject({ reason: 'foreign-owner' });
