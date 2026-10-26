@@ -767,7 +767,11 @@ async function mergeWriteLocked(
   // the schema is unchanged and callers still receive a full WorkspaceConfig —
   // and only the bytes on disk are projected.
   const onDisk = projectLayout ? withoutMachineScopedKeys(next) : next;
-  atomicWriteJsonSync(path, onDisk);
+  // Async, never the sync twin (#1105, the same fault #1132 fixed for agent accounts): the read
+  // above and every unlocked `loadWorkspaceConfig` elsewhere in this process read the file
+  // asynchronously, and on Windows a sync rename retry blocks the event loop such a reader needs
+  // to close its handle, so the save failed after the whole retry budget (`atomicWriteJson`).
+  await atomicWriteJson(path, onDisk);
   // Refresh the snapshot after EVERY successful write, including an emptied
   // registry (#731). Skipping the empty case left a stale non-empty backup:
   // removing the last project, then losing config.json, resurrected the project
@@ -775,7 +779,7 @@ async function mergeWriteLocked(
   // load (see loadWorkspaceConfigBackup), so recovery now settles on the empty
   // registry the user intended rather than the old projects.
   try {
-    atomicWriteJsonSync(workspaceConfigBackupPath(path), onDisk);
+    await atomicWriteJson(workspaceConfigBackupPath(path), onDisk);
   } catch {
     // Best-effort: the registry itself is already safely on disk, and a
     // failed snapshot must never turn a successful write into an error.
