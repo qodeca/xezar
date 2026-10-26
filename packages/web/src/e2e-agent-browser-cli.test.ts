@@ -108,6 +108,20 @@ describe('runAgentBrowserCli', () => {
     expect(thrown?.message).toContain('Command failed')
   }, 30_000)
 
+  it('launches every session with motion allowed, keeping launch flags the caller already set (#1137)', () => {
+    const script = fakeCli("process.stdout.write(process.env.AGENT_BROWSER_ARGS ?? '')")
+    const before = process.env.AGENT_BROWSER_ARGS
+    try {
+      delete process.env.AGENT_BROWSER_ARGS
+      expect(runAgentBrowserCli(process.execPath, [script])).toBe('--force-prefers-no-reduced-motion')
+      process.env.AGENT_BROWSER_ARGS = '--no-sandbox'
+      expect(runAgentBrowserCli(process.execPath, [script])).toBe('--no-sandbox,--force-prefers-no-reduced-motion')
+    } finally {
+      if (before === undefined) delete process.env.AGENT_BROWSER_ARGS
+      else process.env.AGENT_BROWSER_ARGS = before
+    }
+  }, 30_000)
+
   it('still fails a CLI that itself hangs, after its timeout', () => {
     const script = fakeCli('setTimeout(() => {}, 60_000)')
 

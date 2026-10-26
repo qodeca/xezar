@@ -269,21 +269,24 @@ export async function settle(ms = 400): Promise<void> {
 
 /**
  * Scroll the thread until `selector` clears the reply composer, which floats over the bottom of
- * the thread — `scrollIntoView` alone leaves an end-of-thread control underneath it.
+ * the thread — `scrollIntoView` alone leaves an end-of-thread control underneath it. The scroll
+ * is repeated on every poll until it holds: content that lands after the first scroll (a diff, a
+ * late re-layout) moves the target again, and one scroll followed by a bare wait then never ends
+ * (#1137).
  */
 export function scrollAboveComposer(browser: AgentBrowser, selector: string): void {
   const target = `document.querySelector(${JSON.stringify(selector)})`
   const limit = `((document.querySelector('[data-slot="composer"]')?.getBoundingClientRect().top ?? innerHeight) - 24)`
-  browser.evaluate(`(() => {
+  wait(browser, `(() => {
     const node = ${target}
+    if (node.getBoundingClientRect().bottom <= ${limit} + 1) return true
     let scroller = node.parentElement
     while (scroller && !(scroller.scrollHeight > scroller.clientHeight && getComputedStyle(scroller).overflowY !== 'visible')) {
       scroller = scroller.parentElement
     }
     scroller.scrollTop += node.getBoundingClientRect().bottom - ${limit}
-    return true
+    return false
   })()`)
-  wait(browser, `${target}.getBoundingClientRect().bottom <= ${limit} + 1`)
 }
 
 // ---- scenarios: the authoritative preparation, with its visible-fact assertions --------------

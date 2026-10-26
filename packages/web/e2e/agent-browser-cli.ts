@@ -30,6 +30,23 @@ export type CliFailure = Error & {
   signal: NodeJS.Signals | null
 }
 
+/**
+ * Chrome launch flags every session gets. Chrome copies the OS motion setting into
+ * `prefers-reduced-motion`, so a machine with animation effects turned off (a Windows default on
+ * some installs) made every "with motion allowed" spec fail, and the CLI can only switch the
+ * preference ON (`set media <scheme> reduced-motion`), never force it off (#1137). This flag pins
+ * the default to "no preference"; `set media … reduced-motion` still overrides it, checked on
+ * agent-browser 0.39.1. Launch flags only apply when a session starts, so passing them on every
+ * call is harmless.
+ */
+const BROWSER_LAUNCH_ARGS = ['--force-prefers-no-reduced-motion']
+
+/** The child's environment: the caller's, with our launch flags added to any it already set. */
+function cliEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const own = env.AGENT_BROWSER_ARGS?.trim()
+  return { ...env, AGENT_BROWSER_ARGS: [...(own ? [own] : []), ...BROWSER_LAUNCH_ARGS].join(',') }
+}
+
 export function runAgentBrowserCli(
   command: string,
   args: readonly string[],
@@ -42,7 +59,7 @@ export function runAgentBrowserCli(
   const err = openSync(errPath, 'w')
   let result: ReturnType<typeof spawnSync>
   try {
-    result = spawnSync(command, args, { stdio: ['ignore', out, err], timeout, windowsHide: true })
+    result = spawnSync(command, args, { stdio: ['ignore', out, err], timeout, windowsHide: true, env: cliEnv() })
   } finally {
     closeSync(out)
     closeSync(err)
