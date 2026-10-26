@@ -41,16 +41,16 @@ describe('probeElevation (#980)', () => {
 
 describe('the user SID probe (#980)', () => {
   const env = { SystemRoot: 'C:\\Windows' };
-  const userRow = '"marci-pc\\marci","S-1-5-21-1504711166-3655588297-3458958062-1001","High Mandatory Level"';
+  const userRow = '"example-pc\\someone","S-1-5-21-1000000001-2000000002-3000000003-1001","High Mandatory Level"';
 
   it('reads the current user SID from a whoami /user CSV line', () => {
-    expect(sidFromWhoamiUser(userRow)).toBe('S-1-5-21-1504711166-3655588297-3458958062-1001');
+    expect(sidFromWhoamiUser(userRow)).toBe('S-1-5-21-1000000001-2000000002-3000000003-1001');
     expect(sidFromWhoamiUser('')).toBeNull();
   });
 
   it('asks whoami /user from System32 on Windows only', () => {
     const whoamiUser = vi.fn(() => userRow);
-    expect(probeUserSid({ platform: 'win32', env, whoamiUser })).toBe('S-1-5-21-1504711166-3655588297-3458958062-1001');
+    expect(probeUserSid({ platform: 'win32', env, whoamiUser })).toBe('S-1-5-21-1000000001-2000000002-3000000003-1001');
     expect(whoamiUser).toHaveBeenCalledWith('C:\\Windows\\System32\\whoami.exe');
     for (const platform of ['linux', 'darwin'] as const) {
       const never = vi.fn(() => userRow);
