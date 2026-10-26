@@ -15,7 +15,7 @@ import { recordOwnListen } from '../server/instance-liveness.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
 import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS, withPlatform } from '../../test/helpers/platform.ts';
 import { connectRaw, targetFor } from '../../test/helpers/mcp-raw.ts';
-import { checkPrivateDir } from '../platform/private-dir.ts';
+import { checkPrivateDir, claimAdminFiles } from '../platform/private-dir.ts';
 
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
@@ -380,6 +380,8 @@ async function rewriteEndpoint(svc: McpServiceHandle, skewMs: number): Promise<v
   const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid, ...(files.admin ? { elevated: true } : {}) });
   if (!parent.ok || typeof parent.startedAt !== 'number') throw new Error('could not read the parent process start time');
   writePipeFiles(files, { ...endpoint, pid: process.ppid, processStartTime: parent.startedAt + skewMs });
+  // #980: an elevated engine hands its files to Administrators; a rewritten one must look the same.
+  if (files.admin) await claimAdminFiles([files.endpoint, files.marker]);
 }
 
 /**

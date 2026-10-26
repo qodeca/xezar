@@ -191,7 +191,8 @@ export async function validateWindowsControlSocket(socketPath: string, check: ty
   const names = local('no shared Codex app-server control socket was found in the Codex home', () => readdirSync(folder), 'app-server');
   // Worded as the POSIX `lstat` refusal is, so the cockpit says the same thing on every OS.
   if (!names.includes(basename(socketPath))) throw new CodexAttachError('app-server', 'no shared Codex app-server control socket was found in the Codex home (ENOENT)');
-  const verdict = await check(folder, [socketPath]);
+  // Codex's folder, not xezar's: an elevated xezar attaches as one without administrator rights does (#980).
+  const verdict = await check(folder, [socketPath], {}, { anyElevation: true });
   if (!verdict.ok) throw new CodexAttachError('app-server', verdict.reason === 'foreign-owner' ? 'the Codex control socket belongs to another user' : 'the Codex control socket parent is not private to this user');
 }
 

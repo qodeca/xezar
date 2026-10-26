@@ -29,7 +29,8 @@ export async function listenCodexControl(server: Server, home: string, { relay =
     await new Promise<void>((done) => server.listen(socketPath, done));
     return () => undefined;
   }
-  const verdict = await ensurePrivateDir(join(home, 'app-server-control'));
+  // As Codex keeps it: private to the user whatever this process's elevation (#980).
+  const verdict = await ensurePrivateDir(join(home, 'app-server-control'), {}, { anyElevation: true });
   if (!verdict.ok) throw new Error(`codex stand-in: ${verdict.message}`);
   const endpoint = onWindows
     ? `\\\\.\\pipe\\xez-codex-stand-in-${randomBytes(8).toString('hex')}`

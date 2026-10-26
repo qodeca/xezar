@@ -3,7 +3,11 @@
 - ✨ **Windows: an elevated xezar serves an elevated MCP leader.** When xezar and the leader's
   `xezar mcp` bridge both run as administrator, they now meet in their own administrators-only
   folder instead of MCP being unavailable. A cockpit and a leader that differ in elevation are still
-  refused, now with a message that says so. Without administrator rights nothing changes. (#980, #1197)
+  refused, now with a message that says so. An elevated xezar also attaches to a running Codex
+  session as the leader; Codex's own folder is checked as private to you, as it is without
+  administrator rights. Without administrator rights nothing changes. Restart a running leader
+  session after upgrading: a bridge from an older version is refused with a message that names the
+  version mismatch. (#980, #1197)
 
 ## 🔒 Security
 

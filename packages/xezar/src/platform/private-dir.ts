@@ -82,6 +82,13 @@ export interface PrivateDirOptions {
    * `elevated` is set; the caller resolves it with `platform/elevated-ipc.ts`.
    */
   adminChain?: AdminChain;
+  /**
+   * Windows (#977, #980): a folder another program keeps private to this user – the Codex control
+   * folder – judged as the user's own whatever this process's elevation, so an elevated xezar can
+   * attach to Codex as one without administrator rights does. Owned by the user, or (elevated only)
+   * by Administrators, which an elevated Codex leaves; an unknown elevation still refuses.
+   */
+  anyElevation?: boolean;
 }
 
 /** Test seams. Production passes none. */
@@ -311,10 +318,10 @@ export type PrivateDirMode = 'user' | 'admin';
  * same user could rewrite the access list of a file it owns). An allow entry may name only SYSTEM or
  * Administrators; never the user, never OWNER RIGHTS.
  */
-export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: PrivateDirMode = 'user'): 'foreign-owner' | 'not-private' | null {
+export function judgeSddl(sddl: string, user: string, isFolder: boolean, mode: PrivateDirMode = 'user', adminOwnerToo = false): 'foreign-owner' | 'not-private' | null {
   if (mode === 'admin') return judgeAdminSddl(sddl, isFolder);
   const owner = /^O:(S-1-[\d-]+|[A-Z]{2})/.exec(sddl)?.[1];
-  if (owner === undefined || sidOf(owner) !== user) return 'foreign-owner';
+  if (owner === undefined || (sidOf(owner) !== user && !(adminOwnerToo && sidOf(owner) === ADMINISTRATORS))) return 'foreign-owner';
   const dacl = /D:([A-Z]*)((?:\([^)]*\))*)/.exec(sddl);
   if (!dacl) return 'not-private';
   if (isFolder && !dacl[1]!.includes('P')) return 'not-private';
@@ -369,11 +376,12 @@ function judgeAncestorOwner(sddl: string): boolean {
  * must exist, be no reparse point, be owned by Administrators (a file also by SYSTEM) and name no one
  * but SYSTEM and Administrators in their access list.
  */
-export function judgeAclReport(report: AclReport, paths: readonly string[], elevated = false): PrivateDirResult {
+export function judgeAclReport(report: AclReport, paths: readonly string[], elevated = false, anyElevation = false): PrivateDirResult {
   const folder = paths[0]!;
   if (report.sid === undefined) return refuse('sid-lookup-failed', folder);
-  if (report.elevated !== elevated) return refuse(elevated ? 'not-elevated' : 'elevated', folder);
-  const mode: PrivateDirMode = report.elevated ? 'admin' : 'user';
+  if (anyElevation ? report.elevated === undefined : report.elevated !== elevated) return refuse(elevated ? 'not-elevated' : 'elevated', folder);
+  const mode: PrivateDirMode = report.elevated && !anyElevation ? 'admin' : 'user';
+  const adminOwnerToo = anyElevation && report.elevated === true;
   if (report.driveType === 'Network') return refuse('network-drive', folder);
   if (report.driveFormat !== 'NTFS' && report.driveFormat !== 'ReFS') return refuse('not-ntfs', folder);
   if (mode === 'admin') {
@@ -385,7 +393,7 @@ export function judgeAclReport(report: AclReport, paths: readonly string[], elev
     if (sddl === undefined) return refuse('not-private', folder);
     const path = i === 0 ? folder : paths[i]!;
     if (mode === 'admin' && report.reparse.get(i) !== false) return refuse('reparse-point', path);
-    const verdict = judgeSddl(sddl, report.sid, i === 0, mode);
+    const verdict = judgeSddl(sddl, report.sid, i === 0, mode, adminOwnerToo);
     if (verdict !== null) return refuse(verdict, path);
   }
   return report.startedAt === undefined ? { ok: true } : { ok: true, startedAt: report.startedAt };
@@ -414,7 +422,7 @@ function isUncPath(path: string): boolean {
 
 async function windowsCheck(paths: readonly string[], ensure: boolean, deps: PrivateDirDeps, options: PrivateDirOptions): Promise<PrivateDirResult> {
   const folder = paths[0]!;
-  const elevated = options.elevated === true;
+  const elevated = options.elevated === true && options.anyElevation !== true;
   if (isUncPath(folder)) return refuse('network-drive', folder);
   // The administrators-only folder (#980) judges reparse points IN the script (a junction, which
   // Node's `lstat` does NOT report as a symbolic link, would slip past the check below) and may not
@@ -453,7 +461,7 @@ async function windowsCheck(paths: readonly string[], ensure: boolean, deps: Pri
     return { ...refused, message: `${refused.message} [test: PowerShell gave no access list: ${why.slice(0, 300)}]` };
   }
   const report = parseAclReport(text);
-  const verdict = judgeAclReport(report, paths, elevated);
+  const verdict = judgeAclReport(report, paths, elevated, options.anyElevation === true);
   // A CI runner's account is not one we can inspect by hand: say what the check saw.
   if (testRun && !verdict.ok && report.sid !== undefined) {
     const dirFact = (fact: DirFact | undefined): string => (fact === undefined ? '?' : fact === 'missing' ? 'missing' : `${fact.reparse ? 'rp ' : ''}${fact.sddl}`);

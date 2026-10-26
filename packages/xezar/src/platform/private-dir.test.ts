@@ -164,6 +164,24 @@ describe('judgeAclReport (#963)', () => {
       expect(judgeAclReport(report(userFolder), ['C:\\h\\ipc'])).toMatchObject({ ok: false, reason: 'elevated', message: expect.stringContaining('runs as administrator') });
     });
 
+    // The owner's decision (2026-10-26): an elevated xezar still attaches to Codex, whose control
+    // folder Codex keeps private to the user – judged as the user's own, at any elevation.
+    it('a folder another program keeps private (the Codex home) passes at any elevation, and nothing wider', () => {
+      const at = (elevated: string, sddl: string) => report([`sid ${ME}`, `elevated ${elevated}`, 'drive Fixed NTFS', `sddl 0 ${sddl}`]);
+      const adminOwned = PRIVATE.replace(`O:${ME}`, 'O:BA');
+      expect(judgeAclReport(at('True', PRIVATE), ['C:\\c'], false, true)).toEqual({ ok: true });
+      expect(judgeAclReport(at('False', PRIVATE), ['C:\\c'], false, true)).toEqual({ ok: true });
+      // An elevated Codex leaves its folder owned by Administrators: accepted only when elevated.
+      expect(judgeAclReport(at('True', adminOwned), ['C:\\c'], false, true)).toEqual({ ok: true });
+      expect(judgeAclReport(at('False', adminOwned), ['C:\\c'], false, true)).toMatchObject({ ok: false, reason: 'foreign-owner' });
+      // Still the user's rules: another owner, a wider access list, an unknown elevation all refuse.
+      expect(judgeAclReport(at('True', PRIVATE.replace(`O:${ME}`, `O:${OTHER}`)), ['C:\\c'], false, true)).toMatchObject({ ok: false, reason: 'foreign-owner' });
+      expect(judgeAclReport(at('True', `${PRIVATE}(A;OICI;FA;;;${OTHER})`), ['C:\\c'], false, true)).toMatchObject({ ok: false, reason: 'not-private' });
+      expect(judgeAclReport(report([`sid ${ME}`, 'drive Fixed NTFS', `sddl 0 ${PRIVATE}`]), ['C:\\c'], false, true)).toMatchObject({ ok: false, reason: 'elevated' });
+      // Without it, xezar's own user folder is still refused to an elevated process.
+      expect(judgeAclReport(at('True', PRIVATE), ['C:\\c'])).toMatchObject({ ok: false, reason: 'elevated' });
+    });
+
     it('refuses a reparse point at the leaf, a file, or a chain directory – a swapped junction (#980)', () => {
       expect(judgeAclReport(report(healthy({ rp: { 0: true } })), paths, true)).toMatchObject({ ok: false, reason: 'reparse-point', message: expect.stringContaining('ipc-admin') });
       expect(judgeAclReport(report(healthy({ rp: { 2: true } })), paths, true)).toMatchObject({ ok: false, reason: 'reparse-point', message: expect.stringContaining('a.pipe') });
