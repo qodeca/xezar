@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { connect } from 'node:net';
 import { join } from 'node:path';
@@ -7,7 +7,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { CodexRequestRefused } from './codex.ts';
-import { CODEX_CONTROL_SOCKET, CodexAttachError, codexControlHome, connectCodexLeader, validateControlSocket } from './codex-link.ts';
+import { CODEX_CONTROL_SOCKET, CodexAttachError, codexControlHome, connectCodexLeader, validateControlSocket, validateWindowsControlSocket } from './codex-link.ts';
 import { launchFileSync } from '../../platform/process-launch.ts';
 import { listenCodexControl } from '../../../test/helpers/codex-control.ts';
 import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
@@ -76,7 +76,7 @@ function answers(home: string, project: string, over: Record<string, Answer | ((
   };
 }
 
-async function appServer(home: string, handler: Handler = answers(home, home), opts: { refuseEveryUpgrade?: boolean } = {}) {
+async function appServer(home: string, handler: Handler = answers(home, home), opts: { refuseEveryUpgrade?: boolean; relay?: boolean } = {}) {
   const upgrades: IncomingHttpHeaders[] = [];
   const requests: Request[] = [];
   const clients = new Set<WebSocket>();
@@ -100,7 +100,7 @@ async function appServer(home: string, handler: Handler = answers(home, home), o
       });
     });
   });
-  const unpin = await listenCodexControl(server, home);
+  const unpin = await listenCodexControl(server, home, opts.relay === undefined ? {} : { relay: opts.relay });
   const close = (): Promise<void> =>
     new Promise<void>((resolve) => {
       for (const client of clients) client.terminate();
@@ -334,17 +334,53 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(existsSync(`${join(home, CODEX_CONTROL_SOCKET)}.relay-pids`)).toBe(false);
   });
 
-  // win32-skip(#976): the Codex relay runs on Windows only; POSIX dials the socket itself, pinned above
-  it.runIf(onWindows)('on Windows each attach runs one Codex relay, and closing the link stops it (#977)', async () => {
+  it('the Windows path runs one Codex relay per attach, and closing the link stops it (#977)', async () => {
     const home = codexHome('xzcl-relay-');
-    await appServer(home);
-    const connected = await connectCodexLeader({ threadId: 'thread-1' }, home, home);
+    await appServer(home, answers(home, home), { relay: true });
+    const connected = await connectCodexLeader({ threadId: 'thread-1' }, home, home, 'win32');
+    expect(connected.threadId).toBe('thread-1');
     const pids = readFileSync(`${join(home, CODEX_CONTROL_SOCKET)}.relay-pids`, 'utf8').trim().split('\n').map(Number);
     expect(pids).toHaveLength(1);
     const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
     expect(alive(pids[0]!)).toBe(true);
     connected.link.close();
     await expect.poll(() => alive(pids[0]!), { timeout: 10_000 }).toBe(false);
+  });
+
+  it('the Windows path names a relay that cannot start, a hang-up through it, and a home it cannot list – and leaves no relay behind (#977)', async () => {
+    const home = codexHome('xzcl-relay-fail-');
+    await appServer(home, answers(home, home), { relay: true });
+    const pinned = process.env.XEZ_CODEX_BIN;
+    process.env.XEZ_CODEX_BIN = join(home, 'no-such-codex');
+    try {
+      const noCodex = await connectCodexLeader({ threadId: 'thread-1' }, home, home, 'win32').catch((err: Error) => err);
+      expect(noCodex).toMatchObject({ reason: 'app-server', message: expect.stringMatching(/^the Codex command could not be started \(/) });
+      expect((noCodex as Error).message).not.toContain(home);
+    } finally {
+      process.env.XEZ_CODEX_BIN = pinned;
+    }
+    const hangUpHome = codexHome('xzcl-relay-hangup-');
+    await appServer(hangUpHome, answers(hangUpHome, hangUpHome), { relay: true, refuseEveryUpgrade: true });
+    const hungUp = await connectCodexLeader({ threadId: 'thread-1' }, hangUpHome, hangUpHome, 'win32').catch((err: Error) => err);
+    expect((hungUp as Error).message).toMatch(/^the Codex app-server did not accept xezar’s connection \(/);
+    const relays = readFileSync(`${join(hangUpHome, CODEX_CONTROL_SOCKET)}.relay-pids`, 'utf8').trim().split('\n').map(Number);
+    const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    await expect.poll(() => relays.some(alive), { timeout: 10_000 }).toBe(false);
+    // A Codex home with no control folder at all: the listing itself fails, with the same refusal.
+    const bare = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzcl-bare-')));
+    dirs.push(bare);
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, bare, bare, 'win32')).rejects.toThrow('no shared Codex app-server control socket was found in the Codex home (ENOENT)');
+  });
+
+  it('the Windows folder verdict names who the socket belongs to, and refuses before any relay starts (#977)', async () => {
+    const home = codexHome('xzcl-verdict-');
+    const socketPath = join(home, CODEX_CONTROL_SOCKET);
+    writeFileSync(socketPath, '');
+    const verdict = (reason: 'foreign-owner' | 'not-private' | 'elevated') => async () => ({ ok: false as const, reason, message: 'x' });
+    await expect(validateWindowsControlSocket(socketPath, verdict('foreign-owner'))).rejects.toThrow('belongs to another user');
+    await expect(validateWindowsControlSocket(socketPath, verdict('not-private'))).rejects.toThrow('not private to this user');
+    await expect(validateWindowsControlSocket(socketPath, verdict('elevated'))).rejects.toMatchObject({ reason: 'app-server' });
+    await expect(validateWindowsControlSocket(socketPath, async () => ({ ok: true }))).resolves.toBeUndefined();
   });
 
   it('looks in the serving process’s own Codex home: CODEX_HOME when set, otherwise ~/.codex', () => {

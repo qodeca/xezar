@@ -186,12 +186,12 @@ export function validateControlSocket(socketPath: string): void {
  * relay that then dials it is Codex's own client, which also checks that the listening process
  * runs as this user and is not elevated.
  */
-export async function validateWindowsControlSocket(socketPath: string): Promise<void> {
+export async function validateWindowsControlSocket(socketPath: string, check: typeof checkPrivateDir = checkPrivateDir): Promise<void> {
   const folder = dirname(socketPath);
   const names = local('no shared Codex app-server control socket was found in the Codex home', () => readdirSync(folder), 'app-server');
   // Worded as the POSIX `lstat` refusal is, so the cockpit says the same thing on every OS.
   if (!names.includes(basename(socketPath))) throw new CodexAttachError('app-server', 'no shared Codex app-server control socket was found in the Codex home (ENOENT)');
-  const verdict = await checkPrivateDir(folder, [socketPath]);
+  const verdict = await check(folder, [socketPath]);
   if (!verdict.ok) throw new CodexAttachError('app-server', verdict.reason === 'foreign-owner' ? 'the Codex control socket belongs to another user' : 'the Codex control socket parent is not private to this user');
 }
 
