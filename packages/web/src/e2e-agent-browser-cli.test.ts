@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { runAgentBrowserCli, type CliFailure } from '../e2e/agent-browser-cli'
+import { runAgentBrowserCli, withLaunchArgs, type CliFailure } from '../e2e/agent-browser-cli'
 
 /**
  * `runAgentBrowserCli` returns when the CLI exits, even while a background process it started
@@ -108,19 +108,28 @@ describe('runAgentBrowserCli', () => {
     expect(thrown?.message).toContain('Command failed')
   }, 30_000)
 
-  it('launches every session with motion allowed, keeping launch flags the caller already set (#1137)', () => {
-    const script = fakeCli("process.stdout.write(process.env.AGENT_BROWSER_ARGS ?? '')")
-    const before = process.env.AGENT_BROWSER_ARGS
-    try {
-      delete process.env.AGENT_BROWSER_ARGS
-      expect(runAgentBrowserCli(process.execPath, [script])).toBe('--force-prefers-no-reduced-motion')
-      process.env.AGENT_BROWSER_ARGS = '--no-sandbox'
-      expect(runAgentBrowserCli(process.execPath, [script])).toBe('--no-sandbox,--force-prefers-no-reduced-motion')
-    } finally {
-      if (before === undefined) delete process.env.AGENT_BROWSER_ARGS
-      else process.env.AGENT_BROWSER_ARGS = before
-    }
+  it('launches every session with motion allowed, and passes it to the CLI it runs (#1137)', () => {
+    const script = fakeCli("process.stdout.write(JSON.stringify(process.argv.slice(2)))")
+    expect(JSON.parse(runAgentBrowserCli(process.execPath, [script, '--session', 'plain', 'open', 'about:blank']))).toEqual([
+      '--session', 'plain', 'open', 'about:blank', '--args', '--force-prefers-no-reduced-motion',
+    ])
   }, 30_000)
+
+  it('folds the flag into a spec’s own launch flags and repeats them on every later call of that session', () => {
+    const env = {}
+    expect(withLaunchArgs(['--session', 'b4', '--args', '--blink-settings=primaryHoverType=2', 'open', 'x'], env)).toEqual([
+      '--session', 'b4', '--args', '--blink-settings=primaryHoverType=2,--force-prefers-no-reduced-motion', 'open', 'x',
+    ])
+    // A later plain call must not relaunch Chrome without the spec's hover setting.
+    expect(withLaunchArgs(['--session', 'b4', 'eval', '1'], env)).toEqual([
+      '--session', 'b4', 'eval', '1', '--args', '--blink-settings=primaryHoverType=2,--force-prefers-no-reduced-motion',
+    ])
+    expect(withLaunchArgs(['--session', 'other', 'eval', '1'], env).slice(-1)).toEqual(['--force-prefers-no-reduced-motion'])
+    // A command-line --args overrides the environment's, so a value set there is kept, once.
+    expect(withLaunchArgs(['--session', 'env', 'eval', '1'], { AGENT_BROWSER_ARGS: '--no-sandbox,--force-prefers-no-reduced-motion' }).slice(-1)).toEqual([
+      '--no-sandbox,--force-prefers-no-reduced-motion',
+    ])
+  })
 
   it('still fails a CLI that itself hangs, after its timeout', () => {
     const script = fakeCli('setTimeout(() => {}, 60_000)')
