@@ -201,8 +201,9 @@ describe('the shared Codex app-server link (#374)', () => {
     const server = await appServer(home, answers(home, home, { 'thread/list': { threads: [{ id: 'thread-1', cwd: home }] }, 'thread/loaded/list': { data: [] } }));
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('not loaded');
     expect(server.methods()).not.toContain('thread/resume');
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect([...server.clients].every((client) => client.readyState !== WebSocket.OPEN)).toBe(true);
+    // Polled, not a fixed pause: on Windows the close crosses the relay process, which a loaded CI
+    // runner does not finish in 20 ms. A link that never closes still fails.
+    await expect.poll(() => [...server.clients].every((client) => client.readyState !== WebSocket.OPEN), { timeout: 10_000 }).toBe(true);
   });
 
   it('rejects the obsolete object-shaped loaded-thread response instead of accepting a false positive', async () => {
