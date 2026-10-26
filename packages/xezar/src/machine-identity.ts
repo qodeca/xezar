@@ -8,7 +8,7 @@ import { readPlatformMachineId } from './platform/machine-id.ts';
  * `os.hostname()` cannot answer.
  *
  * A hostname was standing in for machine identity, and a laptop breaks that stand-in: the same
- * machine answers to `Marcins-MacBook-Pro-2.local` on one network and `Marcins-MBP-2.lan` on the
+ * machine answers to `Someones-MacBook-Pro.local` on one network and `Someones-MBP.lan` on the
  * next, so its own dead claim became unreapable and the cockpit locked itself out of its own
  * `.local/xezar` until the file was deleted by hand (#199).
  *
