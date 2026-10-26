@@ -2,7 +2,7 @@
 
 - 🐛 **On Windows, saving a workflow names the file, not its full path.** The "Saved" message and
   the delete confirmation split the saved path on `/` only, so a Windows path showed in full. They
-  now show the file name on every system. (#1137)
+  now show the file name on every system. (#1137, #1193)
 
 ## 🚀 CI/CD & Infrastructure
 
@@ -12,4 +12,4 @@
   handle the Windows MCP pipe and fake agent programs. Two scroll checks and a settings save now
   retry or re-measure instead of failing on a late layout change. The two-project check measures
   the server's status cache from the right moment and compares full folder names, not short 8.3
-  names. (#1137)
+  names. (#1137, #1193)
