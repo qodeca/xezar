@@ -6,4 +6,4 @@
   connects through Codex's own relay, `codex app-server proxy`, while the leader is attached and
   stops it afterwards. The same checks apply as on macOS and Linux: the socket must belong to you,
   in a folder only you can open, and the app-server must confirm the Codex home and the session.
-  (#977)
+  (#977, #1195)
