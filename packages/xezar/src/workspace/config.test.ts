@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -258,6 +259,31 @@ describe('workspace config', () => {
     });
     const dir = readdirSync(dirname(workspaceConfigPath()));
     expect(dir.filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['xezar']);
+  });
+
+  /**
+   * #1105: an unlocked async read of the config in this same process (a route or the run gate
+   * calling `loadWorkspaceConfig`) can hold the file open at the moment a merge-write renames over
+   * it. On Windows that rename is refused until the handle closes. A sync retry sleeps with
+   * `Atomics.wait`, which blocks the event loop the reader needs to close its handle, so every
+   * attempt is refused and the save fails ("Provider preference could not be saved."). The handle
+   * here is closed by a timer – the same event loop – so the write lands only if its retry yields.
+   * On Linux and macOS the rename succeeds at once and this case passes either way.
+   */
+  it('a merge-write lands while another async reader in this process still holds the file open', async () => {
+    write({ projects: [] });
+    const reader = await open(workspaceConfigPath(), 'r');
+    const closed = new Promise<void>((resolve) => {
+      setTimeout(() => void reader.close().then(resolve, resolve), 50);
+    });
+    try {
+      await mergeWriteWorkspaceConfig((config) => {
+        config.projects.push(project('xezar'));
+      });
+    } finally {
+      await closed;
+    }
     expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['xezar']);
   });
 
