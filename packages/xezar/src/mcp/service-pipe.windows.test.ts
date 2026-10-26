@@ -8,7 +8,7 @@ import { acquireFileLock } from '../core/file-lock.ts';
 import { launch } from '../platform/process-launch.ts';
 import { readProcessTable } from '../platform/process-table.ts';
 import { stopChildTree } from '../platform/process-tree.ts';
-import { checkPrivateDir, ensurePrivateDir } from '../platform/private-dir.ts';
+import { checkPrivateDir, claimAdminFiles, ensurePrivateDir } from '../platform/private-dir.ts';
 import { mcpPipeFiles } from './ipc.ts';
 import { newPipeKey, newPipeName, readPipeEndpoint, readPipeMarker, writePipeFiles } from './pipe-endpoint.ts';
 import { listenMcpSocket, MCP_ALREADY_SERVING, type McpServiceHandle } from './service.ts';
@@ -46,6 +46,10 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
   // #980: an elevated engine makes and judges the administrators-only %ProgramData% chain.
   const elevation = () => (files().admin ? { elevated: true as const, adminChain: files().adminChain } : {});
   /** The folder as an earlier engine left it: made private by the same rule the service applies. */
+  /** #980: an elevated engine hands its files to Administrators; a test-written endpoint must look the same. */
+  const claimAsEngine = async () => {
+    if (files().admin) await claimAdminFiles([files().endpoint, files().marker]);
+  };
   const prepareFolder = async () => expect(await ensurePrivateDir(files().dir, {}, elevation())).toEqual({ ok: true });
   const listen = async () => {
     const handle = await listenMcpSocket({ project, version: '1.2.3', tools: [], env });
@@ -87,10 +91,12 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
       }, { timeout: 15_000 });
       await prepareFolder();
       writePipeFiles(files(), { v: 1, pipeName: newPipeName(), key: newPipeKey(), pid: other.pid!, processStartTime: startedAt! });
+      await claimAsEngine();
       await expect(listen()).rejects.toThrow(MCP_ALREADY_SERVING);
 
       // The same pid with another start time is a name an exited engine left: replaced.
       writePipeFiles(files(), { v: 1, pipeName: newPipeName(), key: newPipeKey(), pid: other.pid!, processStartTime: startedAt! + 5_000 });
+      await claimAsEngine();
       const handle = await listen();
       expect(readPipeMarker(files().marker)).toBe(handle.path);
     } finally {

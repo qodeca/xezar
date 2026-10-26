@@ -199,6 +199,8 @@ describe('xez mcp against a real xezar (#86 acceptance)', () => {
     // Since #467 PR 3 the warning is an activity line rather than a bare `console.warn`, so off
     // a terminal it arrives as one logfmt row. The guarantee is the same one this case always
     // made: it is on stderr, it says why, and it is printed exactly ONCE.
+    // Elevated, MCP comes up in the administrators-only folder: there is nothing to warn about.
+    if (processIsElevated()) return;
     await until('the MCP warning', async () =>
       cockpit.stderr().includes('event=mcp.unavailable') ? true : undefined,
     );

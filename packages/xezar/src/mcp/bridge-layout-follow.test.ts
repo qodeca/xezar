@@ -178,7 +178,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     // An earlier GLOBAL cockpit registered the folder, so the global lookup has a row to find.
     const globalRow = await registerProject(root);
     await startSingleProjectEngine(root);
-    const globalSocketDir = globalStateLayout().ipcDir;
+    const globalSocketDir = ipcFolderOf(globalStateLayout().ipcDir);
 
     const byFlag = await resolveMcpTarget(root, { argv: ['mcp', '--global-layout'] });
     expect(byFlag).toMatchObject({ kind: onWindows ? 'pipe' : 'socket', project: { id: globalRow.id } });
