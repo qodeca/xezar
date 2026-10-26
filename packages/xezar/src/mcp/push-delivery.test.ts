@@ -26,7 +26,7 @@ import { QWEN_MESSAGING_SOCKET_ENV, QWEN_MESSAGING_TOKEN_ENV } from './qwen-mess
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
 import { countControllerTicks } from './controller-ticks.testkit.ts';
-import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — push delivery against the REAL composed service: `startMcpService` exactly as `xezar
@@ -858,8 +858,7 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(ok.available && ok.delivery?.deliveredSeq).toBe(1);
   }, 60_000);
 
-  // win32-skip(#977): the Codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-  it.skipIf(onWindows)('QA on #311, round five: a leader that stops answering with nothing waiting reads leader-not-answering', async () => {
+  it('QA on #311, round five: a leader that stops answering with nothing waiting reads leader-not-answering', async () => {
     const c = await cockpit();
     const home = tmp('xzc-');
     const codex = { received: [] as string[], requests: [] as string[], control: { react: true, hangLoaded: false } };
@@ -886,8 +885,7 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     await until('the blocker to clear', async () => (((await c.status()) as { blocker: unknown }).blocker === null ? true : undefined));
   }, 60_000);
 
-  // win32-skip(#977): the Codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-  it.skipIf(onWindows)('records a reaction only when the leader’s session really starts a turn carrying the row (F-20)', async () => {
+  it('records a reaction only when the leader’s session really starts a turn carrying the row (F-20)', async () => {
     const c = await cockpit();
     const home = tmp('xzc-');
     const codex = { received: [] as string[], requests: [] as string[], control: { react: false, hangLoaded: false } };

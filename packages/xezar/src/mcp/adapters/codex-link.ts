@@ -1,9 +1,15 @@
-import { lstatSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import type { Socket } from 'node:net';
+import { basename, dirname, join } from 'node:path';
+import { Duplex } from 'node:stream';
 import WebSocket from 'ws';
 
-import type { CodexAppServerMessage } from '../../core/codex-app-server-transport.ts';
+import { buildCodexAppServerEnv, type CodexAppServerMessage, resolveCodexExecutable } from '../../core/codex-app-server-transport.ts';
 import { agentHomePaths } from '../../paths.ts';
+import { launch } from '../../platform/process-launch.ts';
+import { stopChildTree } from '../../platform/process-tree.ts';
+import { checkPrivateDir } from '../../platform/private-dir.ts';
 import { type CodexAppServerLink, codexLoadedIds, CodexRequestRefused, type CodexThreadState, codexThreadState, type CodexUnreachableReason } from './codex.ts';
 
 /** The only control socket layout measured for a shared Codex app-server. */
@@ -49,7 +55,8 @@ export interface ConnectedCodexLeader {
  * `~/.codex`, which is Codex's own default — and inside it the one measured control socket,
  * `app-server-control/app-server-control.sock`. That candidate is trusted only after, in order:
  *
- *  1. the socket is a Unix socket owned by this user, under a parent directory private to this user;
+ *  1. the socket is a Unix socket owned by this user, under a parent directory private to this user
+ *     (Windows: the same rule, read from the access lists – `validateWindowsControlSocket`);
  *  2. the server listening on it answers `initialize` with that same home (`codexHome`), canonicalised
  *     — so a symlinked or foreign home fails closed;
  *  3. the announced thread is the ONE thread that cwd-filtered `thread/list` (the canonical project
@@ -64,9 +71,13 @@ export function codexControlHome(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
- * Connect to an already-running shared app-server. This starts no process and accepts no socket
- * path from anyone: `codexHome` comes from the service's own environment (`codexControlHome`).
- * Every error it throws is free of paths, so a caller may log it as it is.
+ * Connect to an already-running shared app-server. It accepts no socket path from anyone:
+ * `codexHome` comes from the service's own environment (`codexControlHome`). On macOS and Linux it
+ * starts no process. On Windows Codex listens on an AF_UNIX socket too, at the same path, but Node
+ * cannot dial one there (libuv treats every pipe path as a named pipe), so the link runs through
+ * Codex's own `codex app-server proxy --sock <path>`, a byte relay between its stdio and the socket
+ * that lives exactly as long as the link (#977). Every error it throws is free of paths, so a caller
+ * may log it as it is.
  */
 export async function connectCodexLeader(
   announcement: CodexLeaderAnnouncement,
@@ -74,14 +85,13 @@ export async function connectCodexLeader(
   codexHome: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ConnectedCodexLeader> {
-  // #963: Codex's control endpoint is a Unix socket; its Windows counterpart is a follow-up.
-  if (platform === 'win32') throw new CodexAttachError('unsupported', 'attaching to a running Codex session is not available on this system');
   // A home that cannot be read is where xezar looks, not where this person's Codex runs: the home fix.
   const home = local('the Codex home cannot be read', () => realpathSync(codexHome), 'home');
   const expectedProject = local('the project folder cannot be read', () => realpathSync(projectRoot));
   const socketPath = join(home, CODEX_CONTROL_SOCKET);
-  validateControlSocket(socketPath);
-  const link = await CodexWsLink.connect(socketPath).catch((error: unknown) => {
+  if (platform === 'win32') await validateWindowsControlSocket(socketPath);
+  else validateControlSocket(socketPath);
+  const link = await (platform === 'win32' ? CodexWsLink.connectThroughProxy(socketPath) : CodexWsLink.connect(socketPath)).catch((error: unknown) => {
     throw new CodexAttachError('app-server', error instanceof Error ? error.message : String(error));
   });
   try {
@@ -169,6 +179,22 @@ export function validateControlSocket(socketPath: string): void {
   if (parent.uid !== process.getuid?.() || (parent.mode & 0o077) !== 0) throw new CodexAttachError('app-server', 'the Codex control socket parent is not private to this user');
 }
 
+/**
+ * Windows (#977): the POSIX rule read from the access lists – the socket owned by this user, in a
+ * folder private to this user (`checkPrivateDir`). Node cannot stat an AF_UNIX socket on Windows
+ * (`lstat` fails, `existsSync` says false), so its presence is read from the folder listing. The
+ * relay that then dials it is Codex's own client, which also checks that the listening process
+ * runs as this user and is not elevated.
+ */
+export async function validateWindowsControlSocket(socketPath: string): Promise<void> {
+  const folder = dirname(socketPath);
+  const names = local('no shared Codex app-server control socket was found in the Codex home', () => readdirSync(folder), 'app-server');
+  // Worded as the POSIX `lstat` refusal is, so the cockpit says the same thing on every OS.
+  if (!names.includes(basename(socketPath))) throw new CodexAttachError('app-server', 'no shared Codex app-server control socket was found in the Codex home (ENOENT)');
+  const verdict = await checkPrivateDir(folder, [socketPath]);
+  if (!verdict.ok) throw new CodexAttachError('app-server', verdict.reason === 'foreign-owner' ? 'the Codex control socket belongs to another user' : 'the Codex control socket parent is not private to this user');
+}
+
 class CodexWsLink implements CodexAppServerLink {
   #closed = false;
   #nextId = 1;
@@ -176,8 +202,11 @@ class CodexWsLink implements CodexAppServerLink {
   readonly #pending = new Map<number, { resolve: (result: Record<string, unknown>) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 
   readonly #socket: WebSocket;
-  private constructor(socket: WebSocket) {
+  /** Windows: the `codex app-server proxy` this link runs through, stopped with it. */
+  readonly #relay: ChildProcessWithoutNullStreams | undefined;
+  private constructor(socket: WebSocket, relay?: ChildProcessWithoutNullStreams) {
     this.#socket = socket;
+    this.#relay = relay;
     this.#socket.on('message', (data) => this.#receive(data));
     this.#socket.on('close', () => this.#shutdown(new Error('the Codex app-server closed xezar’s link')));
     this.#socket.on('error', (error) => this.#shutdown(error));
@@ -185,17 +214,46 @@ class CodexWsLink implements CodexAppServerLink {
   }
 
   static connect(socketPath: string): Promise<CodexWsLink> {
+    // ws+unix is ws's documented Unix-socket Upgrade transport; `socketPath` alone is ignored
+    // for ordinary ws:// URLs and would silently dial localhost instead.
+    return CodexWsLink.#open(`ws+unix://${socketPath}:/`, {});
+  }
+
+  /**
+   * Windows: the same Upgrade and frames, carried over the stdio of Codex's own relay. The relay gets
+   * the run env (`buildCodexAppServerEnv`) and is stopped with the link; if it exits, its stdout ends
+   * and the link closes as it does when a socket drops.
+   */
+  static connectThroughProxy(socketPath: string): Promise<CodexWsLink> {
+    let relay: ChildProcessWithoutNullStreams;
+    try {
+      relay = launch(resolveCodexExecutable(), ['app-server', 'proxy', '--sock', socketPath], { env: buildCodexAppServerEnv() });
+    } catch (error) {
+      return Promise.reject(new Error(`the Codex command could not be started (${errnoCode(error)})`));
+    }
+    // What the relay says goes nowhere; read it so a chatty relay never blocks on a full pipe.
+    relay.stderr.resume();
+    relay.stdin.on('error', () => undefined);
+    const started = new Promise<never>((_, reject) => relay.once('error', (error) => reject(new Error(`the Codex command could not be started (${errnoCode(error)})`))));
+    const stream = Duplex.from({ readable: relay.stdout, writable: relay.stdin });
+    // ws hands `createConnection` to http.request, which takes any duplex; ws only calls the
+    // socket-only methods it needs when present (`setTimeout`, `setNoDelay`).
+    const opened = CodexWsLink.#open('ws://localhost/', { createConnection: () => stream as Socket }, relay);
+    return Promise.race([opened, started]).catch((error: unknown) => {
+      void stopChildTree(relay, 'SIGTERM');
+      throw error;
+    });
+  }
+
+  static #open(url: string, extra: WebSocket.ClientOptions, relay?: ChildProcessWithoutNullStreams): Promise<CodexWsLink> {
     return new Promise((resolve, reject) => {
-      // ws+unix is ws's documented Unix-socket Upgrade transport; `socketPath` alone is ignored
-      // for ordinary ws:// URLs and would silently dial localhost instead.
-      //
       // `perMessageDeflate: false` is load-bearing. ws offers `Sec-WebSocket-Extensions:
       // permessage-deflate` by default, and codex-cli 0.154.0's app-server hangs up on an Upgrade
       // that carries it (measured: default → "socket hang up", disabled → open). The measured run H
       // framing sent no extension header at all.
-      const socket = new WebSocket(`ws+unix://${socketPath}:/`, { maxPayload: MAX_FRAME_BYTES, handshakeTimeout: TIMEOUT_MS, perMessageDeflate: false });
+      const socket = new WebSocket(url, { ...extra, maxPayload: MAX_FRAME_BYTES, handshakeTimeout: TIMEOUT_MS, perMessageDeflate: false });
       const timer = setTimeout(() => { socket.terminate(); reject(new Error('timed out connecting to the Codex app-server')); }, TIMEOUT_MS);
-      socket.once('open', () => { clearTimeout(timer); resolve(new CodexWsLink(socket)); });
+      socket.once('open', () => { clearTimeout(timer); resolve(new CodexWsLink(socket, relay)); });
       // ws's own errors name the socket path (`connect ENOENT <path>`); only the reason travels.
       socket.once('error', (error) => { clearTimeout(timer); reject(new Error(`the Codex app-server did not accept xezar’s connection (${errnoCode(error) === 'error' ? error.message : errnoCode(error)})`)); });
     });
@@ -234,5 +292,6 @@ class CodexWsLink implements CodexAppServerLink {
     this.#closed = true;
     for (const pending of this.#pending.values()) { clearTimeout(pending.timer); pending.reject(error); }
     this.#pending.clear(); this.#listeners.clear(); this.#socket.terminate();
+    if (this.#relay !== undefined) void stopChildTree(this.#relay, 'SIGTERM');
   }
 }
