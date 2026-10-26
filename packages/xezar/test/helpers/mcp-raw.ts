@@ -6,9 +6,9 @@
  */
 import { createConnection, type Socket } from 'node:net';
 import type { ServiceTarget } from '../../src/mcp/bridge.ts';
-import { mcpSocketDir } from '../../src/mcp/ipc.ts';
+import { mcpPipeFiles } from '../../src/mcp/ipc.ts';
 import { pipeHello } from '../../src/mcp/pipe-auth.ts';
-import { PIPE_NAME_PATTERN, pipeFiles, readPipeEndpoint } from '../../src/mcp/pipe-endpoint.ts';
+import { PIPE_NAME_PATTERN, readPipeEndpoint } from '../../src/mcp/pipe-endpoint.ts';
 
 /** Keys already read, by pipe name: a pipe name is fresh at every start, so its key never changes. */
 const knownKeys = new Map<string, Buffer>();
@@ -20,7 +20,7 @@ const knownKeys = new Map<string, Buffer>();
 export function pipeKeyFor(pipeName: string, projectId: string, env: NodeJS.ProcessEnv = process.env): Buffer {
   const known = knownKeys.get(pipeName);
   if (known !== undefined) return known;
-  const endpoint = readPipeEndpoint(pipeFiles(mcpSocketDir(env), projectId).endpoint);
+  const endpoint = readPipeEndpoint(mcpPipeFiles(projectId, env).endpoint);
   if (typeof endpoint === 'string' || endpoint.pipeName !== pipeName) {
     throw new Error(`no endpoint for ${pipeName} (${typeof endpoint === 'string' ? endpoint : 'another pipe'})`);
   }
@@ -60,5 +60,5 @@ export function targetFor(
   env: NodeJS.ProcessEnv = process.env,
 ): ServiceTarget {
   if (!PIPE_NAME_PATTERN.test(handle.path)) return { kind: 'socket', path: handle.path, project };
-  return { kind: 'pipe', files: pipeFiles(mcpSocketDir(env), project.id), project };
+  return { kind: 'pipe', files: mcpPipeFiles(project.id, env), project };
 }

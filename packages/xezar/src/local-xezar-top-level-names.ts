@@ -115,6 +115,12 @@ export const STATE_NAME_ENTRIES: readonly StateNameEntry[] = [
   },
   { name: 'cache', kind: 'directory', reason: 'The project layout’s skills cache — single-project mode only (state-layout.ts).', feature: 'single-project-mode' },
   { name: 'ipc', kind: 'directory', reason: 'The project layout’s IPC directory — single-project mode only (state-layout.ts).', feature: 'single-project-mode' },
+  {
+    name: 'ipc-admin',
+    kind: 'directory',
+    reason: 'The project layout’s administrators-only IPC directory of an elevated cockpit and leader — single-project mode on Windows only (state-layout.ts, #980).',
+    feature: 'single-project-mode',
+  },
 ];
 
 /**

@@ -27,7 +27,7 @@ import { stripComments } from '../release/instruction-hygiene.testkit.ts';
  * Markers are read from the raw source; skips from comment-free source, so prose about a skip is
  * never a finding. No process is started.
  */
-export const ALLOWED_ISSUES: readonly number[] = [972, 973, 974, 975, 976, 977, 980];
+export const ALLOWED_ISSUES: readonly number[] = [972, 973, 974, 975, 976, 977];
 
 const ROOTS = ['packages/xezar/src', 'packages/xezar/test', 'packages/contract/src', 'packages/api-client/src', 'packages/web/src', 'packages/web/e2e', 'scripts'];
 /** Whole trees of test code: every script file under them is a test or a test helper. */

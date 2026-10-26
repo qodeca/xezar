@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { processIsElevated } from '../platform/elevation.ts';
 import { globalStateLayout, projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { createProjectStateFiles } from '../workspace/config.ts';
 import { findRegistryProject, registerProject } from '../workspace/projects.ts';
@@ -138,6 +139,9 @@ function openBridge(root: string, argv?: readonly string[]) {
  */
 const doorOf = (target: ServiceTarget): string =>
   target.kind === 'pipe' ? target.files.dir : (target as { path: string }).path;
+/** The project layout's MCP folder name: an elevated Windows process uses the administrators-only one (#980). */
+const IPC = processIsElevated() ? 'ipc-admin' : 'ipc';
+
 /** The folder the engine for `id` listens from: POSIX its socket path; Windows the folder whose endpoint names its pipe. */
 const engineDoorIn = (dir: string, engine: { id: string; path: string }): string => {
   if (!onWindows) return engine.path;
@@ -158,7 +162,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     expect(text(before)).toContain('This directory is not a xezar project yet');
 
     const engine = await startSingleProjectEngine(root);
-    const ipc = join(root, '.local', 'xezar', 'ipc');
+    const ipc = join(root, '.local', 'xezar', IPC);
     expect(engineDoorIn(ipc, engine).startsWith(ipc)).toBe(true);
 
     // The SAME bridge — no reconnect — now reaches the engine for this folder.
@@ -198,7 +202,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
 
     // B flipped first. If that flip leaked into the process, A would now read B's layout.
     const targetB = await resolveMcpTarget(b, { argv: ['mcp'] });
-    if (onWindows) expect(targetB).toMatchObject({ kind: 'pipe', files: pipeFiles(engineDoorIn(join(b, '.local', 'xezar', 'ipc'), engineB), engineB.id) });
+    if (onWindows) expect(targetB).toMatchObject({ kind: 'pipe', files: pipeFiles(engineDoorIn(join(b, '.local', 'xezar', IPC), engineB), engineB.id) });
     else expect(targetB).toMatchObject({ kind: 'socket', path: engineB.path });
 
     // A has no marker: it is nobody's project, and certainly not B's.

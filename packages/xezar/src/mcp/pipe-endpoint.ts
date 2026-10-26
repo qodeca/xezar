@@ -13,6 +13,10 @@
  * Both are read strictly: a regular file, never a link, size-capped, parsed exactly. Start and
  * close hold `<id>.lock` (`core/file-lock.ts`), and close removes a file only while it still names
  * this engine's pipe.
+ *
+ * An elevated engine and leader (#980) meet in their own administrators-only folder (`ipc-admin`,
+ * `admin: true`), never in the user's; the other folder is the `counterpart`, read only to tell a
+ * leader that the cockpit runs with the other elevation.
  */
 import { randomBytes } from 'node:crypto';
 import { lstatSync, readFileSync, unlinkSync } from 'node:fs';
@@ -36,15 +40,30 @@ export interface PipeFiles {
   readonly endpoint: string;
   /** `<id>.lock` */
   readonly lock: string;
+  /** #980: the administrators-only folder of an elevated engine and leader. Absent: the user's. */
+  readonly admin?: true;
+  /** #980: the same project's files in the folder of the other elevation. */
+  readonly counterpart?: PipeFiles;
 }
 
-export function pipeFiles(dir: string, projectId: string): PipeFiles {
+export function pipeFiles(dir: string, projectId: string, admin = false): PipeFiles {
   return {
     dir,
     marker: join(dir, `${projectId}.pipe`),
     endpoint: join(dir, `${projectId}.key`),
     lock: join(dir, `${projectId}.lock`),
+    ...(admin ? { admin: true as const } : {}),
   };
+}
+
+/**
+ * #980: the project's files for a process of this elevation – the user's folder, or the
+ * administrators-only one – with the other folder's files as the counterpart.
+ */
+export function pipeFilesFor(dirs: { readonly user: string; readonly admin: string }, projectId: string, elevated: boolean): PipeFiles {
+  const user = pipeFiles(dirs.user, projectId);
+  const admin = pipeFiles(dirs.admin, projectId, true);
+  return elevated ? { ...admin, counterpart: user } : { ...user, counterpart: admin };
 }
 
 export const pipeEndpointSchema = z
@@ -142,8 +161,13 @@ export type PipeOpenFailure =
   | { readonly kind: 'not-running' }
   /** The endpoint or marker is unreadable, or they disagree. */
   | { readonly kind: 'invalid' }
-  /** The folder or a file in it is not private to this user (or this process is elevated). */
-  | { readonly kind: 'not-private'; readonly message: string };
+  /** The folder or a file in it is not private (to this user, or to Administrators – #980). */
+  | { readonly kind: 'not-private'; readonly message: string }
+  /**
+   * #980: no engine in this process's folder, but the other elevation's folder names one: the
+   * cockpit and this leader differ in elevation. `engineElevated` – the engine's side.
+   */
+  | { readonly kind: 'elevation-differs'; readonly engineElevated: boolean };
 
 export type PipeOpen = { readonly ok: true; readonly pipeName: string; readonly key: Buffer } | ({ readonly ok: false } & PipeOpenFailure);
 
@@ -157,17 +181,39 @@ export async function openPipeEndpoint(
   files: PipeFiles,
   deps: PrivateDirDeps & { pidExists?: (pid: number) => boolean } = {},
 ): Promise<PipeOpen> {
+  const alive = deps.pidExists ?? pidExists;
+  const notRunning = (): PipeOpen =>
+    files.counterpart !== undefined && counterpartServes(files.counterpart, alive)
+      ? { ok: false, kind: 'elevation-differs', engineElevated: files.counterpart.admin === true }
+      : { ok: false, kind: 'not-running' };
   const endpoint = readPipeEndpoint(files.endpoint);
-  if (endpoint === 'missing') return { ok: false, kind: 'not-running' };
+  if (endpoint === 'missing') return notRunning();
   if (endpoint === 'invalid') return { ok: false, kind: 'invalid' };
   const marker = readPipeMarker(files.marker);
-  if (marker === 'missing') return { ok: false, kind: 'not-running' };
+  if (marker === 'missing') return notRunning();
   if (marker !== endpoint.pipeName) return { ok: false, kind: 'invalid' };
   // A gone engine is answered without the PowerShell check: nothing is dialled either way, and a
   // cold check costs seconds a client's startup budget does not have.
-  if (!(deps.pidExists ?? pidExists)(endpoint.pid)) return { ok: false, kind: 'not-running' };
-  const check = await checkPrivateDir(files.dir, [files.endpoint, files.marker], deps, { startTimeOf: endpoint.pid });
+  if (!alive(endpoint.pid)) return notRunning();
+  const check = await checkPrivateDir(files.dir, [files.endpoint, files.marker], deps, {
+    startTimeOf: endpoint.pid,
+    ...(files.admin ? { elevated: true } : {}),
+  });
   if (!check.ok) return { ok: false, kind: 'not-private', message: check.message };
-  if (!endpointIsLive(endpoint, check.startedAt)) return { ok: false, kind: 'not-running' };
+  if (!endpointIsLive(endpoint, check.startedAt)) return notRunning();
   return { ok: true, pipeName: endpoint.pipeName, key: Buffer.from(endpoint.key, 'hex') };
+}
+
+/**
+ * #980: does the other elevation's folder name an engine for this project? Only to word the
+ * refusal – nothing there is ever dialled or trusted. An elevated leader can read the user's folder
+ * and asks whether the endpoint's process runs. A leader without administrator rights cannot read
+ * the administrators-only folder at all, so an endpoint it may not read counts as an elevated
+ * engine's (one that stopped without cleaning up reads the same).
+ */
+function counterpartServes(other: PipeFiles, alive: (pid: number) => boolean): boolean {
+  const endpoint = readPipeEndpoint(other.endpoint);
+  if (endpoint === 'missing') return false;
+  if (endpoint === 'invalid') return other.admin === true;
+  return alive(endpoint.pid);
 }

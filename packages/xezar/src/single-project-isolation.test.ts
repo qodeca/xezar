@@ -316,12 +316,13 @@ describe('the default path did not change (AGENTS.md § Changing a mechanism tha
       dataDir: null,
       cacheDir: join(home, '.cache', 'xez'),
       ipcDir: join(home, '.xezar', 'ipc'),
+      ipcAdminDir: join(home, '.xezar', 'ipc-admin'),
     });
   });
 
   it('and the project layout keeps working files out of the committed directory', () => {
     const layout = projectStateLayout(project);
-    for (const path of [layout.dataDir!, layout.cacheDir, layout.ipcDir]) {
+    for (const path of [layout.dataDir!, layout.cacheDir, layout.ipcDir, layout.ipcAdminDir]) {
       expect(path.startsWith(join(project, '.local', 'xezar'))).toBe(true);
     }
     for (const path of [layout.configPath!, layout.workspacePath, layout.uiStatePath, layout.accountsPath]) {

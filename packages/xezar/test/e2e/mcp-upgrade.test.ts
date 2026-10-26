@@ -10,9 +10,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { pipeFiles } from '../../src/mcp/pipe-endpoint.ts';
+import { processIsElevated } from '../../src/platform/elevation.ts';
 import { checkPrivateDir } from '../../src/platform/private-dir.ts';
 import { npmCommand, onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
-import { windowsElevated } from '../helpers/windows-elevation.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -241,10 +241,7 @@ async function assertWorkingCockpit(cockpit: Cockpit, cliPath: string, repo: str
   assert.ok(bridged && !bridged.isError, `${label}: the MCP bridge reaches the service (${bridged?.text})\n${cockpit.output()}`);
 }
 
-/** The packed CLI is a separate process, so the unit suite's elevation hook cannot reach it. */
-const ELEVATED = windowsElevated() ? 'win32-skip(#980): xezar refuses its MCP pipe when it runs as administrator, as every GitHub Windows runner step does' : false;
-
-test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000, skip: ELEVATED }, async (t) => {
+test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'xezar-mcp-upgrade-'));
   // The socket lives under XEZ_HOME and a Unix socket path has a ~104-byte limit, which a task's
   // TMPDIR can exceed — so the home is short, under /tmp.
@@ -325,16 +322,18 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
       const config = JSON.parse(await readFile(join(home, 'config.json'), 'utf8')) as { projects?: Array<{ id: string }> };
       assert.equal(config.projects?.some((project) => project.id === 'removed-by-user'), false, 'an empty config is never overridden by its snapshot');
 
-      const ipc = join(home, 'ipc');
+      // An elevated Windows process – every GitHub runner step – uses the administrators-only folder (#980).
+      const elevated = processIsElevated();
+      const ipc = join(home, elevated ? 'ipc-admin' : 'ipc');
       if (onWindows) {
         // A named pipe has no file and Windows has no mode bits: the service's marker and endpoint
         // files stand in for the socket, and the folder's access list for its 0700 (#963).
         const markers = readdirSync(ipc).filter((name) => name.endsWith('.pipe'));
         assert.equal(markers.length, 1, 'exactly one project pipe marker after the restart');
-        const files = pipeFiles(ipc, markers[0]!.slice(0, -'.pipe'.length));
+        const files = pipeFiles(ipc, markers[0]!.slice(0, -'.pipe'.length), elevated);
         assert.ok(existsSync(files.endpoint), 'the pipe endpoint sits next to its marker');
-        const privacy = await checkPrivateDir(ipc, [files.marker, files.endpoint]);
-        assert.ok(privacy.ok, `the IPC folder and its pipe files are private to the user: ${JSON.stringify(privacy)}`);
+        const privacy = await checkPrivateDir(ipc, [files.marker, files.endpoint], {}, { elevated });
+        assert.ok(privacy.ok, `the IPC folder and its pipe files are private to the user (to Administrators when elevated): ${JSON.stringify(privacy)}`);
       } else {
         assert.equal(lstatSync(ipc).mode & 0o777, 0o700, 'the socket directory is private to the user');
         const sockets = readdirSync(ipc).filter((name) => name.endsWith('.sock'));

@@ -8,14 +8,16 @@ import { acquireFileLock } from '../core/file-lock.ts';
 import { launch } from '../platform/process-launch.ts';
 import { readProcessTable } from '../platform/process-table.ts';
 import { stopChildTree } from '../platform/process-tree.ts';
-import { checkPrivateDir } from '../platform/private-dir.ts';
-import { mcpSocketDir } from './ipc.ts';
-import { newPipeKey, newPipeName, pipeFiles, readPipeEndpoint, readPipeMarker, writePipeFiles } from './pipe-endpoint.ts';
+import { checkPrivateDir, ensurePrivateDir } from '../platform/private-dir.ts';
+import { mcpPipeFiles } from './ipc.ts';
+import { newPipeKey, newPipeName, readPipeEndpoint, readPipeMarker, writePipeFiles } from './pipe-endpoint.ts';
 import { listenMcpSocket, MCP_ALREADY_SERVING, type McpServiceHandle } from './service.ts';
 
 /**
  * #963, real Windows: the engine's side of the pipe rendezvous – the private folder, the endpoint
  * and marker, refusing a live engine, replacing a stale one, and removing only its own files.
+ * An elevated test process (every GitHub Windows runner step) runs it in the administrators-only
+ * folder, exactly as an elevated xezar would (#980).
  */
 
 let home = '';
@@ -36,7 +38,10 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
     rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
-  const files = () => pipeFiles(mcpSocketDir(env), project.id);
+  const files = () => mcpPipeFiles(project.id, env);
+  const elevation = () => (files().admin ? { elevated: true } : {});
+  /** The folder as an earlier engine left it: made private by the same rule the service applies. */
+  const prepareFolder = async () => expect(await ensurePrivateDir(files().dir, {}, elevation())).toEqual({ ok: true });
   const listen = async () => {
     const handle = await listenMcpSocket({ project, version: '1.2.3', tools: [], env });
     handles.push(handle);
@@ -49,7 +54,7 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
     expect(typeof endpoint).toBe('object');
     expect(endpoint).toMatchObject({ v: 1, pipeName: handle.path, pid: process.pid });
     expect(readPipeMarker(files().marker)).toBe(handle.path);
-    expect(await checkPrivateDir(files().dir, [files().endpoint, files().marker])).toEqual({ ok: true });
+    expect(await checkPrivateDir(files().dir, [files().endpoint, files().marker], {}, elevation())).toEqual({ ok: true });
     const socket = await connectRaw(handle.path, { projectId: project.id, env });
     socket.destroy();
   }, 60_000);
@@ -75,7 +80,7 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
         startedAt = (await readProcessTable())?.rows.find((row) => row.pid === other.pid)?.startedAt;
         expect(startedAt).toBeTypeOf('number');
       }, { timeout: 15_000 });
-      mkdirSync(files().dir, { recursive: true });
+      await prepareFolder();
       writePipeFiles(files(), { v: 1, pipeName: newPipeName(), key: newPipeKey(), pid: other.pid!, processStartTime: startedAt! });
       await expect(listen()).rejects.toThrow(MCP_ALREADY_SERVING);
 
@@ -89,7 +94,7 @@ describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
   }, 90_000);
 
   it('waits for the start/stop lock another engine holds, and refuses to start without it', async () => {
-    mkdirSync(files().dir, { recursive: true });
+    await prepareFolder();
     const held = await acquireFileLock(files().lock);
     expect(held.acquired).toBe(true);
     try {

@@ -34,6 +34,8 @@ const okEnsure = async (dir: string): Promise<PrivateDirResult> => {
   return { ok: true, startedAt: OWN_START };
 };
 const seams = (extra: McpPipeSeams = {}): McpPipeSeams => ({
+  // A process without administrator rights, whatever the host (#980): the user's own folder.
+  elevated: () => false,
   ensurePrivateDir: okEnsure,
   checkPrivateDir: async () => ({ ok: true, startedAt: foreignStart }),
   ...(onWindows ? {} : { listenAt: (name: string) => join(sockets, `${name.slice(-12)}.sock`) }),
@@ -126,6 +128,27 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     await expect(listen({ ensurePrivateDir: async (dir) => (await mkdir(dir, { recursive: true }), { ok: true }) }))
       .rejects.toThrow('could not read its own start time');
     expect(readPipeMarker(files().marker)).toBe('missing');
+  });
+
+  // #980: an elevated engine makes and judges the administrators-only folder, never the user's.
+  it('an elevated engine listens from the administrators-only folder, asking for it by name', async () => {
+    const ensured: Array<{ dir: string; options: unknown }> = [];
+    const handle = await listen({
+      elevated: () => true,
+      ensurePrivateDir: async (dir, _deps, options) => (ensured.push({ dir, options }), okEnsure(dir)),
+    });
+    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true);
+    expect(ensured).toEqual([{ dir: admin.dir, options: { startTimeOf: process.pid, elevated: true } }]);
+    expect(readPipeMarker(admin.marker)).toBe(handle.path);
+    expect(existsSync(files().dir)).toBe(false);
+    handles.splice(0).forEach((h) => h.close());
+    await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });
+  });
+
+  it('an engine without administrator rights asks for the user folder exactly as before #980', async () => {
+    const ensured: Array<{ dir: string; options: unknown }> = [];
+    await listen({ ensurePrivateDir: async (dir, _deps, options) => (ensured.push({ dir, options }), okEnsure(dir)) });
+    expect(ensured).toEqual([{ dir: files().dir, options: { startTimeOf: process.pid } }]);
   });
 
   it('waits for the pipe lock and says so when another start holds it', async () => {

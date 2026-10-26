@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
+import { processIsElevated } from '../platform/elevation.ts';
 import { activeStateLayout, type StateLayout } from '../state-layout.ts';
-import { pipeFiles, type PipeFiles } from './pipe-endpoint.ts';
+import { pipeFilesFor, type PipeFiles } from './pipe-endpoint.ts';
 
 /**
  * The IPC leg between `xez mcp` (the bridge) and the running xezar service — D-01
@@ -88,7 +89,9 @@ export type McpSocketLocation =
  * first 12 hex characters of SHA-256(project root) replace the id. When even that
  * is too long (a very long `XEZ_HOME`), there is no socket — the caller degrades.
  * Windows (#963, D-01 § 10.2 as amended): a named pipe, named afresh at every start and
- * found through the endpoint and marker files in the same folder (`pipe-endpoint.ts`).
+ * found through the endpoint and marker files in the same folder (`pipe-endpoint.ts`). An elevated
+ * process (#980) uses the administrators-only `ipcAdminDir` instead, so an elevated cockpit meets
+ * only an elevated leader; `elevated` is asked on Windows only.
  *
  * `layout` defaults to the process's own. The bridge passes the layout it
  * resolved for its folder on this session open (#819 item 5), so a folder that
@@ -100,9 +103,10 @@ export function mcpSocketLocation(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   layout: StateLayout = activeStateLayout(env),
+  elevated: () => boolean = processIsElevated,
 ): McpSocketLocation {
   const dir = layout.ipcDir;
-  if (platform === 'win32') return { kind: 'pipe', files: pipeFiles(dir, project.id) };
+  if (platform === 'win32') return { kind: 'pipe', files: mcpPipeFiles(project.id, env, layout, elevated) };
   const limit = maxSocketPathBytes(platform);
   const primary = join(dir, `${project.id}.sock`);
   if (Buffer.byteLength(primary) <= limit) return { kind: 'socket', path: primary };
@@ -121,8 +125,23 @@ export function mcpSocketLocation(
 }
 
 /**
+ * Windows (#963, #980): the pipe rendezvous files of `projectId` for a process of this elevation –
+ * in `ipcDir`, or in the administrators-only `ipcAdminDir` for an elevated process – with the other
+ * folder's files as their counterpart.
+ */
+export function mcpPipeFiles(
+  projectId: string,
+  env: NodeJS.ProcessEnv = process.env,
+  layout: StateLayout = activeStateLayout(env),
+  elevated: () => boolean = processIsElevated,
+): PipeFiles {
+  return pipeFilesFor({ user: layout.ipcDir, admin: layout.ipcAdminDir }, projectId, elevated());
+}
+
+/**
  * The only directory the service creates for MCP: `~/.xezar/ipc` in the global
- * layout, `<project>/.local/xezar/ipc` in single-project mode (#600).
+ * layout, `<project>/.local/xezar/ipc` in single-project mode (#600). On Windows an
+ * elevated xezar uses `ipcAdminDir` next to it instead (#980, `mcpPipeFiles`).
  *
  * It follows the resolved layout rather than the per-user home because BR-2
  * forbids opening `~/.xezar` at all in the mode, and it lands under

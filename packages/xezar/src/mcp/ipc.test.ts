@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
+import { globalStateLayout, projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { LineFramer, mcpSocketDir, mcpSocketLocation } from './ipc.ts';
 import { negotiateProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from './protocol.ts';
 
@@ -35,14 +35,34 @@ describe('mcpSocketLocation (D-01 § 1.3–1.4)', () => {
     expect(tooLong.kind === 'unavailable' && tooLong.reason).toMatch(/too long.*XEZ_HOME/);
   });
 
+  const notElevated = () => false;
+  const elevated = () => true;
+  const filesIn = (dir: string) => ({ dir, marker: join(dir, 'shop.pipe'), endpoint: join(dir, 'shop.key'), lock: join(dir, 'shop.lock') });
+
   it('on Windows names the named-pipe marker, endpoint and lock files in the IPC folder (#963)', () => {
     const dir = join('/h', 'ipc');
-    expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'win32')).toEqual({
+    const env = { XEZ_HOME: '/h' };
+    expect(mcpSocketLocation(project, env, 'win32', globalStateLayout(env), notElevated)).toEqual({
       kind: 'pipe',
-      files: { dir, marker: join(dir, 'shop.pipe'), endpoint: join(dir, 'shop.key'), lock: join(dir, 'shop.lock') },
+      files: { ...filesIn(dir), counterpart: { ...filesIn(join('/h', 'ipc-admin')), admin: true } },
     });
     // No length limit applies to a pipe: a home far past `sun_path` still gets one.
-    expect(mcpSocketLocation(project, { XEZ_HOME: `/${'a'.repeat(120)}` }, 'win32')).toMatchObject({ kind: 'pipe' });
+    expect(mcpSocketLocation(project, { XEZ_HOME: `/${'a'.repeat(120)}` }, 'win32', undefined, notElevated)).toMatchObject({ kind: 'pipe' });
+  });
+
+  it('on Windows an elevated process uses the administrators-only folder next to it (#980)', () => {
+    const env = { XEZ_HOME: '/h' };
+    expect(mcpSocketLocation(project, env, 'win32', globalStateLayout(env), elevated)).toEqual({
+      kind: 'pipe',
+      files: { ...filesIn(join('/h', 'ipc-admin')), admin: true, counterpart: filesIn(join('/h', 'ipc')) },
+    });
+    // Single-project mode: next to the project's own IPC folder.
+    const local = mcpSocketLocation(project, env, 'win32', projectStateLayout('/work/shop'), elevated);
+    expect(local).toMatchObject({ kind: 'pipe', files: { dir: join('/work/shop', '.local', 'xezar', 'ipc-admin'), admin: true } });
+    // Elevation is asked on Windows only.
+    const asked = { count: 0 };
+    mcpSocketLocation(project, env, 'darwin', globalStateLayout(env), () => (asked.count++, true));
+    expect(asked.count).toBe(0);
   });
 
   // #600: in single-project mode the socket dir is inside the project, so both the

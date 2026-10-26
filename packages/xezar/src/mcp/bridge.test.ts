@@ -7,7 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
-import { LineFramer, encodeFrame, mcpSocketDir } from './ipc.ts';
+import { LineFramer, encodeFrame, mcpPipeFiles } from './ipc.ts';
 import { pipeFiles, readPipeEndpoint, writePipeFiles, type PipeOpen } from './pipe-endpoint.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { listenMcpSocket, type McpServiceHandle } from './service.ts';
@@ -374,10 +374,10 @@ const openedAs = (path: string) => async (): Promise<PipeOpen> => ({ ok: true, p
  * with its real start time plus `skewMs`. 0 reads as another live cockpit, anything else as one that exited.
  */
 async function rewriteEndpoint(svc: McpServiceHandle, skewMs: number): Promise<void> {
-  const files = pipeFiles(mcpSocketDir(env), project.id);
+  const files = mcpPipeFiles(project.id, env);
   const endpoint = readPipeEndpoint(files.endpoint);
   if (typeof endpoint === 'string') throw new Error(`no endpoint for ${svc.path}: ${endpoint}`);
-  const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid });
+  const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid, ...(files.admin ? { elevated: true } : {}) });
   if (!parent.ok || typeof parent.startedAt !== 'number') throw new Error('could not read the parent process start time');
   writePipeFiles(files, { ...endpoint, pid: process.ppid, processStartTime: parent.startedAt + skewMs });
 }
@@ -433,7 +433,24 @@ describe('bridge — each unreachable or refusing service reads as its own failu
     const res = await bridge({ target: pipeTarget, openPipe: openedAs(path) }).request('tools/call', { name: 'health' });
     expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
     expect(text(res)).toBe(
-      "xezar's pipe for project Alpha (alpha) refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.",
+      "xezar's pipe for project Alpha (alpha) refused this user (permission denied). The bridge must run as the same user as the cockpit, and both as administrator or both without.",
+    );
+  });
+
+  // #980: an elevated cockpit serves only an elevated leader. Each refusal names the side that runs
+  // as administrator and says the two differ in elevation, with the existing `refused` status.
+  it('says the cockpit and the leader differ in elevation, naming which side runs as administrator', async () => {
+    const elevatedEngine = await bridge({ target: pipeTarget, openPipe: async () => ({ ok: false, kind: 'elevation-differs', engineElevated: true }) })
+      .request('tools/call', { name: 'health' });
+    expect(elevatedEngine.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(elevatedEngine)).toBe(
+      'xezar for project Alpha (alpha) runs as administrator and this leader does not: the cockpit and the leader differ in elevation. Start both as administrator, or both without.',
+    );
+    const elevatedLeader = await bridge({ target: pipeTarget, openPipe: async () => ({ ok: false, kind: 'elevation-differs', engineElevated: false }) })
+      .request('tools/call', { name: 'health' });
+    expect(elevatedLeader.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(elevatedLeader)).toBe(
+      'xezar for project Alpha (alpha) runs without administrator rights and this leader runs as administrator: the cockpit and the leader differ in elevation. Start both as administrator, or both without.',
     );
   });
 
@@ -605,7 +622,7 @@ describe('service socket lifecycle (N-07)', () => {
     const svc = await service();
     if (onWindows) {
       // #963: no socket file and no mode bits; the marker and endpoint name the pipe, and close removes them.
-      const files = pipeFiles(mcpSocketDir(env), project.id);
+      const files = mcpPipeFiles(project.id, env);
       expect(readPipeEndpoint(files.endpoint)).toMatchObject({ pipeName: svc.path, pid: process.pid });
       expect(existsSync(files.marker)).toBe(true);
       svc.close();
@@ -646,7 +663,7 @@ describe('service socket lifecycle (N-07)', () => {
     await rewriteEndpoint(first, 1);
     const second = await service();
     expect(second.path).not.toBe(first.path);
-    expect(readPipeEndpoint(pipeFiles(mcpSocketDir(env), project.id).endpoint)).toMatchObject({ pipeName: second.path, pid: process.pid });
+    expect(readPipeEndpoint(mcpPipeFiles(project.id, env).endpoint)).toMatchObject({ pipeName: second.path, pid: process.pid });
   });
 
   // win32-skip(#976): a named pipe has no file path, so nothing can sit where the pipe would be

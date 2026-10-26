@@ -11,6 +11,7 @@ import {
   openPipeEndpoint,
   PIPE_NAME_PATTERN,
   pipeFiles,
+  pipeFilesFor,
   readPipeEndpoint,
   readPipeMarker,
   removePipeFilesIfOurs,
@@ -162,5 +163,98 @@ describe('openPipeEndpoint (#963)', () => {
     writePipeFiles(files, endpoint());
     const foreign = report(filetime(STARTED), FILE.replace(`O:${ME}`, 'O:S-1-5-21-9-9-9-500'));
     expect(await openPipeEndpoint(files, deps(foreign.run))).toMatchObject({ ok: false, kind: 'not-private', message: expect.stringContaining('owned by another account') });
+  });
+});
+
+// #980, the owner's decision: an elevated cockpit serves an elevated leader, in the
+// administrators-only folder; a cockpit and a leader that differ in elevation are refused with a
+// sentence that says so.
+describe('the administrators-only folder and differing elevation (#980)', () => {
+  const ME = 'S-1-5-21-1-2-3-1001';
+  const PRIVATE = `O:${ME}D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;${ME})`;
+  const ADMIN_FOLDER = 'O:BAD:PAI(A;OICI;0x120000;;;OW)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)';
+  const ADMIN_FILE = 'O:BAD:AI(A;ID;0x120000;;;OW)(A;ID;FA;;;SY)(A;ID;FA;;;BA)';
+  const filetime = (ms: number) => String((BigInt(ms) + 11644473600000n) * 10000n);
+  /** A PowerShell stand-in: what this process's own folder check reads. */
+  function report(elevated: boolean, folder: string, file: string): { run: TableRunner; asked: string[] } {
+    const asked: string[] = [];
+    const run: TableRunner = async (_file, _args, options) => {
+      asked.push(Buffer.from(options.env?.[ACL_INPUT_ENV] ?? '', 'base64').toString('utf8'));
+      return [`sid ${ME}`, `elevated ${elevated ? 'True' : 'False'}`, 'drive Fixed NTFS', `started ${filetime(STARTED)}`, `sddl 0 ${folder}`, `sddl 1 ${file}`, `sddl 2 ${file}`].join('\r\n');
+    };
+    return { run, asked };
+  }
+  const deps = (run: TableRunner, alive: (pid: number) => boolean = () => true) => ({
+    platform: 'win32' as const,
+    env: { SystemRoot: 'C:\\Windows' },
+    run,
+    isLink: async () => false,
+    pidExists: alive,
+  });
+  const dirs = () => ({ user: join(dir, 'ipc'), admin: join(dir, 'ipc-admin') });
+  const write = (target: PipeFiles, value: PipeEndpoint) => {
+    mkdirSync(target.dir, { recursive: true });
+    writePipeFiles(target, value);
+  };
+
+  it('picks the folder by elevation, with the other folder as the counterpart', () => {
+    const user = pipeFilesFor(dirs(), 'alpha', false);
+    const admin = pipeFilesFor(dirs(), 'alpha', true);
+    expect(user).toEqual({ ...pipeFiles(dirs().user, 'alpha'), counterpart: pipeFiles(dirs().admin, 'alpha', true) });
+    expect(admin).toEqual({ ...pipeFiles(dirs().admin, 'alpha', true), counterpart: pipeFiles(dirs().user, 'alpha') });
+    expect(admin).toMatchObject({ admin: true, endpoint: join(dirs().admin, 'alpha.key') });
+    // The user's folder carries no admin flag: its files are exactly what #963 named.
+    expect('admin' in user).toBe(false);
+  });
+
+  it('(b) an elevated leader dials an elevated engine: the administrators-only folder is checked as such', async () => {
+    const admin = pipeFilesFor(dirs(), 'alpha', true);
+    const value = endpoint();
+    write(admin, value);
+    const { run, asked } = report(true, ADMIN_FOLDER, ADMIN_FILE);
+    expect(await openPipeEndpoint(admin, deps(run))).toEqual({ ok: true, pipeName: value.pipeName, key: Buffer.from(value.key, 'hex') });
+    expect(JSON.parse(asked[0]!)).toMatchObject({ ensure: false, admin: true, pid: 4242 });
+  });
+
+  it('(b) never trusts the administrators-only folder when the check reads another elevation or a planted owner', async () => {
+    const admin = pipeFilesFor(dirs(), 'alpha', true);
+    write(admin, endpoint());
+    expect(await openPipeEndpoint(admin, deps(report(false, ADMIN_FOLDER, ADMIN_FILE).run))).toMatchObject({ ok: false, kind: 'not-private', message: expect.stringContaining('without administrator rights') });
+    const planted = report(true, ADMIN_FOLDER.replace('O:BA', `O:${ME}`), ADMIN_FILE);
+    expect(await openPipeEndpoint(admin, deps(planted.run))).toMatchObject({ ok: false, kind: 'not-private', message: expect.stringContaining('owned by another account') });
+  });
+
+  it('(a) elevated engine, leader without administrator rights: "differ in elevation", nothing dialled, no PowerShell', async () => {
+    const user = pipeFilesFor(dirs(), 'alpha', false);
+    // The leader cannot read the administrators-only folder: its endpoint reads as unreadable.
+    mkdirSync(dirs().admin, { recursive: true });
+    writeFileSync(user.counterpart!.endpoint, 'not readable to this user');
+    const { run, asked } = report(false, PRIVATE, PRIVATE);
+    expect(await openPipeEndpoint(user, deps(run))).toEqual({ ok: false, kind: 'elevation-differs', engineElevated: true });
+    // A readable one counts while its process runs.
+    write(user.counterpart!, endpoint());
+    expect(await openPipeEndpoint(user, deps(run))).toEqual({ ok: false, kind: 'elevation-differs', engineElevated: true });
+    expect(asked).toEqual([]);
+  });
+
+  it('(c) engine without administrator rights, elevated leader: "differ in elevation" while that engine runs', async () => {
+    const admin = pipeFilesFor(dirs(), 'alpha', true);
+    write(admin.counterpart!, endpoint({ pid: 777 }));
+    const { run, asked } = report(true, ADMIN_FOLDER, ADMIN_FILE);
+    expect(await openPipeEndpoint(admin, deps(run, (pid) => pid === 777))).toEqual({ ok: false, kind: 'elevation-differs', engineElevated: false });
+    // Its process is gone: simply not running.
+    expect(await openPipeEndpoint(admin, deps(run, () => false))).toEqual({ ok: false, kind: 'not-running' });
+    // An unreadable endpoint in the user's folder is not an elevated leader's business.
+    writeFileSync(admin.counterpart!.endpoint, 'garbage');
+    expect(await openPipeEndpoint(admin, deps(run))).toEqual({ ok: false, kind: 'not-running' });
+    expect(asked).toEqual([]);
+  });
+
+  it('the same elevation on both sides with nothing in the other folder is plainly not running', async () => {
+    for (const elevated of [false, true]) {
+      const files = pipeFilesFor(dirs(), 'alpha', elevated);
+      const { run } = report(elevated, PRIVATE, PRIVATE);
+      expect(await openPipeEndpoint(files, deps(run))).toEqual({ ok: false, kind: 'not-running' });
+    }
   });
 });
