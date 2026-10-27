@@ -317,7 +317,7 @@ rl.on('line', (line) => {
       emit({ method: 'item/started', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: { type: 'commandExecution', id: 'item_crash', command, cwd: '/repo', status: 'inProgress' } } });
       emit({ method: 'item/completed', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: {
         type: 'commandExecution', id: 'item_crash', command, cwd: '/repo', status: 'failed', exitCode: 1,
-        aggregatedOutput: '      0 [main] bash (23784) C:\\Program Files\\Git\\usr\\bin\\bash.exe: *** fatal error - CreateFileMapping S-1-5-21-1504711166-3655588297-3458958062-1001.1, Win32 error 5.  Terminating.\n',
+        aggregatedOutput: '      0 [main] bash (23784) C:\\Program Files\\Git\\usr\\bin\\bash.exe: *** fatal error - CreateFileMapping S-1-5-21-1000000000-2000000000-3000000000-1001.1, Win32 error 5.  Terminating.\n',
       } } });
       return;
     }

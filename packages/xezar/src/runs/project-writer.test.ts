@@ -191,13 +191,13 @@ it('a claim carrying no identity keeps its pre-#199 meaning', () => {
 // The refusal has to be self-repairing: deleting one runtime file is the whole fix, and the old
 // message named neither the file nor the two hostnames that disagreed.
 it('names the claim file, both hostnames and the PID when it refuses', () => {
-  const path = peer(24771, JSON.stringify({ pid: 24771, host: 'Marcins-MacBook-Pro-2.local', machine: 'another-machine-identity' }));
+  const path = peer(24771, JSON.stringify({ pid: 24771, host: 'Someones-MacBook-Pro.local', machine: 'another-machine-identity' }));
   const message = (() => {
     try { ownProjectData(root); return ''; } catch (error) { return (error as Error).message; }
   })();
   expect(message).toContain(path);
   expect(message).toContain('PID 24771');
-  expect(message).toContain('"Marcins-MacBook-Pro-2.local"');
+  expect(message).toContain('"Someones-MacBook-Pro.local"');
   expect(message).toContain(`this host is ${JSON.stringify(hostname())}`);
   expect(message).toContain('records a different machine identity');
   expect(message).toContain('delete that claim file');
