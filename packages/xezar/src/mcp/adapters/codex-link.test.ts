@@ -373,6 +373,43 @@ describe('the shared Codex app-server link (#374)', () => {
     await expect(connectCodexLeader({ threadId: 'thread-1' }, bare, bare, 'win32')).rejects.toThrow('no shared Codex app-server control socket was found in the Codex home (ENOENT)');
   });
 
+  it('reads thread/list in its other shape – `threads`, each wrapping a `thread` – and skips entries that are not records', async () => {
+    const home = codexHome('xzcl-shape-');
+    await appServer(home, answers(home, home, { 'thread/list': { threads: [null, 'thread-1', { thread: { id: 'thread-1', cwd: home } }] } }));
+    const connected = await connectCodexLeader({ threadId: 'thread-1' }, home, home);
+    expect(connected.threadId).toBe('thread-1');
+    connected.link.close();
+  });
+
+  it('refuses a resume that names no thread', async () => {
+    const home = codexHome('xzcl-resume-');
+    await appServer(home, answers(home, home, { 'thread/resume': {} }));
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('resumed a different thread');
+  });
+
+  it('names a thread that is not loaded as the session’s refusal, and a state it cannot read as the protocol’s', async () => {
+    const unloaded = codexHome('xzcl-unloaded-');
+    await appServer(unloaded, answers(unloaded, unloaded, { 'thread/resume': { thread: { id: 'thread-1', status: { type: 'notLoaded' } } } }));
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, unloaded, unloaded)).rejects.toMatchObject({ reason: 'thread' });
+    const unread = codexHome('xzcl-unread-');
+    await appServer(unread, answers(unread, unread, { 'thread/resume': { thread: { id: 'thread-1' } } }));
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, unread, unread)).rejects.toMatchObject({ reason: 'state' });
+  });
+
+  it('reads an error answer without a message as a plain refusal', async () => {
+    const home = codexHome('xzcl-bare-error-');
+    await appServer(home, answers(home, home, { 'thread/loaded/list': (request: Request, client: WebSocket) => (client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32600 } })), SILENT) }));
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('Codex app-server refused the request');
+  });
+
+  it('the POSIX path refuses an endpoint that is not a Unix socket before it dials, on every OS', async () => {
+    // The relay arrangement leaves a plain file at the socket path, which only the Windows path accepts.
+    const home = codexHome('xzcl-posix-');
+    const server = await appServer(home, answers(home, home), { relay: true });
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home, 'linux')).rejects.toThrow('not a Unix socket');
+    expect(server.upgrades).toHaveLength(0);
+  });
+
   it('the Windows folder verdict names who the socket belongs to, and refuses before any relay starts (#977)', async () => {
     const home = codexHome('xzcl-verdict-');
     const socketPath = join(home, CODEX_CONTROL_SOCKET);
