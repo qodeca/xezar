@@ -31,13 +31,13 @@ const pinSandboxHome = (): void => {
 // defaulted: `GH_TELEMETRY=log` still records the id.
 process.env.GH_TELEMETRY = '0'
 
-// GitHub's Windows runners run every step as administrator, and xezar refuses its MCP pipe for an
-// elevated process (#980). Every MCP test would fail there for that one reason, so the live folder
-// check treats the account as a standard one (and what it created as the user's); the refusal itself is
-// pinned with an injected report.
-// The flag `ELEVATED_AS_STANDARD_FOR_TESTS` in src/platform/private-dir.ts reads; set here, not imported,
+// A loaded CI runner can keep the live Windows folder check's PowerShell past its limit (#963): the
+// check then reads once more with more time, and says what it saw when it refuses. The rules do not
+// change – GitHub's Windows runners run every step as administrator, and since #980 they are checked
+// as the elevated process they are, in the administrators-only folder.
+// The flag `PATIENT_ACL_READ_FOR_TESTS` in src/platform/private-dir.ts reads; set here, not imported,
 // so this file loads no module a test file would mock.
-;(globalThis as Record<symbol, unknown>)[Symbol.for('xezar.test.elevatedAsStandard')] = true
+;(globalThis as Record<symbol, unknown>)[Symbol.for('xezar.test.patientAclRead')] = true
 
 // `ANTHROPIC_MODEL` outranks every Claude settings file — `agent-config/model-settings/claude.ts`
 // reads it BEFORE any file, deliberately, because Claude Code does. So a case that asks what the

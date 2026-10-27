@@ -30,6 +30,47 @@ export type CliFailure = Error & {
   signal: NodeJS.Signals | null
 }
 
+/**
+ * Chrome launch flags every session gets. Chrome copies the OS motion setting into
+ * `prefers-reduced-motion`, so a machine with animation effects turned off (a Windows default on
+ * some installs) made every "with motion allowed" spec fail, and the CLI can only switch the
+ * preference ON (`set media <scheme> reduced-motion`), never force it off (#1137). This flag pins
+ * the default to "no preference"; `set media … reduced-motion` still overrides it, checked on
+ * agent-browser 0.39.1.
+ *
+ * Every call of a session must carry the SAME launch flags: a call whose flags differ from the
+ * ones the browser was launched with relaunches it with the new set (checked on 0.39.1). So a
+ * spec's own `--args` (B4 launches with `--blink-settings=primaryHoverType=2`) gets this flag
+ * added and is remembered for its session, and every later call of that session repeats it — or
+ * the next plain call would relaunch Chrome without the spec's settings. A command-line `--args`
+ * overrides `AGENT_BROWSER_ARGS`, so a value already in the environment is folded in too.
+ */
+const BROWSER_LAUNCH_ARGS = ['--force-prefers-no-reduced-motion']
+
+/** The launch flags each session was opened with, keyed by `--session`. */
+const sessionLaunchArgs = new Map<string, string>()
+
+function joinLaunchArgs(...values: Array<string | undefined>): string {
+  const flags = values.flatMap((value) => (value ?? '').split(',')).map((flag) => flag.trim()).filter(Boolean)
+  return [...new Set(flags)].join(',')
+}
+
+/** `args` with the session's launch flags: merged into the caller's `--args`, else appended. */
+export function withLaunchArgs(args: readonly string[], env: NodeJS.ProcessEnv = process.env): string[] {
+  const out = [...args]
+  const sessionAt = out.indexOf('--session')
+  const session = sessionAt >= 0 ? out[sessionAt + 1] : undefined
+  const argsAt = out.indexOf('--args')
+  if (argsAt >= 0 && argsAt + 1 < out.length) {
+    const merged = joinLaunchArgs(env.AGENT_BROWSER_ARGS, out[argsAt + 1], ...BROWSER_LAUNCH_ARGS)
+    out[argsAt + 1] = merged
+    if (session !== undefined) sessionLaunchArgs.set(session, merged)
+    return out
+  }
+  const remembered = session === undefined ? undefined : sessionLaunchArgs.get(session)
+  return [...out, '--args', remembered ?? joinLaunchArgs(env.AGENT_BROWSER_ARGS, ...BROWSER_LAUNCH_ARGS)]
+}
+
 export function runAgentBrowserCli(
   command: string,
   args: readonly string[],
@@ -42,7 +83,7 @@ export function runAgentBrowserCli(
   const err = openSync(errPath, 'w')
   let result: ReturnType<typeof spawnSync>
   try {
-    result = spawnSync(command, args, { stdio: ['ignore', out, err], timeout, windowsHide: true })
+    result = spawnSync(command, withLaunchArgs(args), { stdio: ['ignore', out, err], timeout, windowsHide: true })
   } finally {
     closeSync(out)
     closeSync(err)

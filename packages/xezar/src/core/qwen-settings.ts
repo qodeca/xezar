@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripJsonComments } from '../agent-config/validate.ts';
 import { agentHomePaths } from '../paths.ts';
+import { asRecord } from './records.ts';
 
 /** The auth types `qwen --auth-type` accepts (Qwen Code 0.25.2 `--help`). */
 export const QWEN_AUTH_TYPES = ['openai', 'openai-responses', 'anthropic', 'qwen-oauth', 'gemini', 'vertex-ai'] as const;
@@ -213,10 +214,6 @@ function stripTrailingCommas(input: string): string {
 
 function isAuthType(value: string): value is QwenAuthType {
   return (QWEN_AUTH_TYPES as readonly string[]).includes(value);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function str(value: unknown): string | undefined {

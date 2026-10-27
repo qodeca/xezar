@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
-import { workflowStepDefSchema } from '@qodeca/xezar-contract';
+import { TASK_VERDICT_ROLES, type TaskVerdictRole, workflowStepDefSchema } from '@qodeca/xezar-contract';
 
 import { skillStackOf, workflowFileSchema, workflowStepSchema } from './types.ts';
 
@@ -45,22 +45,27 @@ describe('#851 — the verdictRole step key', () => {
     expect(skillStackOf([{ id: 'x', name: 'x', skill: 'x', prompt: '{{task}}', verdictRole: 'qa' }])).toBeNull();
   });
 
-  it.each([
-    ['code-review.yaml', 'code-review'],
-    ['design-review.yaml', 'design-review'],
-    ['qa.yaml', 'qa'],
-  ] as const)('the kit verdict workflow %s declares %s on its verdict step', (file, role) => {
+  // One row per engine role: every role in TASK_VERDICT_ROLES has exactly one kit workflow that
+  // declares it, on the step its skill writes the packet from.
+  const KIT_VERDICT_WORKFLOWS = [
+    ['code-review.yaml', 'code-review', 'review'],
+    ['design-review.yaml', 'design-review', 'review'],
+    ['qa.yaml', 'qa', 'review'],
+    ['architecture-review.yaml', 'architecture-review', 'review'],
+    ['security-review.yaml', 'security-review', 'review'],
+    ['acceptance-verification.yaml', 'acceptance-verification', 'verify'],
+  ] as const satisfies ReadonlyArray<readonly [string, TaskVerdictRole, string]>;
+
+  it('names every engine verdict role exactly once', () => {
+    expect(KIT_VERDICT_WORKFLOWS.map(([, role]) => role).sort()).toEqual([...TASK_VERDICT_ROLES].sort());
+  });
+
+  it.each(KIT_VERDICT_WORKFLOWS)('the kit verdict workflow %s declares %s on its %s step', (file, role, stepId) => {
     const workflow = workflowFileSchema.parse(
       parseYaml(readFileSync(join(process.cwd(), '.xezar', 'workflows', file), 'utf8')),
     );
     const declared = (workflow.steps ?? []).filter((step) => step.verdictRole !== undefined);
 
-    expect(declared.map((step) => [step.id, step.verdictRole])).toEqual([['review', role]]);
+    expect(declared.map((step) => [step.id, step.verdictRole])).toEqual([[stepId, role]]);
   });
-
-  // Gap in the 3.0.3 kit: `.xezar/workflows/architecture-review.yaml` declares no `verdictRole` on its
-  // review step, and its verdict words (CONFORMS / CONTRADICTS) are not the engine's
-  // architecture-review vocabulary, so no architecture packet can be recorded yet. The engine side is
-  // a separate change; this case returns with it.
-  it.todo('the kit verdict workflow architecture-review.yaml declares architecture-review on its verdict step');
 });

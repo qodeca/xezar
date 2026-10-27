@@ -2,8 +2,13 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
+import { resolveElevatedIpc, type ElevatedIpc } from '../platform/elevated-ipc.ts';
+import { processIsElevated } from '../platform/elevation.ts';
 import { activeStateLayout, type StateLayout } from '../state-layout.ts';
-import { pipeFiles, type PipeFiles } from './pipe-endpoint.ts';
+import { pipeFilesFor, type PipeFiles } from './pipe-endpoint.ts';
+
+/** How the administrators-only folder is located (#980). Default: the real `%ProgramData%` chain. */
+export type ResolveAdminIpc = (scope: string) => ElevatedIpc | null;
 
 /**
  * The IPC leg between `xez mcp` (the bridge) and the running xezar service — D-01
@@ -88,7 +93,10 @@ export type McpSocketLocation =
  * first 12 hex characters of SHA-256(project root) replace the id. When even that
  * is too long (a very long `XEZ_HOME`), there is no socket — the caller degrades.
  * Windows (#963, D-01 § 10.2 as amended): a named pipe, named afresh at every start and
- * found through the endpoint and marker files in the same folder (`pipe-endpoint.ts`).
+ * found through the endpoint and marker files in the same folder (`pipe-endpoint.ts`). An elevated
+ * process (#980) uses an administrators-only folder under `%ProgramData%` instead
+ * (`platform/elevated-ipc.ts`), so an elevated cockpit meets only an elevated leader; `elevated` is
+ * asked on Windows only.
  *
  * `layout` defaults to the process's own. The bridge passes the layout it
  * resolved for its folder on this session open (#819 item 5), so a folder that
@@ -100,9 +108,23 @@ export function mcpSocketLocation(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   layout: StateLayout = activeStateLayout(env),
+  elevated: () => boolean = processIsElevated,
+  resolveAdmin: ResolveAdminIpc = resolveElevatedIpc,
 ): McpSocketLocation {
   const dir = layout.ipcDir;
-  if (platform === 'win32') return { kind: 'pipe', files: pipeFiles(dir, project.id) };
+  if (platform === 'win32') {
+    const admin = resolveAdmin(layout.ipcDir);
+    // An elevated cockpit that cannot locate its machine-protected folder has no safe rendezvous:
+    // it degrades rather than falling back to the user folder a normal process could reach (#980).
+    if (elevated() && admin === null) {
+      return {
+        kind: 'unavailable',
+        reason:
+          'xezar runs as administrator but could not locate its machine-protected elevated MCP folder under %ProgramData%; the administrators-only leader bridge is unavailable for this session',
+      };
+    }
+    return { kind: 'pipe', files: pipeFilesFor({ user: layout.ipcDir, admin }, project.id, elevated()) };
+  }
   const limit = maxSocketPathBytes(platform);
   const primary = join(dir, `${project.id}.sock`);
   if (Buffer.byteLength(primary) <= limit) return { kind: 'socket', path: primary };
@@ -121,8 +143,25 @@ export function mcpSocketLocation(
 }
 
 /**
+ * Windows (#963, #980): the pipe rendezvous files of `projectId` for a process of this elevation –
+ * in `ipcDir`, or in the administrators-only `%ProgramData%` chain for an elevated process
+ * (`platform/elevated-ipc.ts`) – with the other folder's files as their counterpart.
+ */
+export function mcpPipeFiles(
+  projectId: string,
+  env: NodeJS.ProcessEnv = process.env,
+  layout: StateLayout = activeStateLayout(env),
+  elevated: () => boolean = processIsElevated,
+  resolveAdmin: ResolveAdminIpc = resolveElevatedIpc,
+): PipeFiles {
+  return pipeFilesFor({ user: layout.ipcDir, admin: resolveAdmin(layout.ipcDir) }, projectId, elevated());
+}
+
+/**
  * The only directory the service creates for MCP: `~/.xezar/ipc` in the global
- * layout, `<project>/.local/xezar/ipc` in single-project mode (#600).
+ * layout, `<project>/.local/xezar/ipc` in single-project mode (#600). On Windows an
+ * elevated xezar uses an administrators-only folder under `%ProgramData%` instead
+ * (#980, `mcpPipeFiles` → `platform/elevated-ipc.ts`).
  *
  * It follows the resolved layout rather than the per-user home because BR-2
  * forbids opening `~/.xezar` at all in the mode, and it lands under
@@ -250,9 +289,6 @@ export const leaderPushParamsSchema = z.object({
   meta: z.record(z.string(), z.string()).optional(),
 });
 export type LeaderPushParams = z.infer<typeof leaderPushParamsSchema>;
-
-/** What the bridge answers a `leader/push`: the notification was written to the client's stdout. */
-export const leaderPushResultSchema = z.object({ pushed: z.literal(true) });
 
 /** Service → bridge. */
 export const ipcResponseSchema = z.discriminatedUnion('ok', [

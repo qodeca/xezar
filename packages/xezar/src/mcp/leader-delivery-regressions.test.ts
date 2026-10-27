@@ -12,9 +12,10 @@ import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { EventCatalog, withEventOrigin, expectEventTransition } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
-import { EchoGuard, attachLeaderFeed } from './echo-guard.ts';
+import { EchoGuard, isOwnEcho } from './echo-guard.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
-import { runDecisionProjection, runVersion, guardedRunMutation } from './stale-write.ts';
+import { runDecisionProjection } from '../runs/decision-projection.ts';
+import { runVersion, guardedRunMutation } from './stale-write.ts';
 import { executionControlTool } from './tools/execution-control.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
 import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
@@ -42,7 +43,8 @@ beforeEach(() => {
   catalog = EventCatalog.attach({ journal, store, workspaceEvents: { on: () => () => {} } });
   guard = new EchoGuard({ projectId: 'xezar' });
   delivered = [];
-  unsubscribe = attachLeaderFeed({ journal, guard, deliver: row => delivered.push(row) });
+  // The production feed: the project's journal with the echo rule `LeaderDelivery.deliver` applies.
+  unsubscribe = journal.subscribe(row => { if (!isOwnEcho(row, guard)) delivered.push(row); });
   sent = vi.fn(() => true);
   cancelled = vi.fn(() => true);
   const manager = { isActive: () => true, sendMessage: sent, cancel: cancelled } as unknown as RunManager;
@@ -121,7 +123,7 @@ describe('leader delivery incidents (#449, #530)', () => {
 });
 
 async function expectPush(outcome: McpJournalRow, nextCursor: string) {
-  // Exercise the actual attached-Claude push filter as well as EchoGuard's admission rule.
+  // Exercise the actual attached-Claude push path end to end, echo filter included.
   // Attach after the rows exist, so the controller's initial floor is at the journal head.
   const push = vi.fn(async () => {});
   const delivery = new LeaderDelivery({ projectId: 'xezar', projectRoot: root, journal, guard,
@@ -301,8 +303,8 @@ function outcomeAfter(h: MatrixHarness, runId: string, outcome: typeof outcomes[
 // #532 G2 extends #531 through the real controller and all four receiving peers.
 // Named breaks: unconditional pendingIntents.set; retained explicit-refusal ownership;
 // consume without expected status; leaked settled async origin; erase newer intent on old refusal.
-// win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
+// The Qwen Code peer listens on a Unix socket path, which Node cannot do on Windows (#1086); the codex and
+// claude-code peers run on every OS
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 causal matrix / ${client}`, () => {
   const rejected = ['send_message', 'cancel', 'continue', 'answer_question', 'pin', 'set_title', 'edit_brief'] as const;
   for (const action of rejected) {
@@ -400,8 +402,8 @@ it.each(['new-id', 'same-id-new-content'] as const)('question replacement %s mus
   expect(runVersion(store, run.id)).not.toBe(token);
 });
 
-// win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
-// The Qwen Code peer is a Unix socket path too; claude-code (named pipe) runs on Windows
+// The Qwen Code peer listens on a Unix socket path, which Node cannot do on Windows (#1086); the codex and
+// claude-code peers run on every OS
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 delayed intent arbitration / ${client}`, () => {
   it('own accepted cancelled acknowledgement stays suppressed but an unrelated failed outcome is delivered', async () => {
     const h = await deliveryHarness(client);

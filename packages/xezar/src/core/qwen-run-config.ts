@@ -25,7 +25,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseJsonc } from './qwen-settings.ts';
 import { writeMcpOverlay, type McpOverlayFile } from './run-mcp-isolation.ts';
-import type { QwenToolPolicy } from './qwen-tool-policy.ts';
+import { asRecord } from './records.ts';
 
 /** The env var Qwen Code reads its system settings path from. */
 export const QWEN_SYSTEM_SETTINGS_ENV = 'QWEN_CODE_SYSTEM_SETTINGS_PATH';
@@ -224,14 +224,6 @@ export function qwenHookCommand(
   return { command: `"${nodePath}" "${hookPath}"` };
 }
 
-/** The env the policy and the settings file reach Qwen Code through. */
-export function qwenRunEnv(settingsPath: string, policy: QwenToolPolicy | undefined, policyEnv: string): Record<string, string> {
-  return {
-    [QWEN_SYSTEM_SETTINGS_ENV]: settingsPath,
-    ...(policy ? { [policyEnv]: JSON.stringify(policy) } : {}),
-  };
-}
-
 /** Write the run's settings file privately (mode 0600, own temp folder). Null when it cannot. */
 export function writeQwenSystemSettings(settings: Record<string, unknown>): McpOverlayFile | null {
   return writeMcpOverlay('settings.json', settings);
@@ -251,10 +243,6 @@ function readIfPresent(path: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function stringList(value: unknown): string[] {

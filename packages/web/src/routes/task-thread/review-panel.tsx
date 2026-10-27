@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { copyText } from '@/lib/clipboard-result'
 import { Link } from '@/lib/project-router'
+import { prefersReducedMotion } from '@/lib/use-desktop'
 import { isSubmitShortcut } from '@/lib/use-submit-shortcut'
 import { isHttpUrl } from '@/lib/utils'
 
@@ -239,16 +240,6 @@ function ManualMergeLine({ command }: { command: string }) {
 
 // ---- the accept celebration -----------------------------------------------------------------
 
-/** True when the OS asks for reduced motion — the celebration renders nothing at all then
- *  (spec: "reduced-motion-safe"). False where `matchMedia` is missing (old jsdom, SSR). */
-export function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
-}
-
 const CELEBRATION_MS = 1500
 
 /**
@@ -266,7 +257,7 @@ export function AcceptCelebration({ status }: { status: RunStatus }) {
     const before = previous.current
     previous.current = status
     if (before !== 'review' || status !== 'done') return
-    if (prefersReducedMotion()) return
+    if (prefersReducedMotion()) return // spec: "reduced-motion-safe" — no overlay at all
     setCelebrating(true)
     const timer = setTimeout(() => setCelebrating(false), CELEBRATION_MS)
     return () => clearTimeout(timer)

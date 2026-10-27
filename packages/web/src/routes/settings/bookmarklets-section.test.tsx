@@ -1,10 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { createQueryClient } from '@/api/query-client'
+import { Toaster, resetToasts } from '@/components/ui/toaster'
 import type { HealthResponse, ProjectsResponse, Skill } from '@qodeca/xezar-api-client'
 import { BookmarkletPanel } from './bookmarklets-section'
 
@@ -53,6 +54,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  act(() => resetToasts())
   fetchMock.mockReset()
   vi.unstubAllGlobals()
 })
@@ -71,6 +73,7 @@ function renderPanel(
       <MemoryRouter initialEntries={[at]}>
         <ProjectScopeProvider projectId={scope}>
           <BookmarkletPanel skills={skills} />
+          <Toaster />
         </ProjectScopeProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -192,5 +195,35 @@ describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () =
     await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=k'))
     expect(hrefOf('bm-generic')).toContain(`/new?'+q`)
     expect(hrefOf('bm-generic')).not.toContain('/p/')
+  })
+})
+
+describe('BookmarkletPanel copy', () => {
+  const copyButton = () => document.querySelector<HTMLButtonElement>('[data-slot="bm-generic"] [data-slot="bm-copy"]')!
+
+  it('copies the generic bookmarklet URL and says so', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    serve({ '/api/v1/health': HEALTH, '/api/v1/launch-key': { key: 'k' } })
+    renderPanel()
+    await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=k'))
+
+    fireEvent.click(copyButton())
+
+    expect(await screen.findByText('Bookmarklet URL copied')).toBeTruthy()
+    expect(writeText).toHaveBeenCalledWith(copyButton().closest('[data-slot="bm-generic"]')!
+      .querySelector('[data-slot="bm-link"]')!.getAttribute('href'))
+  })
+
+  it('points at the drag gesture, without throwing, when the browser has no clipboard', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    serve({ '/api/v1/health': HEALTH, '/api/v1/launch-key': { key: 'k' } })
+    renderPanel()
+    await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=k'))
+
+    fireEvent.click(copyButton())
+
+    const failure = await screen.findByText('Copy failed — drag the button instead.')
+    expect(failure.closest('[data-slot="toast"]')?.getAttribute('data-tone')).toBe('danger')
   })
 })

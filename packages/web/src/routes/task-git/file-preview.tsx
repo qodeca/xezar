@@ -5,7 +5,7 @@ import { ApiError, runFileRawUrl } from '@/api/client'
 import { useRunFile } from '@/api/queries'
 import type { WorktreeEntry } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
-import { highlight, highlightSync, langForPath, type SynToken } from '@/lib/highlighter'
+import { HIGHLIGHT_MAX_LINES, highlight, highlightSync, langForPath, type SynToken } from '@/lib/highlighter'
 import { cn } from '@/lib/utils'
 
 import { formatFileSize, previewKind } from './worktree-files'
@@ -124,9 +124,6 @@ function Pane({ className, children }: { className?: string; children: React.Rea
     </section>
   )
 }
-
-/** Past this many lines highlighting is skipped — plaintext beats jank (diff-view.tsx's cap). */
-const HIGHLIGHT_MAX_LINES = 1500
 
 /** Tokens for the whole file through the shared singleton: sync when the grammar is resident,
  *  async load once when not, plaintext for unknown/oversized files. Same shape as the diff

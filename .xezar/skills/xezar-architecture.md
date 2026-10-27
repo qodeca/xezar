@@ -51,6 +51,64 @@ Output: exactly one comment whose first line is `## Architecture review`, posted
 
 A review by the lane that wrote the design is not a review, and you cannot read the run record to check. The leader names the author's lane, login and vendor in the launch text. State independence in the comment as one of three words: **confirmed** (the launch text names the author and it is not you), **not confirmed** (it names you: say so in your first line and stop), or **unknown** (it does not say). Never write confirmed without that text.
 
+## Record the verdict on the task record
+
+This step declares `verdictRole: architecture-review` in its workflow, and the engine records a verdict packet only under the role the step declares. After the `## Architecture review` comment is posted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. It is the machine-readable half of the same report, never a replacement for the comment. A review of a plan or a path with no commit behind it has no head to name: write no packet then, and say in the comment that the verdict is not on the task record.
+
+The engine knows six verdict roles, each declared by exactly one kit workflow on its verdict step and each with its own words. This skill writes only the first row; the table is here so a packet never borrows another row's role or words.
+
+| Role | Workflow and step | Verdict words |
+| --- | --- | --- |
+| `architecture-review` | `architecture-review`, `review` | CONFORMS, CONFORMS WITH FOLLOW-UPS, CONTRADICTS (the engine also accepts APPROVE and REQUEST CHANGES; this skill never writes them) |
+| `code-review` | `code-review`, `review` | APPROVE, REQUEST CHANGES |
+| `design-review` | `design-review`, `review` | PASS, PASS WITH FOLLOW-UPS, FAIL |
+| `qa` | `qa`, `review` | PASS, FAIL |
+| `security-review` | `security-review`, `review` | NO FINDINGS AT THIS HEAD, FINDINGS, BLOCKING FINDINGS |
+| `acceptance-verification` | `acceptance-verification`, `verify` | ALL CRITERIA MET, CRITERIA NOT MET |
+
+Write it with `jq -n '{kind:"packet",packet:<packet>}' | bash .local/xezar/cache/kit/checks/verdict-write.sh`: one JSON request piped into the script with nothing after its name, never a heredoc, which this step's shell refuses. It writes a temporary file and renames it onto the final name, and it refuses a packet over 40 KB or one that is not JSON, so a refusal reaches you rather than the engine. Never redirect into the final path, and never `mv`.
+
+Order matters: post the comment, then attempt the labels, then write the packet. This role moves no label, so there is nothing to attempt, but the packet still records what the labels were, and it cannot honestly be written before the comment it summarises exists.
+
+```json
+{
+  "id": "architecture-review-<short sha>",
+  "role": "architecture-review",
+  "verdict": "CONFORMS WITH FOLLOW-UPS",
+  "reviewedHeadSha": "<the full 40-character sha you reviewed>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" },
+  "findings": [
+    {
+      "id": "NB-1",
+      "severity": "minor",
+      "file": "docs/architecture/storage.md",
+      "line": 12,
+      "title": "the storage page still names the old owner of the runs index",
+      "body": "The change moves ownership of the index and leaves the page saying otherwise.",
+      "fingerprint": "5d2c9e0a7b41f3e86c10"
+    },
+    { "id": "NB-2", "severity": "nit", "title": "an undecided question: who may write the cache folder" }
+  ],
+  "findingsOmitted": 0
+}
+```
+
+`role` is `architecture-review` and nothing else: a packet under another role's name puts a verdict on the task record that you did not give, and the engine refuses it from this step anyway. `verdict` is one of `CONFORMS`, `CONFORMS WITH FOLLOW-UPS` or `CONTRADICTS`, the same words as the comment's verdict line. Leave `taskId`, `stepId` and `recordedAt` out: `verdict-write.sh` stamps the two ids from the step's environment (`review` here) and `recordedAt` from the clock, and refuses a packet that names a different task or step. `id` is stable for THIS report: re-writing it with identical content is a no-op, and the same id with different content is refused. `reviewedHeadSha` is never abbreviated and never the branch's current head when that is not what you read.
+
+`labels` is evidence, not intent. `requestedAdd` and `requestedRemove` stay empty, because you asked for nothing. Read the labels back with `gh pr view <number> --json labels` and set `"state": "verified"` with `observed` (what you read) and `observedAt`; when you could not read them, set `"state": "unavailable"` and leave the `observed` key out entirely, because an empty `observed` reads as "we looked and there were none".
+
+### The findings
+
+`findings` is the machine-readable half of the findings your comment already carries. Write it from the SAME working list you wrote the comment from — never by parsing your own comment back, and never into a second file. Finding B-*n* of the comment is `"id": "B-<n>"` here and NB-*n* is `"id": "NB-<n>"`, in the same order. A B-*n* is `blocker`; an NB-*n* is `major`, `minor` or `nit` by `CODE_REVIEW.md` § Severity guidance. `severity` is lower-case `blocker`, `major`, `minor` or `nit`; `file` is repo-relative and `line` is the first line of the location, and both are omitted when the finding is about the change as a whole (a `line` without a `file` is refused). `title` is one headline and `body` ONE sentence of what is wrong; the argument stays in the comment, which `evidenceUrl` addresses. `fingerprint` is optional: a short stable hash of `file`, `severity` and `title`, at most 64 characters, never derived from the line. `findings` and `findingsOmitted` are a pair, written both or neither.
+
+**A bounded list is counted, never silently short.** At most 20 findings, and at most 16 KB of serialized `findings`; a packet over either bound is refused whole. When you have more than fits, order by severity (`blocker`, `major`, `minor`, `nit`) and then by the order they appear in the comment, include what fits, set `findingsOmitted` to the number left out, and add this sentence to the posted comment:
+
+`N findings are in this comment and not in the machine-readable packet`
+
+The comment always carries EVERY finding, and `findingsOmitted` is `0` when the list is complete.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

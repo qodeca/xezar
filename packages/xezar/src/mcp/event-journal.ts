@@ -7,7 +7,7 @@ import {
   truncateSync,
   writeFileSync,
 } from 'node:fs';
-import { renameReplacingSync } from '../platform/atomic-write.ts';
+import { renameReplacingSync, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -324,11 +324,9 @@ export class EventJournal {
   }
 
   #compact(): void {
-    const tmp = `${this.rowsPath}.tmp`;
     const body = this.#lines.length === 0 ? '' : `${this.#lines.join('\n')}\n`;
     try {
-      writeFileSync(tmp, body, 'utf8');
-      renameReplacingSync(tmp, this.rowsPath);
+      writeFileAtomicSync(this.rowsPath, body, { encoding: 'utf8' });
       this.#fileBytes = Buffer.byteLength(body, 'utf8');
       this.#evictedOnDisk = 0;
     } catch (err) {
@@ -426,16 +424,14 @@ export class EventJournal {
     this.#latestSeq = 0;
     this.#fileBytes = 0;
     this.#evictedOnDisk = 0;
-    const tmp = `${this.indexPath}.tmp`;
     try {
       mkdirSync(join(this.rowsPath, '..'), { recursive: true, mode: 0o700 });
       writeFileSync(this.rowsPath, '', 'utf8');
-      writeFileSync(
-        tmp,
+      writeFileAtomicSync(
+        this.indexPath,
         `${JSON.stringify({ v: 1, projectId: this.projectId, epoch: this.#epoch, createdAt: new Date(this.#now()).toISOString() })}\n`,
-        'utf8',
+        { encoding: 'utf8' },
       );
-      renameReplacingSync(tmp, this.indexPath);
     } catch (err) {
       this.#writable = false;
       this.#warnWrite(err);

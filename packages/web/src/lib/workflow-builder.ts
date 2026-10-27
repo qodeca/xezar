@@ -57,24 +57,28 @@ export function insertStep(
   return next
 }
 
-/** Reorder immutably (dnd-kit's arrayMove semantics). Out-of-range indexes answer the list
- *  unchanged — a cancelled drag must be a no-op, never a crash. */
+/** Remove the step at `index`. Out-of-range answers the input unchanged — a stale click on a
+ *  card that just moved must not eat a neighbor. */
+export function removeStep(steps: readonly WorkflowStepDef[], index: number): WorkflowStepDef[] {
+  if (!Number.isInteger(index) || index < 0 || index >= steps.length) return [...steps]
+  return steps.filter((_, i) => i !== index)
+}
+
+/** Move the step at `from` so it lands at `to` (splice semantics: remove, then insert), always
+ *  as a new list. `to` is clamped into the list; an invalid `from` or a no-op move answers the
+ *  input order — a cancelled drag or a stale click is a no-op, never a crash. */
 export function moveStep(
   steps: readonly WorkflowStepDef[],
   from: number,
   to: number,
 ): WorkflowStepDef[] {
-  if (from === to) return [...steps]
-  if (from < 0 || from >= steps.length || to < 0 || to >= steps.length) return [...steps]
-  const next = [...steps]
-  const [moved] = next.splice(from, 1)
-  if (moved === undefined) return [...steps]
-  next.splice(to, 0, moved)
-  return next
-}
-
-export function removeStep(steps: readonly WorkflowStepDef[], index: number): WorkflowStepDef[] {
-  return steps.filter((_, i) => i !== index)
+  const copy = [...steps]
+  if (!Number.isInteger(from) || from < 0 || from >= copy.length) return copy
+  const target = Math.max(0, Math.min(copy.length - 1, to))
+  if (target === from) return copy
+  const [moved] = copy.splice(from, 1)
+  copy.splice(target, 0, moved!)
+  return copy
 }
 
 /** Quote only when the plain form would be ambiguous YAML — special characters, or a scalar

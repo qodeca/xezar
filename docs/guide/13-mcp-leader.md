@@ -1,6 +1,6 @@
 # MCP project leader
 
-Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar without administrator rights; attaching to a running Codex session is not available there yet.
+Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar and the leader the same way – both as administrator or both without.
 
 ## Before setup
 
@@ -12,7 +12,7 @@ Requires xezar 0.30.0 or later; run `xezar --version` to check, and see [Getting
 
 The operating rule is **xezar MCP tools for project coordination**. The leader does not drive the cockpit UI or call the HTTP API for ordinary work. It should be attached so project events reach it automatically; `leader_events` is the fallback when it is not attached or needs to catch up. Use `gh` for GitHub facts such as labels, review verdicts and merge state.
 
-A connection is bound to one project, with one owning client at a time. The cockpit remains usable by a person alongside the leader. Configuring MCP, acquiring ownership and attaching for push delivery are distinct: having a config file does not prove the session is connected, and a connected session is not automatically attached.
+A connection is bound to one project, with one owning client at a time. xezar checks that project's folder again before every tool call: if the folder was deleted, moved, re-created at the same path or replaced with a link, the call is refused with `the project folder this MCP session is bound to is missing; restore it or reconnect from the project folder`. The cockpit remains usable by a person alongside the leader. Configuring MCP, acquiring ownership and attaching for push delivery are distinct: having a config file does not prove the session is connected, and a connected session is not automatically attached.
 
 Use these four labels in setup results; none implies the next one:
 
@@ -118,7 +118,7 @@ qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp
 
 ### Codex
 
-**Prerequisites.** Run Codex and the cockpit on the same machine, trust the project, and use the same Codex home for xezar and the shared app-server: `CODEX_HOME` when set, otherwise `~/.codex`.
+**Prerequisites.** Run Codex and the cockpit on the same machine, trust the project, and use the same Codex home for xezar and the shared app-server: `CODEX_HOME` when set, otherwise `~/.codex`. On Windows, xezar reaches the shared app-server through Codex's own relay, `codex app-server proxy`, which it starts while the leader is attached and stops afterwards: the `codex` command xezar uses for tasks (or `XEZ_CODEX_BIN`) must be available to `xezar serve`, and both run without administrator rights.
 
 **Register `xezar mcp`.** Add this project-scoped block to `.codex/config.toml`:
 
@@ -349,4 +349,4 @@ with no project MCP servers until the file is fixed.
 
 Next: [Remote access](14-remote-access.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

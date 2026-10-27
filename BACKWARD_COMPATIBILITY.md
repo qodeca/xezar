@@ -59,6 +59,16 @@ A new top-level name under `.local/xezar/` is listed in `STATE_NAME_ENTRIES`
 (`packages/xezar/src/local-xezar-top-level-names.ts`) in the same change; #1001 adds the
 `claude-settings/` directory (pinned step hooks), and a new directory is additive.
 
+Scheduled removal (recorded 2026-10-24, owner decision OD-10, tracking #563): the read-only
+alias `.local/xezar/mcp-audit.ndjson`, the audit trail xezar 0.13.0–0.15.0 wrote, is the one
+exception to "the old shape keeps being read". Since 0.16.0 it is read only while `audit.ndjson`
+does not exist, with a one-line deprecation notice ("removal not before 0.18.0"). Its reader is
+removed in 0.33.0, through a pull request that links #563, and not earlier. *Replacement:*
+`.local/xezar/audit.ndjson`, which every release since 0.16.0 writes. *Symptom:* in a project that
+still has only the old file, the audit trail reads as empty and the notice is no longer printed.
+*Way forward:* nothing is converted and the old file is never deleted or rewritten; keep or archive
+it by hand. The removing release records the change in § 9.
+
 ## 6. Environment variables
 
 The `XEZ_*` variables and their defaults, as `.env.example` documents them. Renaming one, removing
@@ -73,8 +83,9 @@ that the built cockpit ships inside it. Nothing publishes automatically (`docs/p
 ## 8. Deprecation
 
 A surface above is removed only after a deprecation that names the replacement and the release it
-goes in, recorded under `docs/deprecations/` with an upgrade note keyed by the symptom a user will
-see. How long the notice runs is the owner's decision for each case.
+goes in, recorded under `docs/deprecations/` (created with its first record) with an upgrade note
+keyed by the symptom a user will see. How long the notice runs is the owner's decision for each
+case.
 
 Exception (#1046, owner decision in #1041): the `pi` and `opencode` backends and leader clients
 were removed in one release, without a deprecation release, once Qwen Code passed the parity proof
@@ -84,7 +95,7 @@ were removed in one release, without a deprecation release, once Qwen Code passe
 
 Each entry names the release, the surface it breaks, the symptom a user sees and the way forward.
 
-- **Unreleased – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
+- **0.31.0 – `GET /api/v1/health` is same-origin only, and its remote and hosted root are
   narrowed** (§2). Health no longer sends `access-control-allow-origin: *` or answers the CORS
   preflight with `access-control-allow-private-network`; its only cross-origin reader, the old
   bookmarklet port probe, was retired earlier. `repo.remote` (on health and the repository route)
@@ -95,7 +106,7 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   read health over HTTP or the WebSocket; a native client (`curl`, the MCP bridge) is unaffected.
   *Way forward:* read health from a native client or from the cockpit's own origin. The owner
   approved removing the health CORS headers on 2026-10-18.
-- **Unreleased – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
+- **0.31.0 – a hosted cockpit narrows what a remote request may change** (§2, §6). In hosted
   mode (`XEZ_REMOTE=1` or a non-loopback bind) three things that used to succeed are refused. The
   owner approved shipping this without a §8 deprecation notice (2026-10-18), because the changes
   fix security holes. A `Host` name that is

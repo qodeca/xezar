@@ -346,9 +346,9 @@ These target the defects agents make most often:
 - **Rules get property tests.** A business rule or invariant in the spec (round trips, ordering,
   totals, permissions) gets at least one property-based test – one rule checked against many
   generated inputs – where the stack has a library for it.
-- **Mutation testing on risky changes.** Where the profile names a mutation tool, a `risk-high`
-  change runs it on the changed lines: the tool breaks the code on purpose to see whether the tests
-  notice. Each surviving mutant is killed by a new test or explained on the pull request.
+- **No mutation testing.** The owner removed mutation testing from this project on 2026-10-27
+  (see § Deviations from the core): no gate, workflow or pull request runs a mutation tool. A test
+  on a `risk-high` change still has to fail against a named break of the code it guards.
 - **Duplication is checked.** Where the profile names a clone detector, a new duplicated block above
   its threshold is a major finding, unless the pull request says why reuse was not possible.
 - **Every change can be undone.** A merged change reverts cleanly with one `git revert`. One that
@@ -628,7 +628,7 @@ The file kinds and their rules are in `.xezar/docs/campaign-notes.md`.
 | Fact | Value |
 |---|---|
 | Product | xezar (`@qodeca/xezar` on npm): a local cockpit, a CLI plus a browser GUI, that runs AI coding agents in parallel, each in its own git worktree |
-| Stack | TypeScript (strict, ESM), Node 22+, four npm workspaces (`xezar`, `contract`, `api-client`, `web`), Hono, Zod, React 19, Vite, Vitest |
+| Stack | TypeScript (strict, ESM), Node 22+ for the published package and 22.13+ to develop, four npm workspaces (`xezar`, `contract`, `api-client`, `web`), Hono, Zod, React 19, Vite, Vitest |
 | Tracker | GitHub issues and pull requests, `qodeca/xezar` |
 | Pipeline | Xezar. The leader is the session started with `scripts/xezar-leader.sh`; its rules are in `.xezar/docs/leader-guide.md` |
 | Machine sources | Gate and labels: `.xezar/pipeline/config.json`, `.xezar/pipeline/labels.json`. Routing: `.xezar/routing.json` (read only through `route.mjs`). Loops: `.xezar/loops.json` |
@@ -670,8 +670,8 @@ enforcement, so this limit is an instruction, not a guard.
 in `validation.commands`, and `.xezar/checks/repository-checks.sh`. There is no lint step. The
 required CI checks are the five in `ci.requiredChecks`. Branch protection on `develop` and `main`
 also requires the four Windows and macOS legs on Node 22 and 24 of the cross-platform matrix, and
-`main` also requires `PR source guard`. The Linux Node 22 leg runs on every pull request without
-being required, and the LTS legs are informational.
+`main` also requires `PR source guard`. Linux runs only in the required checks; the informational
+LTS canary legs run only on a push to `develop`, never on a pull request.
 
 ### Gates in this project
 
@@ -695,7 +695,7 @@ Full list: `CODE_REVIEW.md` § Security.
 ### Architecture review here
 
 Adding a package, a runner backend, a persisted format or a public route family. Decisions are
-recorded under `docs/architecture/`.
+recorded under `docs/features/decisions/`.
 
 ### Acceptance here
 
@@ -715,7 +715,7 @@ After the merge, on `develop`.
 7. Verify with `npm view @qodeca/xezar version` and the tag.
 
 Recovery: never unpublish; ship a new patch and move the `dist-tag`. Detail: `docs/publishing.md`.
-Incident notes: `docs/runbooks/`.
+Incident notes: `docs/lessons/`.
 
 ### Extra project rules
 
@@ -758,7 +758,7 @@ records the evidence and updates this row.
 | CI workflow rules (read-only token, pinned actions, no `pull_request_target` checkout) | Yes (checked 2026-10-23): every workflow in `.github/workflows/` defaults to `permissions: contents: read`, with wider rights only on the jobs that need them, every `uses:` is pinned to a commit SHA, and no workflow uses `pull_request_target` |
 | Script that flags changes to tests, fixtures, gate scripts and CI workflows | To check |
 | Minimum package age; install scripts off | Partly: Dependabot waits 7 days after a release before proposing it (`cooldown.default-days: 7` in `.github/dependabot.yml`); no minimum age for installs by hand, and dependency install scripts still run (no `ignore-scripts` setting; only the release `publish` job and the pack checks pass `--ignore-scripts`) |
-| Mutation tool, property-test library, clone detector | Partly: Stryker covers the MCP server (80 % floor) and, since #1123, the read-only command lock and Qwen Code's tool policy (68 % floor), nightly on the default branch (`.github/workflows/mutation.yml`), not per `risk-high` change; no property-test library or clone detector named yet |
+| Mutation tool, property-test library, clone detector | Mutation tool: none, by owner decision (2026-10-27); no property-test library or clone detector named yet |
 | No agent attribution in commits and pull requests | Yes: the owner's Claude Code setting adds no co-author line |
 | Setup and smoke-check command | Not named yet |
 
@@ -786,9 +786,13 @@ records the evidence and updates this row.
 - **Hotfixes are made by hand from `main`** (owner decision, 2026-10-23). The kit's `hotfix`
   workflow opens its pull request into the base branch (`develop`), so it is not used here; a
   hotfix follows § Branches and `docs/publishing.md` instead.
+- **No mutation testing** (owner decision, 2026-10-27). The core runs a mutation tool on
+  `risk-high` changes where the profile names one. Here the profile names none: the nightly
+  Stryker workflow, its configs, scripts and libraries were removed, and no gate or pull request
+  runs a mutation tool.
 
 ### Known gaps to fix outside this file
 
 - The issue templates do not ask for priority or risk.
-- `docs/architecture/`, `docs/runbooks/` and `docs/deprecations/` (named by
-  `BACKWARD_COMPATIBILITY.md` § 8) do not exist yet; each is created with its first record.
+- `docs/deprecations/` (named by `BACKWARD_COMPATIBILITY.md` § 8) does not exist yet; it is
+  created with its first record.

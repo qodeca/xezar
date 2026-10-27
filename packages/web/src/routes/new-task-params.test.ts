@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { newTaskPrefillHref, parseNewTaskParams, type NewTaskParams } from './new-task-params'
+import { parseNewTaskParams, type NewTaskParams } from './new-task-params'
 
 const empty: NewTaskParams = { skill: '', ref: '', auto: false, key: '', todo: '' }
 
@@ -44,36 +44,6 @@ describe('parseNewTaskParams', () => {
       ...empty,
       skill: 'xez-fix',
       auto: true,
-    })
-  })
-})
-
-/** The in-app half of the contract (#374). The rule that matters: a prefill link is inert —
- *  it can never arm the unattended start, whatever it carries. */
-describe('newTaskPrefillHref', () => {
-  it('emits only the params it was given', () => {
-    expect(newTaskPrefillHref({ skill: 'xez-fix', ref: 'fix it', todo: 't1' })).toBe(
-      '/new?skill=xez-fix&ref=fix+it&todo=t1',
-    )
-    expect(newTaskPrefillHref({ ref: 'fix it' })).toBe('/new?ref=fix+it')
-    expect(newTaskPrefillHref({})).toBe('/new')
-  })
-
-  it('NEVER emits auto/key — not even alongside a todo id (#355: no blind launch)', () => {
-    const params = new URLSearchParams(
-      newTaskPrefillHref({ skill: 'xez-fix', ref: 'fix it', todo: 't1' }).split('?')[1],
-    )
-    expect(params.has('auto')).toBe(false)
-    expect(params.has('key')).toBe(false)
-  })
-
-  it('round-trips through the parser (the link the Inbox builds is the one /new reads)', () => {
-    const href = newTaskPrefillHref({ skill: 'xez-fix', ref: 'fix it\nnow', todo: 't1' })
-    expect(parseNewTaskParams(href.split('?')[1] ?? '')).toEqual({
-      ...empty,
-      skill: 'xez-fix',
-      ref: 'fix it\nnow',
-      todo: 't1',
     })
   })
 })

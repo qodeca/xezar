@@ -26,13 +26,17 @@ import {
 import { PipeAuthGate } from './pipe-auth.ts';
 import {
   endpointIsLive,
+  folderPrivacy,
   newPipeKey,
   newPipeName,
   readPipeEndpoint,
   removePipeFilesIfOurs,
+  writeEnginePipeFiles,
   writePipeFiles,
+  type CreateAdminFiles,
   type PipeFiles,
 } from './pipe-endpoint.ts';
+import { McpScopeError, bindMcpSession, type McpProjectContextSource, type McpSessionBinding } from './session-binding.ts';
 import { acceptedKeysSentence, errorResult, schemaKeys, type McpTool, type McpToolContext, type McpToolResult } from './tool.ts';
 
 /**
@@ -89,13 +93,27 @@ export interface McpServiceOptions {
   readonly sessions?: McpSessionObserver;
   /** Test seams for the Windows pipe (#963), so its rules run on every OS. Production passes none. */
   readonly pipe?: McpPipeSeams;
+  /**
+   * The cockpit's project context map (`ProjectContexts` in production, OD-1). When present, every
+   * session is bound to `project.id` through `bindMcpSession` at `session/open`, and each
+   * `tools/call` re-checks that binding first: a project folder deleted, moved, re-created or
+   * swapped for a symlink since the session opened refuses the call instead of being served from
+   * the cached context. Absent only in tests that drive the socket without a cockpit.
+   */
+  readonly contexts?: McpProjectContextSource;
 }
 
 export interface McpPipeSeams {
   readonly ensurePrivateDir?: typeof ensurePrivateDir;
   readonly checkPrivateDir?: typeof checkPrivateDir;
+  /** #980: create the staged files of the administrators-only folder, owned by Administrators from the start. */
+  readonly createAdminFiles?: CreateAdminFiles;
   /** Where a pipe name is listened on. Default: the name itself. */
   readonly listenAt?: (pipeName: string) => string;
+  /** #980: does this process run as administrator? Default: `processIsElevated` (asked on Windows only). */
+  readonly elevated?: () => boolean;
+  /** #980: how the administrators-only folder is located. Default: the real `%ProgramData%` chain. */
+  readonly resolveAdmin?: (scope: string) => import('../platform/elevated-ipc.ts').ElevatedIpc | null;
 }
 
 /**
@@ -192,7 +210,7 @@ const PIPE_LISTEN_ATTEMPTS = 3;
  * it never is (N-07): see `startMcpService` in ./index.ts.
  */
 export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServiceHandle> {
-  const location = mcpSocketLocation(opts.project, opts.env, opts.platform);
+  const location = mcpSocketLocation(opts.project, opts.env, opts.platform, undefined, opts.pipe?.elevated, opts.pipe?.resolveAdmin);
   if (location.kind === 'unavailable') throw new Error(location.reason);
   if (location.kind === 'pipe') return listenMcpPipe(location.files, opts);
   const dir = mcpSocketDir(opts.env);
@@ -261,8 +279,8 @@ async function clearStaleSocket(path: string): Promise<void> {
 }
 
 /**
- * Windows (#963): the project's named pipe. The folder is made private to this user first (an
- * elevated xezar is refused there), then, under the project's pipe lock: a live engine's endpoint
+ * Windows (#963): the project's named pipe. The folder is made private to this user first (for an
+ * elevated xezar, the administrators-only folder is made private to Administrators – #980), then, under the project's pipe lock: a live engine's endpoint
  * refuses the start; a stale one is replaced. The pipe is named afresh and its endpoint and marker
  * written once it listens. Every connection passes `PipeAuthGate` before `serveConnection` sees a
  * byte. Close removes the two files under the same lock, and only while they still name this pipe.
@@ -270,7 +288,10 @@ async function clearStaleSocket(path: string): Promise<void> {
 async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise<McpServiceHandle> {
   assertXezarHomeWriteIsSandboxed(files.dir, opts.env);
   const seams = opts.pipe ?? {};
-  const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid });
+  // #980: an elevated engine's folder is the administrators-only one under %ProgramData%, made and
+  // judged as such – the whole chain created inside the script with its access list set at creation.
+  const elevation = folderPrivacy(files);
+  const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid, ...elevation });
   if (!privacy.ok) throw new Error(privacy.message);
   const processStartTime = privacy.startedAt;
   if (typeof processStartTime !== 'number') throw new Error('xezar could not read its own start time, which the MCP pipe needs');
@@ -299,7 +320,7 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
       throw new Error(MCP_ALREADY_SERVING);
     }
     if (typeof existing !== 'string' && existing.pid !== process.pid) {
-      const check = await (seams.checkPrivateDir ?? checkPrivateDir)(files.dir, [files.endpoint], {}, { startTimeOf: existing.pid });
+      const check = await (seams.checkPrivateDir ?? checkPrivateDir)(files.dir, [files.endpoint], {}, { startTimeOf: existing.pid, ...elevation });
       if (check.ok && endpointIsLive(existing, check.startedAt)) throw new Error(MCP_ALREADY_SERVING);
     }
     for (let attempt = 1; ; attempt++) {
@@ -326,7 +347,10 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
         if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || attempt >= PIPE_LISTEN_ATTEMPTS) throw err;
       }
     }
-    writePipeFiles(files, { v: 1, pipeName, key, pid: process.pid, processStartTime });
+    const written = { v: 1 as const, pipeName, key, pid: process.pid, processStartTime };
+    // #980: in the administrators-only folder each file is owned by Administrators from creation.
+    if (files.admin) await writeEnginePipeFiles(files, written, seams.createAdminFiles);
+    else writePipeFiles(files, written);
     servingPipes.set(files.endpoint, pipeName);
   } catch (err) {
     server?.close();
@@ -406,6 +430,8 @@ function serveConnection(socket: Socket, opts: McpServiceOptions, ownership: Pro
       socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id, method: 'leader/push', params: meta === undefined ? { content } : { content, meta } }));
     });
   const transport: McpSessionTransport = { push };
+  // OD-1: this connection's project binding, set by `session/open` and re-checked by every call.
+  const scope: SessionScope = {};
   // Confirmed termination (D-02.4 signal 1): the connection is the session, so its close frees the
   // project at once. `release` touches the owner claim and nothing else — calls still running go
   // on running, and no run is touched (N-05).
@@ -420,7 +446,7 @@ function serveConnection(socket: Socket, opts: McpServiceOptions, ownership: Pro
   });
   const framer = new LineFramer(
     (line) => {
-      void handleFrame(line, opts, ownership, sessionKey, transport, pushPending).then((response) => {
+      void handleFrame(line, opts, ownership, sessionKey, transport, scope, pushPending).then((response) => {
         if (response !== undefined) send(response);
       });
     },
@@ -441,6 +467,7 @@ async function handleFrame(
   ownership: ProjectOwnership,
   sessionKey: string,
   transport: McpSessionTransport,
+  scope: SessionScope,
   pushPending: Map<number, (response: IpcResponse) => void>,
 ): Promise<IpcResponse | undefined> {
   let json: unknown;
@@ -456,7 +483,12 @@ async function handleFrame(
     settle(asResponse.data);
     return undefined;
   }
-  return answer(json, opts, ownership, sessionKey, transport);
+  return answer(json, opts, ownership, sessionKey, transport, scope);
+}
+
+/** One connection's project binding (OD-1). Empty until `session/open` binds it. */
+interface SessionScope {
+  binding?: McpSessionBinding;
 }
 
 async function answer(
@@ -465,6 +497,7 @@ async function answer(
   ownership: ProjectOwnership,
   sessionKey: string,
   transport: McpSessionTransport,
+  scope: SessionScope,
 ): Promise<IpcResponse> {
   const parsed = ipcRequestSchema.safeParse(json);
   if (!parsed.success) return failure(null, 'bad-frame', 'frame is not a request');
@@ -479,6 +512,16 @@ async function answer(
   const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version, sessionKey };
   switch (request.method) {
     case 'session/open': {
+      // OD-1: bind first, from the socket's own project — never from the frame. A folder that is
+      // already gone or replaced opens no session, so no claim is taken for it.
+      if (opts.contexts) {
+        try {
+          scope.binding = await bindMcpSession(opts.contexts, opts.project.id);
+        } catch (err) {
+          scope.binding = undefined;
+          return scopeRefused(request.id, err);
+        }
+      }
       const opened = await openSession(request.id, ownership, sessionKey, opts.project.id);
       // Push delivery starts for the owner at once — on by default, no flag (#309). #374: carry what
       // the bridge announced (its client name and that it understands `leader/push`) so the delivery
@@ -515,6 +558,16 @@ async function answer(
       // The token this request is bound to, taken as it arrives; the fence below compares it again.
       const token = ownership.sessionToken(sessionKey);
       if (token === undefined) return expired(request.id, opts.project.id);
+      // OD-1: the bound folder must still be the very folder the session was bound to (realpath,
+      // device, inode). Checked before anything else reads or runs, read-only tools included.
+      if (opts.contexts) {
+        if (!scope.binding) return scopeRefused(request.id, new McpScopeError('unknown-project', opts.project.id));
+        try {
+          await scope.binding.project();
+        } catch (err) {
+          return scopeRefused(request.id, err);
+        }
+      }
       const params = toolCallParamsSchema.safeParse(request.params);
       if (!params.success) return failure(request.id, 'invalid-params', 'tools/call needs a tool name');
       const announcement = codexAnnouncement(params.data._meta);
@@ -686,6 +739,17 @@ function invalidArgumentsText(tool: McpTool, raw: unknown, issues: readonly z.co
   }
   const accepted = tool.acceptedKeys ? tool.acceptedKeys(raw) : schemaKeys(tool);
   return `Invalid arguments for ${tool.name}: ${lines.join('; ')}${accepted ? `. ${acceptedKeysSentence(accepted)}` : ''}`;
+}
+
+/**
+ * A binding refusal (OD-1): the binding's own fixed sentence, which names no path and echoes nothing
+ * a client sent (N-01). The underlying cause stays in the cockpit's log only (F-15).
+ */
+function scopeRefused(id: number, err: unknown): IpcResponse {
+  const scopeError = err instanceof McpScopeError ? err : new McpScopeError('unavailable', '', err);
+  const cause = scopeError.cause instanceof Error ? `: ${scopeError.cause.message}` : '';
+  console.warn(`[xez] MCP session binding refused (${scopeError.reason})${cause}`);
+  return failure(id, 'internal', scopeError.message);
 }
 
 function expired(id: number, projectId: string): IpcResponse {

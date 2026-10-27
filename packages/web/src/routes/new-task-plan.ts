@@ -11,9 +11,9 @@ import { runnerOverride } from './new-task-form'
 /**
  * Plan-mode logic (spec 008 / Implementation Plan step 14), kept pure so every rule is
  * table-testable: the pending-plan shape the /new route holds while the review overlay is up,
- * the list operations the overlay's reorder/remove controls apply, and the exact
- * `POST /api/runs` body a "▶ Start" sends — mirrored from the legacy `startPlannedRun`
- * (web/app.js) with the new form's runner rule.
+ * and the exact `POST /api/runs` body a "▶ Start" sends — mirrored from the legacy
+ * `startPlannedRun` (web/app.js) with the new form's runner rule. The overlay's reorder/remove
+ * list operations are the shared `moveStep`/`removeStep` in `lib/workflow-builder.ts`.
  */
 
 /** What the review overlay edits: the planner's answer plus what the user had typed/attached
@@ -39,29 +39,6 @@ export function pendingPlanOf(
     fallback: response.fallback,
     images: [...images],
   }
-}
-
-/** Remove the step at `index`. Out-of-range answers the input unchanged — a stale click on a
- *  card that just moved must not eat a neighbor. */
-export function removeStep(steps: readonly WorkflowStepDef[], index: number): WorkflowStepDef[] {
-  if (!Number.isInteger(index) || index < 0 || index >= steps.length) return [...steps]
-  return steps.filter((_, i) => i !== index)
-}
-
-/** Move the step at `from` so it lands at `to` (legacy splice semantics: remove, then insert).
- *  `to` is clamped into the list; an invalid `from` or a no-op move answers the input order. */
-export function moveStep(
-  steps: readonly WorkflowStepDef[],
-  from: number,
-  to: number,
-): WorkflowStepDef[] {
-  const copy = [...steps]
-  if (!Number.isInteger(from) || from < 0 || from >= copy.length) return copy
-  const target = Math.max(0, Math.min(copy.length - 1, to))
-  if (target === from) return copy
-  const [moved] = copy.splice(from, 1)
-  copy.splice(target, 0, moved!)
-  return copy
 }
 
 /** The quiet second line of a step card — what the step will DO: the shell command for a

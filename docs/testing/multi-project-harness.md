@@ -4,7 +4,7 @@ This harness checks one built cockpit with two registered scratch Git repositori
 
 ## Run it
 
-1. Use Node 22+ with Git available. CI runs it on Linux only (the `multi-project` job); macOS is not run regularly, and on Windows it currently fails – see [On Windows](#on-windows).
+1. Use Node 22.13+ (the checkout's `engines` floor) with Git available. CI runs it on Linux only (the `multi-project` job); macOS is not run regularly, and on Windows it currently fails – see [On Windows](#on-windows).
 2. Run `npm run build:server`.
 3. Run `npm run test:multi-project`.
 4. Read the printed `result.json` path; logs and `state.json` are beside it.

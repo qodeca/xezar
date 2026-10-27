@@ -111,7 +111,8 @@
       "imageGeneration": true,
       "local": false,
       "enforcesToolLimits": false,
-      "advisoryOnly": false
+      "advisoryOnly": false,
+      "enabled": false
     },
     "codex/gpt-5.6-terra": {
       "tool": "codex",
@@ -136,7 +137,8 @@
       "imageGeneration": true,
       "local": false,
       "enforcesToolLimits": false,
-      "advisoryOnly": false
+      "advisoryOnly": false,
+      "enabled": false
     },
     "qwen/deepseek-flash": {
       "tool": "qwen",
@@ -1016,18 +1018,10 @@
       "writes": true,
       "trigger": "People are hitting the fault right now, and waiting for the full fix costs more than shipping a narrow one and following up.",
       "narrows": "bounded-bug-fix",
-      "lanes": [
-        "qwen/deepseek-v4-pro",
-        "qwen/deepseek-flash",
-        "codex/gpt-6-sol",
-        "codex/gpt-5.6-terra",
-        "claude/opus",
-        "claude/sonnet"
-      ],
-      "never": [
-        {
-          "local": true
-        }
+      "handledBy": "leader",
+      "lanes": [],
+      "notes": [
+        "Hotfixes are made by hand on a hotfix/<name> branch cut from main (SDLC.md § Hotfix and § Branches, owner decision 2026-10-23); the kit hotfix workflow opens its pull request into develop, so no task is dispatched."
       ]
     },
     {

@@ -33,6 +33,8 @@ import {
   EOF_KILL_GRACE_MS,
   EOF_TERM_GRACE_MS,
   KILL_GRACE_MS,
+  truncate,
+  waitForExit,
 } from './claude-cli-runner.ts';
 import { isReadOnlyStep } from './read-only-lock.ts';
 import { qwenMcpIsolation, runMcpIsolationNote, writeMcpOverlay, type QwenMcpIsolation } from './run-mcp-isolation.ts';
@@ -856,10 +858,6 @@ function isTruthy(value: string | undefined): boolean {
   return v !== '' && v !== '0' && v !== 'false';
 }
 
-function truncate(s: string, max = 200): string {
-  return s.length > max ? `${s.slice(0, max)}…` : s;
-}
-
 /** The bundled tool-policy hook (`scripts/qwen-pre-tool-hook.mjs`). */
 export function qwenHookScriptPath(): string {
   return fileURLToPath(new URL('../../scripts/qwen-pre-tool-hook.mjs', import.meta.url));
@@ -869,28 +867,6 @@ export function qwenHookScriptPath(): string {
 function mockQwenPath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   return resolvePath(here, '..', '..', 'scripts', 'mock-qwen.mjs');
-}
-
-/** @internal Exported for tests. */
-export function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
-  // A child a signal ended has no exit code but a `signalCode`; when it died before this wait
-  // listened, its `exit` and `close` have already fired, and only the safety timer would end the
-  // wait (#1070, the same line in the Claude and Codex runners).
-  if (child.exitCode != null || child.signalCode != null) return Promise.resolve(child.exitCode);
-  return new Promise((resolve) => {
-    let done = false;
-    const fin = (code: number | null) => {
-      if (done) return;
-      done = true;
-      clearTimeout(safety);
-      resolve(code);
-    };
-    child.once('close', (code) => fin(code));
-    child.once('exit', (code) => fin(code));
-    child.once('error', () => fin(child.exitCode ?? null));
-    const safety = setTimeout(() => fin(child.exitCode ?? null), EOF_TERM_GRACE_MS + EOF_KILL_GRACE_MS + KILL_GRACE_MS + 5_000);
-    safety.unref?.();
-  });
 }
 
 /** A missing binary names the install command; nothing falls back to another backend (#1044 §14). */

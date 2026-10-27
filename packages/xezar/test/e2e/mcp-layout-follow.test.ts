@@ -9,7 +9,6 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { npmCommand, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
-import { windowsElevated } from '../helpers/windows-elevation.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -97,10 +96,7 @@ function spawnBridge(cliPath: string, repo: string, env: NodeJS.ProcessEnv): Bri
   };
 }
 
-/** The engine is its own process, so the unit suite's elevation hook cannot reach it. */
-const ELEVATED = windowsElevated() ? 'win32-skip(#980): xezar refuses its MCP pipe when it runs as administrator, as every GitHub Windows runner step does' : false;
-
-test('a client session started before the single-project engine reaches it with no reconnect (#819 item 5)', { timeout: 300_000, skip: ELEVATED }, async () => {
+test('a client session started before the single-project engine reaches it with no reconnect (#819 item 5)', { timeout: 300_000 }, async () => {
   // Short paths under /tmp: in single-project mode the socket lives INSIDE the project
   // (`<project>/.local/xezar/ipc`), and a Unix socket path has a ~104-byte limit.
   const root = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-lf-'));

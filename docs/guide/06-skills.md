@@ -62,7 +62,7 @@ All default team skills are initially enabled. Uncheck names you do not want off
 
 The Manage panel also shows installed-skill update status. Its action changes with status: **Check again** when current, **Update now** when an update is available, **Retry** after a failed apply, or **Retry check** when status is unavailable. After files update, the panel may suggest `/xez-apply-upgrade-notes` for descriptor migrations in configured repositories. Updating skill files and applying repository upgrade notes are separate actions.
 
-![Skills catalog and preview](../screenshots/0.18.0/skills-dark-1280.png)
+![Skills catalog and preview](../screenshots/0.31.0/skills-dark-1280.png)
 
 ## To use the issue-filing skill
 
@@ -93,4 +93,4 @@ Review workflow references using the old `om-` names and choose the matching cur
 
 Next: [GitHub and automations](07-github-and-automations.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

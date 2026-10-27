@@ -118,7 +118,7 @@ is `role="alert"`. A toast is `role="status"`.
 - `animate-spin` (18): seventeen are `motion-safe:animate-spin` and the step rail's one adds `motion-reduce:animate-none`
   (`routes/task-thread/step-rail.tsx:93`); none is unguarded, so G-08 is retired.
 - `animate-pulse` (8, plus one in a comment): guarded in the docks, step rail, twinkles and – since #453 B1 – in `StatusDot`
-  and `Skeleton`; the two `/new` sites are `motion-safe:` too (`routes/new-task.tsx:545,1406`).
+  and `Skeleton`; the `/new` site is `motion-safe:` too (`routes/new-task.tsx:1354`).
 - `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts. Every occurrence in
   `components/ui` is `motion-safe:`, so no overlay, menu, popover or tooltip moves for a reader who asked the OS
   for no animation; the sheet adds `motion-reduce:transition-none` for the transition its slide rides on.

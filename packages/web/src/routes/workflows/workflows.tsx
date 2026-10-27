@@ -52,6 +52,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { copyText } from '@/lib/clipboard-result'
+import { fileName } from '@/lib/format'
 import { isProjectSkill, orderSkillsByUsage } from '@/lib/skills'
 import { cn } from '@/lib/utils'
 import {
@@ -217,7 +218,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
       }),
     onSuccess: (saved) => {
       setConfirmOverwrite(false)
-      toast(`Saved — ${saved.path.split('/').pop() ?? saved.path}`)
+      toast(`Saved — ${fileName(saved.path)}`)
       // The chips + the Delete button now reflect the file (and the /new picker lists it).
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
     },
@@ -684,7 +685,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete workflow “{trimmedName}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              Removes {savedFile?.path?.split('/').pop() ?? 'the saved file'} from{' '}
+              Removes {savedFile?.path ? fileName(savedFile.path) : 'the saved file'} from{' '}
               <span className="font-mono">.xezar/workflows/</span>. There is no undo.
             </AlertDialogDescription>
           </AlertDialogHeader>

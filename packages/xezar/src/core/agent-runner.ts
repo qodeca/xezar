@@ -13,7 +13,7 @@
  */
 
 import { isTreeStopExit } from '../platform/process-tree.ts';
-import type { UiEvent } from './ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 
 /**
  * The user-selectable runners (what config/GUI expose), in display order — the SINGLE source of

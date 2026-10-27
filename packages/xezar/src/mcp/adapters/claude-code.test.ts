@@ -6,7 +6,7 @@ import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { EventDispatch } from '../event-controller.ts';
 import { CLAUDE_CODE_PUSH_NOT_SEEN_CALLS, ClaudeCodeChannelAdapter, channelMeta, claudeCodeRoute, renderChannelContent, type ClaudeCodeChannelAdapterOptions } from './claude-code.ts';
-import { STRYKER_HEADER, guardedCode } from './source-guard.testkit.ts';
+import { guardedCode } from './source-guard.testkit.ts';
 
 /**
  * #374 — the Claude Code channel reaction adapter, and the corrected verdict. It wakes a Claude Code
@@ -233,15 +233,6 @@ describe('the corrected delivery verdict (#374)', () => {
     // RED against: the adapter reaching for child_process, an env var, or a stream-json argv builder.
     const source = readFileSync(join(import.meta.dirname, 'claude-code.ts'), 'utf8');
     expect(guardedCode(source)).not.toMatch(FORBIDDEN_IN_ADAPTER);
-  });
-
-  it('the source guard ignores Stryker instrumentation but still sees a real regression (#436)', () => {
-    // RED against: matching the raw text, which fails every nightly mutation dry run on Stryker's
-    // own `g.process.env` read; and against stripping more than Stryker's helper functions.
-    const adapter = "import type { McpJournalRow } from '@qodeca/xezar-contract';\nexport const x = stryMutAct_9fa48('0') ? '' : 'claude-channels';\n";
-    expect(guardedCode(STRYKER_HEADER + adapter)).not.toMatch(FORBIDDEN_IN_ADAPTER);
-    expect(guardedCode(STRYKER_HEADER + "import { spawn } from 'node:child_process';\n" + adapter)).toMatch(FORBIDDEN_IN_ADAPTER);
-    expect(guardedCode(STRYKER_HEADER + adapter + 'export const env = globalThis.process.env;\n')).toMatch(FORBIDDEN_IN_ADAPTER);
   });
 });
 

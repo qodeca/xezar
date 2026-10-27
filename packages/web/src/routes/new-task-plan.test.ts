@@ -4,10 +4,8 @@ import type { WorkflowStepDef } from '@qodeca/xezar-api-client'
 
 import {
   buildPlannedRunBody,
-  moveStep,
   pendingPlanOf,
   planTaskLine,
-  removeStep,
   stepHint,
 } from './new-task-plan'
 
@@ -17,49 +15,6 @@ const STEPS: WorkflowStepDef[] = [
   { id: 'review', name: 'Review', prompt: 'Review the changes' },
 ]
 const ids = (steps: WorkflowStepDef[]) => steps.map((s) => s.id)
-
-describe('removeStep', () => {
-  it.each([
-    { name: 'first', index: 0, expected: ['verify', 'review'] },
-    { name: 'middle', index: 1, expected: ['implement', 'review'] },
-    { name: 'last', index: 2, expected: ['implement', 'verify'] },
-    { name: 'below range (stale click)', index: -1, expected: ['implement', 'verify', 'review'] },
-    { name: 'above range (stale click)', index: 3, expected: ['implement', 'verify', 'review'] },
-    { name: 'non-integer', index: 1.5, expected: ['implement', 'verify', 'review'] },
-  ])('removes the $name step', ({ index, expected }) => {
-    expect(ids(removeStep(STEPS, index))).toEqual(expected)
-  })
-
-  it('never mutates the input list', () => {
-    removeStep(STEPS, 1)
-    expect(ids(STEPS)).toEqual(['implement', 'verify', 'review'])
-  })
-})
-
-describe('moveStep', () => {
-  it.each([
-    { name: 'down by one', from: 0, to: 1, expected: ['verify', 'implement', 'review'] },
-    { name: 'up by one', from: 2, to: 1, expected: ['implement', 'review', 'verify'] },
-    { name: 'first to last', from: 0, to: 2, expected: ['verify', 'review', 'implement'] },
-    { name: 'last to first', from: 2, to: 0, expected: ['review', 'implement', 'verify'] },
-    { name: 'no-op (same slot)', from: 1, to: 1, expected: ['implement', 'verify', 'review'] },
-    { name: 'target clamped below', from: 1, to: -5, expected: ['verify', 'implement', 'review'] },
-    { name: 'target clamped above', from: 0, to: 99, expected: ['verify', 'review', 'implement'] },
-    { name: 'invalid from ignored', from: 7, to: 0, expected: ['implement', 'verify', 'review'] },
-    { name: 'negative from ignored', from: -1, to: 2, expected: ['implement', 'verify', 'review'] },
-  ])('$name', ({ from, to, expected }) => {
-    expect(ids(moveStep(STEPS, from, to))).toEqual(expected)
-  })
-
-  it('never mutates the input list', () => {
-    moveStep(STEPS, 0, 2)
-    expect(ids(STEPS)).toEqual(['implement', 'verify', 'review'])
-  })
-
-  it('is safe on an empty list', () => {
-    expect(moveStep([], 0, 1)).toEqual([])
-  })
-})
 
 describe('stepHint', () => {
   it.each([

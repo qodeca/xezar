@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
-import { uniqueTmpPath, writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { writeFileAtomic, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import {
   activeStateLayout,
@@ -621,23 +621,6 @@ function warnOncePerState(path: string, raw: string | null, message: string): vo
   console.warn(message);
 }
 
-/**
- * The tmp path an atomic write stages through — UNIQUE PER WRITE, never a
- * fixed `${path}.tmp`. `~/.xezar/` is shared by every xezar process on the
- * machine (a `serve` per repo, `xezar run`s, a settings PUT), and two writers
- * staging through the same tmp name interleave: writer B's `O_TRUNC` open can
- * empty the file between writer A's write and rename, so A renames a
- * truncated/half-written file into place — and B's own rename then throws
- * `ENOENT` on the name A consumed. The pid + random suffix gives every writer
- * its own staging file, so the only cross-process contention left is the
- * rename itself, which is atomic.
- *
- * @deprecated use `uniqueTmpPath` from `platform/atomic-write.ts` (#963); kept for existing importers.
- */
-export function atomicTmpPath(path: string): string {
-  return uniqueTmpPath(path);
-}
-
 /** Atomic JSON write (`0600`, dir `0700`) via a per-writer tmp + rename —
  *  shared by the workspace config and ui-state writers. Throws on write
  *  failure (e.g. a read-only home) — degrading is the caller's policy. The
@@ -784,7 +767,11 @@ async function mergeWriteLocked(
   // the schema is unchanged and callers still receive a full WorkspaceConfig —
   // and only the bytes on disk are projected.
   const onDisk = projectLayout ? withoutMachineScopedKeys(next) : next;
-  atomicWriteJsonSync(path, onDisk);
+  // Async, never the sync twin (#1105, the same fault #1132 fixed for agent accounts): the read
+  // above and every unlocked `loadWorkspaceConfig` elsewhere in this process read the file
+  // asynchronously, and on Windows a sync rename retry blocks the event loop such a reader needs
+  // to close its handle, so the save failed after the whole retry budget (`atomicWriteJson`).
+  await atomicWriteJson(path, onDisk);
   // Refresh the snapshot after EVERY successful write, including an emptied
   // registry (#731). Skipping the empty case left a stale non-empty backup:
   // removing the last project, then losing config.json, resurrected the project
@@ -792,7 +779,7 @@ async function mergeWriteLocked(
   // load (see loadWorkspaceConfigBackup), so recovery now settles on the empty
   // registry the user intended rather than the old projects.
   try {
-    atomicWriteJsonSync(workspaceConfigBackupPath(path), onDisk);
+    await atomicWriteJson(workspaceConfigBackupPath(path), onDisk);
   } catch {
     // Best-effort: the registry itself is already safely on disk, and a
     // failed snapshot must never turn a successful write into an error.

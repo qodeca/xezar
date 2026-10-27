@@ -20,7 +20,7 @@ const SEEN = 'check-env-seen.json';
  * `XEZ_PR_NUMBER` is the run's `prNumber` when the engine knows one, and ABSENT otherwise — also
  * when the engine's own environment carries one (a nested xezar), or a command step would check
  * out a PR that belongs to a different task. `XEZ_TASK_ID` stays out of check steps: the process
- * sweeper attributes programs to a run by that variable (src/AGENTS.md § Run process sweep), and
+ * sweeper attributes programs to a run by that variable (src/runs/AGENTS.md § Run process sweep), and
  * the kit derives the task from the worktree directory instead.
  */
 describe('check-step environment (#1006)', () => {

@@ -3,9 +3,7 @@ import type {
   ProviderStatusResponse,
   WorkspaceUiState,
 } from '@qodeca/xezar-api-client'
-import { RUNNER_LABEL } from './runner-label'
-
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen']
+import { RUNNER_LABEL, RUNNER_ORDER } from './runner-label'
 
 export interface ProviderAuthIncident {
   provider: ProviderId
@@ -21,7 +19,7 @@ export function providerAuthDismissals(value: unknown): ProviderAuthDismissals {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {}
   const record = value as Record<string, unknown>
   const dismissals: ProviderAuthDismissals = {}
-  for (const provider of PROVIDERS) {
+  for (const provider of RUNNER_ORDER) {
     const id = record[provider]
     if (typeof id === 'string' && id.length > 0 && id.length <= 128) {
       dismissals[provider] = id
@@ -36,7 +34,7 @@ export function visibleProviderAuthIncidents(
 ): ProviderAuthIncident[] {
   if (!status) return []
   const rows = new Map(status.providers.map((row) => [row.provider, row]))
-  return PROVIDERS.flatMap((provider) => {
+  return RUNNER_ORDER.flatMap((provider) => {
     const row = rows.get(provider)
     if (
       row?.status !== 'disconnected'

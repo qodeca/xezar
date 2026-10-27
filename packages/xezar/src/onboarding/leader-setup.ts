@@ -63,6 +63,8 @@ const GUIDES: Readonly<Record<LeaderSetupClient, LeaderSetupGuide>> = {
   },
 };
 
+/** One client's entry as structured data – the same entry the offline fallback below renders. Tests
+ *  read it to parse each snippet as JSON or TOML; no production code calls it. */
 export function leaderSetupGuide(client: LeaderSetupClient): LeaderSetupGuide {
   return GUIDES[client];
 }

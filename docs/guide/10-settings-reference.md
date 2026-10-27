@@ -24,11 +24,15 @@ The Settings overview shows the project folder, registry facts, status, branch w
 
 See [Agent backends](04-agent-backends.md), [Workflows](05-workflows.md), and [Skills](06-skills.md).
 
-![Project agent settings](../screenshots/0.18.0/settings-agents-dark-1280.png)
+![Project agent settings](../screenshots/0.31.0/settings-agents-dark-1280.png)
 
 ### To inspect or edit native files — Agent config
 
 Choose an agent tab, then a configuration file under **Settings**, **MCP**, or **Memory & instructions**. Read the scope and precedence notes before editing, and use **Save** for an editable file or **Create** for a missing file. These are the agent's own files, so choosing a user-level file can affect more than this project. Hosted mode makes this section read-only and explains that edits belong on the machine owning the checkout.
+
+### To set up or re-check the project — Project setup
+
+Read the state under **Guided setup**: Not set up yet, Set up, Changed since the last check, Re-checking, Provenance unknown, or Setup needs an upgrade. Choose **Set up this project** for a first setup or **Re-check now** for a later one. Either starts an ordinary task that shows every change before anything is written, and you can open or cancel it from Tasks; while a check runs, the button reads **Open the task**. When the state reads Setup needs an upgrade, a link to the upgrade guide comes first. When no agent backend is available, the button stays disabled and the reason is written under it. **Last observed**, **Last offered** and **Last successfully checked** record what is running now, what was last offered and what last finished; a partial or failed check leaves **Last successfully checked** where it was. In hosted mode the card names the part that finishes on the machine that owns the checkout. Nothing here is a setting to type or save, and nothing runs on its own. See [To let an agent set up this project](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) and [To re-check after an update](01-getting-started.md#to-re-check-after-an-update).
 
 ### To reclaim task folders — Worktrees
 
@@ -75,7 +79,7 @@ In [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-th
 
 The controls apply directly. Accent, density, and reading width are saved in workspace UI state and mirrored in browser storage for the next page load. If a save fails, the cockpit restores the last server-confirmed choice.
 
-![Appearance with Roomy density](../screenshots/0.18.0/settings-appearance-roomy-dark-1280.png)
+![Appearance with Roomy density](../screenshots/0.31.0/settings-appearance-roomy-dark-1280.png)
 
 ### To notice tasks needing attention — Notifications
 
@@ -101,7 +105,7 @@ Open the project’s **Settings → Worktrees** table to inspect disk use and re
 
 Automations have no control here: start the server with `XEZ_AUTOMATIONS=1` to enable them.
 
-![Workspace resource settings](../screenshots/0.18.0/settings-resources-dark-1280.png)
+![Workspace resource settings](../screenshots/0.31.0/settings-resources-dark-1280.png)
 
 ### To choose how xezar starts in a terminal — Terminal
 
@@ -167,7 +171,7 @@ Keyboard is a hidden placeholder: there is no routed Keyboard settings page or s
 
 Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, or skill, then select a result. The palette offers **New task** and **Toggle theme**. With an empty search, **Recently finished** lists finished tasks you have not opened since they finished. Project and **All tasks** results appear only with more than one registered project. Selecting a skill opens the new-task composer with that skill selected. With several projects, project and task results can take you into another project's scope; unavailable views are filtered by the cockpit's capabilities.
 
-![Command palette](../screenshots/0.18.0/command-palette-dark-1280.png)
+![Command palette](../screenshots/0.31.0/command-palette-dark-1280.png)
 
 ## Related settings / env / config
 
@@ -181,4 +185,4 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 Next: [Configuration reference](11-configuration-reference.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

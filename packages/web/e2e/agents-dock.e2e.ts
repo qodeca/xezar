@@ -1,12 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/subagents-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * The grouped sub-agent display (#474) in a real browser, against a real xezar serving a run whose transcript is a REAL
@@ -28,30 +28,6 @@ const sessionId = `e2e-agents-dock-${process.pid}`
 
 const RUN = record
 const RUN_ID: string = RUN.id
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the agents-dock server never answered at ${url}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess
@@ -119,7 +95,7 @@ beforeAll(async () => {
     ],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { label: 'agents-dock server' })
 
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(1440, 900)

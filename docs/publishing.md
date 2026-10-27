@@ -25,7 +25,7 @@ The workflow has two jobs, so the publish rights never meet third-party code:
 
 | Job | Permissions | What it runs |
 |---|---|---|
-| `build` | `contents: read` | `npm ci`, the gate, the build, `test:package`, then `node scripts/release.mjs <bump> --pack-destination <dir>`: stamps the manifests and packs the tarball. Uploads the tarball, its `SHA256SUMS` and the four stamped manifests as the `release-package` artifact. |
+| `build` | `contents: read` | `npm ci`, the gate, the build, `test:package`, then `node scripts/release.mjs <bump> --pack-destination <dir>`: stamps the manifests, restamps the documentation footers and packs the tarball. Uploads the tarball, its `SHA256SUMS`, the four stamped manifests and the restamped documentation pages as the `release-package` artifact. |
 | `publish` | environment `production`; `id-token: write`, `contents: write`, `pull-requests: write` | Installs nothing and runs no package script. Downloads `release-package`, re-checks the SHA-256, runs `npm publish <tarball> --provenance`, creates the tag and GitHub Release, then opens the version-bump PR. |
 
 `packages/xezar/src/release/publishing-surface.test.ts` fails the build if `NPM_TOKEN` or
@@ -73,16 +73,10 @@ accept the GitHub Actions app as a bypass actor in a repository ruleset.
 
 ### The bootstrap exception
 
-Trusted publishing cannot perform a package's **first** publish: npm has nowhere to attach a
-publisher until the package exists. `@qodeca/xezar@0.10.1` was therefore published once by a
-maintainer from a logged-in machine (`npm login`, then `node scripts/release.mjs existing`).
-
-The trusted publisher was **not** created at that point, and this document said it had been. The
-gap stayed invisible for as long as nothing used it — the first dispatched release, `0.10.2`,
-failed at the publish step against an empty publisher form, twice, before anyone looked. If you
-bootstrap another package here, configure the publisher as a step of the bootstrap and dispatch a
-release to prove it, rather than recording an intention. `0.10.2` onward goes through the
-workflow with no credential stored anywhere.
+Trusted publishing cannot perform a package's **first** publish, because npm has nowhere to
+attach a publisher until the package exists: if you add another package here, publish it once by
+hand, create its trusted publisher in the same step, and dispatch a release to prove the publisher
+works.
 
 If you ever need to publish by hand again, `scripts/release.mjs` accepts a local `npm login`
 session as well — it fails only when it has *neither* an OIDC endpoint nor a token.
@@ -102,18 +96,6 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    and the fresh archive-scan output in the body of the promotion pull request
    (`promote/v<version>`), the one that carries that commit into `main`.
 
-   The nightly mutation gate is not part of this path, and a release does not wait on it. Read
-   the latest run of `.github/workflows/mutation.yml`, or the open `mutation-nightly` issue, if
-   you want the current score before you cut. A survivor is a weak test to fix in its own PR, not
-   a reason to hold a release that passed the full canonical gate and QA.
-
-   History: the mutation gate ran as the `release` / `release-prep` workflows' first check step
-   until 2026-09-12, then moved to a nightly run against the default branch (#377), because a
-   nearly four-hour measurement whose only repair is a stronger test in somebody else's PR must
-   not hold a finished release. The nightly workflow holds no npm credential and no publish
-   command, and `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it
-   moved, and the unchanged 80 % floor:
-   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
    The `check:pack` scan was added by [PR #481](https://github.com/qodeca/xezar/pull/481), merged
    2026-09-16.
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a
@@ -127,13 +109,20 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 3. The `build` job then, in order: installs, runs `typecheck` + `npm test` + `test:unit`, builds,
    runs the packaged-CLI E2E (`test:package` — it packs the real tarball, installs it into an
    isolated consumer and runs the CLI from it), stamps the version and packs the release tarball.
+   Stamping covers the four manifests and every "Describes xezar X." footer in `docs/` outside
+   the dated records (`packages/xezar/src/release/doc-footers.ts` names the pages; the footer
+   unit test holds them to the manifest version).
    The `publish` job (it waits for the `production` approval) publishes
    exactly that tarball to npm with `--tag latest` and `--provenance`, and right after that
    creates the `v<version>` tag and GitHub Release at the released commit. The run summary lists
    each of the three – npm, tag and Release, bump PR – with what its own step really did.
 4. For `patch`/`minor`/`major` it then opens a `release/v<version>` PR carrying the manifest
-   bump, because `main` is PR-only. The tag already exists at this point, so a failure here
-   leaves only the PR to open by hand. Merge it with a merge commit so `main` matches the registry. That PR is opened
+   bump and the restamped documentation footers in one commit, because `main` is PR-only. The
+   tag already exists at this point, so a failure here leaves only the PR to open by hand. While
+   the repository does not let GitHub Actions create pull requests, this step fails after it has
+   pushed the branch – the 0.31.0 run (2026-10-23) ended red with `GitHub Actions is not permitted
+   to create or approve pull requests`, and #1146 was opened by hand. Open it with
+   `gh pr create --base <dispatched branch> --head release/v<version>`. Merge it with a merge commit so `main` matches the registry. That PR is opened
    by the Actions bot, so its CI sits at **action_required** until a maintainer approves the run
    (`gh run list --branch release/v<version>`, then approve it in the Actions tab or with
    `gh api -X POST repos/qodeca/xezar/actions/runs/<id>/approve`). Nothing is wrong; GitHub holds
@@ -195,7 +184,8 @@ first, and `npm view @qodeca/xezar version` catches up afterwards – from about
 to around a quarter of an hour in the cases observed here. Wait a few minutes and ask again before
 concluding that nothing published.
 
-**After a bump release, the manifests keep naming the previous version on purpose.** A
+**After a bump release, the manifests and the documentation footers keep naming the previous
+version on purpose.** A
 `patch`/`minor`/`major` run stamps the version during the release run instead of committing it
 beforehand, so the commit the tag points at can still hold the previous number. The version-bump
 pull request brings the repository in line afterwards. Until that lands, "`main` says 0.17.0 and
@@ -237,7 +227,7 @@ Then:
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |
-| The version-bump PR was not opened (the tag and Release exist) | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — and open the PR yourself. |
+| The version-bump PR was not opened (the tag and Release exist) | If `release/v<version>` was pushed (the step failed only at `gh pr create`), open the PR from it with `gh pr create --base <dispatched branch> --head release/v<version>`. Otherwise bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — change every "Describes xezar X." footer the release restamps to the new version (the footer unit test, `packages/xezar/src/release/guide-footer-version.test.ts`, lists any you miss), and open the PR yourself. |
 
 Whatever the state, inspect the registry **before** re-dispatching. The workflow does not check
 whether a version already exists; npm will reject the duplicate with `E403`, but only after the

@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { runAgentBrowserCli } from './agent-browser-cli'
+import { freePort, waitForHealth } from './fixture-server'
 
 // B2 owns its server and browser; no writes to the shared QA workspace or a real account.
 // Fixture replies below exercise UI failure/pending states, not server authorization.
@@ -139,12 +139,10 @@ beforeAll(async () => {
     {id:'b2-project',name:'A long registered project name for shell geometry',root,addedAt:now,lastOpenedAt:now,source:'local'},
     {id:'b2-missing',name:'Missing project with a long label',root:join(root,'gone'),addedAt:now,lastOpenedAt:now,source:'local'},
   ]}))
-  const port=await new Promise<number>((done,fail)=>{const s=createServer();s.once('error',fail);s.listen(0,'127.0.0.1',()=>{const a=s.address();const n=typeof a==='object'&&a?a.port:0;s.close(()=>done(n))})})
+  const port = await freePort()
   url=`http://localhost:${port}`
   server=spawn(process.execPath,[xezarCli,'serve','--repo',root,'--port',String(port),'--no-open'],{env:fixtureServeEnv(root),stdio:'ignore'})
-  let healthy=false
-  for(let n=0;n<60;n++){try{if((await fetch(`${url}/api/v1/health`)).ok){healthy=true;break}}catch{} await new Promise(r=>setTimeout(r,250))}
-  if(!healthy)throw new Error('B2 fixture server did not start')
+  await waitForHealth(url, { label: 'design-debt-b2 fixture server' })
   project=await bootProjectId(url)
   browser=AgentBrowser.open(sessionId)
   browser.goto(url)

@@ -16,7 +16,7 @@ import {
   shotFileName,
   type Width,
 } from './manifest'
-import { freezeJs, normalizeJs } from './page-scripts'
+import { freezeJs, normalizeJs, quotaClockJs } from './page-scripts'
 import {
   demo,
   exists,
@@ -47,7 +47,7 @@ import {
  *   npm run capture:screenshots -w @qodeca/xezar-web
  *   npm run capture:screenshots -w @qodeca/xezar-web -- -t tasks-list   # one state
  *
- * Output goes straight to `SCREENSHOT_DIR` (`docs/screenshots/0.18.0/`). Nothing here asserts
+ * Output goes straight to `SCREENSHOT_DIR` (`docs/screenshots/<version>/`, see `manifest.ts`). Nothing here asserts
  * product behaviour; the `expect`s only refuse to write a picture of the wrong state.
  */
 
@@ -105,6 +105,12 @@ async function shoot(file: string): Promise<void> {
   browser.evaluate(freezeJs)
   await settle()
   browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks(), versionRewrite))
+  // The plan-limits chip is in every picture; a "stale" one means the quota clock init script
+  // (#1172) did not run, and every guide picture would show a warning the reader does not have.
+  const chips = browser.evaluate(
+    `[...document.querySelectorAll('[data-slot="agent-quota-chip"]')].map((chip) => chip.textContent).join(' | ')`,
+  )
+  expect(String(chips), `${file}: the plan-limits chip reads stale`).not.toMatch(/stale/)
   const raw = browser.screenshot(join(frameDir, file), { viewport: true })
   const png = readFileSync(raw)
   const bytes: Uint8Array = png.length > SHOT_MAX_BYTES ? encodePngPalette(decodePng(png)) : png
@@ -117,7 +123,18 @@ beforeAll(async () => {
   cockpit = await bootCockpit()
   frameDir = join(cockpit.dataRoot, 'frames')
   mkdirSync(frameDir, { recursive: true })
-  browser = AgentBrowser.open(sessionId)
+  // The plan-limits answer is re-aged to the browser's clock on every load (#1172). An init script
+  // is registered when the session's browser starts, so the variable is set only for the one call
+  // that starts it, and removed before anything else in this process reads the environment.
+  const quotaClock = join(cockpit.dataRoot, 'quota-clock.js')
+  writeFileSync(quotaClock, quotaClockJs)
+  process.env.AGENT_BROWSER_INIT_SCRIPTS = quotaClock
+  try {
+    browser = AgentBrowser.open(sessionId)
+    browser.goto('about:blank')
+  } finally {
+    delete process.env.AGENT_BROWSER_INIT_SCRIPTS
+  }
   guide = GuideBrowser.open(sessionId)
   const seeded = await seedScenario(cockpit, browser)
   Object.assign(runs, seeded.runs)
@@ -297,6 +314,12 @@ agent-browser) and then its own fixture server. It is not part of \`npm run test
   \`mock/repo\` reads \`acme/demo-shop\`, the author \`mock\` reads as a person, the fake draft
   PR URL reads as a PR on that repository, and a mocked agent's \`mock (…)\` version reads as a
   version number.
+- **The plan-limits sample is re-aged.** A dry run answers plan limits with a fixed sample taken
+  at a fixed past instant; the capture browser moves every time in that answer forward to its
+  own clock, so the readings are minutes old rather than weeks and a reset time is still ahead.
+  The sample's statuses stay as they are: one Claude Code login can work, one is out until its
+  reset and one cannot be read; one Codex login can work and one is an API-key login that does
+  not report limits.
 - Animations are stopped, and the floating toasts, backdrops and the thread's "Jump to latest"
   pill are hidden, so no capture lands on a random frame.
 - The Tasks table folds Model, Cost, CPU and Mem; with every column open it is wider than 1280 px

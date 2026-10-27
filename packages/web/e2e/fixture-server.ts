@@ -38,7 +38,11 @@ export interface FixtureServer {
   stop(): Promise<void>
 }
 
-function freePort(): Promise<number> {
+/**
+ * A free TCP port on the loopback interface, found by letting the OS pick one for a throwaway
+ * listener and closing it again. The one copy every browser spec boots its server on.
+ */
+export function freePort(): Promise<number> {
   return new Promise((done, fail) => {
     const probe = createServer()
     probe.once('error', fail)
@@ -50,8 +54,39 @@ function freePort(): Promise<number> {
   })
 }
 
+export interface WaitForHealthOptions {
+  /** How many probes, 250 ms apart, before giving up. Default 60 (about 15 s). */
+  attempts?: number
+  /** Names the server in the failure message: `the <label> never answered at <url>`. */
+  label?: string
+}
+
+/**
+ * Wait until a spec-booted `xezar serve` answers `GET /api/v1/health`, probing every 250 ms.
+ * Throws `xezar e2e: the <label> never answered at <url>` once `attempts` probes have failed.
+ * The budget is the caller's: a spec that needs longer passes its own `attempts`.
+ */
+export async function waitForHealth(url: string, options: WaitForHealthOptions = {}): Promise<void> {
+  const { attempts = 60, label = 'fixture server' } = options
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      if ((await fetch(`${url}/api/v1/health`)).ok) return
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`xezar e2e: the ${label} never answered at ${url}`)
+}
+
+export interface BootFixtureServerOptions {
+  /** Extra environment for `xezar serve`, on top of `fixtureServeEnv` — an opt-in flag such as
+   *  `XEZ_FOLLOWUPS` or `XEZ_AUTOMATIONS` that the shared test env leaves at its default. */
+  env?: Record<string, string>
+}
+
 /** Boot `xezar serve` over a fresh `createFixtureRepo` checkout and wait until it answers. */
-export async function bootFixtureServer(): Promise<FixtureServer> {
+export async function bootFixtureServer(options: BootFixtureServerOptions = {}): Promise<FixtureServer> {
   // `/tmp`, not `os.tmpdir()`: inside a xezar task TMPDIR sits under the repository, and the
   // realpath keeps `/private/tmp` and `/tmp` from reading as two different roots on macOS.
   const base = process.platform === 'win32' ? tmpdir() : '/tmp'
@@ -67,7 +102,7 @@ export async function bootFixtureServer(): Promise<FixtureServer> {
   const server = spawn(
     process.execPath,
     [xezarCli, 'serve', '--repo', root, '--port', String(port), '--no-open'],
-    { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, options.env), stdio: 'ignore' },
   )
   for (let attempt = 0; ; attempt += 1) {
     try {

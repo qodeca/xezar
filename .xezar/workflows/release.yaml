@@ -28,16 +28,6 @@ steps:
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
     resultScope: routine
-  # THE MCP MUTATION GATE IS NOT HERE ANY MORE. It used to be the first check step, before
-  # anything was authored, and it is gone because a nearly four-hour measurement whose only
-  # repair — a stronger test — lives in somebody else's pull request must not stand between a
-  # finished, approved release and publication. Its first end-to-end exercise arrived at release
-  # time, which is when failure costs most: one release attempt died in the mutation runner's own
-  # dry run on a config mismatch and found zero product defects.
-  #
-  # **Its home is a nightly workflow of its own**, against the base branch, and a
-  # release does not wait on it. Do not add it back here. The gate itself is unchanged: same scope,
-  # the same break threshold this project's mutation config states.
   - id: changelog
     name: Write the changelog entry from merged PRs
     prompt: "{{task}}"

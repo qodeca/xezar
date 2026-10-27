@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContentBlock } from '../core/agent-runner.ts';
-import type { UiEvent } from '../core/ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 import { createWorktree } from '../git-worktree.ts';
 import { RunStore, type RunRecord, type StepState } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -309,6 +309,20 @@ describe('RunManager.recordTurnEnd', () => {
     const later = store.getRun(record.id);
     expect(later?.titleSummary).toBeUndefined();
     expect(later?.diffStat).toEqual({ adds: 4, dels: 1, files: 3 });
+  });
+
+  /**
+   * #1105: both turn-end handlers fire the bookkeeping without awaiting it, and the run reads
+   * `waiting` before its `diffStat` lands. `turnEndsSettled()` is how a caller that compares a
+   * record before and after an action waits for that write instead of racing it.
+   */
+  it('turnEndsSettled resolves only after a fired turn-end has written its diffStat', async () => {
+    const record = await makeWorktreeRun();
+    await manager.turnEndsSettled(); // nothing in flight: resolves at once
+    (manager as unknown as { trackTurnEnd(runId: string, turnText: string): void }).trackTurnEnd(record.id, TURN_TEXT);
+    expect(store.getRun(record.id)?.diffStat, 'fired, not yet written').toBeUndefined();
+    await manager.turnEndsSettled();
+    expect(store.getRun(record.id)?.diffStat).toEqual({ adds: 3, dels: 1, files: 2 });
   });
 
   /**

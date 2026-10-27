@@ -6,11 +6,10 @@
     "noEmit": true,
     "rootDir": ".",
     "types": ["node"],
-    // The api-client drift guards (api-types.test.ts, tool-display-mirror.test.ts) read that
-    // package's SOURCE, so they name the real `.ts` files. Safe only here: this config never
-    // emits, and nothing under `src/` that ships is allowed to import a `.ts` path.
+    // Repeated from the build config so this typecheck-only view states it on its own: imports
+    // name the real `.ts` files. Safe here because this config never emits.
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts", "vitest.mutation.config.ts", "vitest.mutation.lock.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
   "exclude": []
 }

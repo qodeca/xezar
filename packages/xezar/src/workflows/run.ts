@@ -78,7 +78,7 @@ import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
-import type { UiEvent } from '../core/ui-events.ts';
+import type { UiEvent } from '@qodeca/xezar-contract';
 import { isReadOnlyStep } from '../core/read-only-lock.ts';
 import { authorEvidenceBrief, snapshotAuthorEvidence } from '../runs/author-evidence.ts';
 import {
@@ -3460,7 +3460,7 @@ export class RunManager {
         // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
-        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        this.trackTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
@@ -4564,7 +4564,7 @@ export class RunManager {
         // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
-        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        this.trackTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = interactive && sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
@@ -5169,6 +5169,36 @@ export class RunManager {
     this.startNaming(this.autoNameRun(runId, skillName, run.task, { turnText, diffStat: statText }));
   }
 
+  /** The turn-end bookkeeping still running; only `turnEndsSettled()` reads it. */
+  private readonly turnEndsInFlight = new Set<Promise<void>>();
+
+  /**
+   * Fire `recordTurnEnd` for a finished turn, the one way both turn-end handlers do it: enrolled in
+   * `runsInFlight` so `quiesce()` waits for it (#200), and in `turnEndsInFlight` so
+   * `turnEndsSettled()` can.
+   */
+  private trackTurnEnd(runId: string, turnText: string): void {
+    const bookkeeping = this.recordTurnEnd(runId, turnText);
+    this.trackRun(bookkeeping);
+    this.turnEndsInFlight.add(bookkeeping);
+    const forget = (): void => {
+      this.turnEndsInFlight.delete(bookkeeping);
+    };
+    bookkeeping.then(forget, forget);
+  }
+
+  /**
+   * Resolves once the turn-end bookkeeping of every turn finished so far has written what it
+   * writes (`diffStat`, marker refs, a note). A run reads `waiting` BEFORE that bookkeeping lands –
+   * it runs `git diff --shortstat` in the worktree, which can take seconds on a loaded Windows
+   * machine – so a caller that compares a run record before and after an action waits here first
+   * (#1105). `dispose()` and `quiesce()` are unchanged; a namer it starts is `namingSettled()`'s.
+   * Never rejects.
+   */
+  async turnEndsSettled(): Promise<void> {
+    while (this.turnEndsInFlight.size > 0) await Promise.allSettled([...this.turnEndsInFlight]);
+  }
+
   /** The namer calls still running; only `namingSettled()` reads it. */
   private readonly namingInFlight = new Set<Promise<void>>();
 
@@ -5452,8 +5482,8 @@ export class RunManager {
    *  a Codex read-only step's sandbox cannot write git. Read at spawn, so a PR a previous step
    *  reported (`applyMarkerRefs`) counts. When the run knows none, the key is removed rather than
    *  inherited: a nested xezar's own value would name another task's PR. Deliberately NOT
-   *  `XEZ_TASK_ID`: the process sweeper attributes programs by it (src/AGENTS.md § Run process
-   *  sweep), and the kit derives the task from the worktree directory. */
+   *  `XEZ_TASK_ID`: the process sweeper attributes programs by it (src/runs/AGENTS.md § Run
+   *  process sweep), and the kit derives the task from the worktree directory. */
   private checkStepEnv(runId: string): NodeJS.ProcessEnv {
     const { XEZ_PR_NUMBER: _inherited, ...env } = process.env;
     const prNumber = this.store.getRun(runId)?.prNumber;

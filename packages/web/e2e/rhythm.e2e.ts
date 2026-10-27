@@ -1,12 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * The shipped rhythm (#424 step 2, design `designs/design-system-air/` § 9.2 and AC 3), read
@@ -29,30 +29,6 @@ const REFERENCE_RUN_ID = '3b0c5e2a-4d1f-4c8e-9a7b-2f6d8e1c0a93'
 
 /** Roomy and Compact for real can give fractional pixels; allow for rounding. */
 const TOLERANCE_PX = 0.5
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
-}
 
 let browser: AgentBrowser
 let server: ChildProcess

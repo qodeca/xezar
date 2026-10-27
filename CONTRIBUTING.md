@@ -13,7 +13,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 ## The loop
 
 1. Branch off `develop`, the default branch.
-2. Install and build: `npm install`, then `npm run build`. You need Node 22+ and `git`.
+2. Install and build: `npm install`, then `npm run build`. You need Node 22.13 or newer and `git`.
 3. Make your change, with a test for any change in behaviour.
 4. Run the fast checks locally:
 
@@ -25,10 +25,9 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
    CI runs the full gate on your pull request (`npm run test:unit`, `npm run build`,
    `npm run test:package`, the browser suite, the MCP coverage floor, the hosted-server and
    two-project harnesses), so you do not have to.
-   It also repeats the validation steps on Linux with Node 22 and on Windows and macOS with Node 22
-   and 24. The Windows and macOS legs on Node 22 and 24 are required checks; the Linux Node 22 leg
-   runs on every pull request but is informational, not required, and so are the current-LTS
-   canary legs.
+   It also repeats the validation steps on Windows and macOS with Node 22 and 24; those four legs
+   are required checks. Linux is covered by the main gate job. Informational current-LTS canary
+   legs on Windows and macOS run only after a merge into `develop`, never on a pull request.
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
 5. Open a pull request against `develop`. `main` holds released work only and takes release
    pull requests, never feature work.
@@ -38,7 +37,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 End-to-end, from a fresh clone to a global `xezar` command you can run in **any**
 repo on your machine — no npm publish required.
 
-**1. Prerequisites** — Node 22+ and `git` (plus at least one logged-in agent CLI,
+**1. Prerequisites** — Node 22.13 or newer and `git` (plus at least one logged-in agent CLI,
 as in the README's [Quick start](README.md#quick-start)). On Windows, also read
 [Contributing from Windows](#contributing-from-windows).
 

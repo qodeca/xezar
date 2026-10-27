@@ -1,5 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { renameReplacingSync } from '../platform/atomic-write.ts';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { renameReplacingSync, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -14,7 +14,6 @@ import {
 } from '@qodeca/xezar-contract';
 
 import type { RunStore } from '../runs/store.ts';
-import { atomicTmpPath } from '../workspace/config.ts';
 import type { LeaderRecord } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import { runVersion } from './stale-write.ts';
@@ -291,10 +290,7 @@ export class LeaderCursors implements LeaderRecord {
   #save(): void {
     try {
       mkdirSync(join(this.path, '..'), { recursive: true, mode: 0o700 });
-      const tmp = atomicTmpPath(this.path);
-      writeFileSync(tmp, `${JSON.stringify(this.#state)}\n`, { encoding: 'utf8', mode: 0o600 });
-      renameReplacingSync(tmp, this.path);
-      try { chmodSync(this.path, 0o600); } catch { /* best-effort on filesystems without modes */ }
+      writeFileAtomicSync(this.path, `${JSON.stringify(this.#state)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
     } catch (err) {
       if (this.#warned) return;
       this.#warned = true;

@@ -614,6 +614,18 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
     return OTHERS.map((project) => (project.id === id ? { ...project, instance } : project))
   }
 
+  // React's useId values (`_r_7c_`, which Radix prefixes as `radix-_r_7c_`) count every component
+  // rendered earlier in this FILE, so adding or reordering an unrelated test above would change them
+  // and fail the snapshot with no product change. Renumber them by first appearance instead: the
+  // rest of the markup stays byte-for-byte, and two attributes that share one id still share it.
+  function stableIds(html: string): string {
+    const seen = new Map<string, string>()
+    return html.replace(/_r_[0-9a-z]+_/g, (id) => {
+      if (!seen.has(id)) seen.set(id, `_r_id${seen.size}_`)
+      return seen.get(id)!
+    })
+  }
+
   // AC-4.2. Both workspace-mode shapes, rendered from the same fixtures as before this PR: the
   // flat single-project sidebar and the grouped multi-project one. A snapshot rather than a set
   // of assertions because the claim is about the WHOLE markup, and an assertion list only pins
@@ -624,7 +636,7 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
 
     await waitFor(() => expect(versionChip()).not.toBeNull())
     expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
-    expect(sidebar().outerHTML).toMatchSnapshot()
+    expect(stableIds(sidebar().outerHTML)).toMatchSnapshot()
   })
 
   it('leaves the default workspace sidebar byte-for-byte unchanged — project groups', async () => {
@@ -647,7 +659,7 @@ describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
       expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/workspace/runs-index'),
     )
     expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
-    expect(sidebar().outerHTML).toMatchSnapshot()
+    expect(stableIds(sidebar().outerHTML)).toMatchSnapshot()
   })
 
   // AC-4.1, and the `projectsLocked`-widened break: everything stays listed and manageable.

@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Diff virtualization in a real browser (`components/diff/diff-scroll.ts` §"THE PERFORMANCE
@@ -61,30 +61,6 @@ let baseUrl: string
  *  local state into it, so the view's honest count is whatever the server reports. */
 let changedFiles = 0
 
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
-}
-
 /** Commit a baseline, then rewrite every line — a big, honest modified-file diff. */
 function buildFixtureRepo(dir: string): void {
   const git = (args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' })
@@ -96,8 +72,11 @@ function buildFixtureRepo(dir: string): void {
   // machine. Those tools keep writing into it for as long as the server runs — an agent CLI's
   // binary install landed there once mid-run, growing the changeset by 18 files between the
   // count taken at boot and the one the browser later rendered. `home/` is never part of the
-  // changeset this spec builds, so it is excluded rather than measured.
-  writeFileSync(join(dir, '.gitignore'), 'home/\n', 'utf8')
+  // changeset this spec builds, so it is excluded rather than measured. `.xez-home/` is the
+  // pinned XEZ_HOME: on Windows the leader endpoint is announced by regular `ipc/<id>.key` and
+  // `.pipe` files written just after boot (a Unix socket is not a file Git lists), so it is
+  // excluded for the same reason (#1137).
+  writeFileSync(join(dir, '.gitignore'), 'home/\n.xez-home/\n', 'utf8')
   mkdirSync(join(dir, 'src'), { recursive: true })
   const write = (index: number, tag: string) =>
     writeFileSync(
@@ -325,13 +304,19 @@ describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, (
     // last file no longer moves `main`. It says nothing about `overscroll-contain`: a scripted
     // scroll never chains to an ancestor whatever the overscroll-behavior is, and the driver's
     // input ops are pointer-based, with no wheel to send. Wheel chaining stays manual-QA territory.
+    //
+    // `main`'s offset is read again in the same synchronous block, right before the pane scroll:
+    // On Windows `main` read 7 px off after the tree scroll compared with one browser call
+    // earlier (#1137; most likely the virtual list correcting its offset as it measures cards),
+    // and a reading taken a call earlier charges any such drift to the tree.
     const moved = browser.evaluate(`(() => {
       const pane = document.querySelector('[data-slot="changes-tree-pane"]')
+      const before = Math.round(${MAIN}.scrollTop)
       pane.scrollTop = pane.scrollHeight
-      return { paneTop: Math.round(pane.scrollTop), mainTop: Math.round(${MAIN}.scrollTop) }
-    })()`) as { paneTop: number; mainTop: number }
+      return { paneTop: Math.round(pane.scrollTop), before, mainTop: Math.round(${MAIN}.scrollTop) }
+    })()`) as { paneTop: number; before: number; mainTop: number }
 
     expect(moved.paneTop).toBeGreaterThan(0)
-    expect(moved.mainTop, 'scrolling the tree dragged the diff along').toBe(pane!.mainTop)
+    expect(moved.mainTop, 'scrolling the tree dragged the diff along').toBe(moved.before)
   }, 120_000)
 })

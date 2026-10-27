@@ -21,11 +21,13 @@ import { stripComments } from '../release/instruction-hygiene.testkit.ts';
  *  - closed: a marker that names #963, the umbrella issue this scheme replaced.
  *  - retired: the old `win32-r9(` marker for a known Windows failure – none may remain.
  *  - unknown: a marker naming an issue outside ALLOWED_ISSUES, or a malformed one.
+ * It also fails when an id in ALLOWED_ISSUES has no marker left: once its last skip is gone the issue
+ * is usually closed, and keeping its id allowed would let a new skip cite a finished issue.
  *
  * Markers are read from the raw source; skips from comment-free source, so prose about a skip is
  * never a finding. No process is started.
  */
-export const ALLOWED_ISSUES: readonly number[] = [972, 973, 974, 975, 976, 977, 978, 980];
+export const ALLOWED_ISSUES: readonly number[] = [972, 973, 974, 975, 976];
 
 const ROOTS = ['packages/xezar/src', 'packages/xezar/test', 'packages/contract/src', 'packages/api-client/src', 'packages/web/src', 'packages/web/e2e', 'scripts'];
 /** Whole trees of test code: every script file under them is a test or a test helper. */
@@ -229,6 +231,18 @@ function markerCount(files: readonly string[]): number {
   return files.reduce((sum, file) => sum + [...readFileSync(join(REPO_ROOT, file), 'utf8').matchAll(MARKER)].length, 0);
 }
 
+/** The allowed issue ids that no marker in `sources` names – ids the list should drop. */
+export function unusedAllowedIssues(sources: readonly string[]): number[] {
+  const used = new Set<number>();
+  for (const source of sources) {
+    for (const match of source.matchAll(MARKER)) {
+      const issue = /^#(\d+)$/.exec(match[1]!.trim());
+      if (issue) used.add(Number(issue[1]));
+    }
+  }
+  return ALLOWED_ISSUES.filter((issue) => !used.has(issue));
+}
+
 describe('every platform skip names its open issue', () => {
   const files = scannedFiles();
 
@@ -241,6 +255,11 @@ describe('every platform skip names its open issue', () => {
     // About 10% under the 799 files seen when the scan was written.
     expect(files.length).toBeGreaterThan(720);
     expect(markerCount(files)).toBeGreaterThan(0);
+  });
+
+  it('allows only issues that a marker still names', () => {
+    const unused = unusedAllowedIssues(files.map((file) => readFileSync(join(REPO_ROOT, file), 'utf8')));
+    expect(unused, 'no marker names these ids any more – drop them from ALLOWED_ISSUES').toEqual([]);
   });
 });
 
@@ -284,6 +303,14 @@ describe('the scanner fires on every kind of finding', () => {
     expect(rules('// it.skipIf(onWindows)(\'x\', () => {});')).toEqual([]);
     expect(rules("function f() {\n  if (onWindows) return;\n}", 'packages/xezar/test/helpers/probe.ts')).toEqual([]);
     expect(rules("it('x', () => {\n  if (onWindows) return tmpdir();\n});")).toEqual([]);
+  });
+
+  it('reports an allowed id that no marker names, and no id when every one is named', () => {
+    const all = ALLOWED_ISSUES.map((issue) => `// ${mark(String(issue))}: reason`).join('\n');
+    expect(unusedAllowedIssues([all])).toEqual([]);
+    const [first, ...rest] = ALLOWED_ISSUES;
+    expect(unusedAllowedIssues([rest.map((issue) => `// ${mark(String(issue))}: reason`).join('\n')])).toEqual([first]);
+    expect(unusedAllowedIssues([])).toEqual([...ALLOWED_ISSUES]);
   });
 
   it('a marker away from the skip does not count', () => {

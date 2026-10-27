@@ -39,8 +39,8 @@
     "server-uninstall": "tsx src/index.ts server-uninstall",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "node --import ../../scripts/test-local-state.mjs --import tsx --test --test-timeout=600000 test/unit/*.test.ts",
-    "test:package": "node --import ../../scripts/test-local-state.mjs --import tsx --test test/e2e/*.test.ts",
+    "test:unit": "node ../../scripts/node-test.mjs --import ../../scripts/test-local-state.mjs --import tsx --test --test-timeout=600000 test/unit/*.test.ts",
+    "test:package": "node ../../scripts/node-test.mjs --import ../../scripts/test-local-state.mjs --import tsx --test test/e2e/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "postbuild": "node scripts/inline-contract.mjs && node scripts/bundle-codex-hook.mjs && node scripts/bundle-qwen-hook.mjs",
     "test:server-mode": "node test/e2e/server-mode-harness.mjs"
@@ -48,18 +48,16 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@hono/node-server": "^1.19.15",
-    "hono": "^4.13.5",
+    "hono": "^4.13.13",
     "picocolors": "^1.1.1",
     "smol-toml": "^1.7.1",
     "ws": "^8.21.1",
     "yaml": "^2.5.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@qodeca/xezar-api-client": "^0.31.0",
     "@qodeca/xezar-contract": "^0.31.0",
-    "@stryker-mutator/core": "^9.6.1",
-    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^22.12.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",

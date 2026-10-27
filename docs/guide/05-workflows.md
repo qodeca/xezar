@@ -47,6 +47,20 @@ An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`cla
 
 A **check step** has `command`. Exit code zero passes; a non-zero exit fails or enters its configured repair loop. Do not combine `command` with `prompt` or `skill` in the same step. Checks execute shell commands, so use commands suitable for the project and machine running xezar. They run in Bash: `bash -lc` on Linux and macOS, and Git for Windows' Git Bash (`bash -c`) on Windows. A check step may also set `resultScope` to `routine` or `stage`: a passing `routine` check is still recorded but does not wake an attached project leader, while a failure is always reported. `timeout`, `verdictRole` and `claudeSettings` are rejected on check steps.
 
+## To know what a step can read from its environment
+
+xezar sets a few environment variables for each step, so a prompt, skill or check command can refer to the task without guessing. Do not set them yourself; xezar overwrites them.
+
+| Variable | Set for | What it holds |
+| --- | --- | --- |
+| `XEZ_TASK_ID` | Agent steps | The id of the task (run) the step belongs to. |
+| `XEZ_STEP_ID` | Agent steps | The `id` of the workflow step the agent is running as; empty when there is no step. |
+| `XEZ_HANDOFF_FILE` | Agent steps | The path of the task's handoff notes, a Markdown file outside the isolated working copy where agents record progress and resume notes. |
+| `XEZ_TODOS_FILE` | Agent steps | The path of the follow-up Inbox file when follow-ups are on for the task; empty when they are off. |
+| `XEZ_PR_NUMBER` | Check steps | The task's pull-request number, when the task knows one (from the task text or a pull request an earlier step reported); absent otherwise. |
+
+A check step never receives `XEZ_TASK_ID`. Typical uses: an agent step that writes its findings to the handoff notes for the next step, or a check step that uses `XEZ_PR_NUMBER` to fetch that pull request before a read-only review step starts. The [environment contract](../../.env.example) lists the same variables.
+
 ## To retry a failed check with onFail.retry
 
 Set `onFail.retry` to an earlier step's ID and `max` to a positive integer. In the example, a failed `verify` returns to `implement` at most twice, running the intervening sequence again. The failing command output is added to the retried agent's prompt. Omitting `max` defaults it to two retries.
@@ -90,7 +104,7 @@ Open **Workflows**, create a new workflow or select an existing one, and add ski
 
 Name the workflow and review the YAML preview before choosing **Save**. Saving asks for overwrite confirmation when the generated `<slug>.yaml` file already exists; different names can produce the same filename. Creating a file that shadows built-in `quick-task` needs no overwrite confirmation unless that file already exists. Choose **Auto** to propose a sequence from a brief, then review and edit it before saving. A planner fallback is shown as a one-step proposal.
 
-![Workflows builder](../screenshots/0.18.0/workflows-dark-1280.png)
+![Workflows builder](../screenshots/0.31.0/workflows-dark-1280.png)
 
 ## To import or export a workflow
 
@@ -104,4 +118,4 @@ Use **Import** to paste YAML into the builder. Parsing happens on the server; fi
 
 Next: [Skills](06-skills.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

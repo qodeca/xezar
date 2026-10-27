@@ -31,3 +31,12 @@ export function compactTokens(tokens: number): string {
   if (tokens >= 1_000) return `${(Math.floor(tokens / 100) / 10).toFixed(1)}k`
   return String(Math.floor(tokens))
 }
+
+/**
+ * The last segment of a server-reported path, on either separator. The server answers with a
+ * native path, so a Windows host sends `C:\…\.xezar\workflows\x.yaml` and a `/`-only split would
+ * print the whole path where the file name belongs.
+ */
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path
+}

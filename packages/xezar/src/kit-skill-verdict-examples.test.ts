@@ -65,6 +65,9 @@ const SKILLS: ReadonlyArray<readonly [string, string]> = [
   ['xezar-code-review.md', 'code-review'],
   ['xezar-qa.md', 'qa'],
   ['xezar-ux-design.md', 'design-review'],
+  ['xezar-architecture.md', 'architecture-review'],
+  ['xezar-security-review.md', 'security-review'],
+  ['xezar-acceptance.md', 'acceptance-verification'],
 ];
 
 describe('the kit skills’ verdict packet examples', () => {
@@ -102,9 +105,4 @@ describe('the kit skills’ verdict packet examples', () => {
       expect(text, skill).toContain('post the comment, then attempt the labels, then write the packet');
     });
   }
-
-  // Gap in the 3.0.3 kit: `xezar-architecture.md` carries no packet example, and its verdict words
-  // (CONFORMS / CONFORMS WITH FOLLOW-UPS / CONTRADICTS) are not in the engine's architecture-review
-  // vocabulary in packages/contract/src/task-verdict.ts. A separate change closes the engine side.
-  it.todo('xezar-architecture.md shows an architecture-review packet the engine accepts');
 });

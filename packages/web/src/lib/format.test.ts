@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { compactTokens, shortAge } from '@/lib/format'
+import { compactTokens, fileName, shortAge } from '@/lib/format'
 
 describe('shortAge', () => {
   const now = Date.parse('2026-07-14T12:00:00.000Z')
@@ -51,5 +51,16 @@ describe('compactTokens', () => {
 
   it.each([-5, Number.NaN, Number.POSITIVE_INFINITY])('renders %s as 0', (tokens) => {
     expect(compactTokens(tokens)).toBe('0')
+  })
+})
+
+describe('fileName', () => {
+  it.each([
+    ['/home/u/repo/.xezar/workflows/flow.yaml', 'flow.yaml'],
+    ['C:\\Users\\u\\repo\\.xezar\\workflows\\flow.yaml', 'flow.yaml'],
+    ['C:/Users/u/repo\\.xezar/flow.yaml', 'flow.yaml'],
+    ['flow.yaml', 'flow.yaml'],
+  ])('%s → %s', (path, expected) => {
+    expect(fileName(path)).toBe(expected)
   })
 })

@@ -19,9 +19,10 @@ appears in section 4 as supporting evidence only – it never drives the ranking
 no gate protects outranks a behaviour that a suite covers but CI never runs, and both outrank a
 file with a low percentage that nothing depends on.
 
-**Section numbers are labels, not a sequence.** There is no section 8 and no 10.7: both were
-removed, and the rest were not renumbered because code and other documents cite sections by number
-(§ 10.3 and § 10.13 in the Stryker configs, § 10.8 in `docs/publishing.md`, § 10.12 in `ci.yml`).
+**Section numbers are labels, not a sequence.** There is no section 8 and no 10.7, 10.8 or 10.13:
+they were removed, and the rest were not renumbered because code and other documents cite sections
+by number (§ 10.12 in `ci.yml`). 10.8 and 10.13 described the nightly mutation gate, which the
+owner removed from the project on 2026-10-27; their text is in the git history of this file.
 For how to run each suite, see the [testing index](README.md).
 
 **How to read the evidence.** Claims marked *measured* come from a command that was run or a test
@@ -162,16 +163,16 @@ HTTP API.
 | Variant compare and pick | cockpit unit + browser e2e | `routes/compare-variants.test.tsx:121`; `e2e/variants-compare.e2e.ts:193` | C |
 | Repo git tabs (diff, commits, branches) | cockpit unit + browser e2e | `routes/repo-git/repo-git.test.tsx:150`; `e2e/repo-git.e2e.ts:54` | C |
 | GitHub issues and PRs | cockpit unit + browser e2e | `routes/github/github.test.tsx:302`; `e2e/github.e2e.ts:78` | C |
-| **Automations (create, preview, enable, log)** | cockpit unit, both states; browser e2e, both states | `routes/automations/automations.test.tsx:227-421` runs the enabled flow ungated (#48); `routes.test.tsx:355-374` the disabled one; `e2e/automations.e2e.ts:54-58` still self-skips its own enabled-path cases against the shared server, but `e2e/guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture and runs the create → enable → log journey unconditionally, through role/label locators | C |
+| **Automations (create, preview, enable, log)** | cockpit unit, both states; browser e2e, both states | `routes/automations/automations.test.tsx:227-421` runs the enabled flow ungated (#48); `routes.test.tsx:355-374` the disabled one; `e2e/automations.e2e.ts` asserts the disabled state on the shared server; `e2e/guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture and runs the create → enable → log journey unconditionally, through role/label locators. Its always-skipped enabled case was **deleted** in the 2026-10-24 cleanup (WP13b), not moved: guide-07 proves the same journey, and its one extra step, the preview check, cannot run in a browser spec – the check searches GitHub through `gh`, which the dry-run forge does not mock, so a fixture answers `error` without a signed-in `gh`. Preview stays unit-pinned (`automations.test.tsx:386-421`) | C |
 | Skills catalog page | cockpit unit + browser e2e | `routes/skills.test.tsx:151`; `e2e/settings-skills.e2e.ts:66`; `e2e/guide-06-skills.e2e.ts` (browse/open a project skill and Refresh, plus the global auto-update switch, through role/label locators) | C |
-| Inbox | cockpit unit + browser e2e, both states | `routes/inbox.test.tsx:224`; `e2e/inbox.e2e.ts:96` self-skips its enabled-path cases against the shared server; `e2e/guide-08-inbox-notifications.e2e.ts` boots its own `XEZ_FOLLOWUPS=1` fixture and runs the disabled message plus Run/Dismiss/Acknowledge unconditionally | C |
+| Inbox | cockpit unit + browser e2e, both states | `routes/inbox.test.tsx:224`; `e2e/inbox.e2e.ts` asserts the disabled state on the shared server and, since the 2026-10-24 cleanup (WP13b), **moved** its always-skipped enabled cases (empty state, live cards with their meta row and actions, Dismiss agreed by the server) onto its own `XEZ_FOLLOWUPS=1` fixture (`bootFixtureServer({ env })`), so they run on every `test:e2e`; the live nav-badge case moved there too from `e2e/smoke.e2e.ts` (the SSE file-watch → badge proof, which guide-08 does not cover). `e2e/guide-08-inbox-notifications.e2e.ts` boots its own fixture and runs the disabled message plus Run/Dismiss/Acknowledge through role locators | C |
 | Workflows builder | cockpit unit + browser e2e | `routes/workflows/workflows.test.tsx:118`; `e2e/workflows.e2e.ts:89`; `e2e/guide-05-workflows.e2e.ts` (a saved workflow's own `/workflows/:name` deep link, and a real end-to-end run proving the step rail advances through both agent steps) | C |
 | Settings, project and global scopes | cockpit unit + browser e2e | `routes/settings/settings.test.tsx:164,271`; every project and global section's own heading, in `e2e/guide-10-settings.e2e.ts`; the Project setup / Worktrees / Branches sections, in `e2e/guide-01-getting-started.e2e.ts` and `e2e/guide-03-worktrees-and-git.e2e.ts` | C |
 | Guide 02 flow contract (compose, mode toggles, queueing, thread output, Finish/review, Changes/Files/Commits, Draft PR/Accept hand-off, actions/notes — Archive/Unarchive, Open in…, Notes, Continue) | browser e2e, one file, semantic role/label/text locators only | `e2e/guide-browser.ts` (the shared helper); `e2e/guide-02-running-a-task.e2e.ts` — its own header names the one guide-02 flow (opening a real draft PR) this file does not honestly dry-run test and the lower tests that cover it instead | C |
 | User-guide flow contracts (guides 01, 03, 05–08 — getting started incl. guided setup, worktrees/Git incl. the non-Git fallback, workflows, skills, GitHub/automations, inbox) | browser e2e, one file per guide, semantic role/label/text locators only | `e2e/guide-browser.ts` (the shared helper); `e2e/guide-01-getting-started.e2e.ts`, `guide-03-worktrees-and-git.e2e.ts`, `guide-05-workflows.e2e.ts`, `guide-06-skills.e2e.ts`, `guide-07-github-automations.e2e.ts`, `guide-08-inbox-notifications.e2e.ts`; each file's own header names the guide flows it is not honestly dry-run testable and the lower-level test that covers them instead. Guide 09 has no new file: `e2e/project-switching.e2e.ts` already proves its one browser-only journey, and its remaining flows (tags, Max parallel, Add project) are settings-only mutations already covered at jsdom level | C |
 | User-guide flow contracts (guides 04, 10–16 — providers/models/tools, settings, zero-config defaults, CLI/mcp cross-check, MCP leader connection, local vs. hosted, project kit, troubleshooting) | browser e2e, one file per guide, semantic role/label/text locators only | `e2e/guide-browser.ts` (the shared helper); `e2e/guide-04-providers-models-tools.e2e.ts`, `guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`, `guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`, `guide-16-troubleshooting.e2e.ts`; each file's own header names the guide flows it is not honestly dry-run testable and the lower-level test that covers them instead | C |
 | Guide 17 audit trail | lower-level tests; no browser e2e because the guide has no cockpit page | `docs/testing/browser-dry-run-exceptions.md` records the audit-trail classification and its named audit tests | C |
-| Screenshot-state visible facts (browser-test-spec.md "PR 4 — screenshot-state contract, after Batch 8", Refs #549): 20 manifest states — the 19 shipped 0.15.0 pictures plus `settings-projects` (`plannedFor: '0.16.0'`, #453 B8) — each asserted by role/label/text, no pixel comparison | browser e2e, sharing the capture harness's own preparation | `e2e/capture/scenario-state.ts` (`SCENARIOS`, the per-state preparation AND its visible-fact assertions, shared verbatim with `e2e/capture/docs-screenshots.capture.ts`); `e2e/screenshot-states.e2e.ts` is the thin consumer — one scenario call per state per distinct width its manifest entry lists, never a screenshot | C |
+| Screenshot-state visible facts (browser-test-spec.md "PR 4 — screenshot-state contract, after Batch 8", Refs #549): 20 manifest states (`settings-projects` joined in 0.16.0, #453 B8) — each asserted by role/label/text, no pixel comparison | browser e2e, sharing the capture harness's own preparation | `e2e/capture/scenario-state.ts` (`SCENARIOS`, the per-state preparation AND its visible-fact assertions, shared verbatim with `e2e/capture/docs-screenshots.capture.ts`); `e2e/screenshot-states.e2e.ts` is the thin consumer — one scenario call per state per distinct width its manifest entry lists, never a screenshot | C |
 | **Whole `npm run test:e2e` suite passing in shuffled order** | browser e2e | Measured 2026-09-20 (PR-549-D) at head `fee89d0c`, `vitest --sequence.shuffle --sequence.seed=482917365`: **23 of 66 files order-dependent** (46 of 459 tests), up from the ~19–20 estimated before #730/#731/#745/#746 landed — those PRs rebuilt waits in nine files but did not close the shuffle gap suite-wide. Failing files, each with its first failing assertion in the table at `docs/testing/agent-browser.md` § Recorded runs (not duplicated here) and the full log at `.local/xezar/tasks/700f23bf-97bd-4913-88b8-b4a18f1f6e39/runs/shuffled-1.log`: `settings-bookmarklets.e2e.ts`, `queued-stack.e2e.ts`, `plan-mode.e2e.ts`, `task-files.e2e.ts`, `settings-appearance.e2e.ts`, `thread-scroll.e2e.ts`, `task-thread.e2e.ts`, `variants-compare.e2e.ts`, `mcp-collaboration.e2e.ts`, `tools-menu.e2e.ts`, `settings-agents.e2e.ts`, `guide-02-running-a-task.e2e.ts`, `composer.e2e.ts`, `progressive-history.e2e.ts`, `commit-list.e2e.ts`, `review-gate.e2e.ts`, `new-task.e2e.ts`, `single-project.e2e.ts`, `workflows.e2e.ts`, `guide-01-getting-started.e2e.ts`, `diff-scroll.e2e.ts`, `skills-update.e2e.ts`, `task-changes.e2e.ts`. All 23 are pre-existing files outside this guide-flow package's authority (two of them, `guide-01` and `guide-02`, are guide files that already ship, not new PR-549 work); per the owner's 2026-09-20 21:02 rule a named red file is evidence for #671, never retried, widened or fixed here. Default-order proof for this package remains as recorded: each new file alone, the new files together in shuffled order, and the whole suite in default order — recorded in `.local/xezar-tasks/7d26c8f0-31e4-4831-9236-d709fe8f68dc/evidence/BLOCKED` and `evidence/existing-suite-shuffled-same-seed.log` (primary checkout); see also `docs/testing/agent-browser.md` § Recorded runs, where two of three default-order runs at this same head also came back red (`skills-update.e2e.ts`, `guide-03-worktrees-and-git.e2e.ts`), so the three-green half of AC-5 is not met either | **P** |
 | Project scope, `/p/default` alias, legacy redirects, 404 | cockpit unit | `routes.test.tsx:271,636-731` | C |
 | Clicking from one registered project into another (outlet remount resets mount-time page state, e.g. the Tasks search filter, and fetches the destination's own `/api/v1/p/<id>` routes, with no reload); a cross-project task opened from the workspace-wide All tasks page lands at its OWNER project even when a different one is active; a registered project whose folder is gone stays listed, inert, and never expands | cockpit unit + browser e2e | `routes.test.tsx:292` ("remounts the same page and loads its new scope when the project param changes"); `e2e/project-groups.e2e.ts:216-368` (grouping, per-group nav scoping, collapse); `e2e/project-switching.e2e.ts` (the actual A→B click, the cross-project All-tasks jump, and the missing-folder row, in one real browser session) | C |
@@ -183,8 +184,8 @@ HTTP API.
 | The e2e suite's one-worker pin, and its deletion of `VITEST_MAX_WORKERS` | cockpit unit | `e2e-file-parallelism.test.ts` — one case per half: the env var is neutralized, and `fileParallelism: false` still states the intent declaratively | C |
 | Task-table Tool Name / Model columns (recorded vs inherited, verbatim model, mixed-chain `+N`, the phone card) | cockpit unit | `lib/runner-label.test.ts`; `routes/tasks-overview.test.tsx` (the "Tool Name and Model columns" describe); `routes/global-tasks.test.tsx` (same describe) | C |
 | Per-project table reads the PROJECT config, not health's boot-project answer | cockpit unit | `routes/tasks-overview.test.tsx` — "takes the Tool column's default runner from the PROJECT config, not from health" | C |
-| **Root vitest worker cap (`maxWorkers`)** | none | `vite-config.test.ts` guards the cockpit's chunking config; nothing guards the root `vitest.config.ts` cap, and the cap is a deliberate no-op on CI, so removing it is green everywhere. Its SIBLING config guard now exists — `e2e-file-parallelism.test.ts` pins that the e2e config deletes `VITEST_MAX_WORKERS` (#162) — which is the shape this row is asking for, applied to the other file | **N** |
-| **App shell boot (`main.tsx`)** | cockpit unit for `app.tsx` only | `app.test.tsx:175-270` pins the provider stack, the routed outlet, one SSE stream, one health subscription and the error boundary (#50); `main.tsx` is still **absent from the coverage report** | **P** |
+| Test worker cap (`maxWorkers`, node:test concurrency) | server unit | `test-concurrency-cap.test.ts` (#1187) pins the wiring, not timing: `scripts/test-concurrency.mjs` resolves `min(4, availableParallelism() - 1)`, the root and every package `vitest.config.ts` declare it (stepping aside for a command-line `--maxWorkers`), and `test:unit` / `test:package` start through `scripts/node-test.mjs`. The cap is a deliberate no-op on CI, which is why a wiring guard is the only useful one | C |
+| App shell boot (`main.tsx`) | cockpit unit | `app.test.tsx:175-270` pins the provider stack, the routed outlet, one SSE stream, one health subscription and the error boundary (#50). `main.tsx` is now wiring only: its API-base precedence lives in `api/api-base.ts` (`api/api-base.test.ts`) and its missing-`#root` throw in `root-container.ts` (`root-container.test.ts`) | C |
 
 ### 3.4 Run and workflow lifecycle
 
@@ -254,7 +255,7 @@ helpers and JSON data the report now also carries are left out of every row.
 | `packages/web/src/components/` | 95.7 % | 88.3 % | 3.3 |
 | `packages/web/src/lib/` | 98.9 % | 94.7 % | 3.3 |
 | `packages/web/src/routes/` | 94.0 % | 86.6 % | 3.3 |
-| `packages/web/src/` (loose files) | 100 % | 98.2 % | 3.3 (`app.tsx`, `routes.tsx`; `main.tsx` is absent from the report — see R11) |
+| `packages/web/src/` (loose files) | 100 % | 98.2 % | 3.3 (`app.tsx`, `routes.tsx`; `main.tsx` is absent from the report, but its logic moved to tested modules — see R11) |
 | `packages/web/src/assets/` | – | – | **Excluded**: static image assets, no executable code |
 | `packages/web/src/styles/` | – | – | **Excluded**: one CSS file, no executable code |
 | `packages/contract/src/` | 99.0 % | 92.7 % | Risk 2, gap R2 |
@@ -276,7 +277,7 @@ without it (*inferred*: the limit is about the path's length) – and the fix's 
 `socket-dir.ts` (4 lines), is one of the 27 `platform/` files. `--coverage.reportOnFailure` only
 makes sure a red test would still leave a report; none was red. The workspace table and the file
 table carry these numbers ONLY — two snapshots in one table get quoted interchangeably — while
-section 5 keeps the `e437c24` value beside each row, because there the movement is the point. The
+section 5's closed rows (now in git history) kept the `e437c24` value beside each row, because there the movement was the point. The
 previous snapshot was 2026-09-10, on `feature/coverage-16-files`, after the sixteen-file pass
 described below: 93.7 % lines and 84.7 % branches over 363 files.
 
@@ -467,7 +468,7 @@ numbers are at `79b7361`.
 |---|---|---|---|
 | `core/qwen-runner.ts` | 82.0 % | **68.0 %** (functions 72.3 %) | the step time limit in `runAll` – SIGTERM, SIGKILL after the grace, the "timed out after Nm" result (424–434, 470–473); the runner's own handling of `user` `tool_result` messages – the tool-result event, the #941 refusal note, images inside a tool result (614–626); the message chosen for an `is_error` result (631–639); image input, `writeImage` (709–713); `@path` escaping for a path with a space (727); the one-shot `run()`, `interrupt()` and `defaultTimeoutMs` (146–159); the dry-run mock's path (854–855). The hook-refusal and permission-denied fixtures are replayed through `qwen-ui-mapper.test.ts`, never through the runner |
 | `core/qwen-model-catalog.ts` | **0.0 %** | **0.0 %** | both functions: `discoverQwenModels` and `qwenModelOptions` (the person's default first, duplicates dropped, local endpoints marked). `server.ts` imports the module, but `models-api.test.ts` injects its own discovery, so nothing ever calls either |
-| `core/qwen-run-config.ts` | 93.0 % | 76.2 % | `qwenDefaultSystemSettingsPath` (38–40), `qwenRunEnv` (229), and `realDir`'s fallback for a path that does not resolve (244) |
+| `core/qwen-run-config.ts` | 93.0 % | 76.2 % | `qwenDefaultSystemSettingsPath` (38–40) and `realDir`'s fallback for a path that does not resolve (236); the unused `qwenRunEnv` was deleted |
 | `core/qwen-settings.ts` | 97.5 % | 76.1 % | an endpoint URL that does not parse (`isLocalEndpoint`, 165) and settings text that is not JSONC (`parseJsonc`, 181) |
 | `core/qwen-tool-policy.ts` | 94.6 % | 87.4 % | the exec tool allowed on a step with an unrestricted shell (188), a policy whose `bash.mode` is unknown (228), and an `mcp__<server>__<tool>` name's other spellings (`mcpSpellings`, 242–243). The file is also in the nightly mutation scope with a 68 % floor (10.13) |
 | `core/qwen-ui-mapper.ts` | 91.0 % | 80.8 % | a permission denial for a tool still open or never seen (291–303), and the stop reason for `error_max_turns`, `error_during_execution` and an unknown result subtype (347–351) |
@@ -489,7 +490,7 @@ reports an error, a tool result that carries a refusal or an image. Those are th
 sees when something goes wrong, so they are the ones to add next (*inferred* priority).
 
 Files absent from the report entirely: `packages/xezar/src/index.ts`,
-`packages/xezar/src/core/ui-events.ts`, `packages/xezar/src/server/app-type.ts`,
+`packages/xezar/src/core/ui-events.ts` (in `packages/contract/src/ui-events.ts` since #1184), `packages/xezar/src/server/app-type.ts`,
 `packages/xezar/src/server/forge/types.ts`,
 `packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/main.tsx` and
 `packages/web/src/components/diff/types.ts`, as on 2026-09-10. The `types.ts` and `app-type.ts`
@@ -502,7 +503,7 @@ entries are type-only modules and are **excluded** as not testable. New since th
   the same reason;
 - `packages/web/src/components/ui/tabs.tsx`, which nothing imports – the same dead shadcn
   scaffolding as the four `components/ui/*` primitives #453 batch B1 deleted (`card.tsx`,
-  `scroll-area.tsx`, `select.tsx`, `separator.tsx`). It is not deleted here; that is a separate change.
+  `scroll-area.tsx`, `select.tsx`, `separator.tsx`). It was not deleted in this pass; #1157 deleted it later.
 
 `update-check.ts`, `app.tsx` and `task-commits.tsx` joined the report before 2026-09-10 and are
 still in it.
@@ -511,46 +512,7 @@ still in it.
 
 ## 5. Ranked gap list
 
-Ranked by regression risk – likelihood a change breaks it, how bad that is for a user, and how
-invisible the breakage would be to the current gates. Each row maps to exactly one child issue of
-epic #42, and every child issue maps back to exactly one row.
-
-**All twenty child issues are closed, and this table has been re-audited against them.** Each row
-below was checked by reading the closing commit and the test file it added, not by looking at a
-percentage. Nineteen rows are struck through because a test now covers the behaviour the row
-names; one (R11) is struck only in part, and says which part survives. R9 was closed in part at
-first and fully later, by `guide-07-github-automations.e2e.ts`.
-
-Two warnings that outlived the audit, because they are what this table is *for*:
-
-- **A percentage moving is not a closed row.** Some numbers below rose because a test was written
-  for them; others rose because an unrelated suite happened to load more of the file. Only the
-  cited test file closes a row.
-- **These verdicts are code-reading, not measurement.** "A test exists and asserts the named
-  behaviour" was established by opening each file. Whether it passes is a separate question that
-  `npm test` answers.
-
-| # | Gap | Why it ranks here | Evidence | Issue |
-|---|---|---|---|---|
-| ~~R1~~ | ~~Browser e2e suite never runs in CI, and its skip path exits 0~~ — **closed** | fixed by #128: a separate `ui-e2e` job runs the suite and passes only on a literal `TEST_E2E_STATUS=passed` line, so the skip path fails the job instead of reading green | `ci.yml` `ui-e2e` job | #60 |
-| ~~R2~~ | ~~`packages/contract` has no vitest project and no tests~~ — **closed** | fixed by #120: the root config lists four projects and the package has four test files as of 2026-09-15 | `vitest.config.ts` | #61 |
-| ~~R3~~ | ~~`xezar init` has no test at any level~~ — **closed** | `project-kit-cli.test.ts` spawns the real CLI and covers both the scaffold and the never-overwrite half | `project-kit-cli.test.ts:20,29` | #62 |
-| ~~R4~~ | ~~`xezar serve` boot path has no CLI-level test~~ — **closed** | fixed by #43: the packaged CLI boots its default command and all three named behaviours are asserted | `test/e2e/package-cli.test.ts` (requested port, then auto-pick off a squatted one), the “cleaned 1 orphaned worktree” and `.local/.gitignore` assertions | #43 |
-| ~~R5~~ | ~~`server/git.ts` at 27.6 % branches~~ — **closed** | fixed by #44: 16 repository-shape cases, so the rise to 86.2 % branches is deliberate, not incidental | `server/git.test.ts:66-250` — nested dir, detached HEAD, bare repo, submodule, linked worktree, deleted dir | #44 |
-| ~~R6~~ | ~~`backend-detect.ts` probes only asserted for `pi`~~ — **closed** | fixed by #45: every agent CLI is probed by name, with a timeout, and with the missing/non-zero case parameterised over all five binaries | `core/backend-detect.test.ts:115-131,141-155,176-207` | #45 |
-| ~~R7~~ | ~~`workflows/load.ts` at 40 % branches~~ — **closed** | fixed by #46: per-file degradation and built-in restoration both asserted | `workflows/load.test.ts:47,61,70,87,115` (degradation), `:180,199,216` (built-ins come back) | #46 |
-| ~~R8~~ | ~~`handoff.ts` at 36.4 % branches~~ — **closed** | fixed by #47: the marker vocabulary and every parser branch (case, indentation, fenced code, truncated payload) are read directly, so the 100 % is backed by assertions. A co-located test file existed at `e437c24` as well — the original "none found" reading was simply wrong | `handoff.test.ts:61-168` (markers), `:170-304` (journal); BC §8 | #47 |
-| ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. The BROWSER-level flow followed: `guide-07-github-automations.e2e.ts` boots its own fixture with `XEZ_AUTOMATIONS=1` (`:80`) and drives create → enable → execution log in the `ui-e2e` CI job. `automations.e2e.ts:55-58` still self-skips without that variable, so its browser-level preview step stays ungated; the unit level covers preview | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice; `guide-07-github-automations.e2e.ts:80,130` | #48 |
-| ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-295`; `routes.test.tsx:206-207` | #49 |
-| ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed in part** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx` itself is still absent from the report, so its own logic — the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` precedence in `resolveApiBase()` (`main.tsx:20-23`) and the missing-`#root` throw (`main.tsx:30-31`) — has no test found in the suites examined | `app.test.tsx:175,193,209,241,254,270` | #50 |
-| ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51 | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
-| ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
-| ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
-| ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
-| ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts` | #56 |
-| ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
-| ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
-| ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts` (via `execute`), the `runContinuation` case and its four guards | #59 |
+Every gap in this list (rows R1–R20, epic #42) is closed, each by a test that covers the behaviour its row named; the rows, their evidence and the closing issues are in the git history of this file, which is where the R-numbers cited elsewhere on this page and in test comments point.
 
 ---
 
@@ -561,9 +523,9 @@ now run in CI as their own `ui-e2e` job, so a cockpit journey in section 3.3 who
 an `e2e/*.e2e.ts` file is gated after all. (The commits tab used to be the clearest example of one;
 since #49 it has a cockpit unit test as well, so it is no longer an example of anything.) The one
 exception this paragraph used to name, the enabled automations flow (R9), is gated too:
-`guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture. Only
-`automations.e2e.ts`'s browser-level preview step still self-skips, because neither
-`scripts/e2e.sh` nor the CI job sets that variable for the shared instance.
+`guide-07-github-automations.e2e.ts` boots its own `XEZ_AUTOMATIONS=1` fixture. The browser-level
+preview step that used to self-skip in `automations.e2e.ts` was deleted in the 2026-10-24 cleanup
+(#1189, § 3.3): it needs a signed-in `gh`, and the unit level covers preview.
 
 **Covered only by manual QA.** `SDLC.md` § The QA gate states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
@@ -686,55 +648,7 @@ shipped until #352; 10.9 is the re-measurement that turned it green.
 
 ### 10.2 Measured – before and after this change
 
-Measured 2026-09-11. Before: revision `11a6df3`, 915 tests. After: this branch, 939 tests – twenty-four new, seven of them
-added because the mutation sample (10.3) named a gap and six because checking #311's diff showed the
-`service.ts` and `index.ts` gaps were not leaving (10.6) – plus five in the contract project, which
-this command does not run (10.5). Same command both times.
-
-| File | Lines before | Branches before | Lines after | Branches after |
-|---|---|---|---|---|
-| `adapters/codex.ts` | 75.5 | 73.7 | 75.5 | 73.7 **below** |
-| `api-reference.ts` | 100.0 | 77.3 | 100.0 | 77.3 **below** |
-| `service.ts` | 92.6 | 78.4 | **94.7** | **90.2** |
-| `index.ts` | 86.6 | 79.8 | 86.6 | **80.7** |
-| `bridge.ts` | 87.5 | 71.4 | **92.1** | **80.0** |
-| `tools/results-evidence.ts` | 98.5 | 79.5 | **98.5** | **80.6** |
-| `tools/handoff-git.ts` | 94.9 | 77.0 | **97.0** | **81.6** |
-| `adapters/claude-code.ts` | 94.4 | 82.1 | 94.4 | 82.1 |
-| `tools/project-config.ts` | 98.4 | 82.4 | 98.4 | 82.4 |
-| `adapters/opencode.ts` | 95.4 | 83.2 | 95.4 | 83.2 |
-| `operation-receipts.ts` | 94.8 | 84.5 | 94.8 | 84.5 |
-| `tools/work-organisation.ts` | 97.2 | 84.9 | 97.2 | 84.9 |
-| `tools/task-reads.ts` | 94.1 | 77.1 | **98.4** | **85.0** |
-| `tools/leader-events.ts` | 92.3 | 86.1 | 92.3 | 86.1 |
-| `tools/task-create.ts` | 97.3 | 87.0 | 97.3 | 87.0 |
-| `tools/local-handoff.ts` | 100.0 | 87.3 | 100.0 | 87.3 |
-| `event-journal.ts` | 98.9 | 87.6 | 98.9 | 87.6 |
-| `event-controller.ts` | 93.7 | 87.7 | 93.7 | 87.7 |
-| `tools/execution-control.ts` | 98.9 | 88.7 | 98.9 | 88.7 |
-| `reconnect.ts` | 96.5 | 88.8 | 96.5 | 88.8 |
-| `stale-write.ts` | 100.0 | 89.8 | 100.0 | 89.8 |
-| `service-adapter.ts` | 97.8 | 92.3 | 97.8 | 92.3 |
-| `resource-ownership.ts` | 98.0 | 92.5 | 98.0 | 92.5 |
-| `event-catalog.ts` | 97.2 | 92.6 | 97.2 | 92.6 |
-| `tools/discovery.ts` | 97.1 | 89.7 | **97.1** | **93.1** |
-| `audit-trail.ts` | 99.0 | 92.7 | **99.0** | **94.8** |
-| `echo-guard.ts` | 100.0 | 96.0 | 100.0 | 96.0 |
-| `session-binding.ts` | 100.0 | 97.0 | 100.0 | 97.0 |
-| `connection-file.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `ipc.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `project-catalogs.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `protocol.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `tool.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-| `tools/index.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
-
-Bold marks a number that moved. Two files where a real gap was closed did not move at all –
-`connection-file.ts` was already at 100 %, and `resource-ownership.ts` stayed at 92.5 % – which is
-the point of 10.3: the percentage could not see either gap, before or after.
-
-Aggregate after: 96.0 % lines, 85.3 % branches (before: 95.3 / 83.7). Every file that moved, moved because a test in
-10.3's list reaches a behaviour it did not reach before – none moved because a test called
-something and asserted nothing.
+Measured 2026-09-11 and since superseded; the dated before/after table is in the git history of this file.
 
 ### 10.3 The quality finding: a sampled mutation run
 
@@ -828,9 +742,10 @@ have shipped a leak or an ownership pass in 0.14.0 are #337, closed here.
 direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope run of a median 38 s
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
-scope. The real run, its cost and its score are in 10.8. It was adopted as a release gate on the
-sample's recommendation; that step was removed on 2026-09-12; nightly GitHub Actions runs were
-scheduled by #433 on 2026-09-15. The per-PR form stays the named break the MCP test floor requires.
+scope. It was adopted as a release gate on the sample's recommendation; that step was removed on
+2026-09-12, nightly GitHub Actions runs were scheduled by #433 on 2026-09-15, and the owner removed
+mutation testing from the project on 2026-10-27. The per-PR form stays the named break the MCP test
+floor requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -914,13 +829,12 @@ mutations beyond #352's seven, and one survives this file at its new 100 % branc
 discriminator action is refusal-only, `requiredBy` is then empty too, and `0 === 0` makes `everyCall`
 read `true` – the page printing "required on every call" for a guard no call can reach – where the
 truth is `false`. No live tool is shaped that way today, so nothing goes red: re-measured 2026-09-12,
-the MCP mutation test set (`packages/xezar/vitest.mutation.config.ts`, 45 files, 930 tests) passes
+the MCP mutation test set of the time (45 files, 930 tests) passes
 with the break applied, and so do the three suites that read `everyCall` at all
 (`api-reference.test.ts`, `mcp-reference-route.test.ts`, `mcp-api-doc.test.ts`, three runs each).
 The survivor itself is recorded with the rest in **#338**, not here; what belongs here is why it is
 worth recording. A file can sit at 100 % branches and still ship a real behavioural break, which is
-the whole reason the floor is a floor rather than a target, and the reason the mutation gate exists
-(10.8) – Stryker does not kill such a mutant either, it makes it *visible*, which coverage cannot.
+the whole reason the floor is a floor rather than a target.
 
 **The lesson, not the number.** "The only way to reach it is to fake the registry" is a claim about
 the seam, and a seam a shipped module already imports through is not a fake. Before writing an
@@ -965,490 +879,21 @@ floor now. What was left uncovered in `service.ts` and why: the `closed` answer 
 
 Done in #352, recorded in 10.9; the later measurements are in 10.10 and 10.11.
 
-### 10.8 The nightly gate: Stryker over the MCP code
-
-`npm run test:mutation:mcp` – StrykerJS 9.6.1 over `packages/xezar/src/mcp/**`, killed by the MCP
-suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
-and its reasons: `packages/xezar/stryker.config.mjs`.
-
-**Read this first: it is scheduled nightly against the default branch on GitHub Actions** (`develop`
-since 2026-10-18, `main` before it; GitHub runs a schedule on the default branch) (`.github/workflows/mutation.yml`,
-#377, added by #433 on 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
-release path. From 2026-09-12 until #433 it ran nowhere automatically. Before that it was a
-**release** gate – the `release` and `release-prep` workflows ran it as their first check step,
-before anything was authored – and that step was removed (#378). The first manual run on
-2026-09-15 was red on a missing-shard failure (#443); no scheduled run had occurred at the
-2026-09-15 observation. That dated state was later overtaken: the first complete six-of-six nightly
-on `main` ran at `fe33541`, recorded as the starting list in § 10.8 (run
-[34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325)). See 10.11 for the run
-IDs and limits.
-
-Four things made the release path the wrong position, and none of them is about the gate's
-quality:
-
-- it ran **only** at release, so its first end-to-end exercise arrived when failure cost most.
-  The 0.14.0 attempt died in Stryker's own dry run on a config mismatch (#375) – a lost release
-  run, a fix PR, a review and a relaunch, and **zero** product defects found;
-- it **blocked**. A surviving mutant means a test is weak, which is next week's work, not a
-  reason to withhold code that already passed the full canonical gate and independent QA;
-- **nobody who could act was listening.** The authors of those tests had finished hours earlier,
-  and the release task cannot fix a weak test;
-- **a check step is binary.** "Is this survivor already tracked in #338 / #353, or is it new?" is
-  not a question an exit code can answer.
-
-Nothing about the gate itself changed: same scope, same suites, same `thresholds.break` of 80,
-no file excluded. It was moved, not softened.
-
-**How the nightly run works, and how many jobs it needs.** A GitHub job is hard-killed at
-**6 hours**, and the scope's mutants took about 35 runner-hours on 2026-10-19 on `ubuntu-latest`
-runners, which have 4 cores – so `stryker.config.mjs`'s `min(4, availableParallelism() - 1)`
-resolves to 3 there. A single scheduled job would not finish. So the workflow:
-
-- **plans** disjoint slices of the scope (`npm run test:mutation:mcp:plan`,
-  `packages/xezar/mutation/shards.mjs`), reading the `mutate` globs out of `stryker.config.mjs` so
-  there is no second list of what the gate covers, and packing them on measured CI minutes per
-  file. The number of slices is derived, not set: the fewest that keep every multi-file slice inside
-  a 120-minute budget (18 on 2026-10-19; see the incidents below for why);
-- **runs** Stryker over each slice in its own job (`npm run test:mutation:mcp:shard`), with a
-  config that differs from the gate's in one key: `thresholds.break: null`. A slice's score is
-  not the gate's score (point 1 below), so no slice has a floor of its own;
-- **sums** the status counts of every slice and applies the floor ONCE, to the whole scope
-  (`npm run test:mutation:mcp:report`, `packages/xezar/mutation/aggregate.mjs`), reading `break`
-  out of `stryker.config.mjs`. It fails closed: a missing or unparsable report, a slice or a run
-  that tested no mutant (Stryker scores that `NaN`, and `NaN < 80` is false), a file reported
-  twice, outside its slice or never, and a score below the floor all make the run red;
-- **tells somebody.** On the default branch it keeps ONE tracking issue in step (label `mutation-nightly`,
-  `npm run test:mutation:mcp:issue`): a red night files it, comments on it, or reopens it; the
-  next green night comments and closes it. A planner that fails takes the same path;
-- **sorts the survivors** (`npm run test:mutation:mcp:survivors`, `packages/xezar/mutation/survivors.mjs`)
-  into three groups, the owner's rule of 2026-09-15: **known** if the starting list below has them,
-  keeping a #338 or #353 tag; **already seen** if the previous complete run on the default branch had them (`main` as the fallback on the night the default moved);
-  **new** otherwise. A survivor is a `Survived` or a `NoCoverage` mutant – an untested new function
-  produces the second kind, so leaving it out would hide the regression the list exists to show. It
-  is matched by file, mutator and the text it mutates, never by line, so an edit above it does not
-  make it new. Twins – the same text mutated the same way twice in one file – are told apart only by
-  their order, so a twin killed on the night a same-text survivor appears hides the new one, and a
-  new twin's row shows the last twin's line: for twins, trust the count, not the line. The grouping
-  never changes the verdict: the floor alone decides red or green;
-- **notes new survivors early.** When new survivors appear and the score still clears the floor,
-  the run stays green and the tracking issue gets one comment listing them – on a closed issue a
-  comment, not a reopen. A grouping that could not run reaches the issue the same way, as
-  "unknown", rather than reading as "nothing new". Every body carries a hidden
-  `<!-- xezar:mutation-nightly run=<id> -->` line, so re-running the report job of one run changes
-  the issue's state if it must and never posts a second comment. The survivor steps may fail
-  without skipping the issue step: the grouping and the upload are `continue-on-error`.
-
-**"Previous" is the previous COMPLETE run on the default branch.** A run where every shard reported uploads its list
-as the `mutation-survivors` artifact (kept 90 days); the next run downloads the newest one from
-another run on the default branch, or from `main` when the default branch has none yet. A run with a missing shard uploads nothing, so a survivor of that shard is not
-called new the night after. When no list is found – the first run after this change, or a gap
-longer than 90 days – the report says "already seen" could not be checked, and lists every survivor
-outside the starting list as new.
-
-**The starting list** is [`docs/testing/mcp-mutation-survivors.json`](mcp-mutation-survivors.json):
-every survivor of run [34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325), the
-first complete six-of-six nightly on `main`, at `fe33541` – 1 549 survived and 622 without coverage.
-Its #338 and #353 tags were placed by hand: #338's lines are on `11a6df3` and were carried to
-`fe33541` through `git diff`, and a line whose text had changed there (`adapters/claude-code.ts:567`,
-`adapters/codex.ts:473`) carries no tag; #353's are the attach (`leader-delivery.ts:446`) and abort
-(`:553`) lines. #353's third mutant, `#owed` collapsed to `latestSeq > 0` (`:468`), is hand-written, and
-Stryker left no survivor on that line at `fe33541`, so nothing there is tagged; the untagged survivors at
-`:466` and `:467` mutate the acknowledged-position read, not the comparison #353 names. Where an issue
-names the mutator, only that mutator is tagged. **To refresh
-it** – after a batch of survivors is fixed, or to adopt a later run as the new start – download a
-complete default-branch run's shard reports and rebuild the file; tags carry over by identity:
-
-```sh
-gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
-npm run --silent test:mutation:mcp:survivors -- baseline --reports .local/mutation/shards \
-  --run <run-id> --revision <sha> --date <yyyy-mm-dd> [--tag <issue>=<file>:<line>[:<Mutator>]] \
-  [--issue <n>=<title>]
-```
-
-`--issue` names an issue in the file's `tracked` map, so a new tag number has a title next to it.
-
-Commit the result in its own pull request, so the diff shows which survivors left and arrived.
-
-**Forcing the red path.** Dispatch the workflow with `force_red: true`
-(`gh workflow run mutation.yml --ref develop -f force_red=true`, on the default branch – any other ref skips the tracking issue): no shard runs, the report job writes
-a "forced" summary, files, comments on or reopens the tracking issue and fails, all in minutes. The
-next real green night closes the issue again. It proves the path a real failure takes; it measures
-nothing.
-
-One limit. GitHub switches a schedule off after 60 days without repository activity in a public
-repository, silently; a disabled schedule files no issue.
-
-**Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
-
-| | |
-|---|---|
-| Mutants generated | 12 530 |
-| Ignored as static (`ignoreStatic`) | 1 238 |
-| Tested | 11 292 |
-| Killed / timed out / survived / no coverage / errors | 7 928 / 1 261 / 1 426 / 675 / 2 |
-| **Mutation score** | **81.39 %** (86.57 % over covered code) |
-| Wall clock | 3 h 40 min (220 min), dry run 43 s |
-| Tests per mutant | 19.2 on average |
-
-`thresholds.break` is **80**, the same number as the coverage floor and for the same reason: it is a
-floor, not a target. The measured 81.39 % clears it by 1.39 points, which is thin on purpose – the
-survivors in #338 are what raises it.
-
-**Four things this gate does not tell you, and the fifth it tells you wrong if you forget it:**
-
-1. **The score is whole-scope, not per file.** Unlike the coverage floor, Stryker's `break` is one
-   number for the run. Per file the spread is wide today: `adapters/` 64.3 % (claude-code 67.3,
-   codex 63.5, opencode 62.1 – all #311's files), `operation-receipts.ts` 66.5, `event-controller.ts`
-   69.6, `service.ts` 75.6, `index.ts` 76.6, against `project-catalogs.ts` and `tool.ts` at 100. A
-   per-file mutation floor would fail today; adopting one is a decision, not a tightening (#338).
-2. **A timeout counts as detected.** 1 261 of the 9 189 "detected" mutants are timeouts, and a busy
-   machine produces more of them – the same run on an idle machine scores slightly lower, not
-   higher. Read a score near the floor with the machine's load in mind before blaming a PR.
-3. **675 mutants have no coverage at all.** They are counted in the score (as not detected), and
-   they are where the coverage floor and this gate say the same thing twice.
-4. **Static mutants are not measured.** 1 238 of them – module-level tables, regexes and schema
-   declarations – would need all ~930 MCP tests (2026-09-12) each, which is what made the first attempt a ~60-hour
-   run. What they would have measured is pinned where the value is used (10.5).
-5. **It measures the MCP suites only.** A mutant killed by a suite v8 cannot see (10.4) still counts
-   as survived here, because this run does not execute those suites. Check 10.4 before writing a
-   vitest test for a survivor.
-
-The survivors are tracked in **#338** and #353 and listed in the starting list above, not in this
-prose: this section records the method and its cost, and each night's own HTML/JSON report
-(`.local/mutation/mcp/`, uploaded as `mutation-report-<shard>`) is the current list. The three survivors that could have
-shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
-#337, closed in #335.
-
-**Incident: byte-size balancing stopped predicting cost (#443, 2026-09-17).** Scheduled run
-[35175010173](https://github.com/qodeca/xezar/actions/runs/35175010173) on `main` at `fdd5b4e`
-(2026-09-17T02:35Z) was cancelled: five of six byte-balanced shards finished (3 h 04 min to 4 h 43
-min), and the sixth was still running when the job's 300-minute ceiling hit, at 07:36:06Z. The
-previous complete night, [35048569575](https://github.com/qodeca/xezar/actions/runs/35048569575)
-on `f330b2c` (2026-09-16), finished every shard in under 4 hours.
-
-Between the two nights, main gained PRs #533, #539, #541 and #542 — several hundred lines of new
-"fragile MCP–leader" tests (#532) that each exercise multiple MCP modules together (event journal,
-leader delivery, the event controller, the bridge) rather than one file each. Under
-`coverageAnalysis: 'perTest'`, a mutant's real cost is how many tests Stryker reruns to check it —
-`coveredBy.length` in its own JSON report — and those broad tests attached themselves to nearly
-every file in the scope, not only the ones with new test files of their own. Downloading both
-nights' shard reports and summing `coveredBy.length` per file shows the shape of it:
-`event-controller.ts` went from 32 003 to 178 734 (5.6×) with not one line of its own source or its
-own test file touched that night; `leader-delivery.ts` went from 17 834 to 124 301 (7.0×);
-`stall-monitor.ts` went from 0 (no covering tests at all) to 46 284. The scope-wide total measured
-this way was 384 511 the previous complete night and had already passed 1 155 719 across the five
-shards that DID report on the cancelled night (the sixth, cancelled, is not counted — its true total
-is higher still). Byte size, what the six shards were balanced on, never moved, so the balancer kept
-shipping the same split that was safe when it was drawn and had become badly wrong by the time it
-ran.
-
-**The fix has two parts, because either alone measured short against the incident's own numbers.**
-`packages/xezar/mutation/shards.mjs`'s `planShards` now balances on measured cost — the committed
-snapshot at [`docs/testing/mcp-mutation-shard-weights.json`](mcp-mutation-shard-weights.json), built
-from the `coveredBy` sums above — falling back to byte size, one file at a time, for anything the
-snapshot has not measured yet; both the `plan` job (building the matrix) and the `report` job
-(re-deriving the same plan to check nothing went missing) read the same committed file, so no new
-workflow permission or artifact was needed to keep them in lockstep. Re-running the incident's own
-numbers through the new balancer alone (still six shards) cuts the heaviest shard from 359 164 to
-206 620 — a 42% reduction, for no added job. `DEFAULT_SHARDS` also moves from 6 to 8: past eight, the
-single heaviest file (`event-controller.ts` at 178 734) floors whatever shard holds it regardless of
-shard count, so more shards stop helping. Combined, the heaviest shard in the new split is 178 734,
-versus 359 164 in the byte-balanced six-shard split that was actually running — roughly half the
-load, comfortably inside the 300-minute ceiling with real margin for the snapshot to go stale again.
-Nothing about the scope, the suites or the 80% floor changed; `thresholds.break` and the mutated
-globs are untouched.
-
-**The snapshot will go stale the same way byte size did**, just far more slowly, since it starts
-from a real measurement instead of an arbitrary proxy. *(Superseded by the third incident below:
-the snapshot is now in measured minutes, and is refreshed from each shard's `timing.json`.)* Seven files in the
-committed snapshot are flagged `estimatedPaths`: they sat in the cancelled shard and their weights
-are carried over from the previous complete night rather than measured this one, so they are likely
-under-counted the same way every measured file here was found to be — refresh those first.
-
-**Incident: the eight-shard fix's own proof run was cancelled too (#443, 2026-09-17).** Dispatched
-proof run [35199363744](https://github.com/qodeca/xezar/actions/runs/35199363744) on branch
-`xez/148f449e` at `44cc047` (the eight-shard, measured-cost fix above) ended **CANCELLED**: job
-`Mutants 6` ran from 08:23:10Z to 13:23:48Z and hit the 300-minute ceiling; every other shard
-reported, from 1h32m (`Mutants 1`) to 4h54m (`Mutants 5`). The estimate's own caveat was right:
-`Mutants 6` held `tools/task-create.ts`, one of the seven `estimatedPaths` files whose weight was
-carried over from a previous night rather than measured on the incident night, and `Mutants 5` held
-`bridge.ts`, another of the seven. Both shards' non-estimated files summed to a nominal weight
-close to every OTHER shard's total (~127k–128k against a baseline of ~150k) — the wide spread in
-real time (1h49m–2h55m for shards with none of the seven files, against 4h54m and a cancellation
-for the two carrying `bridge.ts` and `tools/task-create.ts`) is attributable to those two files
-alone, not to anything else in their shards.
-
-**The fix raises those two files' weights, not the shard count first.** Back-calculating from the
-run's own wall-clock time against the baseline (no-estimated-file) shards' rate gives a lower bound
-of roughly 278 000 for `bridge.ts` and 287 000 for `tools/task-create.ts` — a lower bound only for
-the second, since its shard never finished and so never reported a real `coveredBy` sum. The
-committed snapshot now weights `bridge.ts` at 280 000 and `tools/task-create.ts` at 300 000, and the
-other five `estimatedPaths` files by the same method, more moderately: `operation-receipts.ts`
-190 000, `adapters/pi-link.ts` 100 000, `index.ts` 65 000, `project-catalogs.ts` 58 000,
-`adapters/claude-code.ts` 20 000. At those weights, `planShards`'s heaviest-first packing puts
-`bridge.ts` and `tools/task-create.ts` alone in their own shard, exactly the way it already isolates
-`event-controller.ts` (178 734) — no shard-pinning logic was added, only corrected data. `DEFAULT_SHARDS`
-also moves from 8 to 9, both for the extra shard the two new solo files need and to keep the
-remaining shards comfortably inside the ceiling: with the corrected weights the resulting split's
-heaviest shard is `tools/task-create.ts` alone at 300 000 (an estimated 3h37m at the slower,
-multi-file rate the baseline shards measured, or roughly 2h34m at the faster solo rate
-`event-controller.ts`'s own shard measured — either way, well clear of 300 minutes), and every other
-shard sits at roughly 227 000–228 000 (an estimated 2h44m–2h45m at the same baseline rate) — both
-comfortably under the "twice the fair share" ceiling `mutation-shards.test.ts` already enforces.
-
-**This is still an estimate, not a re-measurement**, because a shard that never reports never
-produces a real `coveredBy` sum to sum from. The next scheduled or dispatched run either confirms
-the correction — every shard reports, `tools/task-create.ts` finishes with real headroom — or shows
-these two files' true cost is still higher, in which case the next fix has real per-file numbers
-for both to work from for the first time. Refresh all seven `estimatedPaths` weights with real
-`coveredBy` sums the first time every shard reports in one run.
-
-**Incident: nine fixed shards no longer fit (#443, third round, 2026-10-19).** The last complete
-run was the dispatched proof run [35229419588](https://github.com/qodeca/xezar/actions/runs/35229419588)
-on 2026-09-17. From 2026-09-18 every scheduled night ended with two to four of its nine shards
-killed at the 300-minute ceiling, and from 2026-10-18 one more shard failed in its dry run. Run
-[39190958937](https://github.com/qodeca/xezar/actions/runs/39190958937) (on `develop` at
-`5a31cf0`) is the measurement: shards 1–5, 8 and 9 finished in 112–298 minutes, shard 6 was cancelled
-at 300, and shard 7 failed its dry run after 5 minutes. Three causes, each enough on its own:
-
-1. **The work had outgrown nine jobs.** Reading Stryker's own progress lines in each shard's job
-   log against the report's mutant order gives every file's minutes; the scope came to **2 078
-   minutes** of mutation time (about 35 runner-hours with each job's ~6 minutes of `npm ci`,
-   instrumenting and dry run). Nine perfectly balanced shards would average 231 minutes before any
-   night-to-night variance, and the same file measured up to half as slow again on another night
-   (`index.ts` 94 then 138 minutes, `tools/execution-control.ts` 64 then 86).
-2. **The weights no longer predicted time.** The snapshot was a month old (2026-09-17), in
-   covering-test counts, which stopped tracking cost: `tools/task-create.ts` weighed 300 000 and took
-   149 minutes, `bridge.ts` weighed 280 000 and took 108. Files new since then fell back to raw
-   byte size in the same sum – another unit altogether. Shard 6 drew `leader-delivery.ts`,
-   `tools/project-config.ts`, `tools/results-evidence.ts`, `tools/execution-control.ts` and three
-   small files: **5 127 mutants**, against 823–2 948 in every other shard, planned at a weight like
-   theirs. It was two thirds done at the ceiling, with an estimated 400 minutes of mutation time in
-   all.
-3. **One shard could never start.** The Qwen Code adapter's source guard
-   (`adapters/qwen-code.test.ts`, "starts no process and reads no environment") matched the raw
-   file text against `/process\.env/`, and Stryker's instrumented copy says `g.process.env` in its
-   header – the failure #436 fixed for Claude Code. Every shard holding `adapters/qwen-code.ts` died
-   in its dry run (shard 7, from 2026-10-18).
-
-**The fix.** The guard reads the file through the same `guardedCode` helper the Claude Code guard
-uses (now `adapters/source-guard.testkit.ts`), and `src/mutation-name-filter.test.ts` fails per
-pull request when any test in the mutation run forbids, in text it did not strip, a word Stryker's
-header contains – shown red against the old Qwen Code guard. The snapshot
-([`mcp-mutation-shard-weights.json`](mcp-mutation-shard-weights.json)) is now in **measured CI
-minutes per file** from that run; ten files it could not measure in full are listed under
-`estimatedPaths` (one scaled up from 72 % measured, the others from the last night that measured
-them or a fit of the measured files against Stryker's own per-mutant test plan). A file the
-snapshot never measured is weighed in the same unit: its bytes times the scope's own minutes per
-byte. And the shard **count** is derived: the fewest that keep every multi-file shard inside
-`SHARD_BUDGET_MINUTES` (120, 40 % of the ceiling), at most 24. On these weights that is **18
-shards**: four hold one file each (`tools/task-create.ts` 149, `index.ts` 138, `event-controller.ts`
-137, `leader-delivery.ts` 125 minutes) and fourteen hold 108–112 minutes. A file cannot be split
-across jobs – Stryker keeps a mutant only when one `--mutate` range contains it whole – so the
-slowest file is the floor; `src/mutation-shards.test.ts` holds it to 60 % of the ceiling and every
-multi-file shard to the budget, and fails against the old snapshot. The runner-hours are the same
-as before; what changes is that every job now has room to finish. Nothing is dropped or narrowed:
-same scope, same suites, same floor, and the aggregate's completeness checks are unchanged.
-
-**Refreshing the snapshot.** A Stryker reporter (`packages/xezar/mutation/timing-reporter.mjs`,
-listed in `stryker.config.mjs`) writes `timing.json` beside every shard's report: the wall time
-charged to each file, and how many of its mutants were planned and tested. It flushes once a
-minute, so a shard killed at the ceiling still uploads what it measured – the files that most need
-re-measuring are no longer the ones nobody can measure. One night's artifacts refresh the snapshot:
-
-```sh
-gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
-npm run --silent test:mutation:mcp:weights -- --reports .local/mutation/shards \
-  --run <run-id> --revision <sha> --date <yyyy-mm-dd>
-```
-
-A part-tested file is scaled up to all its mutants and listed under `estimatedPaths`, as is a file
-no shard reached (it keeps its previous value). Commit the result in its own pull request. Refresh
-when a shard passes the budget by a wide margin, after a pull request that adds broad
-multi-module tests, and first of all after the first night that runs with this change.
-
 ### 10.9 Re-measured on `main` after #311 – the floor is green (#352)
 
-The floor shipped with #335 and was red from that day: three thresholds failed on `main` at
-`d8c1dc4`. #311 closed the `codex.ts` half by merging (`7bcb258`); #352 closed the last one. A gate
-that is red the day it ships is not a gate, so this is the record that it is not any more.
-
-**Measured 2026-09-12, branch `xez/692d3584` off `7bcb258`, `npm run test:coverage:mcp`, exit 0 –
-45 test files, 931 tests, no `ERROR:` line.** Aggregate 97.03 % lines, 86.06 % branches. The two
-files listed below:
-
-| File | Lines before (`d8c1dc4`) | Branches before | Lines now | Branches now |
-|---|---|---|---|---|
-| `api-reference.ts` | 100.0 | 77.3 **below** | 100.0 | **100.0** |
-| `adapters/codex.ts` | 75.5 **below** | 73.7 **below** | **96.4** | **82.7** |
-
-Only `api-reference.ts` moved because of a test written here (`api-reference.test.ts`, three cases,
-seven named breaks shown red – see 10.6, which also records the mutation that survives that 100 %
-branch figure). `codex.ts` moved because #311 merged: its 15 uncovered
-lines were the ones #311 deletes, and #311's own `adapters/codex.test.ts` reaches the rest. Nothing
-was added to `codex.ts` in #352, and #338 still owns the kept lines.
-
-Every remaining MCP file is at or above 80/80 as of this measurement. The three nearest the floor
-are `bridge.ts` (92.1 / **80.0**), `index.ts` (87.7 / 80.2) and `tools/results-evidence.ts` (98.5 /
-80.6); `bridge.ts` at exactly 80.0 means one new uncovered branch there turns the gate red again.
-The two files #311 added are measured here for the first time: `leader-delivery.ts` (100.0 / 84.1)
-and `project-leaders.ts` (100.0 / 100.0).
-
-**Completed sequencing (#550).** `npm run test:coverage:mcp` runs in its own unconditional CI job
-on every pull request, rather than as a sixth local canonical-gate command. This keeps the main
-lane independent and ensures the job always reports a status that can be required; its hard
-10-minute timeout bounds installation and test execution on a GitHub-hosted 2-core runner.
+Measured 2026-09-12: the floor turned green on `main` after #311 and #352, and `npm run test:coverage:mcp` has run in its own unconditional CI job on every pull request since #550; the dated table is in the git history of this file.
 
 ### 10.10 Re-measured for the MCP leader door (#450)
 
-**Measured 2026-09-15, branch `xez/4c4428fa` off `646bf37`, `npm run test:coverage:mcp -- --testTimeout=30000`,
-exit 0 – 56 test files, 1325 tests, no `ERROR:` line.** Aggregate 97.39 % lines, 86.82 % branches
-(97.33 / 86.28 on `646bf37`, same command). The 30 s test timeout is needed on a loaded host: the
-baseline run failed once on a `task-create` case at the 5 s default and passed with it. Every file
-the change touches, before → after (lines / branches):
-
-| File | Before | After |
-|---|---|---|
-| `bridge.ts` | 93.7 / 81.9 | 94.2 / 84.4 |
-| `index.ts` | 86.5 / 80.0 | 86.6 / 80.3 |
-| `service.ts` | 93.0 / 84.6 | 93.3 / 85.6 |
-| `leader-delivery.ts` | 99.1 / 86.3 | 99.3 / 91.1 |
-| `tools/leader-events.ts` | 95.3 / 93.2 | 97.5 / 97.1 |
-| `event-controller.ts`, `protocol.ts`, `ipc.ts`, `tool.ts`, the four adapters, `discovery.ts` and the seven tools whose not-connected text changed | unchanged | unchanged |
-
-`index.ts` (80.3 branches) is now the file nearest the floor. Each new #450 test was also shown red
-against a named break of the source it guards (47 breaks, every one red; the list is in the PR body).
+Measured 2026-09-15 and since superseded; the dated before/after table is in the git history of this file.
 
 ### 10.11 Full per-file inventory — 2026-09-15, source baseline `bb271fc`
 
-**This baseline predates the #450 merge (`8aa1312`).** It is the whole 40-file inventory the MCP
-floor covers, which 10.10 does not repeat; for the files #450 touched, 10.10’s after-column is the
-newer number and supersedes the row below.
-
-`npm run test:coverage:mcp` **passed**, 55 test files / 1,273 tests, 65.99 seconds.
-Source and coverage configuration match `main` at `bb271fc`; the working diff was documentation only.
+Superseded by later measurements; the dated record is in the git history of this file.
 
 ### 10.12 Re-measured for CI enrollment (#550)
 
-**Measured 2026-09-17, branch `xez/f190f64a` off `7db8fd9` (0.15.0), `npm run test:coverage:mcp`,
-exit 0 – 61 test files, 2,070 tests passed (21 expected fail), no `ERROR:` line. Wall clock 85.00s**
-(`time -p`: `real 85.00`, `user 230.69`, `sys 110.75`) on this machine. Aggregate 94.12 % statements,
-87.14 % branches, 94.72 % functions, 97.45 % lines. Every MCP file is at or above the 80/80 floor;
-the floor is green on `main` today, so #550 enrolls it in CI without lowering any threshold. This is
-a local measurement, not the GitHub-hosted 2-core runner the new `MCP per-file coverage` CI job
-actually runs on; the job's own 10-minute timeout (`.github/workflows/ci.yml`) bounds `npm ci` plus
-test execution there, and its first real pull-request run is the authoritative runner-time reading.
-The command’s 40 included source files all meet **80 % lines and 80 % branches**; no exemption is active.
-Aggregate: **97.33 % lines, 86.28 % branches**. At this baseline the nearest branch floor is
-`mcp/index.ts` at exactly 80 %, so one uncovered branch can make it fail; 10.10 measures it at 80.3 %
-after #450. `bridge.ts` is at 81.87 % here, superseding 10.9’s ranking and itself superseded by
-10.10’s 84.4 %. The historical tables above retain their dates; quote this table only for this
-revision.
-
-Paths below are relative to `packages/xezar/`. Scope at that revision was the root `package.json`
-command as it stood then (it no longer includes the pi file):
-`src/mcp/**` plus `scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`.
-
-| File | Lines % | Branches % |
-| --- | ---: | ---: |
-| `scripts/pi-leader-extension.ts` | 100.00 | 82.85 |
-| `src/mcp/api-reference.ts` | 100.00 | 100.00 |
-| `src/mcp/audit-trail.ts` | 98.97 | 94.79 |
-| `src/mcp/bridge.ts` | 93.72 | 81.87 |
-| `src/mcp/connection-file.ts` | 100.00 | 100.00 |
-| `src/mcp/echo-guard.ts` | 100.00 | 96.00 |
-| `src/mcp/event-catalog.ts` | 97.18 | 92.62 |
-| `src/mcp/event-controller.ts` | 94.34 | 92.39 |
-| `src/mcp/event-journal.ts` | 98.90 | 87.61 |
-| `src/mcp/index.ts` | 86.50 | 80.00 |
-| `src/mcp/ipc.ts` | 100.00 | 100.00 |
-| `src/mcp/leader-delivery.ts` | 99.09 | 86.28 |
-| `src/mcp/operation-receipts.ts` | 94.77 | 85.38 |
-| `src/mcp/project-catalogs.ts` | 100.00 | 100.00 |
-| `src/mcp/project-leaders.ts` | 100.00 | 100.00 |
-| `src/mcp/protocol.ts` | 100.00 | 100.00 |
-| `src/mcp/reconnect.ts` | 99.32 | 91.39 |
-| `src/mcp/resource-ownership.ts` | 97.95 | 92.45 |
-| `src/mcp/service-adapter.ts` | 97.77 | 92.30 |
-| `src/mcp/service.ts` | 92.95 | 84.61 |
-| `src/mcp/session-binding.ts` | 100.00 | 96.96 |
-| `src/mcp/stale-write.ts` | 100.00 | 89.79 |
-| `src/mcp/tool.ts` | 100.00 | 100.00 |
-| `src/mcp/adapters/claude-code.ts` | 100.00 | 94.73 |
-| `src/mcp/adapters/codex-link.ts` | 100.00 | 81.60 |
-| `src/mcp/adapters/codex.ts` | 98.23 | 84.12 |
-| `src/mcp/adapters/opencode.ts` | 95.87 | 84.39 |
-| `src/mcp/adapters/pi-link.ts` | 94.11 | 85.36 |
-| `src/mcp/adapters/pi.ts` | 100.00 | 90.00 |
-| `src/mcp/tools/discovery.ts` | 97.14 | 93.10 |
-| `src/mcp/tools/execution-control.ts` | 98.91 | 88.65 |
-| `src/mcp/tools/handoff-git.ts` | 96.96 | 82.18 |
-| `src/mcp/tools/index.ts` | 100.00 | 100.00 |
-| `src/mcp/tools/leader-events.ts` | 95.34 | 93.18 |
-| `src/mcp/tools/local-handoff.ts` | 100.00 | 87.35 |
-| `src/mcp/tools/project-config.ts` | 98.39 | 82.67 |
-| `src/mcp/tools/results-evidence.ts` | 98.55 | 80.58 |
-| `src/mcp/tools/task-create.ts` | 97.33 | 86.95 |
-| `src/mcp/tools/task-reads.ts` | 98.43 | 85.04 |
-| `src/mcp/tools/work-organisation.ts` | 97.20 | 84.88 |
-
-**Mutation scheduling is separate evidence.** #433 added `mutation.yml` on 2026-09-15. As observed
-on 2026-09-15, GitHub listed two manual dispatches and no scheduled run: the first
-([34967462757](https://github.com/qodeca/xezar/actions/runs/34967462757)) failed with missing shard
-results; [#443](https://github.com/qodeca/xezar/issues/443) tracks that failure. The second dispatch
-was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not the current CI score.
-No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
-coverage command proves a successful nightly mutation run.
-
-### 10.13 A second scope: the read-only lock
-
-`npm run test:mutation:lock` – StrykerJS over `packages/xezar/src/core/read-only-lock.ts` (the
-shell-command decision every backend's read-only step uses) and `core/qwen-tool-policy.ts` (Qwen
-Code's tool lists and hook decision), killed by their own suites
-(`packages/xezar/vitest.mutation.lock.config.ts`: `read-only-lock`, `qwen-tool-policy`,
-`qwen-hook-command` and `codex-read-only-hook` tests). Config and its reasons:
-`packages/xezar/stryker.lock.config.mjs`. It spreads the gate's config and changes only the scope,
-the test set, the report folder (`.local/mutation/lock/`) and the sandbox folder.
-
-**It runs nightly** (since 2026-10-19, #443) as one job of its own in `.github/workflows/mutation.yml`
-(`Mutants read-only lock`, a few minutes), never per pull request, and by hand. It is a separate
-config rather than two more `mutate` globs because `mutation/shards.mjs` and `mutation/aggregate.mjs`
-read the MCP gate's scope and floor out of `stryker.config.mjs`: widening that scope would change the
-nightly's shards, its per-file weights (`mcp-mutation-shard-weights.json`) and the score its floor
-applies to.
-
-**Its floor is `thresholds.break: 68`**, written only in `stryker.lock.config.mjs`, one number for
-both files: just under the 68.33 % measured after the Git rewrite (below). Stryker fails the lock job under it, and the
-`report` job's aggregate (`aggregateLock`) reads the same number from the same file and folds the
-scope into the night's one verdict, summary (a "Read-only lock scope" section) and tracking issue.
-It fails closed like the shards: a missing, empty, partial or foreign report is red. Its survivors
-are not grouped into new / already seen / known – the starting list is the MCP gate's. Move the
-floor only on purpose.
-
-Re-measured 2026-10-19 at `5a31cf0` on the same machine: the same counts and the same **71.64 %**,
-in 1 min 27 s.
-
-Re-measured 2026-10-19 after the rewrite of `read-only-lock.ts`'s Git handling landed (#1109), same
-machine: 1 477 mutants instrumented; killed / timed out / survived / no coverage 906 / 9 / 390 / 34;
-**68.33 %** (70.11 % over covered code) – `read-only-lock.ts` 68.53 % (70.23 %), `qwen-tool-policy.ts`
-67.40 % (69.55 %). The rewrite added more mutable code than its tests
-kill, so the score fell; the floor moved from 71 to 68 with it. The table below is the earlier baseline.
-
-**Measured, 2026-10-18, revision `ff70b0e` on an 18-core macOS laptop, concurrency 4.**
-
-| | `read-only-lock.ts` | `qwen-tool-policy.ts` | Both |
-|---|---|---|---|
-| Mutants generated | 882 | 269 | 1 151 |
-| Ignored as static (`ignoreStatic`) | 30 | 42 | 72 |
-| Killed / timed out / survived / no coverage | 613 / 9 / 206 / 24 | 151 / 0 / 69 / 7 | 764 / 9 / 275 / 31 |
-| **Mutation score** (over covered code) | **73.00 %** (75.12 %) | **66.52 %** (68.64 %) | **71.64 %** (73.76 %) |
-| Wall clock | | | 57 s, dry run 1 s (297 tests) |
-
-The survivors are mostly `ConditionalExpression` (100) and `StringLiteral` (75) mutants: a branch
-forced true or false, or a word in a refusal reason or an argument row changed, that no test
-notices. The report (`.local/mutation/lock/index.html`) lists each one. Static mutants – the
-module-level argument tables – are not measured, for the reason 10.8 point 4 gives.
-
+Measured 2026-09-17 at 0.15.0: 61 test files and 2,070 tests in 85.00 s locally, every MCP file at or above the 80/80 floor, so #550 enrolled the command in CI without lowering a threshold. The dated per-file table, which still lists the since-deleted pi and OpenCode files, is in the git history of this file.
 
 ## Hosted mode: mode × transport verification (#547, SM1)
 
@@ -1473,7 +918,7 @@ Registration metadata identifies the existing handler guards; valid fixtures rea
 
 ### Reuse for #306 QA (no browser required)
 
-1. Use a checkout on Linux, macOS or Windows with Node 22+ and run `npm ci`.
+1. Use a checkout on Linux, macOS or Windows with Node 22.13+ and run `npm ci`.
 2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
 3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
 4. Run it again to check fresh homes, OS-assigned ports and cleanup.
@@ -1513,13 +958,4 @@ top of an untested behaviour.
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
 every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
 every pull request. A PR on the MCP scope must also show each new test failing against a named break.
-Neither half passes alone. Its slower counterpart is
-`npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
-`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against the default branch** (`develop` since 2026-10-18, `main` before it) in
-`.github/workflows/mutation.yml` (#377, added by #433), split across as many jobs as its measured minutes need (18
-on 2026-10-19, #443), whose counts are summed before the one floor is applied, and a red
-night files or updates a `mutation-nightly` issue, which also gets a
-note when new survivors appear on a green night. Same scope,
-same 80 % floor
-([coverage-gaps.md § 10.8](coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code)). The
-read-only lock scope runs beside it each night with its own 68 % floor (10.13), in the same verdict.
+Neither half passes alone.

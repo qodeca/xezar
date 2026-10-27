@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { canonicalLang, highlight, highlightSync, type SynToken } from '@/lib/highlighter'
+import { HIGHLIGHT_MAX_LINES, canonicalLang, highlight, highlightSync, type SynToken } from '@/lib/highlighter'
 import { cn } from '@/lib/utils'
 
 /**
@@ -14,9 +14,6 @@ import { cn } from '@/lib/utils'
  * plaintext past a line cap; Tab is NOT trapped (keyboard nav must keep working);
  * language comes from the caller (the catalog knows the format), not a path guess.
  */
-
-/** Past this many lines, skip highlighting — plaintext beats jank (matches the diff/file-preview cap). */
-const HIGHLIGHT_MAX_LINES = 1500
 
 /** Tokens for the whole text through the shared singleton: sync when the grammar is resident,
  *  async-load once otherwise, plaintext for unknown/oversized. Mirrors file-preview's useFileTokens. */

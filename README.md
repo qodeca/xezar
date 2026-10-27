@@ -46,13 +46,13 @@ routing and account limits.
 
 ## 60-second tour
 
-<a href="docs/screenshots/0.18.0/tour.gif"><img src="docs/screenshots/0.18.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
+<a href="docs/screenshots/0.31.0/tour.gif"><img src="docs/screenshots/0.31.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
 
 <table>
 <tr>
-<td width="33%"><a href="docs/screenshots/0.18.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/task-thread-light-1280.png"><img src="docs/screenshots/0.18.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.18.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.18.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.18.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/github-issues-light-1280.png"><img src="docs/screenshots/0.18.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.31.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.31.0/task-thread-light-1280.png"><img src="docs/screenshots/0.31.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.31.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.31.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.31.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.31.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.31.0/github-issues-light-1280.png"><img src="docs/screenshots/0.31.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
 </tr>
 <tr>
 <td align="center"><b>Watch a run live</b><br>Every step, tool call and token as it happens.</td>
@@ -125,9 +125,8 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
   administrator:
   `Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1`.
   `xezar serve` warns at start-up while either setting is off.
-- Start xezar without administrator rights: the MCP leader bridge (`xezar mcp`) is unavailable while
-  xezar runs elevated.
-- Attaching a leader to a running Codex session is not available on Windows yet.
+- Start xezar and your leader agent the same way: both as administrator or both without. An
+  elevated xezar serves the MCP leader bridge (`xezar mcp`) only to an elevated leader.
 - To stop `xezar serve`, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the
   programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may
   not be enough to stop everything.
@@ -330,8 +329,8 @@ xezar --version
 ```
 
 The [CHANGELOG](CHANGELOG.md) is the complete record and calls out every breaking change; read it
-from your installed version forward. Longer notes for the 0.15.0 and 0.16.0 upgrades are in
-[Upgrading from older releases](docs/upgrading.md).
+from your installed version forward. Longer notes for the 0.15.0, 0.16.0, 0.20.0, 0.30.0 and
+0.31.0 upgrades are in [Upgrading from older releases](docs/upgrading.md).
 
 If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
 still names them, and lists each file and field to change. See

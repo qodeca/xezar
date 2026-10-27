@@ -1452,7 +1452,7 @@ describe('a Git Bash crash inside the Codex sandbox (#1030)', () => {
   const REVIEW = ['Read', 'Grep', 'Glob', 'Bash'];
   const CRASH_LINE =
     '      0 [main] bash (23784) C:\\Program Files\\Git\\usr\\bin\\bash.exe: *** fatal error - ' +
-    'CreateFileMapping S-1-5-21-1504711166-3655588297-3458958062-1001.1, Win32 error 5.  Terminating.\n';
+    'CreateFileMapping S-1-5-21-1000000000-2000000000-3000000000-1001.1, Win32 error 5.  Terminating.\n';
 
   it('knows the crash by its exact line, and nothing else', () => {
     expect(isCodexBashSandboxCrash({ type: 'commandExecution', status: 'failed', aggregatedOutput: CRASH_LINE })).toBe(true);

@@ -4,7 +4,7 @@ import { Virtualizer, type VirtualizerHandle } from 'virtua'
 
 import type { DiffStat } from '@qodeca/xezar-api-client'
 import { DiffStatLabel } from '@/components/diff-stat'
-import { highlight, highlightSync, langForPath, type SynToken } from '@/lib/highlighter'
+import { HIGHLIGHT_MAX_LINES, highlight, highlightSync, langForPath, type SynToken } from '@/lib/highlighter'
 import { cn } from '@/lib/utils'
 
 import {
@@ -43,9 +43,6 @@ import { overlaySegments } from './word-diff'
  * All color goes through the theme tokens: `--diff-*` tints for line backgrounds and word
  * marks, `--syn-*` (via the singleton's theme) for code, status tokens for ± numbers.
  */
-
-/** Past this many patch lines a file skips syntax highlighting — plaintext beats jank. */
-const HIGHLIGHT_MAX_LINES = 1500
 
 /** Stable empty map, so a file with no expanded gaps keeps prop identity across renders. */
 const NO_GAPS: ExpandedGaps = new Map()

@@ -11,6 +11,32 @@ This is the brief-driven fallback. For a whole patch/minor/major release with no
 
 Inputs: explicit release-preparation brief and maintained publishing pipeline. Output: requested readiness audit, notes or metadata with unmet criteria visible. There is no assumed changesets pipeline; preparation does not authorize dispatch, merge or installation.
 
+## Release housekeeping checks
+
+Two checks run at every release, whichever path makes it: this skill runs them for a brief-driven preparation, and the `release` workflow's `changelog` step (`xezar-release-changelog`) runs them before its commit. Both need the target version `<version>` and the release date `<YYYY-MM-DD>` (today in the repository's timezone). Their edits are text-only and go in the same commit as the changelog; record what each check found and changed (or `none`) in the evidence dir, in `release.json` when the step writes one. Neither check removes a row, a folder or an entry.
+
+**1. Recorded breaking changes keep no `Unreleased` label.** A pull request that breaks a surface adds its `BACKWARD_COMPATIBILITY.md` § 9 entry headed `Unreleased`, because it cannot know the release it ships in. The release names it:
+
+```sh
+grep -n '^- \*\*Unreleased' BACKWARD_COMPATIBILITY.md
+```
+
+For each matching entry, find the release it ships in before relabelling it. The last release tag is `git describe --tags --abbrev=0 --match 'v*' origin/main` (fetch with `--tags` first; a fresh worktree has none). `git log --format='%h %cI' -S'<the entry heading, first words>' -- BACKWARD_COMPATIBILITY.md` names the commit that added the entry. When `git merge-base --is-ancestor <that commit> <last release tag>` fails, the change ships now: replace the word `Unreleased` in the entry heading with `<version>`. When it succeeds, the change already shipped and an earlier release missed the relabel: use the first `v*` tag of `git tag --contains <commit> --sort=version:refname` instead, and report it as a finding. Change nothing else in the entry. Also check that the new changelog section carries a `## 💥 Breaking` bullet for every entry relabelled to `<version>`; a missing one is a finding for the changelog. The check passes when the `grep` prints nothing.
+
+**2. Designs expire by their README's own recorded date, never by `git log`.** The rule is in `designs/README.md` § Lifecycle and `docs/design-system/lifecycle.md` (the Expiry row). Repository-wide sweeps (renames, link fixes, history notes) touch every design folder without moving a design forward, so the last commit date of `designs/<feature>/` is not evidence of activity and is never used. For each row of the status table in `designs/README.md`, read the matching `designs/<feature>/README.md`:
+
+- **Last activity date** – the newest `YYYY-MM-DD` the README records about the design work: its Date row, a date in its Status line, a dated revision, or a dated entry in its `## Design review` section. A date that only describes a later sweep or history note (for example a "removed in 0.30.0" banner) is not activity.
+- **Age** – `node -e 'console.log(Math.floor((Date.parse(process.argv[2]) - Date.parse(process.argv[1])) / 864e5))' <last activity date> <release date>` prints the whole days between them.
+
+| Status in both locations | Condition | Edit |
+| --- | --- | --- |
+| Draft or In review | Age is 90 days or more | Set **Archived** in the README's Status line and its `designs/README.md` row, with `no recorded activity since <date>; archived at release <version>`. |
+| Draft or In review | The README records no date | Do not guess. Add `last activity not recorded; expiry clock started <release date> (release <version>)` to its Status line; the next release measures from that date. |
+| Approved | The README records its approval date, and two or more dated `# <version> (<date>)` headings in CHANGELOG.md after it, the new one included, shipped with no implementing PR named | Set **Draft** in both places, with `approved <date>, no implementing PR in releases <a> and <b>`. |
+| Any other status, or the condition does not hold | – | No edit. |
+
+When the README's Status line and its `designs/README.md` row disagree, change neither and report the pair as a finding; reconciling them is an authoring change, not housekeeping. A design whose status this check changes is listed in the release report with its date evidence.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

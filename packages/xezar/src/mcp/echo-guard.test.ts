@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuditOrigin, McpJournalOrigin, McpJournalRow, RunRecord } from '@qodeca/xezar-contract';
-import { MCP_JOURNAL_RETAINED_ROWS } from '@qodeca/xezar-contract';
+import { MCP_EVENT_KIND_CATEGORY } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { apiRequest } from '../server/loopback-request.testkit.ts';
@@ -15,12 +15,7 @@ import { WorkspaceEventBus, createApp } from '../server/server.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
-import {
-  EchoGuard,
-  PRESENTATION_EVENT_KINDS,
-  WORKSPACE_ONLY_EVENT_NAMES,
-  attachLeaderFeed,
-} from './echo-guard.ts';
+import { EchoGuard, PRESENTATION_EVENT_KINDS, WORKSPACE_ONLY_EVENT_NAMES, isOwnEcho } from './echo-guard.ts';
 import { EventJournal } from './event-journal.ts';
 import { RECEIPT_MAX_KEPT } from './operation-receipts.ts';
 import { McpServiceAdapter } from './service-adapter.ts';
@@ -30,7 +25,9 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
  * The echo guard (#106, F-13, A-20): a project-bound leader sees human changes and new outcomes,
  * and never reacts to its own echoes.
  *
- * The first half is the guard alone, rule by rule. The second half drives the REAL app `createApp`
+ * The first half is the guard alone: the one rule delivery applies (`isOwnEcho`, the predicate
+ * `LeaderDelivery.deliver` runs), and the catalog guarantee that makes a delivery-side kind filter
+ * unnecessary. The second half drives the REAL app `createApp`
  * builds — real `ProjectContexts`, stores and routes, the real MCP service adapter and the real
  * workspace SSE stream — and a real per-project `EventJournal`.
  *
@@ -60,72 +57,33 @@ const row = (over: Partial<McpJournalRow> = {}): McpJournalRow => ({
   ...over,
 });
 
-describe('EchoGuard.admit — the six rules', () => {
-  it('delivers a human change', () => {
+describe('isOwnEcho — the one rule LeaderDelivery applies', () => {
+  it('a human change is not an echo', () => {
     const guard = new EchoGuard({ projectId: PROJECT });
-    expect(guard.admit(row())).toEqual({ deliver: true, row: row() });
+    expect(isOwnEcho(row(), guard)).toBe(false);
   });
 
-  it("drops a leader row caused by this guard's own operation", async () => {
+  it("a leader row caused by this guard's own operation is an echo", async () => {
     const guard = new EchoGuard({ projectId: PROJECT });
     await guard.issue(OWN_OP, () => undefined);
-    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP }))).toEqual({ deliver: false, reason: 'own-echo' });
+    expect(isOwnEcho(row({ origin: 'leader', causedBy: OWN_OP }), guard)).toBe(true);
   });
 
-  it('delivers a leader row caused by an operation this guard never issued — another session is news', async () => {
+  it('a leader row caused by an operation this guard never issued is not — another session is news', async () => {
     const guard = new EchoGuard({ projectId: PROJECT });
     await guard.issue(OWN_OP, () => undefined);
-    const foreign = row({ origin: 'leader', causedBy: 'op-other-session-1' });
-    expect(guard.admit(foreign)).toEqual({ deliver: true, row: foreign });
+    expect(isOwnEcho(row({ origin: 'leader', causedBy: 'op-other-session-1' }), guard)).toBe(false);
   });
 
-  it('never drops a row merely because it recognises the run: a system outcome and a human edit of a run the leader started both arrive', async () => {
+  it('never an echo merely because it recognises the run: a system outcome and a human edit of a run the leader started both arrive', async () => {
     const guard = new EchoGuard({ projectId: PROJECT });
     await guard.issue(OWN_OP, () => undefined);
-    const finished = row({ eventId: `${PROJECT}:2`, journalSeq: 2, category: 'E-01', kind: 'task.terminal', origin: 'system' });
-    const edited = row({ eventId: `${PROJECT}:3`, journalSeq: 3, origin: 'human' });
-    expect(guard.admit(finished).deliver).toBe(true);
-    expect(guard.admit(edited).deliver).toBe(true);
+    expect(isOwnEcho(row({ category: 'E-01', kind: 'task.done', origin: 'system' }), guard)).toBe(false);
+    expect(isOwnEcho(row({ origin: 'human' }), guard)).toBe(false);
   });
 
-  it("drops a row stamped with another project's id (N-01)", () => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    expect(guard.admit(row({ projectId: 'proj-b', eventId: 'proj-b:1' }))).toEqual({
-      deliver: false,
-      reason: 'foreign-project',
-    });
-  });
-
-  it.each(WORKSPACE_ONLY_EVENT_NAMES)('drops a row whose kind is the workspace-only name %s (N-01)', (name) => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    expect(guard.admit(row({ kind: name }))).toEqual({ deliver: false, reason: 'workspace-only' });
-  });
-
-  it.each(PRESENTATION_EVENT_KINDS)('drops the presentation/log/counter kind %s', (kind) => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    expect(guard.admit(row({ kind }))).toEqual({ deliver: false, reason: 'presentation' });
-  });
-
-  it('drops a second delivery of the same eventId, and delivers again after forgetDelivered', () => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    expect(guard.admit(row()).deliver).toBe(true);
-    expect(guard.admit(row())).toEqual({ deliver: false, reason: 'duplicate' });
-    guard.forgetDelivered();
-    expect(guard.admit(row()).deliver).toBe(true);
-  });
-
-  it('keeps its own operations across forgetDelivered — an echo is still an echo after a new journal epoch', async () => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    await guard.issue(OWN_OP, () => undefined);
-    guard.forgetDelivered();
-    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP })).deliver).toBe(false);
-  });
-
-  it('refuses anything that is not a journal row, including a leader row with no operation id', () => {
-    const guard = new EchoGuard({ projectId: PROJECT });
-    for (const candidate of [undefined, null, 'run', { event: 'run' }, { ...row(), category: 'E-99' }, { ...row(), origin: 'leader', causedBy: null }]) {
-      expect(guard.admit(candidate)).toEqual({ deliver: false, reason: 'invalid' });
-    }
+  it('with no guard (it could not be built) nothing is an echo', () => {
+    expect(isOwnEcho(row({ origin: 'leader', causedBy: OWN_OP }), undefined)).toBe(false);
   });
 
   it('records the operation BEFORE dispatching it, and refuses a malformed id before any dispatch', async () => {
@@ -141,17 +99,11 @@ describe('EchoGuard.admit — the six rules', () => {
     expect(dispatched).toBe(false);
   });
 
-  it('remembers no more than the bounds it reuses: B-21 operations and B-19 rows', async () => {
+  it('remembers no more operations than the B-21 bound it reuses', async () => {
     const guard = new EchoGuard({ projectId: PROJECT });
     for (let i = 0; i <= RECEIPT_MAX_KEPT; i++) await guard.issue(`op-bound-${i}`, () => undefined);
     expect(guard.isOwn('op-bound-0')).toBe(false);
     expect(guard.isOwn(`op-bound-${RECEIPT_MAX_KEPT}`)).toBe(true);
-
-    for (let seq = 1; seq <= MCP_JOURNAL_RETAINED_ROWS + 1; seq++) {
-      guard.admit(row({ eventId: `${PROJECT}:${seq}`, journalSeq: seq }));
-    }
-    expect(guard.admit(row({ eventId: `${PROJECT}:1`, journalSeq: 1 })).deliver).toBe(true);
-    expect(guard.admit(row({ eventId: `${PROJECT}:${MCP_JOURNAL_RETAINED_ROWS + 1}`, journalSeq: MCP_JOURNAL_RETAINED_ROWS + 1 })).deliver).toBe(false);
   });
 
   it('binds only to a resolved project slug', () => {
@@ -159,6 +111,29 @@ describe('EchoGuard.admit — the six rules', () => {
     expect(() => new EchoGuard({ projectId: '../proj-a' })).toThrow();
   });
 });
+
+describe('what the pipe guarantees before delivery, so delivery does not filter kinds', () => {
+  // The journal's only emitter is the event catalog, whose kinds are this closed table. A kind on
+  // either negative list appearing here would reach every leader unfiltered: delivery applies only
+  // the echo rule.
+  const catalogKinds = Object.keys(MCP_EVENT_KIND_CATEGORY);
+
+  it.each(WORKSPACE_ONLY_EVENT_NAMES)('the catalog never emits the workspace-only name %s (N-01)', (name) => {
+    expect(catalogKinds).not.toContain(name);
+  });
+
+  it.each(PRESENTATION_EVENT_KINDS)('the catalog never emits the presentation/log/counter kind %s', (kind) => {
+    expect(catalogKinds).not.toContain(kind);
+  });
+});
+
+/**
+ * The leader feed as production composes it: the bound project's journal, with every row
+ * `isOwnEcho` marks dropped — the predicate `LeaderDelivery.deliver` applies for every client.
+ */
+function leaderFeed(journal: EventJournal, guard: EchoGuard, deliver: (row: McpJournalRow) => void, onEcho?: (row: McpJournalRow) => void): () => void {
+  return journal.subscribe((r) => (isOwnEcho(r, guard) ? onEcho?.(r) : deliver(r)));
+}
 
 // ---- the real app ---------------------------------------------------------------------------
 
@@ -355,7 +330,7 @@ function reactiveLeader(h: Harness, guard: EchoGuard | null) {
   };
   // `null` is the control: the raw journal feed with no guard in front of it.
   const detach = guard
-    ? attachLeaderFeed({ journal: h.journalA, guard, deliver: take, onDrop: (reason) => dropped.push(reason) })
+    ? leaderFeed(h.journalA, guard, take, () => dropped.push('own-echo'))
     : h.journalA.subscribe(take);
   closers.push(detach);
 
@@ -469,7 +444,7 @@ describe('the leader side: human changes arrive, its own echoes do not', () => {
     const h = await harness();
     const guard = new EchoGuard({ projectId: 'proj-a' });
     const delivered: McpJournalRow[] = [];
-    closers.push(attachLeaderFeed({ journal: h.journalA, guard, deliver: (r) => delivered.push(r) }));
+    closers.push(leaderFeed(h.journalA, guard, (r) => delivered.push(r)));
 
     // Dispatch first, record after: the order `issue` exists to forbid.
     await h.leader('op-late-record-1', h.runId, 'late record');
@@ -536,7 +511,7 @@ describe('N-01: workspace-only events never reach a project-bound session', () =
     const h = await harness();
     const guard = new EchoGuard({ projectId: 'proj-a' });
     const delivered: McpJournalRow[] = [];
-    closers.push(attachLeaderFeed({ journal: h.journalA, guard, deliver: (r) => delivered.push(r) }));
+    closers.push(leaderFeed(h.journalA, guard, (r) => delivered.push(r)));
     const stream = await openStream(h.app, '/api/v1/workspace/events');
     await stream.readUntil((body) => body.includes('event: ping'));
 
@@ -560,14 +535,6 @@ describe('N-01: workspace-only events never reach a project-bound session', () =
     expect(text).not.toContain('proj-b');
     expect(text).not.toContain('proj-z');
   });
-
-  it("a session cannot be attached to another project's journal", async () => {
-    const h = await harness();
-    const guard = new EchoGuard({ projectId: 'proj-a' });
-    expect(() => attachLeaderFeed({ journal: h.journalB, guard, deliver: () => undefined })).toThrow(
-      "a leader feed attaches only to its own project's journal",
-    );
-  });
 });
 
 // #532 G10. Named breaks: keep ownership on explicit refusal; forget on parse failure/throw.
@@ -586,8 +553,8 @@ describe('#532 result certainty truth table', () => {
     const guard = new EchoGuard({ projectId: PROJECT });
     await guard.issue(OWN_OP, () => result);
     expect(guard.isOwn(OWN_OP)).toBe(own);
-    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP })).deliver).toBe(!own);
-    expect(guard.admit(row({ eventId: `${PROJECT}:2`, journalSeq: 2, origin: 'leader', causedBy: 'another-leader' })).deliver).toBe(true);
+    expect(isOwnEcho(row({ origin: 'leader', causedBy: OWN_OP }), guard)).toBe(own);
+    expect(isOwnEcho(row({ eventId: `${PROJECT}:2`, journalSeq: 2, origin: 'leader', causedBy: 'another-leader' }), guard)).toBe(false);
   });
 
   it('a throw after an effect cannot claim nothing applied or forget ownership', async () => {
@@ -596,6 +563,6 @@ describe('#532 result certainty truth table', () => {
     await expect(guard.issue(OWN_OP, () => { effects++; throw new Error('response lost'); })).rejects.toThrow('response lost');
     expect(effects).toBe(1);
     expect(guard.isOwn(OWN_OP)).toBe(true);
-    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP }))).toEqual({ deliver: false, reason: 'own-echo' });
+    expect(isOwnEcho(row({ origin: 'leader', causedBy: OWN_OP }), guard)).toBe(true);
   });
 });

@@ -1,8 +1,15 @@
 # New issue in the GitHub tab — developer handoff
 
-**Status: Draft.** Written by the kit's `design` workflow (`xezar-issue-create` is the skill it
-launches; `xezar-ux-design` in authoring mode is the skill that wrote this). Static mockups plus
-this handoff. No product code is part of this change.
+**Status: Implemented (PR #502, merged 2026-09-16).** The design review on #502 was PASS WITH
+FOLLOW-UPS (`design-approved`), and all six open questions were built as recommended. The five
+non-blocking findings are tracked in [#1178](https://github.com/qodeca/xezar/issues/1178): AC-13
+(focus returns to the button on close) is not met, and the "Stale or partial" strip state was not
+built. Both are listed in [§ 19](#19-design-review). Status checked against the shipped
+`packages/web/src/routes/github/new-issue-dialog.tsx` on 2026-10-24.
+
+Written by the kit's `design` workflow (`xezar-issue-create` is the skill it launches;
+`xezar-ux-design` in authoring mode is the skill that wrote this). Static mockups plus this handoff.
+The design PR itself (#496) contained no product code.
 
 Covers **PR 5** of [qodeca/xezar#468](https://github.com/qodeca/xezar/issues/468) — the "Optional UI
 follow-up" row of the owner's sequenced plan, and criterion **IF-14**. Issue #468 stays open.
@@ -362,6 +369,8 @@ Below `md` the GitHub tab's list pane **is** the page. Cut order, tightest first
 ## 15. Open decisions
 
 Full text and a recommendation for each is in [`open-questions.md`](open-questions.md).
+**All six are settled. #502 built the recommendation in every row.** The design review on #502
+verified each one in the running cockpit (table "The six open questions" in that review).
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -416,4 +425,17 @@ other departures — no new token, no new primitive, no new pattern, no badge in
 
 ## 19. Design review
 
-Pending.
+**Design PR #496:** reviewed before merge. Its follow-ups NB-1 to NB-7 were re-checked by the review
+below. **Implementing PR #502:**
+[design review, 2026-09-16](https://github.com/qodeca/xezar/pull/502#issuecomment-5692726936).
+Verdict **PASS WITH FOLLOW-UPS** on head `4b48d1d`, and #502 merged with `design-approved`. The
+blocking pre-fill persistence (OQ-4) found on `3e713c5` was fixed before the verdict. The five
+non-blocking findings and their dispositions, checked against `develop` at `74fb7ecf` on 2026-10-24:
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| NB-1 | A disabled **Start drafting** points at another button's label when the skill is missing, and at "Your text is kept either way" under the provider gate | Filed as [#1178](https://github.com/qodeca/xezar/issues/1178) (`bug`, `needs-design`). Not fixed in #502 |
+| NB-2 | Small text in `--soft-foreground` is below 4.5:1 | Light theme: fixed by the token change in `b310e8db` (`#6f6f6f`). Dark theme: filed as #1178 |
+| NB-3 | At 375 px the `⌘↵` key-cap ends up on top of the footer stack, stretched to full width | Filed as #1178. § 13 above describes the intended layout |
+| NB-4 | Closing the dialog does not return focus to **New issue**, so **AC-13 is not met** | Filed as #1178: fix it, or add a `known-gaps.md` row. § 10's claim that the shipped `Dialog` returns focus is wrong until then |
+| NB-5 | The "Stale or partial" strip state of § 6 is not built | Filed as #1178. Building it or recording a deferral is the owner's decision |

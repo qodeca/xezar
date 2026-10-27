@@ -5,6 +5,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveElevatedIpc } from '../platform/elevated-ipc.ts';
+import { processIsElevated } from '../platform/elevation.ts';
 import { globalStateLayout, projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { createProjectStateFiles } from '../workspace/config.ts';
 import { findRegistryProject, registerProject } from '../workspace/projects.ts';
@@ -138,6 +140,10 @@ function openBridge(root: string, argv?: readonly string[]) {
  */
 const doorOf = (target: ServiceTarget): string =>
   target.kind === 'pipe' ? target.files.dir : (target as { path: string }).path;
+/** The folder a process of this elevation keeps its pipe files in (#980): the user IPC dir, or the
+ *  administrators-only %ProgramData% leaf for an elevated process. */
+const ipcFolderOf = (userIpc: string): string => (processIsElevated() ? (resolveElevatedIpc(userIpc)?.dir ?? userIpc) : userIpc);
+
 /** The folder the engine for `id` listens from: POSIX its socket path; Windows the folder whose endpoint names its pipe. */
 const engineDoorIn = (dir: string, engine: { id: string; path: string }): string => {
   if (!onWindows) return engine.path;
@@ -158,7 +164,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     expect(text(before)).toContain('This directory is not a xezar project yet');
 
     const engine = await startSingleProjectEngine(root);
-    const ipc = join(root, '.local', 'xezar', 'ipc');
+    const ipc = ipcFolderOf(join(root, '.local', 'xezar', 'ipc'));
     expect(engineDoorIn(ipc, engine).startsWith(ipc)).toBe(true);
 
     // The SAME bridge — no reconnect — now reaches the engine for this folder.
@@ -172,7 +178,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     // An earlier GLOBAL cockpit registered the folder, so the global lookup has a row to find.
     const globalRow = await registerProject(root);
     await startSingleProjectEngine(root);
-    const globalSocketDir = globalStateLayout().ipcDir;
+    const globalSocketDir = ipcFolderOf(globalStateLayout().ipcDir);
 
     const byFlag = await resolveMcpTarget(root, { argv: ['mcp', '--global-layout'] });
     expect(byFlag).toMatchObject({ kind: onWindows ? 'pipe' : 'socket', project: { id: globalRow.id } });
@@ -185,7 +191,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     // Guard on the positive side: without the explicit ask the same folder follows its marker.
     delete process.env.XEZ_GLOBAL_LAYOUT;
     const followed = await resolveMcpTarget(root, { argv: ['mcp'] });
-    expect(doorOf(followed).startsWith(join(root, '.local', 'xezar', 'ipc'))).toBe(true);
+    expect(doorOf(followed).startsWith(ipcFolderOf(join(root, '.local', 'xezar', 'ipc')))).toBe(true);
   }, 30_000);
 
   it('T5.3: a bridge in folder A is never pointed at folder B\'s socket, even when both derive the same id', async () => {
@@ -198,7 +204,7 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
 
     // B flipped first. If that flip leaked into the process, A would now read B's layout.
     const targetB = await resolveMcpTarget(b, { argv: ['mcp'] });
-    if (onWindows) expect(targetB).toMatchObject({ kind: 'pipe', files: pipeFiles(engineDoorIn(join(b, '.local', 'xezar', 'ipc'), engineB), engineB.id) });
+    if (onWindows) expect(targetB).toMatchObject({ kind: 'pipe', files: pipeFiles(engineDoorIn(ipcFolderOf(join(b, '.local', 'xezar', 'ipc')), engineB), engineB.id) });
     else expect(targetB).toMatchObject({ kind: 'socket', path: engineB.path });
 
     // A has no marker: it is nobody's project, and certainly not B's.
@@ -211,6 +217,6 @@ describe('the bridge follows the folder\'s state layout on each session open (#8
     expect(ownA).toMatchObject({ kind: onWindows ? 'pipe' : 'socket', project: { id: engineB.id } });
     const pathA = doorOf(ownA);
     expect(pathA).not.toBe(doorOf(targetB));
-    expect(pathA.startsWith(join(a, '.local', 'xezar', 'ipc'))).toBe(true);
+    expect(pathA.startsWith(ipcFolderOf(join(a, '.local', 'xezar', 'ipc')))).toBe(true);
   }, 30_000);
 });

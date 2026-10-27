@@ -7,6 +7,10 @@ every row, so answering "the recommendation" everywhere needs no rework.
 None of these blocks the design review: a reviewer can judge the design as drawn and record a
 different answer as a finding.
 
+**Settled (2026-09-16).** #502 built the recommendation (option A) for all six questions, and its
+design review verified each one in the running cockpit. The text below is kept as the record of the
+choice.
+
 ---
 
 ## OQ-1 — Should **New issue** appear when GitHub is unavailable?

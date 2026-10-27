@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { fixtureServeEnv, xezarCli } from '../agent-browser'
 import { createFixtureRepo } from './fixture-repo'
+import { freePort } from '../fixture-server'
 
 /**
  * The capture harness's own xezar: a `serve` over a throwaway workspace, with every opt-in
@@ -28,18 +29,6 @@ export interface Cockpit {
   /** The sandboxed HOME the server runs with. */
   home: string
   server: ChildProcess
-}
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
 }
 
 export async function bootCockpit(): Promise<Cockpit> {
@@ -70,6 +59,14 @@ export async function bootCockpit(): Promise<Cockpit> {
     const bin = join(dataRoot, 'bin', name)
     mkdirSync(join(dataRoot, 'bin'), { recursive: true })
     const script = resolve(import.meta.dirname, 'agents', `${name}.mjs`)
+    if (process.platform === 'win32') {
+      // Windows cannot start an extension-less shell script; xezar runs a `.mjs` as
+      // `node <script>` (`platform/command-resolve.ts`), so the wrapper is a module that adds
+      // the same argument and loads the agent in-process (#1137).
+      const module = `${bin}.mjs`
+      writeFileSync(module, `process.argv.splice(2, 0, '--capture-root', ${JSON.stringify(dataRoot)})\nawait import(${JSON.stringify(pathToFileURL(script).href)})\n`)
+      return module
+    }
     writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} --capture-root ${JSON.stringify(dataRoot)} "$@"\n`)
     chmodSync(bin, 0o755)
     return bin

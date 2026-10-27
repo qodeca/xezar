@@ -1,6 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -9,6 +8,7 @@ import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRo
 import { runAgentBrowserCli } from './agent-browser-cli'
 import subagents from './fixtures/subagents-run.record.json'
 import thread from './fixtures/thread-run.record.json'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Design-debt batch B5 in a real browser — thread, composer and launch menus (#453, AC-5 / T-5 and
@@ -188,12 +188,10 @@ beforeAll(async () => {
   writeFileSync(join(root, '.local/xezar/runs', 'b5-review.ndjson'), fixture('thread-run.ndjson'))
   writeFileSync(join(root, '.local/xezar/runs', 'b5-ask.ndjson'), `${fixture('thread-run.ndjson').trimEnd()}\n${JSON.stringify(ASK_EVENT)}\n`)
   writeFileSync(join(root, '.xez-home/config.json'), JSON.stringify({ projects: [{ id: 'b5-project', name: 'B5 thread project', root, addedAt: NOW, lastOpenedAt: NOW, source: 'local' }] }))
-  const port = await new Promise<number>((done, fail) => { const s = createServer(); s.once('error', fail); s.listen(0, '127.0.0.1', () => { const a = s.address(); const n = typeof a === 'object' && a ? a.port : 0; s.close(() => done(n)) }) })
+  const port = await freePort()
   url = `http://localhost:${port}`
   server = spawn(process.execPath, [xezarCli, 'serve', '--repo', root, '--port', String(port), '--no-open'], { env: fixtureServeEnv(root), stdio: 'ignore' })
-  let healthy = false
-  for (let n = 0; n < 60; n++) { try { if ((await fetch(`${url}/api/v1/health`)).ok) { healthy = true; break } } catch {} await new Promise((r) => setTimeout(r, 250)) }
-  if (!healthy) throw new Error('B5 fixture server did not start')
+  await waitForHealth(url, { label: 'design-debt-b5 fixture server' })
   project = await bootProjectId(url)
   browser = AgentBrowser.open(sessionId)
   const cli = (...args: string[]) => {

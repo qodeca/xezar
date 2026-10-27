@@ -8,7 +8,7 @@ project documentation. Use the table to find the part you need.
 | [guide/](guide/README.md) | The 18-part user guide: getting started, tasks, settings and references. | Users |
 | [server-install/](server-install/README.md) | Host xezar on a server and reach it from another machine. | Users |
 | [project-layout.md](project-layout.md) | Where a project's kit and working files live, and how to move a project from the old `.ai/xezar/` layout by hand; a contributor appendix covers how the engine resolves them. | Users; appendix for contributors |
-| [upgrading.md](upgrading.md) | Longer upgrade notes for 0.15.0 and 0.16.0; the CHANGELOG is the full record. | Users |
+| [upgrading.md](upgrading.md) | Upgrade notes for 0.31.0, 0.30.0, 0.20.0, 0.16.0 and 0.15.0, linking each breaking change to its record; the CHANGELOG is the full record. | Users |
 | [STATUS.md](STATUS.md) | Known gaps and unfinished migrations, with how far each has got. | Maintainers |
 | [publishing.md](publishing.md) | How a release reaches npm through the manual Release workflow. | Maintainers |
 | [releases/](releases/0.14.0-definition-of-done.md) | What "done" means for a release beyond its features, and how it was assessed for 0.14.0 — the only release with a recorded definition-of-done so far. | Maintainers and reviewers |
@@ -16,7 +16,7 @@ project documentation. Use the table to find the part you need.
 | [testing/](testing/) | The browser suite ([agent-browser.md](testing/agent-browser.md)) with its dry-run exceptions ([browser-dry-run-exceptions.md](testing/browser-dry-run-exceptions.md)) and a dated manual-check record ([browser-manual-checks.md](testing/browser-manual-checks.md)), where local data lives ([local-data.md](testing/local-data.md)), which suite covers which behaviour ([coverage-gaps.md](testing/coverage-gaps.md)), the two-project registry/composition harness ([multi-project-harness.md](testing/multi-project-harness.md)), and the cheapest test level for each multi-project and server-mode risk ([multi-project-test-levels.md](testing/multi-project-test-levels.md), [server-mode-test-levels.md](testing/server-mode-test-levels.md)). | Contributors |
 | [research/](research/) | Dated, point-in-time research reports, such as the Qwen Code backend feasibility study. Not maintained; read the status line first. | Engineers |
 | [lessons/](lessons/changing-working-mechanisms.md) | Worked examples behind the rules in [AGENTS.md](../AGENTS.md). | Contributors and coding agents |
-| [screenshots/](screenshots/) | Images the root README shows. | — |
+| [screenshots/](screenshots/) | Images the root README and the user guide show, captured by the docs capture harness ([testing/agent-browser.md](testing/agent-browser.md#the-docs-capture-harness)). | — |
 | [features/](features/README.md) | The internal engineering and decision record, one directory per feature plus dated requirement records. | Engineers and reviewers |
 
 ## `features/` is a record, not a manual

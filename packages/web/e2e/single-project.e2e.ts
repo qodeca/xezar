@@ -1,6 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -9,6 +8,7 @@ import { unavailableAgentAccountReason, unavailableAgentAccountRefusal } from '@
 
 import { bootProjectId, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
+import { freePort, waitForHealth } from './fixture-server'
 
 /**
  * Single-project mode from a FRESH CLONE (#600 AC-3, AC-6, AC-12 → SP-5.4, SP-5.5, SP-5.6).
@@ -28,30 +28,6 @@ import { GuideBrowser } from './guide-browser'
  * clone-on-another-machine case SP-5.5 is about — and the assertion that the per-user home was
  * never written is made against a real directory.
  */
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(port))
-    })
-  })
-}
-
-async function waitForHealth(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    try {
-      if ((await fetch(`${url}/api/v1/health`)).ok) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`xezar e2e: the single-project fixture server never answered at ${url}`)
-}
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync('git', ['-c', 'user.name=Xezar e2e', '-c', 'user.email=e2e@example.invalid', ...args], {
@@ -128,7 +104,7 @@ beforeAll(async () => {
     env: fixtureServeEnv(dataRoot),
     stdio: 'ignore',
   })
-  await waitForHealth(baseUrl)
+  await waitForHealth(baseUrl, { attempts: 120, label: 'single-project fixture server' })
   bootProject = await bootProjectId(baseUrl)
 
   browser = GuideBrowser.open(`e2e-single-project-${process.pid}`)

@@ -129,6 +129,11 @@ export const automationRuntimeStateSchema = z.object({
 });
 export type AutomationRuntimeState = z.infer<typeof automationRuntimeStateSchema>;
 
+/** The automation log's `since` filter (MCP `logQuery.since` and the HTTP `since` query). zod 4.6
+ *  made `datetime()` require seconds (RFC 3339); the second branch keeps the minute-only form
+ *  (`2026-10-24T09:30Z`) these public inputs accepted before, so the bump narrows nothing. */
+export const automationLogSinceSchema = z.union([z.string().datetime(), z.string().datetime({ precision: -1 })]);
+
 /** What one poll decided about one candidate. `baseline` and `preview` are bookkeeping rows: no
  *  task was launched and none was meant to be. */
 export const automationLogResultSchema = z.enum([
@@ -275,17 +280,26 @@ export type CreateAutomationInput = z.input<typeof createAutomationInputSchema>;
  * `PUT /automations/:id`. The same body plus the revision the editor read — a stale one answers
  * 409 rather than overwriting somebody else's edit. `enabled` IS a field here: an edit may not
  * silently pause a running automation, so the caller restates it.
+ *
+ * `expectedRevision` and `.strict()` state what the route enforces (#1177): a revision is a
+ * positive integer, and an unknown key is a 400. The MCP `update_automation` door reads
+ * `expectedRevision` from here, so the leader is told the route's own rule. The rest of the body
+ * still differs from the route's storage-backed schema (bounds, defaults) and moves with #1177.
  */
 export const updateAutomationInputSchema = createAutomationInputSchema
   .omit({ enable: true })
   .extend({
     enabled: z.boolean().optional(),
-    expectedRevision: z.number(),
-  });
+    expectedRevision: z.number().int().positive(),
+  })
+  .strict();
 export type UpdateAutomationInput = z.input<typeof updateAutomationInputSchema>;
 
-/** `POST /automations/:id/check` — which of the two manual checks to run. */
-export const automationCheckInputSchema = z.object({
-  mode: z.enum(['preview', 'execute']),
-});
+/** `POST /automations/:id/check` — which of the two manual checks to run. Strict, like the route:
+ *  the route validates with this schema, pinned by `contract-parity.requests.test.ts`. */
+export const automationCheckInputSchema = z
+  .object({
+    mode: z.enum(['preview', 'execute']),
+  })
+  .strict();
 export type AutomationCheckInput = z.input<typeof automationCheckInputSchema>;

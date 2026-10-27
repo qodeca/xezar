@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In review – the first `design-review` run returned FAIL (see [§18](#18-design-review)); waiting for owner decisions (see [Open decisions](#14-open-decisions)) and the fixes |
+| **Status** | In review, on hold – the first `design-review` run returned FAIL (see [§18](#18-design-review)), and no issue schedules this work (#114 is closed). **Owner:** the project owner. **Next step:** the owner answers D1–D3 in [Open decisions](#14-open-decisions) and the badge colour (`docs/design-system/decisions.md` D-01), or lets it expire. After that, the next revision gives B-1 to B-7 a disposition, moves `styles.css` onto the rhythm tokens ([#435](https://github.com/qodeca/xezar/issues/435)) and asks for a second `design-review`. Last recorded design activity: 2026-09-18 (§18, NB-1). If nothing moves, the release-prep design-expiry check archives this design 90 days after that date. The Settings → MCP connection "Quality checks" section it would replace is still what ships |
 | **Date** | 2026-09-13 |
 | **Mockup** | Open [`index.html`](index.html) in a browser. No build or server needed. |
 | **Replaces** | The "Quality checks" section on Project settings → MCP connection (issue #114, PR #255) |

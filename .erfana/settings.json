@@ -1,9 +1,6 @@
 {
   "files": {
     "exclude": [
-      ".local/xezar/worktrees",
-      ".claude/worktrees",
-      ".ai/tmp",
       "**/worktrees"
     ]
   }

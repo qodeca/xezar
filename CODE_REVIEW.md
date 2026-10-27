@@ -23,7 +23,7 @@ process around the review — who reviews, how many rounds, when it merges — i
 - **Tests that name the break.** A new or changed behaviour test names the regression it guards
   and the author recorded a failing run (`SDLC.md` § Review loop). A test that passes with and
   without the fix is a guard, and the pull request says so.
-- **The HTTP contract.** Every response shape is a zod schema in `packages/contract`; routes are
+- **The HTTP contract.** Every request and response shape is a zod schema in `packages/contract`; routes are
   chained into a family builder; bodies, params and queries are validated as middleware; all under
   `/api/v1`. A widened schema that hides a route mismatch is a defect.
 - **Compatibility.** A change to a surface in `BACKWARD_COMPATIBILITY.md` keeps the old shape
@@ -55,8 +55,14 @@ the diff to the security-review row. The risk is not removed; it is made visible
   `.github/workflows/` and `.env.example`.
 - **The product's own boundaries.** `packages/xezar/src/server/` (the HTTP surface, its loopback
   and origin guards, the bind host), `packages/xezar/src/mcp/` (the leader's tools and session
-  binding), `packages/xezar/src/agent-config/` (the agents' own config files) and
-  `packages/xezar/src/workspace/` (per-user state and the project registry).
+  binding), `packages/xezar/src/agent-config/` (the agents' own config files),
+  `packages/xezar/src/workspace/` (per-user state and the project registry),
+  `packages/xezar/src/core/secret-redaction.ts` (credentials scrubbed from run transcripts and
+  state), `packages/xezar/src/core/agent-env.ts` (the least-privilege environment every agent
+  backend starts with), `packages/xezar/src/core/read-only-lock.ts` (the read-only policy the
+  agent hooks enforce), `packages/xezar/scripts/*-hook.mjs` (the shipped read-only hook bundles
+  and their build scripts; the Codex bundle is trusted by hash in users' profiles) and
+  `packages/xezar/scripts/check-pack.mjs` (what the published npm archive may contain).
   These product paths are not in the kit's own list: they are routed by `security.trustBoundaries`
   in `.xezar/pipeline/config.json`, read from the base branch and machine-routed like the kit's
   own; an invalid list routes the change to review.

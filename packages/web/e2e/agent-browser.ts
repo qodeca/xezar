@@ -82,6 +82,9 @@ export function fixtureServeEnv(
     // exists to catch.
     XEZ_DRY_RUN: '1', XEZ_HOME: resolve(dataRoot, '.xez-home'),
     HOME: resolve(dataRoot, 'home'),
+    // Node's `os.homedir()` reads USERPROFILE on Windows and ignores HOME, so without this a
+    // Windows fixture still scans the developer's real `~/.claude/skills` (#1137).
+    USERPROFILE: resolve(dataRoot, 'home'),
     // A fixture repo must hold exactly the skills the fixture wrote. xezar-skills updates
     // are default-on (AGENTS.md § Zero config), so a boot inside the six-hour window installs the
     // whole `xez-*` collection INTO the fixture and every "these are the project skills"

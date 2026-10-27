@@ -89,15 +89,19 @@ The new section sits directly above the newest existing top-level heading (dated
 
 **Keep a Changelog** (`format=keep-a-changelog`). Write your bullets under that format's groups — `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security` — mapping the table above as Features → Added, Fixes → Fixed, Security → Security, and Breaking, Changed, Docs and CI/CD → Changed; there is no Highlights group, so put the highlights in the release report instead. The same fold command releases the format's way: it merges the fragments into the `## [Unreleased]` content, renames that heading to `## [<version>] - <date>` and opens a fresh, empty `## [Unreleased]` above it. There is no separate Unreleased fold for you to do. With no fragments to fold, make that rename yourself. Update the compare links at the foot of the file when it has them.
 
+## 4a. Release housekeeping
+
+Run the two checks in `.xezar/skills/xezar-release-prep.md` § Release housekeeping checks with `<version>` and today's date: relabel `BACKWARD_COMPATIBILITY.md` § 9 entries still headed `Unreleased`, and apply the design expiry from each design README's own recorded date (never `git log`). This step is where they run on the `release` path, so a release never leaves them behind. Record what each found and changed (or `none`) under `housekeeping` in `release.json`.
+
 ## 5. Verify, then commit
 
 ```sh
 bash .xezar/checks/changelog-check.sh --require-version <version>   # Unreleased absorbed, exactly one target heading
 node .xezar/checks/changelog-fragments.mjs --verify --version <version> --before HEAD --fragments changelog.d
-git diff --stat                                                      # CHANGELOG.md and the deleted fragments, nothing else
+git diff --stat                                                      # CHANGELOG.md, the deleted fragments and the step 4a edits, nothing else
 ```
 
-`--verify` compares against the last commit, before the fold: every fragment line must be in the new section, no changelog line may be missing, and no fragment may be left behind. Then, for every PR number kept in step 2, `grep -c "#<n>)" CHANGELOG.md` inside the new section must be at least one. A missing number, a changed file outside CHANGELOG.md and the folded fragments, or a red check is a defect to fix here, not something to hand to the gates. When it passes:
+`--verify` compares against the last commit, before the fold: every fragment line must be in the new section, no changelog line may be missing, and no fragment may be left behind. Then, for every PR number kept in step 2, `grep -c "#<n>)" CHANGELOG.md` inside the new section must be at least one. A missing number, a changed file outside CHANGELOG.md, the folded fragments and the step 4a edits (`BACKWARD_COMPATIBILITY.md`, `designs/README.md` and `designs/*/README.md`), or a red check is a defect to fix here, not something to hand to the gates. When it passes:
 
 ```sh
 bash .xezar/checks/worktree-git.sh commit -m "docs: record <version> in the changelog"

@@ -1,10 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { freePort } from './fixture-server'
 
 /**
  * #118 — the COCKPIT half of A-20 (requirements § 9): with the cockpit open, a leader mutates
@@ -27,8 +28,23 @@ import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtu
  * `<XEZ_HOME>/ipc/<projectId>.sock` with a ~104-byte limit (D-01 E5): a data root under a task
  * worktree's TMPDIR is long enough to lose the socket. So this spec boots its own server over a
  * throwaway repository in `/tmp`, pinned by `fixtureServeEnv`, and tears it down through the shared
- * helpers.
+ * helpers. Windows serves MCP on a named pipe announced by `ipc/<projectId>.pipe`, which has no
+ * path limit (#963), so that platform keeps `os.tmpdir()` and waits for the marker instead.
  */
+
+const onWindows = process.platform === 'win32'
+/** The file whose presence says the leader endpoint is open: the socket, or the pipe marker. */
+const leaderEndpoint = () => join(dataRoot, '.xez-home', 'ipc', `${projectId}.${onWindows ? 'pipe' : 'sock'}`)
+/** What the endpoint file says, or undefined while it is absent. The pipe marker holds a pipe name
+ *  that changes every start, so a marker left by a killed server (Windows stops it hard, with no
+ *  clean-up) is told apart from the new one by its content. A socket is only ever present or not. */
+const endpointStamp = (): string | undefined => {
+  try {
+    return onWindows ? readFileSync(leaderEndpoint(), 'utf8') : existsSync(leaderEndpoint()) ? 'socket' : undefined
+  } catch {
+    return undefined
+  }
+}
 
 const sessionId = `e2e-mcp-live-sync-${process.pid}`
 
@@ -42,18 +58,6 @@ let projectId: string
 let runId: string
 /** A value planted in the page: still there means the page never reloaded. */
 const MARKER = `a20-${process.pid}-${Date.now()}`
-
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const probe = createServer()
-    probe.once('error', fail)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const found = typeof address === 'object' && address ? address.port : 0
-      probe.close(() => done(found))
-    })
-  })
-}
 
 async function waitFor<T>(what: string, probe: () => Promise<T | undefined> | T | undefined, timeoutMs = 30_000): Promise<T> {
   const deadline = Date.now() + timeoutMs
@@ -152,7 +156,7 @@ const rowText = (id: string) =>
   `document.querySelector('[data-slot="task-table-row"][data-run-id="${id}"]')?.textContent ?? ''`
 
 beforeAll(async () => {
-  dataRoot = realpathSync(mkdtempSync('/tmp/xez-e2e-a20-'))
+  dataRoot = realpathSync(mkdtempSync(join(onWindows ? tmpdir() : '/tmp', 'xez-e2e-a20-')))
   repo = join(dataRoot, 'repo')
   mkdirSync(repo, { recursive: true })
   writeFileSync(join(repo, 'README.md'), '# A-20 fixture\n', 'utf8')
@@ -168,8 +172,7 @@ beforeAll(async () => {
   await healthy()
   projectId = await bootProjectId(baseUrl)
   // The socket opens fire-and-forget after boot (N-07); the leader needs it.
-  const socket = join(dataRoot, '.xez-home', 'ipc', `${projectId}.sock`)
-  await waitFor('the MCP socket', () => (existsSync(socket) ? true : undefined), 20_000)
+  await waitFor('the MCP socket', () => (existsSync(leaderEndpoint()) ? true : undefined), 20_000)
 
   const created = await cockpit('/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a finished task for A-20', autonomous: true })
   runId = created.id
@@ -207,14 +210,16 @@ describe('A-20 — the open cockpit follows MCP changes without a reload', () =>
   }, 90_000)
 
   it('after the cockpit loses its server and reconnects, a change made across the gap appears on the same page', async () => {
+    const stale = onWindows ? endpointStamp() : undefined
     await stopFixtureServer(server)
     // Give the page's stream time to notice it is gone before the server comes back.
     await new Promise((r) => setTimeout(r, 2_000))
     startServer()
     await healthy()
-    await waitFor('the MCP socket after the restart', () =>
-      existsSync(join(dataRoot, '.xez-home', 'ipc', `${projectId}.sock`)) ? true : undefined,
-    )
+    await waitFor('the MCP socket after the restart', () => {
+      const stamp = endpointStamp()
+      return stamp !== undefined && stamp !== stale ? true : undefined
+    })
     const title = `Renamed across a reconnect ${Date.now()}`
     const leader = await Leader.open()
     try {

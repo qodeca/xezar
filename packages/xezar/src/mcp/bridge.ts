@@ -858,9 +858,10 @@ function unreachable(
         );
       }
       if ((outcome.code === 'EACCES' || outcome.code === 'EPERM') && overPipe) {
-        // #963: a pipe an elevated engine created refuses a normal user's bridge.
+        // #963: a pipe an elevated engine created refuses a normal user's bridge (#980: they meet in
+        // separate folders, so this is the rare path left).
         return errorResult(
-          `xezar's pipe for project ${label} refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.`,
+          `xezar's pipe for project ${label} refused this user (permission denied). The bridge must run as the same user as the cockpit, and both as administrator or both without.`,
           { status: 'refused' },
         );
       }
@@ -921,6 +922,15 @@ function pipeUnavailable(opened: Extract<PipeOpen, { ok: false }>, project: { id
       );
     case 'not-private':
       return errorResult(`The bridge did not connect to xezar for project ${label}: ${opened.message}`, { status: 'refused' });
+    case 'elevation-differs':
+      // #980: an elevated cockpit serves only an elevated leader, and a cockpit without
+      // administrator rights only a leader without them. `refused`, an existing status word.
+      return errorResult(
+        opened.engineElevated
+          ? `xezar for project ${label} runs as administrator and this leader does not: the cockpit and the leader differ in elevation. Start both as administrator, or both without.`
+          : `xezar for project ${label} runs without administrator rights and this leader runs as administrator: the cockpit and the leader differ in elevation. Start both as administrator, or both without.`,
+        { status: 'refused' },
+      );
   }
 }
 

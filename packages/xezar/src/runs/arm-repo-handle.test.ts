@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 const resolveRepoHandleMock = vi.hoisted(() => vi.fn());
 // The forge module shells out to `gh`. Mocking it is the whole point of this file: what is under
 // test is the WRAPPER's contract — background, never throwing — not the lookup itself, which has
-// its own coverage in `server/forge/github.test.ts`.
+// its own coverage in `server/forge/github-timeline.test.ts`.
 vi.mock('../server/forge/github.ts', () => ({
   resolveRepoHandle: (...args: unknown[]) => resolveRepoHandleMock(...args),
 }));

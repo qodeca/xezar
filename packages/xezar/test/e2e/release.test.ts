@@ -17,8 +17,16 @@ const script = join(repoRoot, 'scripts', 'release.mjs');
 // The orchestrator imports packages/xezar/dist/release/stable.js, so this suite runs after
 // `npm run build`.
 
+/** A documentation page, with a "Describes xezar X." footer when `footer` is given. */
+const docPage = (title: string, footer?: string) =>
+  `# ${title}\n\nA short page.\n${footer === undefined ? '' : `\nDescribes xezar ${footer}.\n`}`;
+
+/** The fixture pages whose footer names the manifest version, so a bump restamps them. */
+const FOOTER_PAGES = ['docs/guide/01-start.md', 'docs/overview.md'];
+
 /** A miniature of the real workspace: the four release manifests, in their real directories,
- *  with the same intra-release dependency edges the pipeline has to re-pin. */
+ *  with the same intra-release dependency edges the pipeline has to re-pin, and a documentation
+ *  folder whose footers the release restamps. */
 async function makeFixture(version = '0.1.5'): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'xezar-release-'));
   await writeFile(
@@ -75,6 +83,15 @@ async function makeFixture(version = '0.1.5'): Promise<string> {
     )}\n`,
   );
   await writeFile(join(root, 'packages', 'web', 'index.js'), 'export {};\n');
+
+  // The documentation footers a release restamps: two pages name the current version, a dated
+  // record keeps the release it was written for, and one page has no footer at all.
+  await mkdir(join(root, 'docs', 'guide'), { recursive: true });
+  await mkdir(join(root, 'docs', 'features'), { recursive: true });
+  await writeFile(join(root, 'docs', 'guide', '01-start.md'), docPage('Start', version));
+  await writeFile(join(root, 'docs', 'overview.md'), docPage('Overview', version));
+  await writeFile(join(root, 'docs', 'features', '2020-01-01-record.md'), docPage('Dated record', '0.0.1'));
+  await writeFile(join(root, 'docs', 'README.md'), docPage('Contents'));
   // See runScript: empty npm configs, so no ambient login can authorise these runs.
   await writeFile(join(root, 'empty-user.npmrc'), '');
   await writeFile(join(root, 'empty-global.npmrc'), '');
@@ -123,23 +140,31 @@ function runScript(fixtureRoot: string, args: string[], extraEnv: Record<string,
 
 const runGit = (fixtureRoot: string, args: string[]) => execFile('git', args, { cwd: fixtureRoot });
 
-test('the version-bump staging path commits every manifest the release script stamps', { timeout: 120_000 }, async () => {
+test('the version-bump staging path commits every manifest and documentation footer the release script stamps', { timeout: 120_000 }, async () => {
   const root = await makeFixture('0.1.5');
   const output = join(tmpdir(), `xezar-release-output-${process.pid}-${Date.now()}.txt`);
   try {
     // Exercise the command the workflow will run, rather than duplicating its manifest list in
     // this fixture. Before #461, this leaves web/package.json modified after the bump commit.
+    // Before the footers were restamped by the release, the bump commit carried no documentation
+    // page, and the footer unit test failed the bump PR.
     const workflow = await readFile(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
     const staging = workflow.match(/^\s+git add (packages\/[^\n]+)$/m)?.[1];
     assert.ok(staging, 'the version-bump PR must have a git add command');
     const stagedPaths = staging.split(' ');
-    const stampedPaths = [
+    const stampedManifests = [
       'packages/contract/package.json',
       'packages/api-client/package.json',
       'packages/web/package.json',
       'packages/xezar/package.json',
     ];
-    assert.deepEqual(stagedPaths, stampedPaths, 'the staging command must name every stamped manifest');
+    assert.deepEqual(
+      stagedPaths,
+      [...stampedManifests, 'docs'],
+      'the staging command must name every stamped manifest and the documentation folder',
+    );
+    // The build job hands the restamped pages to the bump PR under the output name the script emits.
+    assert.match(workflow, /STAMPED_DOCS: \$\{\{ steps\.pack\.outputs\.stampedDocs \}\}/);
 
     await runGit(root, ['init', '--quiet']);
     await runGit(root, ['config', 'user.name', 'release fixture']);
@@ -148,13 +173,15 @@ test('the version-bump staging path commits every manifest the release script st
     await runGit(root, ['commit', '--quiet', '-m', 'fixture base']);
 
     await runScript(root, ['patch', '--dry-run'], { GITHUB_OUTPUT: output });
+    const stampedDocs = (await readFile(output, 'utf8')).match(/^stampedDocs=(.*)$/m)?.[1]?.split(' ');
+    assert.deepEqual(stampedDocs, FOOTER_PAGES, 'the script must name every page it restamped');
     await runGit(root, ['add', ...stagedPaths]);
     await runGit(root, ['commit', '--quiet', '-m', 'chore(release): v0.1.6']);
 
     const { stdout: status } = await runGit(root, ['status', '--porcelain']);
-    assert.equal(status, '', 'the bump commit must leave no stamped manifest unstaged');
+    assert.equal(status, '', 'the bump commit must leave no stamped manifest or page unstaged');
     const { stdout: committed } = await runGit(root, ['show', '--format=', '--name-only', 'HEAD']);
-    assert.deepEqual(committed.trim().split('\n').sort(), [...stampedPaths].sort());
+    assert.deepEqual(committed.trim().split('\n').sort(), [...stampedManifests, ...FOOTER_PAGES].sort());
   } finally {
     await rm(output, { force: true });
     await rm(root, TEST_DIR_RM_OPTIONS);
@@ -191,10 +218,21 @@ test('a patch bump stamps every manifest, keeps the caret ranges, and emits the 
     const rootPkg = await readPkg(root);
     assert.equal(rootPkg.version, '0.0.0');
 
+    // The documentation footers move with the version; the dated record and the page with no
+    // footer are left exactly as they were.
+    assert.equal(await readFile(join(root, 'docs', 'guide', '01-start.md'), 'utf8'), docPage('Start', '0.1.6'));
+    assert.equal(await readFile(join(root, 'docs', 'overview.md'), 'utf8'), docPage('Overview', '0.1.6'));
+    assert.equal(
+      await readFile(join(root, 'docs', 'features', '2020-01-01-record.md'), 'utf8'),
+      docPage('Dated record', '0.0.1'),
+    );
+    assert.equal(await readFile(join(root, 'docs', 'README.md'), 'utf8'), docPage('Contents'));
+
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.match(output, /^version=0\.1\.6$/m);
     assert.match(output, /^published=false$/m);
     assert.match(output, /^dryRun=true$/m);
+    assert.match(output, /^stampedDocs=docs\/guide\/01-start\.md docs\/overview\.md$/m);
   } finally {
     await rm(root, TEST_DIR_RM_OPTIONS);
   }
@@ -239,8 +277,11 @@ test('the existing bump publishes the committed version verbatim', { timeout: 12
     await writeFile(join(root, 'github-output.txt'), '');
     await runScript(root, ['existing', '--dry-run']);
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '2.3.4');
+    // The footers already name the committed version, so there is nothing to restamp.
+    assert.equal(await readFile(join(root, 'docs', 'overview.md'), 'utf8'), docPage('Overview', '2.3.4'));
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.match(output, /^version=2\.3\.4$/m);
+    assert.match(output, /^stampedDocs=$/m);
   } finally {
     await rm(root, TEST_DIR_RM_OPTIONS);
   }
@@ -266,6 +307,7 @@ test('no credential at all FAILS the release instead of quietly dry-running', { 
 
     // Nothing was stamped and nothing was claimed.
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.5');
+    assert.equal(await readFile(join(root, 'docs', 'overview.md'), 'utf8'), docPage('Overview', '0.1.5'));
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.doesNotMatch(output, /^published=true$/m);
   } finally {
@@ -337,6 +379,8 @@ test('pack mode stamps and packs every publishable package, publishes nothing, n
     assert.deepEqual(tarballs, ['scope-fake-client-0.1.6.tgz', 'scope-fake-root-0.1.6.tgz']);
     for (const name of tarballs!) await readFile(join(packDir, name));
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.6');
+    // The build job's collect step reads this list to carry the pages into the bump PR.
+    assert.match(output, /^stampedDocs=docs\/guide\/01-start\.md docs\/overview\.md$/m);
   } finally {
     await rm(root, TEST_DIR_RM_OPTIONS);
   }

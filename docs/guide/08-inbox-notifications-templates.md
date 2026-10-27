@@ -23,7 +23,7 @@ The stored workspace `followups` choice wins over the environment: **On** and **
 
 Choose **Dismiss** to remove a runnable suggestion without starting it. Informational notes offer **Acknowledge** instead. Extra instructions belong to the open card and do not survive a page reload.
 
-![Follow-up suggestions in the Inbox](../screenshots/0.18.0/inbox-dark-1280.png)
+![Follow-up suggestions in the Inbox](../screenshots/0.31.0/inbox-dark-1280.png)
 
 ## To receive browser notifications
 
@@ -57,4 +57,4 @@ Remove entries you no longer need and save, or choose **Reset to defaults**, the
 
 Next: [Projects](09-projects.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

@@ -11,7 +11,6 @@ import {
   agentContract,
   FOLLOWUP_INSTRUCTIONS,
   appendHandoffHeartbeat,
-  deleteHandoff,
   followupsEnabled,
   handoffPath,
   handoffProgressExcerpt,
@@ -293,15 +292,6 @@ describe('handoff journal file', () => {
     expect(readHandoff(dir, 'run1')).toBe('');
     seedHandoffFile(dir, seed);
     expect(readHandoff(dir, 'run1')).toContain('# Handoff — Cover the parser');
-  });
-
-  it('deletes the journal and tolerates a second delete', () => {
-    const dir = dataDir();
-    seedHandoffFile(dir, seed);
-    deleteHandoff(dir, 'run1');
-    expect(readHandoff(dir, 'run1')).toBe('');
-    expect(() => deleteHandoff(dir, 'run1')).not.toThrow();
-    expect(() => deleteHandoff(dir, 'never-existed')).not.toThrow();
   });
 });
 

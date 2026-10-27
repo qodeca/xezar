@@ -3,22 +3,28 @@
 Every test suite in this repository, how to run it, what it needs, where CI runs it, and how to
 read a failure. The detailed documents are linked from each row; this page is the map.
 
-Two rules hold for every suite:
+Three rules hold for every suite:
 
 - **Run vitest through npm, never `npx vitest`** – `npx` can fetch a different vitest from the
   registry. To narrow a run, pass vitest's own arguments after `--`, for example
   `npm test -- path/to/one.test.ts`.
+- **One worker cap for every runner** – `min(4, availableParallelism() - 1)`, set once in
+  `scripts/test-concurrency.mjs` and read by the root and every package `vitest.config.ts` and,
+  through the `scripts/node-test.mjs` launcher, by `test:unit` and `test:package`. It is a
+  guarantee, not a tuning knob (AGENTS.md § Validation); `npm test -- --maxWorkers=N` or
+  `VITEST_MAX_WORKERS` override it for one vitest run. `test-concurrency-cap.test.ts` pins the wiring.
+  The browser suite runs one file at a time regardless.
 - **The gate is `bash .xezar/checks/repo-gates.sh`**, run in the foreground. It runs `npm ci`, a
   security scan, `npm run typecheck`, `npm test`, `npm run test:unit`, `npm run build`,
   `npm run test:package` and `.xezar/checks/repository-checks.sh` (which includes
-  `check:links`). The browser suite, the two harnesses, the MCP coverage floor and mutation testing
-  are not part of it.
+  `check:links`). The browser suite, the two harnesses and the MCP coverage floor are not part of
+  it.
 
 ## Suites
 
 | Suite | Command | Needs first | Operating systems | CI job | Time limits |
 | --- | --- | --- | --- | --- | --- |
-| Unit (server, cockpit, api-client, contract) | `npm test` | `npm ci` | Linux, macOS, Windows | `verify` and `cross-platform` in `ci.yml` | job: 20 min (`verify`); `cross-platform` 20 min Linux, 30 min macOS, 45 min Windows |
+| Unit (server, cockpit, api-client, contract) | `npm test` | `npm ci` | Linux, macOS, Windows | `verify` and `cross-platform` in `ci.yml` | job: 20 min (`verify`); `cross-platform` 30 min macOS, 45 min Windows (Windows and macOS only; Linux runs in `verify`) |
 | node:test core | `npm run test:unit` | `npm ci` | Linux, macOS, Windows (see [Windows known gaps](#windows-known-gaps)) | `verify`, `cross-platform` | `--test-timeout=600000` (10 min) per test; job limits as above |
 | Packaged CLI | `npm run test:package` | `npm run build` (it packs the tarball) | Linux, macOS, Windows | `verify`, `cross-platform` | job limits as above |
 | Cockpit browser e2e | `npm run test:e2e` | `npm ci`; `sh` on `PATH` (Git Bash on Windows); network on the first run to fetch agent-browser and Chrome for Testing | CI: Linux only. Local: Linux, macOS, Windows (7 files fail on Windows, [#1137](https://github.com/qodeca/xezar/issues/1137)) | `ui-e2e` in `ci.yml` | 1 200 s whole suite, 60 s per file and per test, 30 min job |
@@ -26,8 +32,6 @@ Two rules hold for every suite:
 | Two-project harness | `npm run test:multi-project` | `npm run build:server` (no `pretest` hook) | CI: Linux only. Fails on Windows ([#1137](https://github.com/qodeca/xezar/issues/1137)) | `multi-project` in `ci.yml` | 300 s ceiling, 60 s per wait, 12 min job |
 | MCP coverage floor | `npm run test:coverage:mcp` | `npm ci` | any | `mcp-coverage` in `ci.yml`, every pull request | 10 min job |
 | Coverage measurement | `npm run test:coverage` | `npm ci` | any | none – a measurement, not a gate | none |
-| MCP mutation gate | `npm run test:mutation:mcp` (whole scope); CI uses `test:mutation:mcp:plan`, `:shard`, `:report`, `:survivors`, `:issue`; `:weights` refreshes the shard weights | `npm ci`; hours of machine time | any | `mutation.yml`: nightly at 02:17 UTC on the default branch, and manual dispatch; never on a pull request | `plan` 10 min, each `mutants` shard 300 min, `report` 15 min |
-| Read-only lock mutation | `npm run test:mutation:lock` | `npm ci` | any | `lock` job in `mutation.yml`, same night | 30 min job |
 | Documentation links | `npm run check:links` | nothing | any | none in CI; runs inside the gate (`repository-checks.sh`) | none |
 
 "Any" means the command has no operating-system-specific step; it is run regularly only where the
@@ -42,8 +46,7 @@ CI job column says.
 | `npm run test:server-mode` | One `PASS <case>` line per behaviour group, then `PASS server-mode including exact-PID teardown`; a failure prints `FAIL …` | Exit 0 only when every case passed and cleanup left nothing running. |
 | `npm run test:multi-project` | The printed `result.json` path; `state.json` and the logs are beside it, and a failure keeps the scratch folder | Exit 0 = `PASSED`, exit 1 = `FAILED`, exit 2 = `BLOCKED` (a prerequisite such as the built CLI is missing – not a pass). |
 | `npm run test:coverage:mcp` | The per-file table in the output; the report is in `.local/coverage/mcp/` | Any MCP file under 80 % lines or 80 % branches fails the run. |
-| Mutation gates | The run summary in GitHub Actions; locally `.local/mutation/mcp/index.html` and `.local/mutation/lock/index.html` | The MCP scope fails under 80 % (`stryker.config.mjs`), the lock scope under 68 % (`stryker.lock.config.mjs`). A red night files or updates one issue labelled `mutation-nightly`. |
-| `npm run check:links` | One `file:line → target` line per broken link | Any broken relative link or heading anchor under `docs/`, `README.md` or `designs/`. |
+| `npm run check:links` | One `file:line → target` line per broken link | Any broken relative link or heading anchor in `docs/`, the root Markdown files, every tracked `AGENTS.md`, or a `designs/` README. |
 
 ## Windows known gaps
 
@@ -71,6 +74,18 @@ Three Windows settings the suites rely on:
   after 10 minutes. On Node 24 it bounds single tests only, not a test file whose process outlives
   its tests – that is the #1136 hang, which this option does not fix.
 
+## Red-proof driver (worktree only)
+
+`packages/xezar/test/red-proofs.mjs` proves a set of #467-era regression tests go red without
+their fix (AGENTS.md § Changing a mechanism that already works). Run it as
+`node packages/xezar/test/red-proofs.mjs [case-name...]`; no names runs every case.
+
+**Run it only inside your own task worktree, never in a primary checkout.** Each case writes a
+deliberate defect into a tracked source file, runs the owning test, then writes the original bytes
+back. While a case runs the file is broken for anyone else reading that checkout, and if the
+process is interrupted the defect stays. Run `git status` afterwards. It is not part of the gate or
+of CI, and nothing calls it.
+
 ## Detailed documents
 
 | Document | What it covers |
@@ -78,7 +93,7 @@ Three Windows settings the suites rely on:
 | [agent-browser.md](agent-browser.md) | The browser provider, the browser suite's boot, isolation, ceilings, recorded runs, the user-guide flow package, iterating on one spec, Windows notes and the docs capture harness |
 | [browser-dry-run-exceptions.md](browser-dry-run-exceptions.md) | Guide flows a dry-run browser fixture cannot honestly cross, and the evidence that covers each instead |
 | [browser-manual-checks.md](browser-manual-checks.md) | The dated record of browser checks done by hand in one QA run |
-| [coverage-gaps.md](coverage-gaps.md) | Regression risk ranked by behaviour, measured coverage, the MCP floor and the mutation gates |
+| [coverage-gaps.md](coverage-gaps.md) | Regression risk ranked by behaviour, measured coverage and the MCP floor |
 | [local-data.md](local-data.md) | Which files belong in Git and which local data belongs in `.local/` |
 | [multi-project-harness.md](multi-project-harness.md) | The two-project harness: running it, its ceiling, named breaks, Windows |
 | [multi-project-test-levels.md](multi-project-test-levels.md) | Multi-project risks mapped to the cheapest test level |

@@ -6,12 +6,16 @@ import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
+import { updateAutomationInputSchema } from '@qodeca/xezar-contract';
 import type {
   agentQuotaRefreshInputSchema,
+  automationCheckInputSchema,
+  checkoutProjectInputSchema,
   createAgentProfileInputSchema,
   openAgentAccountFileInputSchema,
   retryProviderInputSchema,
   selectAgentProfileInputSchema,
+  setAgentConfigInputSchema,
   setConfigInputSchema,
   setProviderEnabledInputSchema,
   setWorkspaceConfigInputSchema,
@@ -99,6 +103,30 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   type AgentQuotaRefreshBody = InferRequestType<(typeof client.api.v1.workspace)['agent-quota']['refresh']['$post']>['json'];
   type AgentQuotaRefreshSchema = z.input<typeof agentQuotaRefreshInputSchema>;
   type _AgentQuotaRefreshExact = Assert<Mutual<AgentQuotaRefreshSchema, AgentQuotaRefreshBody>>;
+
+  // ---- the request-schema twins (#1177, wave 2) ---------------------------------------------
+  // Each of these was declared twice: once in `server.ts` for the route, once here in the
+  // contract for the MCP door and the cockpit. The `server.ts` copies are gone; these pins are
+  // what keeps a second copy from coming back.
+  type CheckoutProjectBody = InferRequestType<typeof client.api.v1.projects.checkout.$post>['json'];
+  type CheckoutProjectSchema = z.input<typeof checkoutProjectInputSchema>;
+  type _CheckoutProjectExact = Assert<Mutual<CheckoutProjectSchema, CheckoutProjectBody>>;
+
+  type SetAgentConfigBody = InferRequestType<(typeof client.api.v1)['agent-config'][':id']['$put']>['json'];
+  type SetAgentConfigSchema = z.input<typeof setAgentConfigInputSchema>;
+  type _SetAgentConfigExact = Assert<Mutual<SetAgentConfigSchema, SetAgentConfigBody>>;
+
+  type AutomationCheckBody = InferRequestType<(typeof client.api.v1.automations)[':id']['check']['$post']>['json'];
+  type AutomationCheckSchema = z.input<typeof automationCheckInputSchema>;
+  type _AutomationCheckExact = Assert<Mutual<AutomationCheckSchema, AutomationCheckBody>>;
+
+  // `PUT /automations/:id` still validates with its own storage-backed schema (bounds and
+  // defaults the contract does not carry yet, #1177), so the whole body is not paired. Its
+  // `expectedRevision` is: that key is the one the MCP `update_automation` door reads from the
+  // contract, and the run-time test below pins its value rule against the route's.
+  type UpdateAutomationRevisionBody = InferRequestType<(typeof client.api.v1.automations)[':id']['$put']>['json']['expectedRevision'];
+  type UpdateAutomationRevisionSchema = z.input<typeof updateAutomationInputSchema>['expectedRevision'];
+  type _UpdateAutomationRevisionExact = Assert<Mutual<UpdateAutomationRevisionSchema, UpdateAutomationRevisionBody>>;
 
   const savedHome = process.env.XEZ_HOME;
   let home: string;
@@ -189,5 +217,82 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
     expect(body.error).toMatch(/^resources\.maxParallel: /);
     expect(body.error).toContain('cli.instance: ');
     expect(body.error.indexOf('resources.maxParallel')).toBeLessThan(body.error.indexOf('cli.instance'));
+  });
+  const send = (method: 'POST' | 'PUT', path: string, body: unknown) =>
+    apiRequest(app, path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  /** The fields the route requires, so a test can vary exactly one key. */
+  const automationBody = {
+    name: 'parity',
+    events: ['issue.opened'],
+    intervalSeconds: 300,
+    filters: {},
+    task: { prompt: 'triage {{github.url}}' },
+  };
+
+  // The automation routes answer 409 before validation unless the feature is on (#801); the flag
+  // is read per request, so it is switched on for these tests only.
+  describe('the automation bodies (XEZ_AUTOMATIONS=1)', () => {
+    const savedAutomations = process.env.XEZ_AUTOMATIONS;
+    beforeEach(() => {
+      process.env.XEZ_AUTOMATIONS = '1';
+    });
+    afterEach(() => {
+      if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
+      else process.env.XEZ_AUTOMATIONS = savedAutomations;
+    });
+
+    /**
+     * #1177: the contract said `expectedRevision: z.number()` while the route enforced a positive
+     * integer, and the MCP leader was told the contract's rule. Each value is checked at BOTH ends,
+     * so loosening either one turns this red.
+     */
+    it.each([0, -1, 1.5])('refuses expectedRevision %s at the route AND in the contract', async (expectedRevision) => {
+      const res = await send('PUT', '/api/v1/automations/missing', { ...automationBody, expectedRevision });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(Object.keys(body)).toEqual(['error']);
+      expect(body.error).toMatch(/^expectedRevision: /);
+
+      expect(updateAutomationInputSchema.shape.expectedRevision.safeParse(expectedRevision).success).toBe(false);
+    });
+
+    it('accepts a positive integer expectedRevision at both ends (the route then answers 404, past validation)', async () => {
+      const res = await send('PUT', '/api/v1/automations/missing', { ...automationBody, expectedRevision: 1 });
+      expect(res.status).toBe(404);
+      expect(updateAutomationInputSchema.shape.expectedRevision.safeParse(1).success).toBe(true);
+    });
+
+    it('refuses an unknown key on the automation update at the route AND in the contract', async () => {
+      const res = await send('PUT', '/api/v1/automations/missing', { ...automationBody, expectedRevision: 1, surprise: true });
+      expect(res.status).toBe(400);
+      expect(updateAutomationInputSchema.safeParse({ ...automationBody, filters: { lookbackDays: 7, maxRecords: 25 }, expectedRevision: 1, surprise: true }).success).toBe(false);
+    });
+
+    /** The check body was `.strict()` on the route only; the contract copy the route now reads is strict too. */
+    it('refuses an unknown key on an automation check, before the handler looks the automation up', async () => {
+      const res = await send('POST', '/api/v1/automations/missing/check', { mode: 'preview', surprise: true });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(Object.keys(body)).toEqual(['error']);
+    });
+  });
+
+  it('keeps the checkout route\'s own 400 message for a body without a url', async () => {
+    const res = await send('POST', '/api/v1/projects/checkout', { name: 'x' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'url must be a GitHub repository' });
+  });
+
+  it('caps an agent-config write at the same 2,000,000 characters', async () => {
+    const res = await send('PUT', '/api/v1/agent-config/claude-md', { content: 'x'.repeat(2_000_001), version: null });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(Object.keys(body)).toEqual(['error']);
+    expect(body.error).toMatch(/^content: /);
   });
 });

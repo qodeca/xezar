@@ -14,8 +14,7 @@ Have Node.js 22 or newer and npm available. Install Git to use isolated task bra
 - Install each agent CLI as its own Windows instructions describe.
 - Turn on long file paths for Git: `git config --global core.longpaths true`.
 - Turn on long file paths in Windows. This needs an administrator: set `LongPathsEnabled` to `1` under `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, for example from PowerShell run as administrator: `Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1`. `xezar serve` warns at start-up while either long-path setting is off.
-- Start xezar without administrator rights, or the MCP leader bridge (`xezar mcp`) is unavailable.
-- Attaching a leader to a running Codex session is not available on Windows yet.
+- Start xezar and your leader agent the same way – both as administrator or both without. An elevated xezar serves the MCP leader bridge (`xezar mcp`) only to an elevated leader.
 
 If something still fails on Windows, see [Troubleshooting](16-troubleshooting-faq.md#on-windows).
 
@@ -74,7 +73,7 @@ In the cockpit, open the project's **Settings → Agents** to check provider ava
 4. In a Git repository, keep **Worktree** on for an isolated checkout. Leave **Autonomous** off if you want the agent to pause for your answers.
 5. Choose **Start** and send the task. Open its thread to follow the response.
 
-![New-task composer with task options](../screenshots/0.18.0/new-task-dark-1280.png)
+![New-task composer with task options](../screenshots/0.31.0/new-task-dark-1280.png)
 
 See [Tasks and runs](02-tasks-and-runs.md) for replies, review and task controls, and [Worktrees and Git](03-worktrees-and-git.md) for where changes go.
 
@@ -172,4 +171,4 @@ For a workspace reset, remove the whole `~/.xezar/` directory, or the directory 
 
 Next: [Tasks and runs](02-tasks-and-runs.md)
 
-Describes xezar 0.30.0.
+Describes xezar 0.31.0.

@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { renameReplacingSync } from '../platform/atomic-write.ts';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -728,11 +728,9 @@ export class EventController {
       reactedSeq: this.#reacted,
       floorSeq: this.#floor,
     };
-    const tmp = `${this.#statePath}.tmp`;
     try {
       mkdirSync(dirname(this.#statePath), { recursive: true, mode: 0o700 });
-      writeFileSync(tmp, `${JSON.stringify(body)}\n`, { encoding: 'utf8', mode: 0o600 });
-      renameReplacingSync(tmp, this.#statePath);
+      writeFileAtomicSync(this.#statePath, `${JSON.stringify(body)}\n`, { encoding: 'utf8', mode: 0o600 });
     } catch (err) {
       if (this.#warnedWrite) return;
       this.#warnedWrite = true;

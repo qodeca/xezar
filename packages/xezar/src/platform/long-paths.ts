@@ -189,11 +189,6 @@ const GIT_TOO_LONG = /\bFilename too long\b/i;
  *  form), so this is a limit the long-path settings do not lift, such as a name over 255 characters. */
 const NODE_TOO_LONG = /\bENAMETOOLONG\b/i;
 
-/** Git's "Filename too long" or Node's ENAMETOOLONG. */
-export function isPathTooLong(text: string): boolean {
-  return GIT_TOO_LONG.test(text) || NODE_TOO_LONG.test(text);
-}
-
 /**
  * win32: append a hint to a failure detail that says a path was too long. Git's "Filename too long"
  * gets the long-path fix; a bare ENAMETOOLONG gets only "shorten it", because turning long file paths

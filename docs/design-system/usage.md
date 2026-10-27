@@ -52,7 +52,7 @@ not a delivered fix or a claim that the control passes browser checks.
 empty and populated template lists, the disabled case and the caller's sizing
 classes. Start at `packages/web/src/components/prompt-template-menu.tsx:55` and
 `packages/web/src/components/picker-pill.tsx:20`. Inspect all three render sites:
-`packages/web/src/routes/new-task.tsx:615` (icon-only),
+`packages/web/src/routes/new-task.tsx:545` (icon-only),
 `packages/web/src/routes/github/hand-to-agent.tsx:286` and
 `packages/web/src/routes/inbox.tsx:367` (labelled). Follow insertion and caret return
 through `packages/web/src/components/composer/composer.tsx:173` for `/new`,

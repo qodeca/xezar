@@ -40,7 +40,8 @@ unversioned `/api/*` spelling was removed rather than frozen.
 ## Also exported
 
 - **Protocol types** (`UiEvent`, `UiItem`, `ToolDisplay`, …) — the agent event vocabulary the
-  service streams over SSE, plus the pure `toolDisplay()` renderer for it.
+  service streams over SSE, plus the pure `toolDisplay()` renderer for it. Both are defined once
+  in `@qodeca/xezar-contract` and reach you through the re-export below.
 - **Scope helpers** (`apiPath`, `apiBase`, `queryScope`, `resolveApiUrl`, `API_PREFIX`, and the
   `getApiScope` / `setApiScope` / `getApiBaseUrl` / `setApiBaseUrl` accessors) — the `/api/v1` ↔ `/api/v1/p/:projectId`
   project-scope prefixing.
