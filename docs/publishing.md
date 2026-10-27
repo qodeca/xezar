@@ -96,18 +96,6 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    and the fresh archive-scan output in the body of the promotion pull request
    (`promote/v<version>`), the one that carries that commit into `main`.
 
-   The nightly mutation gate is not part of this path, and a release does not wait on it. Read
-   the latest run of `.github/workflows/mutation.yml`, or the open `mutation-nightly` issue, if
-   you want the current score before you cut. A survivor is a weak test to fix in its own PR, not
-   a reason to hold a release that passed the full canonical gate and QA.
-
-   History: the mutation gate ran as the `release` / `release-prep` workflows' first check step
-   until 2026-09-12, then moved to a nightly run against the default branch (#377), because a
-   nearly four-hour measurement whose only repair is a stronger test in somebody else's PR must
-   not hold a finished release. The nightly workflow holds no npm credential and no publish
-   command, and `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it
-   moved, and the unchanged 80 % floor:
-   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
    The `check:pack` scan was added by [PR #481](https://github.com/qodeca/xezar/pull/481), merged
    2026-09-16.
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a

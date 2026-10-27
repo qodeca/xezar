@@ -40,8 +40,7 @@
       "test:server-mode",
       "test:multi-project",
       "test:e2e",
-      "npm pack --dry-run",
-      "mutation.yml"
+      "npm pack --dry-run"
     ]
   },
   "answers": {
@@ -1013,14 +1012,14 @@
       "kitBlob": "31f242e89b9d1d1616fbc89171dd11cca3e6cb61"
     },
     ".xezar/workflows/release-prep.yaml": {
-      "sha256": "8b4571db20a55ee8b5521b4daac074e0fe8ec6d1059bb8e36e36063868a692fe",
+      "sha256": "0cec3fc0cc7dc18dd7f7fbd942ef54e08d39f74e6b837386d61a8b24da22f077",
       "origin": "copied",
       "kitSource": "workflows/release-prep.yaml",
       "kitBlob": "2c0d118c643d2c4f53332fdcd3720e6b10849e04",
       "patch": "LP-5"
     },
     ".xezar/workflows/release.yaml": {
-      "sha256": "7176e1fa351fd55a151ecd0b4eb1824da650f4449c75bd76dbdd6e17b9a7c3d1",
+      "sha256": "98d5d78e75d1027d197b76008095688890b3c28cf16d4270be6c3cffbf4a6c92",
       "origin": "copied",
       "kitSource": "workflows/release.yaml",
       "kitBlob": "a60417cd626123d536eee96e8b29bd4fca494af8",

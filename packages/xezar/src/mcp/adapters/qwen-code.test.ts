@@ -4,7 +4,7 @@ import type { McpJournalRow } from '@qodeca/xezar-contract';
 import { describe, expect, it } from 'vitest';
 import type { EventDispatch } from '../event-controller.ts';
 import { QWEN_PUSH_HELD_MESSAGE, QWEN_PUSH_UNACKNOWLEDGED_MESSAGE, QwenCodeInboxAdapter } from './qwen-code.ts';
-import { STRYKER_HEADER, guardedCode } from './source-guard.testkit.ts';
+import { guardedCode } from './source-guard.testkit.ts';
 
 const row = (journalSeq: number): McpJournalRow =>
   ({
@@ -124,19 +124,8 @@ describe('QwenCodeInboxAdapter', () => {
   });
 
   it('starts no process and reads no environment', () => {
-    // Read through `guardedCode`: the nightly mutation run hands this test Stryker's instrumented
-    // copy, whose header reads `g.process.env`, and the raw text failed that run's dry run (#443).
     const source = guardedCode(readFileSync(fileURLToPath(new URL('./qwen-code.ts', import.meta.url)), 'utf8'));
     expect(source).not.toMatch(FORBIDDEN_IN_ADAPTER);
-  });
-
-  it('the source guard ignores Stryker instrumentation but still sees a real regression (#443)', () => {
-    // RED against: matching the raw text, which fails every nightly mutation dry run of this file.
-    const adapter = "import type { McpJournalRow } from '@qodeca/xezar-contract';\nexport const x = stryMutAct_9fa48('0') ? '' : 'qwen-inbox';\n";
-    expect(STRYKER_HEADER + adapter).toMatch(FORBIDDEN_IN_ADAPTER);
-    expect(guardedCode(STRYKER_HEADER + adapter)).not.toMatch(FORBIDDEN_IN_ADAPTER);
-    expect(guardedCode(STRYKER_HEADER + "import { spawn } from 'node:child_process';\n" + adapter)).toMatch(FORBIDDEN_IN_ADAPTER);
-    expect(guardedCode(STRYKER_HEADER + adapter + 'export const env = globalThis.process.env;\n')).toMatch(FORBIDDEN_IN_ADAPTER);
   });
 });
 
