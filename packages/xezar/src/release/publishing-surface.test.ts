@@ -16,9 +16,9 @@ import { npmCommand } from '../../test/helpers/platform.ts';
  * them removed: a reinstated snapshot job, or an `NPM_TOKEN` that creeps back into `ci.yml`,
  * fails here rather than being noticed after it has already published.
  *
- * The rule is by ROLE, not by file list. A scheduled workflow is allowed — the nightly MCP mutation
- * gate (`mutation.yml`, #377) is one — as long as it has no publish power. The danger in the old
- * nightly cron was never the schedule; it was the credential and the publish command inside it.
+ * The rule is by ROLE, not by file list. A scheduled workflow is allowed as long as it has no
+ * publish power. The danger in the old nightly cron was never the schedule; it was the credential
+ * and the publish command inside it.
  * So `release.yml` is the one workflow that may hold `id-token: write` or a publish command, and
  * every other workflow, whatever its name or trigger, must hold neither.
  */
@@ -197,34 +197,5 @@ describe('publishing surface', () => {
       'scripts/mock-qwen.mjs',
       'scripts/qwen-pre-tool-hook.mjs',
     ]);
-  }, 60_000);
-
-  it('keeps the MCP mutation run (Stryker) out of what a user installs', () => {
-    // #333: Stryker is the MCP mutation gate — nightly on GitHub Actions since #377 — and a
-    // devDependency only. A user who installs @qodeca/xezar must get neither its ~140 packages nor
-    // its config files, nor the shard/aggregate/tracking-issue scripts in `mutation/`.
-    const manifest = JSON.parse(
-      readFileSync(join(repoRoot, 'packages', 'xezar', 'package.json'), 'utf8'),
-    ) as Record<string, unknown> & { files: string[]; devDependencies: Record<string, string> };
-    const stryker = (deps: unknown) => Object.keys((deps ?? {}) as Record<string, string>).filter((n) => n.startsWith('@stryker-mutator/'));
-    // `api` is type-only: the three Stryker configs import their option types from it.
-    expect(stryker(manifest.devDependencies)).toEqual(['@stryker-mutator/api', '@stryker-mutator/core', '@stryker-mutator/vitest-runner']);
-    for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'bundleDependencies', 'bundledDependencies']) {
-      expect(stryker(manifest[field]), `${field} must not name Stryker`).toEqual([]);
-    }
-    // What the tarball holds is npm's answer, not a reading of `files`: an entry like "." or a
-    // glob ships the run's config without naming it.
-    const npm = npmCommand(['pack', '--dry-run', '--json', '--ignore-scripts']);
-    const packed = JSON.parse(
-      execFileSync(npm.file, npm.args, {
-        cwd: join(repoRoot, 'packages', 'xezar'),
-        encoding: 'utf8',
-      }),
-    ) as Array<{ files: Array<{ path: string }> }>;
-    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts', 'stryker.lock.config.mjs', 'vitest.mutation.lock.config.ts'];
-    const shipped = packed[0]!.files
-      .map((f) => f.path)
-      .filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/') || p.startsWith('mutation/'));
-    expect(shipped, 'the mutation run must not reach the tarball').toEqual([]);
   }, 60_000);
 });

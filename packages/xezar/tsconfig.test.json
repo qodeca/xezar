@@ -10,6 +10,6 @@
     // name the real `.ts` files. Safe here because this config never emits.
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts", "vitest.mutation.config.ts", "vitest.mutation.lock.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
   "exclude": []
 }

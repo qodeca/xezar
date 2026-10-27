@@ -18,7 +18,7 @@ version from the registry, which is a slow, networked, silently-different test r
 pass vitest's own arguments after `--`: a path (`npm test -- packages/web/src/routes/settings`),
 `--testTimeout=30000 path/to/one.test.ts`, or `-t "the name of one test"`.
 
-Detail: coverage and mutation in [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md);
+Detail: coverage in [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md);
 browser-suite execution and isolation in [docs/testing/agent-browser.md](docs/testing/agent-browser.md).
 
 Bare `#n` means `qodeca/xezar`.

@@ -19,9 +19,10 @@ appears in section 4 as supporting evidence only – it never drives the ranking
 no gate protects outranks a behaviour that a suite covers but CI never runs, and both outrank a
 file with a low percentage that nothing depends on.
 
-**Section numbers are labels, not a sequence.** There is no section 8 and no 10.7: both were
-removed, and the rest were not renumbered because code and other documents cite sections by number
-(§ 10.3 and § 10.13 in the Stryker configs, § 10.8 in `docs/publishing.md`, § 10.12 in `ci.yml`).
+**Section numbers are labels, not a sequence.** There is no section 8 and no 10.7, 10.8 or 10.13:
+they were removed, and the rest were not renumbered because code and other documents cite sections
+by number (§ 10.12 in `ci.yml`). 10.8 and 10.13 described the nightly mutation gate, which the
+owner removed from the project on 2026-10-27; their text is in the git history of this file.
 For how to run each suite, see the [testing index](README.md).
 
 **How to read the evidence.** Claims marked *measured* come from a command that was run or a test
@@ -741,9 +742,10 @@ have shipped a leak or an ownership pass in 0.14.0 are #337, closed here.
 direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope run of a median 38 s
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
-scope. The real run, its cost and its score are in 10.8. It was adopted as a release gate on the
-sample's recommendation; that step was removed on 2026-09-12; nightly GitHub Actions runs were
-scheduled by #433 on 2026-09-15. The per-PR form stays the named break the MCP test floor requires.
+scope. It was adopted as a release gate on the sample's recommendation; that step was removed on
+2026-09-12, nightly GitHub Actions runs were scheduled by #433 on 2026-09-15, and the owner removed
+mutation testing from the project on 2026-10-27. The per-PR form stays the named break the MCP test
+floor requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -827,13 +829,12 @@ mutations beyond #352's seven, and one survives this file at its new 100 % branc
 discriminator action is refusal-only, `requiredBy` is then empty too, and `0 === 0` makes `everyCall`
 read `true` – the page printing "required on every call" for a guard no call can reach – where the
 truth is `false`. No live tool is shaped that way today, so nothing goes red: re-measured 2026-09-12,
-the MCP mutation test set (`packages/xezar/vitest.mutation.config.ts`, 45 files, 930 tests) passes
+the MCP mutation test set of the time (45 files, 930 tests) passes
 with the break applied, and so do the three suites that read `everyCall` at all
 (`api-reference.test.ts`, `mcp-reference-route.test.ts`, `mcp-api-doc.test.ts`, three runs each).
 The survivor itself is recorded with the rest in **#338**, not here; what belongs here is why it is
 worth recording. A file can sit at 100 % branches and still ship a real behavioural break, which is
-the whole reason the floor is a floor rather than a target, and the reason the mutation gate exists
-(10.8) – Stryker does not kill such a mutant either, it makes it *visible*, which coverage cannot.
+the whole reason the floor is a floor rather than a target.
 
 **The lesson, not the number.** "The only way to reach it is to fake the registry" is a claim about
 the seam, and a seam a shipped module already imports through is not a fake. Before writing an
@@ -878,307 +879,6 @@ floor now. What was left uncovered in `service.ts` and why: the `closed` answer 
 
 Done in #352, recorded in 10.9; the later measurements are in 10.10 and 10.11.
 
-### 10.8 The nightly gate: Stryker over the MCP code
-
-`npm run test:mutation:mcp` – StrykerJS 9.6.1 over `packages/xezar/src/mcp/**`, killed by the MCP
-suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
-and its reasons: `packages/xezar/stryker.config.mjs`.
-
-**Read this first: it is scheduled nightly against the default branch on GitHub Actions** (`develop`
-since 2026-10-18, `main` before it; GitHub runs a schedule on the default branch) (`.github/workflows/mutation.yml`,
-#377, added by #433 on 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
-release path. From 2026-09-12 until #433 it ran nowhere automatically. Before that it was a
-**release** gate – the `release` and `release-prep` workflows ran it as their first check step,
-before anything was authored – and that step was removed (#378). The first manual run on
-2026-09-15 was red on a missing-shard failure (#443); no scheduled run had occurred at the
-2026-09-15 observation. That dated state was later overtaken: the first complete six-of-six nightly
-on `main` ran at `fe33541`, recorded as the starting list in § 10.8 (run
-[34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325)).
-
-Four things made the release path the wrong position, and none of them is about the gate's
-quality:
-
-- it ran **only** at release, so its first end-to-end exercise arrived when failure cost most.
-  The 0.14.0 attempt died in Stryker's own dry run on a config mismatch (#375) – a lost release
-  run, a fix PR, a review and a relaunch, and **zero** product defects found;
-- it **blocked**. A surviving mutant means a test is weak, which is next week's work, not a
-  reason to withhold code that already passed the full canonical gate and independent QA;
-- **nobody who could act was listening.** The authors of those tests had finished hours earlier,
-  and the release task cannot fix a weak test;
-- **a check step is binary.** "Is this survivor already tracked in #338 / #353, or is it new?" is
-  not a question an exit code can answer.
-
-Nothing about the gate itself changed: same scope, same suites, same `thresholds.break` of 80,
-no file excluded. It was moved, not softened.
-
-**How the nightly run works, and how many jobs it needs.** A GitHub job is hard-killed at
-**6 hours**, and the scope's mutants took about 35 runner-hours on 2026-10-19 on `ubuntu-latest`
-runners, which have 4 cores – so `stryker.config.mjs`'s `min(4, availableParallelism() - 1)`
-resolves to 3 there. A single scheduled job would not finish. So the workflow:
-
-- **plans** disjoint slices of the scope (`npm run test:mutation:mcp:plan`,
-  `packages/xezar/mutation/shards.mjs`), reading the `mutate` globs out of `stryker.config.mjs` so
-  there is no second list of what the gate covers, and packing them on measured CI minutes per
-  file. The number of slices is derived, not set: the fewest that keep every multi-file slice inside
-  a 120-minute budget (18 on 2026-10-19; see the incidents below for why);
-- **runs** Stryker over each slice in its own job (`npm run test:mutation:mcp:shard`), with a
-  config that differs from the gate's in one key: `thresholds.break: null`. A slice's score is
-  not the gate's score (point 1 below), so no slice has a floor of its own;
-- **sums** the status counts of every slice and applies the floor ONCE, to the whole scope
-  (`npm run test:mutation:mcp:report`, `packages/xezar/mutation/aggregate.mjs`), reading `break`
-  out of `stryker.config.mjs`. It fails closed: a missing or unparsable report, a slice or a run
-  that tested no mutant (Stryker scores that `NaN`, and `NaN < 80` is false), a file reported
-  twice, outside its slice or never, and a score below the floor all make the run red;
-- **tells somebody.** On the default branch it keeps ONE tracking issue in step (label `mutation-nightly`,
-  `npm run test:mutation:mcp:issue`): a red night files it, comments on it, or reopens it; the
-  next green night comments and closes it. A planner that fails takes the same path;
-- **sorts the survivors** (`npm run test:mutation:mcp:survivors`, `packages/xezar/mutation/survivors.mjs`)
-  into three groups, the owner's rule of 2026-09-15: **known** if the starting list below has them,
-  keeping a #338 or #353 tag; **already seen** if the previous complete run on the default branch had them (`main` as the fallback on the night the default moved);
-  **new** otherwise. A survivor is a `Survived` or a `NoCoverage` mutant – an untested new function
-  produces the second kind, so leaving it out would hide the regression the list exists to show. It
-  is matched by file, mutator and the text it mutates, never by line, so an edit above it does not
-  make it new. Twins – the same text mutated the same way twice in one file – are told apart only by
-  their order, so a twin killed on the night a same-text survivor appears hides the new one, and a
-  new twin's row shows the last twin's line: for twins, trust the count, not the line. The grouping
-  never changes the verdict: the floor alone decides red or green;
-- **notes new survivors early.** When new survivors appear and the score still clears the floor,
-  the run stays green and the tracking issue gets one comment listing them – on a closed issue a
-  comment, not a reopen. A grouping that could not run reaches the issue the same way, as
-  "unknown", rather than reading as "nothing new". Every body carries a hidden
-  `<!-- xezar:mutation-nightly run=<id> -->` line, so re-running the report job of one run changes
-  the issue's state if it must and never posts a second comment. The survivor steps may fail
-  without skipping the issue step: the grouping and the upload are `continue-on-error`.
-
-**"Previous" is the previous COMPLETE run on the default branch.** A run where every shard reported uploads its list
-as the `mutation-survivors` artifact (kept 90 days); the next run downloads the newest one from
-another run on the default branch, or from `main` when the default branch has none yet. A run with a missing shard uploads nothing, so a survivor of that shard is not
-called new the night after. When no list is found – the first run after this change, or a gap
-longer than 90 days – the report says "already seen" could not be checked, and lists every survivor
-outside the starting list as new.
-
-**The starting list** is [`docs/testing/mcp-mutation-survivors.json`](mcp-mutation-survivors.json):
-every survivor of run [34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325), the
-first complete six-of-six nightly on `main`, at `fe33541` – 1 549 survived and 622 without coverage.
-Its #338 and #353 tags were placed by hand: #338's lines are on `11a6df3` and were carried to
-`fe33541` through `git diff`, and a line whose text had changed there (`adapters/claude-code.ts:567`,
-`adapters/codex.ts:473`) carries no tag; #353's are the attach (`leader-delivery.ts:446`) and abort
-(`:553`) lines. #353's third mutant, `#owed` collapsed to `latestSeq > 0` (`:468`), is hand-written, and
-Stryker left no survivor on that line at `fe33541`, so nothing there is tagged; the untagged survivors at
-`:466` and `:467` mutate the acknowledged-position read, not the comparison #353 names. Where an issue
-names the mutator, only that mutator is tagged. **To refresh
-it** – after a batch of survivors is fixed, or to adopt a later run as the new start – download a
-complete default-branch run's shard reports and rebuild the file; tags carry over by identity:
-
-```sh
-gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
-npm run --silent test:mutation:mcp:survivors -- baseline --reports .local/mutation/shards \
-  --run <run-id> --revision <sha> --date <yyyy-mm-dd> [--tag <issue>=<file>:<line>[:<Mutator>]] \
-  [--issue <n>=<title>]
-```
-
-`--issue` names an issue in the file's `tracked` map, so a new tag number has a title next to it.
-
-Commit the result in its own pull request, so the diff shows which survivors left and arrived.
-
-**Forcing the red path.** Dispatch the workflow with `force_red: true`
-(`gh workflow run mutation.yml --ref develop -f force_red=true`, on the default branch – any other ref skips the tracking issue): no shard runs, the report job writes
-a "forced" summary, files, comments on or reopens the tracking issue and fails, all in minutes. The
-next real green night closes the issue again. It proves the path a real failure takes; it measures
-nothing.
-
-One limit. GitHub switches a schedule off after 60 days without repository activity in a public
-repository, silently; a disabled schedule files no issue.
-
-**Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
-
-| | |
-|---|---|
-| Mutants generated | 12 530 |
-| Ignored as static (`ignoreStatic`) | 1 238 |
-| Tested | 11 292 |
-| Killed / timed out / survived / no coverage / errors | 7 928 / 1 261 / 1 426 / 675 / 2 |
-| **Mutation score** | **81.39 %** (86.57 % over covered code) |
-| Wall clock | 3 h 40 min (220 min), dry run 43 s |
-| Tests per mutant | 19.2 on average |
-
-`thresholds.break` is **80**, the same number as the coverage floor and for the same reason: it is a
-floor, not a target. The measured 81.39 % clears it by 1.39 points, which is thin on purpose – the
-survivors in #338 are what raises it.
-
-**Four things this gate does not tell you, and the fifth it tells you wrong if you forget it:**
-
-1. **The score is whole-scope, not per file.** Unlike the coverage floor, Stryker's `break` is one
-   number for the run. Per file the spread is wide today: `adapters/` 64.3 % (claude-code 67.3,
-   codex 63.5, opencode 62.1 – all #311's files), `operation-receipts.ts` 66.5, `event-controller.ts`
-   69.6, `service.ts` 75.6, `index.ts` 76.6, against `project-catalogs.ts` and `tool.ts` at 100. A
-   per-file mutation floor would fail today; adopting one is a decision, not a tightening (#338).
-2. **A timeout counts as detected.** 1 261 of the 9 189 "detected" mutants are timeouts, and a busy
-   machine produces more of them – the same run on an idle machine scores slightly lower, not
-   higher. Read a score near the floor with the machine's load in mind before blaming a PR.
-3. **675 mutants have no coverage at all.** They are counted in the score (as not detected), and
-   they are where the coverage floor and this gate say the same thing twice.
-4. **Static mutants are not measured.** 1 238 of them – module-level tables, regexes and schema
-   declarations – would need all ~930 MCP tests (2026-09-12) each, which is what made the first attempt a ~60-hour
-   run. What they would have measured is pinned where the value is used (10.5).
-5. **It measures the MCP suites only.** A mutant killed by a suite v8 cannot see (10.4) still counts
-   as survived here, because this run does not execute those suites. Check 10.4 before writing a
-   vitest test for a survivor.
-
-The survivors are tracked in **#338** and #353 and listed in the starting list above, not in this
-prose: this section records the method and its cost, and each night's own HTML/JSON report
-(`.local/mutation/mcp/`, uploaded as `mutation-report-<shard>`) is the current list. The three survivors that could have
-shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
-#337, closed in #335.
-
-**Incident: byte-size balancing stopped predicting cost (#443, 2026-09-17).** Scheduled run
-[35175010173](https://github.com/qodeca/xezar/actions/runs/35175010173) on `main` at `fdd5b4e`
-(2026-09-17T02:35Z) was cancelled: five of six byte-balanced shards finished (3 h 04 min to 4 h 43
-min), and the sixth was still running when the job's 300-minute ceiling hit, at 07:36:06Z. The
-previous complete night, [35048569575](https://github.com/qodeca/xezar/actions/runs/35048569575)
-on `f330b2c` (2026-09-16), finished every shard in under 4 hours.
-
-Between the two nights, main gained PRs #533, #539, #541 and #542 — several hundred lines of new
-"fragile MCP–leader" tests (#532) that each exercise multiple MCP modules together (event journal,
-leader delivery, the event controller, the bridge) rather than one file each. Under
-`coverageAnalysis: 'perTest'`, a mutant's real cost is how many tests Stryker reruns to check it —
-`coveredBy.length` in its own JSON report — and those broad tests attached themselves to nearly
-every file in the scope, not only the ones with new test files of their own. Downloading both
-nights' shard reports and summing `coveredBy.length` per file shows the shape of it:
-`event-controller.ts` went from 32 003 to 178 734 (5.6×) with not one line of its own source or its
-own test file touched that night; `leader-delivery.ts` went from 17 834 to 124 301 (7.0×);
-`stall-monitor.ts` went from 0 (no covering tests at all) to 46 284. The scope-wide total measured
-this way was 384 511 the previous complete night and had already passed 1 155 719 across the five
-shards that DID report on the cancelled night (the sixth, cancelled, is not counted — its true total
-is higher still). Byte size, what the six shards were balanced on, never moved, so the balancer kept
-shipping the same split that was safe when it was drawn and had become badly wrong by the time it
-ran.
-
-**The fix has two parts, because either alone measured short against the incident's own numbers.**
-`packages/xezar/mutation/shards.mjs`'s `planShards` now balances on measured cost — the committed
-snapshot at [`docs/testing/mcp-mutation-shard-weights.json`](mcp-mutation-shard-weights.json), built
-from the `coveredBy` sums above — falling back to byte size, one file at a time, for anything the
-snapshot has not measured yet; both the `plan` job (building the matrix) and the `report` job
-(re-deriving the same plan to check nothing went missing) read the same committed file, so no new
-workflow permission or artifact was needed to keep them in lockstep. Re-running the incident's own
-numbers through the new balancer alone (still six shards) cuts the heaviest shard from 359 164 to
-206 620 — a 42% reduction, for no added job. `DEFAULT_SHARDS` also moves from 6 to 8: past eight, the
-single heaviest file (`event-controller.ts` at 178 734) floors whatever shard holds it regardless of
-shard count, so more shards stop helping. Combined, the heaviest shard in the new split is 178 734,
-versus 359 164 in the byte-balanced six-shard split that was actually running — roughly half the
-load, comfortably inside the 300-minute ceiling with real margin for the snapshot to go stale again.
-Nothing about the scope, the suites or the 80% floor changed; `thresholds.break` and the mutated
-globs are untouched.
-
-**The snapshot will go stale the same way byte size did**, just far more slowly, since it starts
-from a real measurement instead of an arbitrary proxy. *(Superseded by the third incident below:
-the snapshot is now in measured minutes, and is refreshed from each shard's `timing.json`.)* Seven files in the
-committed snapshot are flagged `estimatedPaths`: they sat in the cancelled shard and their weights
-are carried over from the previous complete night rather than measured this one, so they are likely
-under-counted the same way every measured file here was found to be — refresh those first.
-
-**Incident: the eight-shard fix's own proof run was cancelled too (#443, 2026-09-17).** Dispatched
-proof run [35199363744](https://github.com/qodeca/xezar/actions/runs/35199363744) on branch
-`xez/148f449e` at `44cc047` (the eight-shard, measured-cost fix above) ended **CANCELLED**: job
-`Mutants 6` ran from 08:23:10Z to 13:23:48Z and hit the 300-minute ceiling; every other shard
-reported, from 1h32m (`Mutants 1`) to 4h54m (`Mutants 5`). The estimate's own caveat was right:
-`Mutants 6` held `tools/task-create.ts`, one of the seven `estimatedPaths` files whose weight was
-carried over from a previous night rather than measured on the incident night, and `Mutants 5` held
-`bridge.ts`, another of the seven. Both shards' non-estimated files summed to a nominal weight
-close to every OTHER shard's total (~127k–128k against a baseline of ~150k) — the wide spread in
-real time (1h49m–2h55m for shards with none of the seven files, against 4h54m and a cancellation
-for the two carrying `bridge.ts` and `tools/task-create.ts`) is attributable to those two files
-alone, not to anything else in their shards.
-
-**The fix raises those two files' weights, not the shard count first.** Back-calculating from the
-run's own wall-clock time against the baseline (no-estimated-file) shards' rate gives a lower bound
-of roughly 278 000 for `bridge.ts` and 287 000 for `tools/task-create.ts` — a lower bound only for
-the second, since its shard never finished and so never reported a real `coveredBy` sum. The
-committed snapshot now weights `bridge.ts` at 280 000 and `tools/task-create.ts` at 300 000, and the
-other five `estimatedPaths` files by the same method, more moderately: `operation-receipts.ts`
-190 000, `adapters/pi-link.ts` 100 000, `index.ts` 65 000, `project-catalogs.ts` 58 000,
-`adapters/claude-code.ts` 20 000. At those weights, `planShards`'s heaviest-first packing puts
-`bridge.ts` and `tools/task-create.ts` alone in their own shard, exactly the way it already isolates
-`event-controller.ts` (178 734) — no shard-pinning logic was added, only corrected data. `DEFAULT_SHARDS`
-also moves from 8 to 9, both for the extra shard the two new solo files need and to keep the
-remaining shards comfortably inside the ceiling: with the corrected weights the resulting split's
-heaviest shard is `tools/task-create.ts` alone at 300 000 (an estimated 3h37m at the slower,
-multi-file rate the baseline shards measured, or roughly 2h34m at the faster solo rate
-`event-controller.ts`'s own shard measured — either way, well clear of 300 minutes), and every other
-shard sits at roughly 227 000–228 000 (an estimated 2h44m–2h45m at the same baseline rate) — both
-comfortably under the "twice the fair share" ceiling `mutation-shards.test.ts` already enforces.
-
-**This is still an estimate, not a re-measurement**, because a shard that never reports never
-produces a real `coveredBy` sum to sum from. The next scheduled or dispatched run either confirms
-the correction — every shard reports, `tools/task-create.ts` finishes with real headroom — or shows
-these two files' true cost is still higher, in which case the next fix has real per-file numbers
-for both to work from for the first time. Refresh all seven `estimatedPaths` weights with real
-`coveredBy` sums the first time every shard reports in one run.
-
-**Incident: nine fixed shards no longer fit (#443, third round, 2026-10-19).** The last complete
-run was the dispatched proof run [35229419588](https://github.com/qodeca/xezar/actions/runs/35229419588)
-on 2026-09-17. From 2026-09-18 every scheduled night ended with two to four of its nine shards
-killed at the 300-minute ceiling, and from 2026-10-18 one more shard failed in its dry run. Run
-[39190958937](https://github.com/qodeca/xezar/actions/runs/39190958937) (on `develop` at
-`5a31cf0`) is the measurement: shards 1–5, 8 and 9 finished in 112–298 minutes, shard 6 was cancelled
-at 300, and shard 7 failed its dry run after 5 minutes. Three causes, each enough on its own:
-
-1. **The work had outgrown nine jobs.** Reading Stryker's own progress lines in each shard's job
-   log against the report's mutant order gives every file's minutes; the scope came to **2 078
-   minutes** of mutation time (about 35 runner-hours with each job's ~6 minutes of `npm ci`,
-   instrumenting and dry run). Nine perfectly balanced shards would average 231 minutes before any
-   night-to-night variance, and the same file measured up to half as slow again on another night
-   (`index.ts` 94 then 138 minutes, `tools/execution-control.ts` 64 then 86).
-2. **The weights no longer predicted time.** The snapshot was a month old (2026-09-17), in
-   covering-test counts, which stopped tracking cost: `tools/task-create.ts` weighed 300 000 and took
-   149 minutes, `bridge.ts` weighed 280 000 and took 108. Files new since then fell back to raw
-   byte size in the same sum – another unit altogether. Shard 6 drew `leader-delivery.ts`,
-   `tools/project-config.ts`, `tools/results-evidence.ts`, `tools/execution-control.ts` and three
-   small files: **5 127 mutants**, against 823–2 948 in every other shard, planned at a weight like
-   theirs. It was two thirds done at the ceiling, with an estimated 400 minutes of mutation time in
-   all.
-3. **One shard could never start.** The Qwen Code adapter's source guard
-   (`adapters/qwen-code.test.ts`, "starts no process and reads no environment") matched the raw
-   file text against `/process\.env/`, and Stryker's instrumented copy says `g.process.env` in its
-   header – the failure #436 fixed for Claude Code. Every shard holding `adapters/qwen-code.ts` died
-   in its dry run (shard 7, from 2026-10-18).
-
-**The fix.** The guard reads the file through the same `guardedCode` helper the Claude Code guard
-uses (now `adapters/source-guard.testkit.ts`), and `src/mutation-name-filter.test.ts` fails per
-pull request when any test in the mutation run forbids, in text it did not strip, a word Stryker's
-header contains – shown red against the old Qwen Code guard. The snapshot
-([`mcp-mutation-shard-weights.json`](mcp-mutation-shard-weights.json)) is now in **measured CI
-minutes per file** from that run; ten files it could not measure in full are listed under
-`estimatedPaths` (one scaled up from 72 % measured, the others from the last night that measured
-them or a fit of the measured files against Stryker's own per-mutant test plan). A file the
-snapshot never measured is weighed in the same unit: its bytes times the scope's own minutes per
-byte. And the shard **count** is derived: the fewest that keep every multi-file shard inside
-`SHARD_BUDGET_MINUTES` (120, 40 % of the ceiling), at most 24. On these weights that is **18
-shards**: four hold one file each (`tools/task-create.ts` 149, `index.ts` 138, `event-controller.ts`
-137, `leader-delivery.ts` 125 minutes) and fourteen hold 108–112 minutes. A file cannot be split
-across jobs – Stryker keeps a mutant only when one `--mutate` range contains it whole – so the
-slowest file is the floor; `src/mutation-shards.test.ts` holds it to 60 % of the ceiling and every
-multi-file shard to the budget, and fails against the old snapshot. The runner-hours are the same
-as before; what changes is that every job now has room to finish. Nothing is dropped or narrowed:
-same scope, same suites, same floor, and the aggregate's completeness checks are unchanged.
-
-**Refreshing the snapshot.** A Stryker reporter (`packages/xezar/mutation/timing-reporter.mjs`,
-listed in `stryker.config.mjs`) writes `timing.json` beside every shard's report: the wall time
-charged to each file, and how many of its mutants were planned and tested. It flushes once a
-minute, so a shard killed at the ceiling still uploads what it measured – the files that most need
-re-measuring are no longer the ones nobody can measure. One night's artifacts refresh the snapshot:
-
-```sh
-gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
-npm run --silent test:mutation:mcp:weights -- --reports .local/mutation/shards \
-  --run <run-id> --revision <sha> --date <yyyy-mm-dd>
-```
-
-A part-tested file is scaled up to all its mutants and listed under `estimatedPaths`, as is a file
-no shard reached (it keeps its previous value). Commit the result in its own pull request. Refresh
-when a shard passes the budget by a wide margin, after a pull request that adds broad
-multi-module tests, and first of all after the first night that runs with this change.
-
 ### 10.9 Re-measured on `main` after #311 – the floor is green (#352)
 
 Measured 2026-09-12: the floor turned green on `main` after #311 and #352, and `npm run test:coverage:mcp` has run in its own unconditional CI job on every pull request since #550; the dated table is in the git history of this file.
@@ -1194,56 +894,6 @@ Superseded by later measurements; the dated record is in the git history of this
 ### 10.12 Re-measured for CI enrollment (#550)
 
 Measured 2026-09-17 at 0.15.0: 61 test files and 2,070 tests in 85.00 s locally, every MCP file at or above the 80/80 floor, so #550 enrolled the command in CI without lowering a threshold. The dated per-file table, which still lists the since-deleted pi and OpenCode files, is in the git history of this file.
-
-### 10.13 A second scope: the read-only lock
-
-`npm run test:mutation:lock` – StrykerJS over `packages/xezar/src/core/read-only-lock.ts` (the
-shell-command decision every backend's read-only step uses) and `core/qwen-tool-policy.ts` (Qwen
-Code's tool lists and hook decision), killed by their own suites
-(`packages/xezar/vitest.mutation.lock.config.ts`: `read-only-lock`, `qwen-tool-policy`,
-`qwen-hook-command` and `codex-read-only-hook` tests). Config and its reasons:
-`packages/xezar/stryker.lock.config.mjs`. It spreads the gate's config and changes only the scope,
-the test set, the report folder (`.local/mutation/lock/`) and the sandbox folder.
-
-**It runs nightly** (since 2026-10-19, #443) as one job of its own in `.github/workflows/mutation.yml`
-(`Mutants read-only lock`, a few minutes), never per pull request, and by hand. It is a separate
-config rather than two more `mutate` globs because `mutation/shards.mjs` and `mutation/aggregate.mjs`
-read the MCP gate's scope and floor out of `stryker.config.mjs`: widening that scope would change the
-nightly's shards, its per-file weights (`mcp-mutation-shard-weights.json`) and the score its floor
-applies to.
-
-**Its floor is `thresholds.break: 68`**, written only in `stryker.lock.config.mjs`, one number for
-both files: just under the 68.33 % measured after the Git rewrite (below). Stryker fails the lock job under it, and the
-`report` job's aggregate (`aggregateLock`) reads the same number from the same file and folds the
-scope into the night's one verdict, summary (a "Read-only lock scope" section) and tracking issue.
-It fails closed like the shards: a missing, empty, partial or foreign report is red. Its survivors
-are not grouped into new / already seen / known – the starting list is the MCP gate's. Move the
-floor only on purpose.
-
-Re-measured 2026-10-19 at `5a31cf0` on the same machine: the same counts and the same **71.64 %**,
-in 1 min 27 s.
-
-Re-measured 2026-10-19 after the rewrite of `read-only-lock.ts`'s Git handling landed (#1109), same
-machine: 1 477 mutants instrumented; killed / timed out / survived / no coverage 906 / 9 / 390 / 34;
-**68.33 %** (70.11 % over covered code) – `read-only-lock.ts` 68.53 % (70.23 %), `qwen-tool-policy.ts`
-67.40 % (69.55 %). The rewrite added more mutable code than its tests
-kill, so the score fell; the floor moved from 71 to 68 with it. The table below is the earlier baseline.
-
-**Measured, 2026-10-18, revision `ff70b0e` on an 18-core macOS laptop, concurrency 4.**
-
-| | `read-only-lock.ts` | `qwen-tool-policy.ts` | Both |
-|---|---|---|---|
-| Mutants generated | 882 | 269 | 1 151 |
-| Ignored as static (`ignoreStatic`) | 30 | 42 | 72 |
-| Killed / timed out / survived / no coverage | 613 / 9 / 206 / 24 | 151 / 0 / 69 / 7 | 764 / 9 / 275 / 31 |
-| **Mutation score** (over covered code) | **73.00 %** (75.12 %) | **66.52 %** (68.64 %) | **71.64 %** (73.76 %) |
-| Wall clock | | | 57 s, dry run 1 s (297 tests) |
-
-The survivors are mostly `ConditionalExpression` (100) and `StringLiteral` (75) mutants: a branch
-forced true or false, or a word in a refusal reason or an argument row changed, that no test
-notices. The report (`.local/mutation/lock/index.html`) lists each one. Static mutants – the
-module-level argument tables – are not measured, for the reason 10.8 point 4 gives.
-
 
 ## Hosted mode: mode × transport verification (#547, SM1)
 
@@ -1308,13 +958,4 @@ top of an untested behaviour.
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
 every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
 every pull request. A PR on the MCP scope must also show each new test failing against a named break.
-Neither half passes alone. Its slower counterpart is
-`npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
-`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against the default branch** (`develop` since 2026-10-18, `main` before it) in
-`.github/workflows/mutation.yml` (#377, added by #433), split across as many jobs as its measured minutes need (18
-on 2026-10-19, #443), whose counts are summed before the one floor is applied, and a red
-night files or updates a `mutation-nightly` issue, which also gets a
-note when new survivors appear on a green night. Same scope,
-same 80 % floor
-([coverage-gaps.md § 10.8](coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code)). The
-read-only lock scope runs beside it each night with its own 68 % floor (10.13), in the same verdict.
+Neither half passes alone.
