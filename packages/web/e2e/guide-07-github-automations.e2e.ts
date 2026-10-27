@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -47,6 +47,14 @@ beforeAll(async () => {
   git('config', 'user.email', 'guide-07@xezar.test')
   git('config', 'user.name', 'xezar guide-07')
   git('commit', '-q', '--allow-empty', '-m', 'seed')
+  // The New issue dialog drafts only with an issue-filing skill. Without one in the project it
+  // would come from the default team catalog, fetched in the background on first use – a network
+  // race this spec lost whenever the fetch took longer than its wait.
+  mkdirSync(join(dataRoot, '.xezar/skills'), { recursive: true })
+  writeFileSync(
+    join(dataRoot, '.xezar/skills/guide-07-issue-create.md'),
+    '---\nname: guide-07-issue-create\ndescription: The issue-filing skill the guide 07 fixture carries.\n---\n\nDraft the issue.\n',
+  )
 
   const port = await freePort()
   baseUrl = `http://127.0.0.1:${port}`
