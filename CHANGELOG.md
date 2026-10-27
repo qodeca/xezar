@@ -1,3 +1,229 @@
+# 0.32.0 (2026-10-27)
+
+## Highlights
+
+A running Codex session can now be the project leader on Windows, as it already could on macOS and
+Linux, and an xezar run as administrator on Windows serves an administrator leader through its own
+administrators-only folder. On Windows, restart a running leader session after you upgrade: an
+older bridge is refused. An MCP session refuses to work on a project folder that was deleted,
+moved or replaced after it connected, and zod and hono move past their published advisories. On
+Windows a workspace setting saves reliably and a saved workflow shows its file name, and copying a
+path in the cockpit works on a page without a clipboard. Underneath, duplicated code, dead exports
+and test-only functions are gone, the browser suite and the two-project check pass on Windows, and
+mutation testing is removed from the project.
+
+## 🔒 Security
+
+- 🔒 **An MCP session now stops at a replaced project folder.** Each MCP session is bound to its
+  project folder when it opens, and xezar checks that folder again before every tool call. If the
+  folder was deleted, moved, re-created at the same path or swapped for a link, the call is refused
+  with "the project folder this MCP session is bound to is missing". Before this, the cockpit kept
+  serving the folder from its cache. Reconnect from the project folder to start a new session. (#1169)
+- 🔒 **The elevated MCP folder lives where a normal process cannot reach it.** It is placed under a
+  machine-owned `%ProgramData%\xezar` parent (not under your per-user state), with a per-user
+  subfolder, so a process of the same user without administrator rights can neither rename the folder
+  aside nor swap it. Every level is created with its access list already set and owned by
+  Administrators; a level a normal user pre-created, or a link planted in the path, is refused rather
+  than used, deleted or taken over, and the message names that folder and says an administrator can
+  delete it. Each connection file is created owned by Administrators and private from its first
+  moment, never owned by the account that runs xezar, and the engine and the bridge now prove the
+  shared key to each other before either trusts the connection. The folder's drive is found without
+  trusting the `%SystemRoot%` environment variable. (#980, #1197)
+- 🔒 **zod and hono move past their published advisories.** zod goes to 4.6.7 (the high-severity
+  advisory covers every release before 4.6.6) and hono to 4.13.13 (the moderate advisory covers
+  4.12.4–4.13.10); both runtime packages now use one version range everywhere they are declared.
+  The MCP tool listing writes a nullable flag as `type: ["boolean", "null"]` instead of an
+  `anyOf` pair, which means the same thing to a JSON Schema client. (#1160)
+
+## ✨ Features
+
+- ✨ **A running Codex session can be the project leader on Windows.** Attaching it was refused
+  there with "not available on this system yet". Codex listens on the same local socket on
+  Windows as on macOS and Linux, but Node cannot open that kind of socket on Windows, so xezar now
+  connects through Codex's own relay, `codex app-server proxy`, while the leader is attached and
+  stops it afterwards. The same checks apply as on macOS and Linux: the socket must belong to you,
+  in a folder only you can open, and the app-server must confirm the Codex home and the session.
+  (#977, #1195)
+- ✨ **Windows: an elevated xezar serves an elevated MCP leader.** When xezar and the leader's
+  `xezar mcp` bridge both run as administrator, they now meet in their own administrators-only
+  folder instead of MCP being unavailable. A cockpit and a leader that differ in elevation are still
+  refused, now with a message that says so. An elevated xezar also attaches to a running Codex
+  session as the leader; Codex's own folder is checked as private to you, as it is without
+  administrator rights. On Windows – with or without administrator rights – restart a running
+  leader session after upgrading: a bridge from an older version is refused with a message that
+  names the version mismatch. macOS and Linux are not affected. (#980, #1197)
+
+## 🐛 Fixes
+
+- 🐛 **Copying the project folder no longer fails silently on a page without a clipboard.** On a
+  cockpit opened over plain http the browser offers no clipboard, and the Copy button in Settings
+  threw an error instead of answering; it now shows the path in a notice so it can be copied by
+  hand. The provider sign-in command and the bookmarklet Copy buttons use the same shared copy
+  helper, and "Bookmarklet URL copied" lost its stray period. (#1157)
+- 🐛 **On Windows, saving a workflow names the file, not its full path.** The "Saved" message and
+  the delete confirmation split the saved path on `/` only, so a Windows path showed in full. They
+  now show the file name on every system. (#1137, #1193)
+- 🐛 **Leader event state, journal compaction and the server-install record no longer share a
+  fixed `.tmp` staging file.** Each write now stages through its own temporary name and removes
+  it on failure, so two writers cannot interleave and a temporary file left by a crash no longer
+  blocks later writes. (#1164)
+- 🐛 **Audit payload digests now follow the documented canonical form for number-like keys.**
+  Operation receipts, audit records and version tokens share one canonical JSON serializer, so
+  a payload with keys such as `"10"` and `"9"` is digested in code-unit order everywhere. Only
+  new audit records of such payloads get a different digest; stored records are never re-checked
+  against new ones. (#1164)
+- 🐛 **On Windows, saving a workspace setting no longer fails with "could not be saved".** Saving a
+  setting, such as switching a provider off, failed while another part of xezar was still reading
+  the settings file. The save now waits for that read without freezing xezar, as saving agent
+  accounts already did. (#1105, #1196)
+
+## 🔧 Changed
+
+- 🔧 **The MCP `update_automation` door states the route's own revision rule.** Its
+  `expectedRevision` is now a positive integer in the tool schema, as `PUT /automations/:id` has
+  always required, so a leader is refused before the call instead of by the route's 400. Three
+  routes – project checkout, agent-config write and the automation check – now validate with the
+  contract's request schemas instead of their own copies, with the same bodies accepted and the
+  same errors returned. (#1177, #1186)
+- 🔧 **The agent-event protocol and the tool display model are defined once, in the contract.**
+  The service and the api-client used to keep two copies held together by mirror tests, and the
+  copies had drifted. The wire format is unchanged; as a side effect, older (v1) Qwen Code tool
+  calls in the cockpit now get their correct titles. (#1184)
+- 🔧 **Core module tidy and test-only production functions removed.** One copy of the record
+  helpers and the shell quoting serves the core, and eight functions that only their own tests
+  called are deleted, with the tests moved to the functions the server really calls. No behaviour
+  change. (#1165)
+- 🔧 **The cockpit drops dead code and keeps one source for shared values.** Unused hooks are
+  gone, and the agent backend order, the syntax-highlighting line cap and the desktop and
+  reduced-motion checks each come from one place instead of several hand copies. No behaviour
+  change. (#1163)
+- 🔧 **Unused server and contract exports, re-export shims and stale comments are removed.** No
+  request or response shape changes. (#1158)
+- 🔧 **The MCP echo filter that only tests used is gone.** Leader delivery and its tests now run
+  the same `isOwnEcho` check, and a new test fails if the event catalog ever gains a kind the
+  leader must not receive. Production delivery was already safe; nothing a leader sees changes.
+  (#1162)
+- 🔧 **Two cockpit helpers that only tests used are deleted, and workflow step moves have one
+  implementation.** Plan review keeps the clamping move and remove it already had. (#1151)
+
+## 📝 Specs & Documentation
+
+- 📝 **The old `mcp-audit.ndjson` audit file stops being read in 0.33.0.** xezar 0.13.0–0.15.0
+  wrote the audit trail to `.local/xezar/mcp-audit.ndjson`; every release since 0.16.0 writes
+  `audit.ndjson` and reads the old file only when the new one is missing. The backward
+  compatibility page now names 0.33.0 as the release that removes that reader. The old file is
+  never deleted; keep or archive it by hand. (#563, #1181)
+- 📝 **The user-guide screenshots no longer show a false warning.** Every picture used to show
+  the plan-limits chip as "stale" and a login "out until" a date already gone, because the
+  dry-run sample was dated weeks before the capture; a time zone offset was also rewritten into
+  one that does not exist (`+09:30`). The new-task pictures show every composer option with the
+  workflow picker closed, the MCP connection picture shows its card and heading below the page
+  header, and the Agent accounts section of the guide says which part of the pane its picture
+  shows. (#1190)
+- 📝 **The user guide shows the 0.31.0 cockpit.** Every screenshot and the tour are re-captured
+  from 0.31.0 into `docs/screenshots/0.31.0/`, so the removed pi and OpenCode backends no longer
+  appear, and the 0.18.0 set is gone. Settings reference gains a Project setup section, Workflows
+  lists the variables a step can read (`XEZ_TASK_ID`, `XEZ_STEP_ID`, `XEZ_HANDOFF_FILE`,
+  `XEZ_TODOS_FILE`, `XEZ_PR_NUMBER`), and Upgrading gains notes for 0.20.0, 0.30.0 and 0.31.0.
+  A unit test now ties every "Describes xezar X." footer to the released version. (#1168)
+- 📝 **The user guide footers describe 0.31.0.** Every "Describes xezar …" footer in
+  `docs/guide/`, `docs/project-layout.md` and `docs/upgrading.md` names 0.31.0. (#1148)
+- 📝 **The link checker covers the root documents and every `AGENTS.md`, and the links it found
+  are fixed.** Two old changelog links now point at tagged copies, an empty 0.9.0 Highlights
+  placeholder is gone, and two compatibility entries that shipped in 0.31.0 are labelled
+  0.31.0. (#1149)
+- 📝 **The kit's own environment variables are listed in one table.** (#1154)
+- 📝 **Process documents point at folders that exist.** Decisions, incident notes and
+  deprecations name their real homes. (#1180)
+- 📝 **Design folder statuses are current.** Issue filing is marked implemented by #502, and the
+  quality-checks and decisions designs are on hold with an owner and a recorded date for the
+  expiry check. (#1183)
+- 📝 **The documentation is in step with the clean-up changes.** It restores the Node 22.13
+  floor for contributors and documents the moved contract code, the shared test worker cap, the
+  per-call MCP folder re-check and the release bump-PR failure mode. (#1192)
+- 📝 **The upgrade guide has a 0.32.0 note.** On Windows, restart a leader session that was
+  running during the upgrade. (#1203)
+
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **Pull request CI runs three fewer runners.** The cross-platform matrix no longer repeats
+  the Linux gate that `verify` already runs, and its informational current-LTS canaries on Windows
+  and macOS now run only after a merge into `develop`. The four required Windows and macOS legs are
+  unchanged, and their timeout comment now cites measured run times instead of first estimates.
+  (#1182)
+- 🚀 **Development tooling hygiene.** Building and testing this repository now needs Node 22.13 or
+  newer, the version the cockpit build and test tools already required; the published package
+  still runs on Node 22. Vite, Vitest and undici move to releases that close their published
+  advisories, the cockpit configs declare the packages they import, and dependency
+  update PRs no longer propose an `@types/node` major or stop at five open PRs (#1188).
+- 🚀 **Eight browser test files and the two-project check now pass on Windows.** The browser
+  tests start Chrome with animation allowed (a Windows machine with animation effects off made
+  Chrome ask every page to reduce motion), keep fixture servers out of the real user folder, and
+  handle the Windows MCP pipe and fake agent programs. Two scroll checks and a settings save now
+  retry or re-measure instead of failing on a late layout change. The two-project check measures
+  the server's status cache from the right moment and compares full folder names, not short 8.3
+  names. (#1137, #1193)
+- 🚀 **The node:test suites and a single package's vitest run now share the test worker cap.**
+  `npm run test:unit` and `npm run test:package` ran with node's default concurrency (one file
+  per core but one) and `npm test -w <package>` ignored the root cap, so one gate run could still
+  fan out to three uncapped pools. All of them now read `min(4, availableParallelism() - 1)` from
+  `scripts/test-concurrency.mjs`. It is still a no-op on CI's small runners, and
+  `--maxWorkers=N`, `VITEST_MAX_WORKERS` and an explicit `--test-concurrency` still win (#1187).
+- 🚀 **The release version bump restamps the documentation footers.** The Release workflow's
+  version-bump commit now moves every "Describes xezar X." footer to the new version next to the
+  four manifests, so the footer test passes on the bump PR and releases stay fully automatic.
+  (#1168)
+- 🚀 **Mutation testing is removed from the project.** The nightly Stryker workflow
+  (`mutation.yml`), its configs, its shard, report, survivor and tracking-issue scripts, their
+  tests, the committed shard weights and survivor list, the `test:mutation:*` npm scripts and the
+  three `@stryker-mutator/*` development libraries (144 packages in the lock file) are gone, by
+  owner decision. Nothing a user installs changes: Stryker was never part of the published package.
+  The MCP coverage floor and the rule that a new MCP test must fail against a named break stay.
+  (#443, #338, #1198)
+- 🚀 **Two tests that failed at random on Windows CI now wait for the right thing.** The
+  session-control acceptance test waits for the change summary of the last finished turn before it
+  checks that a refused action changed nothing, and the leave-guard test waits for the browser
+  history to settle between cases instead of sleeping a fixed 30 ms. (#1105, #1196)
+- 🚀 **The opt-in inbox browser cases run on every e2e run.** They boot their own test server with
+  follow-ups on instead of always skipping, and the automations case that only repeated a guide
+  spec is deleted with its reason recorded. (#1189)
+- 🚀 **The two largest test files are split by describe block.** The project-config and GitHub
+  forge suites move into smaller files with test bodies unchanged and the same 378 tests passing.
+  (#1185)
+- 🚀 **Server test-suite hygiene.** Two suites stop leaking temporary folders, a stale skip-marker
+  allowance is removed, and an orphaned script's checks move into the unit tests. (#1159)
+- 🚀 **The browser specs share one port picker and one health wait.** About 40 copies are gone;
+  every spec keeps its own wait budget. (#1166)
+- 🚀 **Two flaky tests check behaviour, not a clock or a swallowed error.** The audit-rotation
+  writer test counts lock waits instead of timing them, and the package CLI tests report the CLI's
+  own output when it exits early. (#1105, #1167)
+- 🚀 **The cockpit sidebar snapshot no longer depends on test order, and the boot code is
+  tested.** The API base and root lookup moved out of `main.tsx` into tested modules with
+  unchanged behaviour. (#1156)
+- 🚀 **More security-sensitive files route their changes to a security reviewer.** Secret
+  redaction, the agent environment, the read-only lock, the read-only hook bundles and the pack
+  check join the repository's trust boundaries. (#1152)
+- 🚀 **Release preparation relabels compatibility entries and expires designs by their own
+  recorded date.** (#1170)
+- 🚀 **Architecture, security and acceptance reviews record their verdicts on the task record**,
+  the way code review, design review and QA already do. (#1161)
+- 🚀 **The hotfix workflow is no longer dispatched by routing, and two idle model lanes are
+  switched off.** Hotfixes are made by hand from `main`. (#1150)
+- 🚀 **`.gitignore` states the real policy.** Rules that contradicted their guard test or
+  repeated other rules are removed. (#1153)
+- 🚀 **Every bare `eslint-disable` marker gives a reason, and the red-proof driver says it is
+  for a worktree only.** (#1155)
+- 🚀 **The MCP coverage floor holds on Windows for the Codex link.** Five `codex-link` test cases
+  that ran only on Linux and macOS now run on every OS, so its branch coverage on Windows rises from
+  75.24 % to 80.19 %. Test-only. (#1199)
+- 🚀 **Test data no longer carries a real account ID or computer name.** A Windows account ID and
+  two computer names in test fixtures and one comment become neutral examples. Behavior does not
+  change. (#1200)
+- 🚀 **guide-07 seeds its own issue-filing skill, so it no longer waits on the background skills
+  fetch.** It failed at random on Windows when the fetch was slow. Test-only. (#1202)
+
+---
+
 # 0.31.0 (2026-10-23)
 
 ## Highlights
