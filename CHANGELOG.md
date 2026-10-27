@@ -4,13 +4,13 @@
 
 A running Codex session can now be the project leader on Windows, as it already could on macOS and
 Linux, and an xezar run as administrator on Windows serves an administrator leader through its own
-administrators-only folder. Restart a running leader session after you upgrade: an older bridge is
-refused. An MCP session refuses to work on a project folder that was deleted, moved or replaced
-after it connected, and zod and hono move past their published advisories. On Windows a workspace
-setting saves reliably and a saved workflow shows its file name, and copying a path in the cockpit
-works on a page without a clipboard. Underneath, duplicated code, dead exports and test-only
-functions are gone, the browser suite and the two-project check pass on Windows, and mutation
-testing is removed from the project.
+administrators-only folder. On Windows, restart a running leader session after you upgrade: an
+older bridge is refused. An MCP session refuses to work on a project folder that was deleted,
+moved or replaced after it connected, and zod and hono move past their published advisories. On
+Windows a workspace setting saves reliably and a saved workflow shows its file name, and copying a
+path in the cockpit works on a page without a clipboard. Underneath, duplicated code, dead exports
+and test-only functions are gone, the browser suite and the two-project check pass on Windows, and
+mutation testing is removed from the project.
 
 ## 🔒 Security
 
@@ -49,9 +49,9 @@ testing is removed from the project.
   folder instead of MCP being unavailable. A cockpit and a leader that differ in elevation are still
   refused, now with a message that says so. An elevated xezar also attaches to a running Codex
   session as the leader; Codex's own folder is checked as private to you, as it is without
-  administrator rights. Without administrator rights nothing changes. Restart a running leader
-  session after upgrading: a bridge from an older version is refused with a message that names the
-  version mismatch. (#980, #1197)
+  administrator rights. On Windows – with or without administrator rights – restart a running
+  leader session after upgrading: a bridge from an older version is refused with a message that
+  names the version mismatch. macOS and Linux are not affected. (#980, #1197)
 
 ## 🐛 Fixes
 
@@ -85,7 +85,6 @@ testing is removed from the project.
   routes – project checkout, agent-config write and the automation check – now validate with the
   contract's request schemas instead of their own copies, with the same bodies accepted and the
   same errors returned. (#1177, #1186)
-
 - 🔧 **The agent-event protocol and the tool display model are defined once, in the contract.**
   The service and the api-client used to keep two copies held together by mirror tests, and the
   copies had drifted. The wire format is unchanged; as a side effect, older (v1) Qwen Code tool
@@ -127,7 +126,6 @@ testing is removed from the project.
   lists the variables a step can read (`XEZ_TASK_ID`, `XEZ_STEP_ID`, `XEZ_HANDOFF_FILE`,
   `XEZ_TODOS_FILE`, `XEZ_PR_NUMBER`), and Upgrading gains notes for 0.20.0, 0.30.0 and 0.31.0.
   A unit test now ties every "Describes xezar X." footer to the released version. (#1168)
-
 - 📝 **The user guide footers describe 0.31.0.** Every "Describes xezar …" footer in
   `docs/guide/`, `docs/project-layout.md` and `docs/upgrading.md` names 0.31.0. (#1148)
 - 📝 **The link checker covers the root documents and every `AGENTS.md`, and the links it found
@@ -143,6 +141,8 @@ testing is removed from the project.
 - 📝 **The documentation is in step with the clean-up changes.** It restores the Node 22.13
   floor for contributors and documents the moved contract code, the shared test worker cap, the
   per-call MCP folder re-check and the release bump-PR failure mode. (#1192)
+- 📝 **The upgrade guide has a 0.32.0 note.** On Windows, restart a leader session that was
+  running during the upgrade. (#1203)
 
 ## 🚀 CI/CD & Infrastructure
 
@@ -154,7 +154,7 @@ testing is removed from the project.
 - 🚀 **Development tooling hygiene.** Building and testing this repository now needs Node 22.13 or
   newer, the version the cockpit build and test tools already required; the published package
   still runs on Node 22. Vite, Vitest and undici move to releases that close their published
-  advisories, the cockpit and mutation configs declare the packages they import, and dependency
+  advisories, the cockpit configs declare the packages they import, and dependency
   update PRs no longer propose an `@types/node` major or stop at five open PRs (#1188).
 - 🚀 **Eight browser test files and the two-project check now pass on Windows.** The browser
   tests start Chrome with animation allowed (a Windows machine with animation effects off made
@@ -190,9 +190,8 @@ testing is removed from the project.
 - 🚀 **The two largest test files are split by describe block.** The project-config and GitHub
   forge suites move into smaller files with test bodies unchanged and the same 378 tests passing.
   (#1185)
-- 🚀 **Server test-suite hygiene.** Two suites stop leaking temporary folders, the mutation runs
-  use the unit suite's time limits, a stale skip-marker allowance is removed, and an orphaned
-  script's checks move into the unit tests. (#1159)
+- 🚀 **Server test-suite hygiene.** Two suites stop leaking temporary folders, a stale skip-marker
+  allowance is removed, and an orphaned script's checks move into the unit tests. (#1159)
 - 🚀 **The browser specs share one port picker and one health wait.** About 40 copies are gone;
   every spec keeps its own wait budget. (#1166)
 - 🚀 **Two flaky tests check behaviour, not a clock or a swallowed error.** The audit-rotation
