@@ -2,7 +2,7 @@
 
 The [CHANGELOG](../CHANGELOG.md) is the complete record of every release, and it calls out each
 breaking change. This page keeps a short upgrade note for each release that changed something you
-may have to act on: 0.31.0, 0.30.0, 0.20.0, 0.16.0 and 0.15.0. Each breaking change, with its symptom
+may have to act on: 0.32.0, 0.31.0, 0.30.0, 0.20.0, 0.16.0 and 0.15.0. Each breaking change, with its symptom
 and the way forward, is recorded once in
 [Backward compatibility § 9](../BACKWARD_COMPATIBILITY.md#9-recorded-breaking-changes); the notes
 below point there instead of repeating it.
@@ -19,6 +19,14 @@ Then read the CHANGELOG from your installed version forward.
 If you used the removed pi or OpenCode backends, xezar refuses to start while a stored setting
 still names them, and lists each file and field to change. See
 [Moving from pi or OpenCode](guide/18-moving-from-pi-or-opencode.md).
+
+## Upgrading to 0.32.0
+
+No breaking change. One step on Windows only: restart a leader session that was running during
+the upgrade, with or without administrator rights. The cockpit and the leader's `xezar mcp` bridge
+now prove a shared key to each other, and a bridge from an older version is refused with "speaks a
+different pipe handshake than this bridge … Run the bridge and the cockpit from the same xezar
+version." Restarting the leader's client starts the new bridge. On macOS and Linux nothing changes.
 
 ## Upgrading to 0.31.0
 
