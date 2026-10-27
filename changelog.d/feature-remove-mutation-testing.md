@@ -6,3 +6,4 @@
   three `@stryker-mutator/*` development libraries (144 packages in the lock file) are gone, by
   owner decision. Nothing a user installs changes: Stryker was never part of the published package.
   The MCP coverage floor and the rule that a new MCP test must fail against a named break stay.
+  (#443, #338, #1198)
