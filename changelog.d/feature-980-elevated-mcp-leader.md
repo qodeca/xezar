@@ -16,6 +16,8 @@
   subfolder, so a process of the same user without administrator rights can neither rename the folder
   aside nor swap it. Every level is created with its access list already set and owned by
   Administrators; a level a normal user pre-created, or a link planted in the path, is refused rather
-  than used, deleted or taken over. Each connection file must be owned by Administrators, and the
-  engine and the bridge now prove the shared key to each other before either trusts the connection.
-  The system folder is located without trusting the `%SystemRoot%` environment variable. (#980, #1197)
+  than used, deleted or taken over, and the message names that folder and says an administrator can
+  delete it. Each connection file is created owned by Administrators and private from its first
+  moment, never owned by the account that runs xezar, and the engine and the bridge now prove the
+  shared key to each other before either trusts the connection. The folder's drive is found without
+  trusting the `%SystemRoot%` environment variable. (#980, #1197)

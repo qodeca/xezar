@@ -9,7 +9,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { pipeFiles } from '../../src/mcp/pipe-endpoint.ts';
+import { folderPrivacy, pipeFiles } from '../../src/mcp/pipe-endpoint.ts';
 import { resolveElevatedIpc } from '../../src/platform/elevated-ipc.ts';
 import { processIsElevated } from '../../src/platform/elevation.ts';
 import { checkPrivateDir, type AdminChain } from '../../src/platform/private-dir.ts';
@@ -337,7 +337,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
         assert.equal(markers.length, 1, 'exactly one project pipe marker after the restart');
         const files = pipeFiles(ipc, markers[0]!.slice(0, -'.pipe'.length), elevated, adminChain);
         assert.ok(existsSync(files.endpoint), 'the pipe endpoint sits next to its marker');
-        const privacy = await checkPrivateDir(ipc, [files.marker, files.endpoint], {}, elevated ? { elevated: true, adminChain } : {});
+        const privacy = await checkPrivateDir(ipc, [files.marker, files.endpoint], {}, folderPrivacy(files));
         assert.ok(privacy.ok, `the IPC folder and its pipe files are private to the user (to Administrators when elevated): ${JSON.stringify(privacy)}`);
       } else {
         assert.equal(lstatSync(ipc).mode & 0o777, 0o700, 'the socket directory is private to the user');

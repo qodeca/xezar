@@ -8,14 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
 import { LineFramer, encodeFrame, mcpPipeFiles } from './ipc.ts';
-import { pipeFiles, readPipeEndpoint, writePipeFiles, type PipeOpen } from './pipe-endpoint.ts';
+import { folderPrivacy, pipeFiles, readPipeEndpoint, writeEnginePipeFiles, type PipeOpen } from './pipe-endpoint.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { listenMcpSocket, type McpServiceHandle } from './service.ts';
 import { recordOwnListen } from '../server/instance-liveness.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
 import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS, withPlatform } from '../../test/helpers/platform.ts';
 import { connectRaw, targetFor } from '../../test/helpers/mcp-raw.ts';
-import { checkPrivateDir, claimAdminFiles } from '../platform/private-dir.ts';
+import { checkPrivateDir } from '../platform/private-dir.ts';
 
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
@@ -377,11 +377,10 @@ async function rewriteEndpoint(svc: McpServiceHandle, skewMs: number): Promise<v
   const files = mcpPipeFiles(project.id, env);
   const endpoint = readPipeEndpoint(files.endpoint);
   if (typeof endpoint === 'string') throw new Error(`no endpoint for ${svc.path}: ${endpoint}`);
-  const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid, ...(files.admin ? { elevated: true } : {}) });
+  const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid, ...folderPrivacy(files) });
   if (!parent.ok || typeof parent.startedAt !== 'number') throw new Error('could not read the parent process start time');
-  writePipeFiles(files, { ...endpoint, pid: process.ppid, processStartTime: parent.startedAt + skewMs });
-  // #980: an elevated engine hands its files to Administrators; a rewritten one must look the same.
-  if (files.admin) await claimAdminFiles([files.endpoint, files.marker]);
+  // #980: written as the engine writes it – in the administrators-only folder, owned by Administrators from creation.
+  await writeEnginePipeFiles(files, { ...endpoint, pid: process.ppid, processStartTime: parent.startedAt + skewMs });
 }
 
 /**

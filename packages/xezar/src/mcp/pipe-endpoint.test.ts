@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,8 @@ import type { ElevatedIpc } from '../platform/elevated-ipc.ts';
 import type { TableRunner } from '../platform/process-table.ts';
 import { ACL_INPUT_ENV } from '../platform/private-dir.ts';
 import {
+  ADMIN_FILES_FAILED,
+  folderPrivacy,
   newPipeKey,
   newPipeName,
   openPipeEndpoint,
@@ -16,6 +18,7 @@ import {
   readPipeEndpoint,
   readPipeMarker,
   removePipeFilesIfOurs,
+  writeEnginePipeFiles,
   writePipeFiles,
   type PipeEndpoint,
   type PipeFiles,
@@ -87,6 +90,72 @@ describe('readPipeEndpoint and readPipeMarker (#963)', () => {
     const name = newPipeName();
     writeFileSync(files.marker, `${name}\r\n`);
     expect(readPipeMarker(files.marker)).toBe(name);
+  });
+});
+
+// M2: a new file takes the elevated token's default owner – the user, for the built-in
+// Administrator – and an owner can always read and rewrite its access list. So in the
+// administrators-only folder Node never creates a file: it writes into ones made owned by
+// Administrators from their first moment.
+describe('writeEnginePipeFiles (#980)', () => {
+  const chain = () => ({ create: [dir], ancestors: [tmpdir()] });
+  const staged = () => readdirSync(dir).filter((name) => name.endsWith('.tmp'));
+
+  it('the user folder is written exactly as writePipeFiles writes it, creating nothing through the script', async () => {
+    const value = endpoint();
+    const create = async (): Promise<boolean> => {
+      throw new Error('the user folder never asks for Administrators-owned files');
+    };
+    await writeEnginePipeFiles(files, value, create);
+    expect(readPipeEndpoint(files.endpoint)).toEqual(value);
+    expect(readPipeMarker(files.marker)).toBe(value.pipeName);
+  });
+
+  it('the administrators-only folder: the endpoint and marker ARE the files `create` made, written then renamed into place', async () => {
+    const admin = pipeFiles(dir, 'alpha', true, chain());
+    writePipeFiles(admin, endpoint()); // an earlier engine's files, replaced whole
+    const made: Array<{ path: string; ino: number }> = [];
+    const create = async (paths: readonly string[]): Promise<boolean> => {
+      for (const path of paths) {
+        writeFileSync(path, '', { flag: 'wx' });
+        made.push({ path, ino: statSync(path).ino });
+      }
+      return true;
+    };
+    const value = endpoint();
+    await writeEnginePipeFiles(admin, value, create);
+    expect(made.map((m) => m.path)).toEqual([expect.stringMatching(/alpha\.key\.\d+\.[0-9a-f]{8}\.tmp$/), expect.stringMatching(/alpha\.pipe\.\d+\.[0-9a-f]{8}\.tmp$/)]);
+    expect([statSync(admin.endpoint).ino, statSync(admin.marker).ino]).toEqual(made.map((m) => m.ino));
+    expect(readPipeEndpoint(admin.endpoint)).toEqual(value);
+    expect(readPipeMarker(admin.marker)).toBe(value.pipeName);
+    expect(staged()).toEqual([]);
+  });
+
+  it('refuses to write when the files cannot be made owned by Administrators, and leaves no staged file', async () => {
+    const admin = pipeFiles(dir, 'alpha', true, chain());
+    const old = endpoint();
+    writePipeFiles(admin, old);
+    const halfway = async (paths: readonly string[]): Promise<boolean> => (writeFileSync(paths[0]!, '', { flag: 'wx' }), false);
+    await expect(writeEnginePipeFiles(admin, endpoint(), halfway)).rejects.toThrow(ADMIN_FILES_FAILED);
+    // The earlier files are untouched, and Node created nothing in their place.
+    expect(readPipeEndpoint(admin.endpoint)).toEqual(old);
+    expect(staged()).toEqual([]);
+  });
+
+  it('never creates a staged file itself: one `create` did not make is not written', async () => {
+    const admin = pipeFiles(dir, 'alpha', true, chain());
+    await expect(writeEnginePipeFiles(admin, endpoint(), async () => true)).rejects.toThrow(/ENOENT/);
+    expect([existsSync(admin.endpoint), existsSync(admin.marker)]).toEqual([false, false]);
+  });
+});
+
+describe('folderPrivacy (#980)', () => {
+  it('judges the user folder by the user rules, and the administrators-only one with its chain – never without one', () => {
+    const chain = { create: [dir], ancestors: [tmpdir()] };
+    expect(folderPrivacy(files)).toEqual({});
+    expect(folderPrivacy(pipeFiles(dir, 'alpha', true, chain))).toEqual({ elevated: true, adminChain: chain });
+    // An administrators-only folder without a chain gets an empty one, which private-dir refuses.
+    expect(folderPrivacy(pipeFiles(dir, 'alpha', true))).toEqual({ elevated: true, adminChain: { create: [], ancestors: [] } });
   });
 });
 

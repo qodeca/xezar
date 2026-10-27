@@ -5,7 +5,7 @@ import { createConnection, createServer, type Server, type Socket } from 'node:n
 import type { z } from 'zod';
 import { acquireFileLock } from '../core/file-lock.ts';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
-import { checkPrivateDir, claimAdminFiles, ensurePrivateDir } from '../platform/private-dir.ts';
+import { checkPrivateDir, ensurePrivateDir } from '../platform/private-dir.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { cockpitLinks } from './cockpit-address.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
@@ -26,11 +26,14 @@ import {
 import { PipeAuthGate } from './pipe-auth.ts';
 import {
   endpointIsLive,
+  folderPrivacy,
   newPipeKey,
   newPipeName,
   readPipeEndpoint,
   removePipeFilesIfOurs,
+  writeEnginePipeFiles,
   writePipeFiles,
+  type CreateAdminFiles,
   type PipeFiles,
 } from './pipe-endpoint.ts';
 import { McpScopeError, bindMcpSession, type McpProjectContextSource, type McpSessionBinding } from './session-binding.ts';
@@ -103,8 +106,8 @@ export interface McpServiceOptions {
 export interface McpPipeSeams {
   readonly ensurePrivateDir?: typeof ensurePrivateDir;
   readonly checkPrivateDir?: typeof checkPrivateDir;
-  /** #980: make Administrators own the files just written to the administrators-only folder. */
-  readonly claimAdminFiles?: typeof claimAdminFiles;
+  /** #980: create the staged files of the administrators-only folder, owned by Administrators from the start. */
+  readonly createAdminFiles?: CreateAdminFiles;
   /** Where a pipe name is listened on. Default: the name itself. */
   readonly listenAt?: (pipeName: string) => string;
   /** #980: does this process run as administrator? Default: `processIsElevated` (asked on Windows only). */
@@ -287,7 +290,7 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
   const seams = opts.pipe ?? {};
   // #980: an elevated engine's folder is the administrators-only one under %ProgramData%, made and
   // judged as such – the whole chain created inside the script with its access list set at creation.
-  const elevation = files.admin ? { elevated: true as const, adminChain: files.adminChain } : {};
+  const elevation = folderPrivacy(files);
   const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid, ...elevation });
   if (!privacy.ok) throw new Error(privacy.message);
   const processStartTime = privacy.startedAt;
@@ -344,11 +347,11 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
         if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || attempt >= PIPE_LISTEN_ATTEMPTS) throw err;
       }
     }
-    writePipeFiles(files, { v: 1, pipeName, key, pid: process.pid, processStartTime });
+    const written = { v: 1 as const, pipeName, key, pid: process.pid, processStartTime };
+    // #980: in the administrators-only folder each file is owned by Administrators from creation.
+    if (files.admin) await writeEnginePipeFiles(files, written, seams.createAdminFiles);
+    else writePipeFiles(files, written);
     servingPipes.set(files.endpoint, pipeName);
-    // #980: the endpoint and marker must be owned by Administrators, not the account that created
-    // them, or the leader's check refuses them. Best-effort; the check is the real guarantee.
-    if (files.admin) await (seams.claimAdminFiles ?? claimAdminFiles)([files.endpoint, files.marker]);
   } catch (err) {
     server?.close();
     if (opts.ownership === undefined) ownership.dispose();

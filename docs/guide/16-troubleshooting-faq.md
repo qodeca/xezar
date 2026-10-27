@@ -51,6 +51,10 @@ A workflow check step runs in the Git Bash that comes with Git for Windows, and 
 
 Your agent's MCP bridge (`xezar mcp`) found a cockpit started as administrator (elevated), and the agent was not. An elevated cockpit only serves a leader that is elevated too, and a cockpit without administrator rights only a leader without them. Start both from an elevated terminal, or both from a normal one, as the same Windows user. The reverse message, “runs without administrator rights and this leader runs as administrator”, has the same fix. If the elevated cockpit stopped without cleaning up, starting it again as administrator clears the message.
 
+#### “The private folder C:\ProgramData\xezar … is owned by another account. An administrator can delete …”
+
+xezar running as administrator keeps its leader connection files in `C:\ProgramData\xezar`, a folder that only administrators may change. Any user on the computer can create a folder there, so if one already exists and xezar did not make it, xezar does not use, change or delete it. It turns the leader connection off and names the folder instead. An administrator who knows nothing else on this computer uses that folder can delete the path the message names. xezar creates it again, private to administrators, the next time it starts as administrator. Your xezar without administrator rights is not affected.
+
 #### “xezar's pipe for project … refused this user (permission denied). The bridge must run as the same user as the cockpit, and both as administrator or both without.”
 
 Your agent's MCP bridge could not open the cockpit's connection. Run the agent as the same Windows user as the cockpit, and start both as administrator or both without.

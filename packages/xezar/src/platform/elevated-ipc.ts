@@ -22,7 +22,10 @@
  * The system drive is resolved WITHOUT the environment: `\\?\GLOBALROOT\SystemRoot` is the kernel's
  * own object path for the Windows directory, so an attacker cannot redirect it with `%SystemRoot%`.
  * Its real path's drive root gives `<SystemDrive>`. When any of this cannot be resolved the elevated
- * rendezvous is simply unavailable — the feature degrades, it never guesses.
+ * rendezvous is simply unavailable — the feature degrades, it never guesses. Accepted risk: the
+ * shared helpers that start System32 programs (`system-programs.ts`: PowerShell, whoami) still find
+ * System32 through `%SystemRoot%`, so whoever sets an elevated xezar's environment chooses them – a
+ * party that already decides what that elevated process runs.
  *
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */

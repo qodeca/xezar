@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { createConnection, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import type { PrivateDirResult } from '../platform/private-dir.ts';
 import { socketTempRoot } from '../platform/socket-dir.ts';
 import { mcpSocketDir } from './ipc.ts';
 import { pipeHello } from './pipe-auth.ts';
-import { newPipeKey, newPipeName, pipeFiles, readPipeEndpoint, readPipeMarker, writePipeFiles, type PipeEndpoint } from './pipe-endpoint.ts';
+import { ADMIN_FILES_FAILED, newPipeKey, newPipeName, pipeFiles, readPipeEndpoint, readPipeMarker, writePipeFiles, type PipeEndpoint } from './pipe-endpoint.ts';
 import { listenMcpSocket, MCP_ALREADY_SERVING, type McpPipeSeams, type McpServiceHandle } from './service.ts';
 
 /**
@@ -39,11 +39,16 @@ const adminIpcFor = () => {
   return { dir: leaf, create: [leaf], ancestors: [home] };
 };
 const adminChain = () => ({ create: adminIpcFor().create, ancestors: adminIpcFor().ancestors });
+/** #980: stands in for the script that creates each file owned by Administrators – here, a new empty file. */
+const createEmpty = async (paths: readonly string[]): Promise<boolean> => {
+  for (const path of paths) writeFileSync(path, '', { flag: 'wx' });
+  return true;
+};
 const seams = (extra: McpPipeSeams = {}): McpPipeSeams => ({
   // A process without administrator rights, whatever the host (#980): the user's own folder.
   elevated: () => false,
   resolveAdmin: () => adminIpcFor(),
-  claimAdminFiles: async () => undefined,
+  createAdminFiles: createEmpty,
   ensurePrivateDir: okEnsure,
   checkPrivateDir: async () => ({ ok: true, startedAt: foreignStart }),
   ...(onWindows ? {} : { listenAt: (name: string) => join(sockets, `${name.slice(-12)}.sock`) }),
@@ -141,22 +146,43 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
   });
 
   // #980: an elevated engine makes and judges the administrators-only %ProgramData% folder, never
-  // the user's, creating its whole chain in the script and claiming Administrators ownership of its
-  // files.
-  it('an elevated engine listens from the administrators-only folder, asking for it and claiming its files', async () => {
+  // the user's, creating its whole chain in the script. Node never creates a file there: the
+  // endpoint and marker ARE the files `createAdminFiles` made (owned by Administrators from their
+  // first moment), written in place and renamed over the old ones.
+  it('an elevated engine listens from the administrators-only folder, its files created by createAdminFiles', async () => {
     const ensured: Array<{ dir: string; options: unknown }> = [];
-    const claimed: string[][] = [];
+    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true, adminChain());
+    const created: Array<{ path: string; ino: number; finalsExisted: boolean }> = [];
     const handle = await listen({
       elevated: () => true,
       ensurePrivateDir: async (dir, _deps, options) => (ensured.push({ dir, options }), okEnsure(dir)),
-      claimAdminFiles: async (paths) => void claimed.push([...paths]),
+      createAdminFiles: async (paths) => {
+        const finalsExisted = existsSync(admin.endpoint) || existsSync(admin.marker);
+        const made = await createEmpty(paths);
+        for (const path of paths) created.push({ path, ino: statSync(path).ino, finalsExisted });
+        return made;
+      },
     });
-    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true, adminChain());
     expect(ensured).toEqual([{ dir: admin.dir, options: { startTimeOf: process.pid, elevated: true, adminChain: adminChain() } }]);
     expect(readPipeMarker(admin.marker)).toBe(handle.path);
-    expect(claimed).toEqual([[admin.endpoint, admin.marker]]);
+    expect(readPipeEndpoint(admin.endpoint)).toMatchObject({ pipeName: handle.path, pid: process.pid });
+    // One call, endpoint then marker, before either file existed – and those very files are now in place.
+    expect(created.map((c) => c.path)).toEqual([expect.stringMatching(/\.key\.\d+\.[0-9a-f]{8}\.tmp$/), expect.stringMatching(/\.pipe\.\d+\.[0-9a-f]{8}\.tmp$/)]);
+    expect(created.every((c) => !c.finalsExisted)).toBe(true);
+    expect([statSync(admin.endpoint).ino, statSync(admin.marker).ino]).toEqual(created.map((c) => c.ino));
+    expect(readdirSync(admin.dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(existsSync(files().dir)).toBe(false);
     handles.splice(0).forEach((h) => h.close());
+    await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });
+  });
+
+  it('an elevated engine that cannot create its files owned by Administrators does not start, and leaves nothing behind (#980)', async () => {
+    const admin = pipeFiles(join(home, 'ipc-admin'), project.id, true, adminChain());
+    // The script made the first file, then failed on the second (a token that may not name Administrators).
+    const halfway = async (paths: readonly string[]) => (writeFileSync(paths[0]!, '', { flag: 'wx' }), false);
+    await expect(listen({ elevated: () => true, createAdminFiles: halfway })).rejects.toThrow(ADMIN_FILES_FAILED);
+    expect([existsSync(admin.endpoint), existsSync(admin.marker)]).toEqual([false, false]);
+    expect(readdirSync(admin.dir).filter((name) => name !== `${project.id}.lock`)).toEqual([]);
     await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });
   });
 

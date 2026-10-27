@@ -19,12 +19,12 @@
  * leader that the cockpit runs with the other elevation.
  */
 import { randomBytes } from 'node:crypto';
-import { lstatSync, readFileSync, unlinkSync } from 'node:fs';
+import { closeSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { renameReplacingSync, uniqueTmpPath, writeFileAtomicSync } from '../platform/atomic-write.ts';
 import type { ElevatedIpc } from '../platform/elevated-ipc.ts';
-import { checkPrivateDir, type AdminChain, type PrivateDirDeps } from '../platform/private-dir.ts';
+import { checkPrivateDir, createAdminFiles, type AdminChain, type PrivateDirDeps, type PrivateDirOptions } from '../platform/private-dir.ts';
 import { pidExists } from '../platform/process-proof.ts';
 
 /** `\\.\pipe\xezar-mcp-` and 32 lower-case hex characters: the launcher's draft contract. */
@@ -72,6 +72,18 @@ export function pipeFilesFor(dirs: { readonly user: string; readonly admin: Elev
   const admin = dirs.admin === null ? null : pipeFiles(dirs.admin.dir, projectId, true, { create: dirs.admin.create, ancestors: dirs.admin.ancestors });
   if (elevated) return admin === null ? user : { ...admin, counterpart: user };
   return admin === null ? user : { ...user, counterpart: admin };
+}
+
+/** No chain at all: `private-dir.ts` refuses an administrators-only folder judged with it. */
+const NO_ADMIN_CHAIN: AdminChain = { create: [], ancestors: [] };
+
+/**
+ * #980: how `private-dir.ts` makes and judges this folder – the user's own rules, or the
+ * administrators-only rules with the chain under `%ProgramData%`. An administrators-only folder
+ * without a chain is judged with an empty one, which is refused, never with the user's rules.
+ */
+export function folderPrivacy(files: PipeFiles): PrivateDirOptions {
+  return files.admin ? { elevated: true, adminChain: files.adminChain ?? NO_ADMIN_CHAIN } : {};
 }
 
 export const pipeEndpointSchema = z
@@ -136,8 +148,53 @@ export function readPipeMarker(path: string): string | ReadFailure {
 
 /** The endpoint, then the marker – both atomic, owner-only. */
 export function writePipeFiles(files: PipeFiles, endpoint: PipeEndpoint): void {
-  writeFileAtomicSync(files.endpoint, `${JSON.stringify(endpoint)}\n`, { mode: 0o600, tempMode: 0o600 });
-  writeFileAtomicSync(files.marker, `${endpoint.pipeName}\n`, { mode: 0o600, tempMode: 0o600 });
+  writeFileAtomicSync(files.endpoint, endpointText(endpoint), { mode: 0o600, tempMode: 0o600 });
+  writeFileAtomicSync(files.marker, markerText(endpoint), { mode: 0o600, tempMode: 0o600 });
+}
+
+const endpointText = (endpoint: PipeEndpoint): string => `${JSON.stringify(endpoint)}\n`;
+const markerText = (endpoint: PipeEndpoint): string => `${endpoint.pipeName}\n`;
+
+/** Makes each path a new, empty file owned by Administrators; true only when all were made (`private-dir.ts`). */
+export type CreateAdminFiles = (paths: readonly string[]) => Promise<boolean>;
+
+export const ADMIN_FILES_FAILED = 'xezar could not create its MCP files owned by Administrators in the administrators-only folder';
+
+/**
+ * What an engine writes, in its own folder's kind. The user's folder: `writePipeFiles`, unchanged.
+ * The administrators-only folder (#980): Node never creates a file there, because a new file takes
+ * the elevated token's default owner – the user, for the built-in Administrator or under the
+ * "object creator" owner policy – and an owner keeps the right to read and rewrite the access list,
+ * so a non-elevated process of the same user could open the key. Instead `create` makes each staged
+ * file owned by Administrators and private from its first moment; Node writes into it (`r+` never
+ * replaces an owner or access list) and renames it over the old one, endpoint first, so a reader
+ * sees a whole old file or a whole new one. A failure leaves no staged file behind and throws.
+ */
+export async function writeEnginePipeFiles(files: PipeFiles, endpoint: PipeEndpoint, create: CreateAdminFiles = createAdminFiles): Promise<void> {
+  if (!files.admin) return writePipeFiles(files, endpoint);
+  const writes = [
+    { path: files.endpoint, text: endpointText(endpoint), staged: uniqueTmpPath(files.endpoint) },
+    { path: files.marker, text: markerText(endpoint), staged: uniqueTmpPath(files.marker) },
+  ];
+  try {
+    if (!(await create(writes.map((write) => write.staged)))) throw new Error(ADMIN_FILES_FAILED);
+    for (const { path, text, staged } of writes) {
+      writeIntoExisting(staged, text);
+      renameReplacingSync(staged, path);
+    }
+  } finally {
+    for (const { staged } of writes) unlinkQuietly(staged);
+  }
+}
+
+/** Writes `text` into a file that must already exist, keeping its owner and access list. */
+function writeIntoExisting(path: string, text: string): void {
+  const fd = openSync(path, 'r+');
+  try {
+    writeFileSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Remove each file only while it still names `pipeName`. Never throws. */
@@ -203,10 +260,7 @@ export async function openPipeEndpoint(
   // A gone engine is answered without the PowerShell check: nothing is dialled either way, and a
   // cold check costs seconds a client's startup budget does not have.
   if (!alive(endpoint.pid)) return notRunning();
-  const check = await checkPrivateDir(files.dir, [files.endpoint, files.marker], deps, {
-    startTimeOf: endpoint.pid,
-    ...(files.admin ? { elevated: true, adminChain: files.adminChain } : {}),
-  });
+  const check = await checkPrivateDir(files.dir, [files.endpoint, files.marker], deps, { startTimeOf: endpoint.pid, ...folderPrivacy(files) });
   if (!check.ok) return { ok: false, kind: 'not-private', message: check.message };
   if (!endpointIsLive(endpoint, check.startedAt)) return notRunning();
   return { ok: true, pipeName: endpoint.pipeName, key: Buffer.from(endpoint.key, 'hex') };
