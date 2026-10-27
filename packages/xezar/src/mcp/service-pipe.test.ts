@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
-import { acquireFileLock } from '../core/file-lock.ts';
+import { acquireFileLock, FILE_LOCK_TAKEOVER_GUARD_SUFFIX } from '../core/file-lock.ts';
 import type { PrivateDirResult } from '../platform/private-dir.ts';
 import { socketTempRoot } from '../platform/socket-dir.ts';
 import { mcpSocketDir } from './ipc.ts';
@@ -60,6 +60,8 @@ const listen = async (extra?: McpPipeSeams) => {
   handles.push(handle);
   return handle;
 };
+/** A release removes the lock, then its takeover guard: the folder is settled only once both are gone. */
+const lockReleased = (lock: string): void => expect([existsSync(lock), existsSync(`${lock}${FILE_LOCK_TAKEOVER_GUARD_SUFFIX}`)]).toEqual([false, false]);
 const address = (pipeName: string): string => seams().listenAt?.(pipeName) ?? pipeName;
 const foreignEndpoint = (): PipeEndpoint => ({ v: 1, pipeName: newPipeName(), key: newPipeKey(), pid: process.pid + 1, processStartTime: 1_700_000_000_000 });
 
@@ -80,7 +82,7 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     // A close removes its files under the pipe lock, after it returns: wait until that lock is gone.
     if (closing) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      await vi.waitFor(() => expect(existsSync(files().lock)).toBe(false), { timeout: 15_000 });
+      await vi.waitFor(() => lockReleased(files().lock), { timeout: 15_000 });
     }
     rmSync(home, { ...TEST_DIR_RM_OPTIONS, maxRetries: 10, retryDelay: 100 });
     rmSync(sockets, TEST_DIR_RM_OPTIONS);
@@ -173,7 +175,7 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     expect(readdirSync(admin.dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(existsSync(files().dir)).toBe(false);
     handles.splice(0).forEach((h) => h.close());
-    await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });
+    await vi.waitFor(() => lockReleased(admin.lock), { timeout: 15_000 });
   });
 
   it('an elevated engine that cannot create its files owned by Administrators does not start, and leaves nothing behind (#980)', async () => {
@@ -183,7 +185,7 @@ describe('the MCP pipe rendezvous, Windows rules on every OS (#963)', () => {
     await expect(listen({ elevated: () => true, createAdminFiles: halfway })).rejects.toThrow(ADMIN_FILES_FAILED);
     expect([existsSync(admin.endpoint), existsSync(admin.marker)]).toEqual([false, false]);
     expect(readdirSync(admin.dir).filter((name) => name !== `${project.id}.lock`)).toEqual([]);
-    await vi.waitFor(() => expect(existsSync(admin.lock)).toBe(false), { timeout: 15_000 });
+    await vi.waitFor(() => lockReleased(admin.lock), { timeout: 15_000 });
   });
 
   it('an engine without administrator rights asks for the user folder exactly as before #980', async () => {
