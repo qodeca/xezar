@@ -1,10 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { connect } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CodexRequestRefused } from './codex.ts';
 import { CODEX_CONTROL_SOCKET, CodexAttachError, codexControlHome, connectCodexLeader, validateControlSocket, validateWindowsControlSocket } from './codex-link.ts';
@@ -382,6 +382,15 @@ describe('the shared Codex app-server link (#374)', () => {
     await expect(validateWindowsControlSocket(socketPath, verdict('not-private'))).rejects.toThrow('not private to this user');
     await expect(validateWindowsControlSocket(socketPath, verdict('elevated'))).rejects.toMatchObject({ reason: 'app-server' });
     await expect(validateWindowsControlSocket(socketPath, async () => ({ ok: true }))).resolves.toBeUndefined();
+  });
+
+  it('judges the Codex folder as the user’s own at any elevation, so an elevated xezar attaches too (#980)', async () => {
+    const home = codexHome('xzcl-elevation-');
+    const socketPath = join(home, CODEX_CONTROL_SOCKET);
+    writeFileSync(socketPath, '');
+    const check = vi.fn(async () => ({ ok: true as const }));
+    await validateWindowsControlSocket(socketPath, check);
+    expect(check).toHaveBeenCalledWith(dirname(socketPath), [socketPath], {}, { anyElevation: true });
   });
 
   it('looks in the serving process’s own Codex home: CODEX_HOME when set, otherwise ~/.codex', () => {

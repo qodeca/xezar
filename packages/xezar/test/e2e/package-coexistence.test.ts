@@ -9,7 +9,6 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { npmCommand, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
-import { windowsElevated } from '../helpers/windows-elevation.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -144,10 +143,7 @@ async function askMcp(
   return answer;
 }
 
-/** The engine is its own process, so the unit suite's elevation hook cannot reach it. */
-const ELEVATED = windowsElevated() ? 'win32-skip(#980): xezar refuses its MCP pipe when it runs as administrator, as every GitHub Windows runner step does' : false;
-
-test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000, skip: ELEVATED }, async () => {
+test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000 }, async () => {
   // `/tmp` explicitly: a task worktree's own TMPDIR sits inside the repository, and a fixture
   // under `.local/xezar/worktrees/` is refused registration, so it could never get a row.
   const root = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-coexist-'));

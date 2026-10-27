@@ -4,11 +4,13 @@ import { createConnection, createServer, type Server, type Socket } from 'node:n
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
-import { PIPE_AUTH_VERSION, PipeAuthGate, pipeHello, pipeMac, type PipeAuthTimers } from './pipe-auth.ts';
+import { clientMac, PIPE_AUTH_VERSION, PipeAuthGate, pipeHello, serverMac, type PipeAuthTimers } from './pipe-auth.ts';
 
 /**
- * #963: the pipe's pre-authentication stage, over a real local endpoint (a Unix socket on Linux and
- * macOS, a named pipe on Windows – the gate takes any duplex).
+ * #963/#980: the pipe's mutual pre-authentication stage, over a real local endpoint (a Unix socket
+ * on Linux and macOS, a named pipe on Windows – the gate takes any duplex). The engine proves itself
+ * AND makes the client prove itself (#980), so neither a foreign server on a stale name nor a
+ * foreign client that merely opened the pipe is let through.
  */
 
 const KEY = randomBytes(32);
@@ -74,26 +76,99 @@ const closed = (socket: Socket): Promise<void> =>
     socket.resume(); // read what is left, so the end arrives
   });
 
-describe('the pipe handshake (#963)', () => {
-  it('proves the engine with HMAC(key, nonce ‖ pipeName), then hands the connection on with its next bytes', async () => {
+/** Read exactly one newline-terminated JSON line from a socket. */
+function oneLine(socket: Socket): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let buffered = Buffer.alloc(0);
+    const onData = (chunk: Buffer): void => {
+      buffered = Buffer.concat([buffered, chunk]);
+      const nl = buffered.indexOf(0x0a);
+      if (nl < 0) return;
+      socket.off('data', onData);
+      try {
+        resolve(JSON.parse(buffered.subarray(0, nl).toString('utf8')));
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    socket.on('data', onData);
+    socket.once('close', () => reject(new Error('closed before a line arrived')));
+  });
+}
+
+describe('the mutual pipe handshake (#963, #980)', () => {
+  it('both sides prove the key, then the engine hands the connection on with its next bytes', async () => {
     const s = await serve();
     const socket = await dial(s.path);
     const hello = await pipeHello(socket, { key: KEY, pipeName: NAME }, 5_000);
     expect(hello).toEqual({ ok: true, rest: Buffer.alloc(0) });
     await vi.waitFor(() => expect(s.ready).toHaveLength(1));
-    // A frame sent right behind the hello reaches the IPC side.
-    const raw = await dial(s.path);
-    const nonce = randomBytes(32).toString('hex');
-    raw.write(`${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, nonce })}\n{"frame":1}\n`);
-    await vi.waitFor(() => expect(s.ready).toHaveLength(2));
-    expect(s.ready[1]!.rest.toString()).toBe('{"frame":1}\n');
-    expect(JSON.parse(s.writes[1]![0]!)).toEqual({ type: 'hello', v: PIPE_AUTH_VERSION, mac: pipeMac(KEY, nonce, NAME) });
+    // The engine wrote a challenge, then its own proof — and only after the client proved itself.
+    expect(s.writes[0]!.map((w) => JSON.parse(w).type)).toEqual(['challenge', 'hello']);
   });
 
-  it('a bridge with another key, or for another pipe name, calls the answer foreign', async () => {
+  it('carries the IPC bytes a client pipelines behind its auth through to the handoff', async () => {
     const s = await serve();
-    expect(await pipeHello(await dial(s.path), { key: randomBytes(32), pipeName: NAME }, 5_000)).toEqual({ ok: false, failure: 'foreign' });
-    expect(await pipeHello(await dial(s.path), { key: KEY, pipeName: `${NAME.slice(0, -1)}0` }, 5_000)).toEqual({ ok: false, failure: 'foreign' });
+    const raw = await dial(s.path);
+    const nonce = randomBytes(32).toString('hex');
+    raw.write(`${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, nonce })}\n`);
+    const challenge = await oneLine(raw);
+    expect(challenge).toMatchObject({ type: 'challenge', v: PIPE_AUTH_VERSION });
+    const mac = clientMac(KEY, nonce, String(challenge.challenge), NAME);
+    raw.write(`${JSON.stringify({ type: 'auth', v: PIPE_AUTH_VERSION, mac })}\n{"frame":1}\n`);
+    await vi.waitFor(() => expect(s.ready).toHaveLength(1));
+    expect(s.ready[0]!.rest.toString()).toBe('{"frame":1}\n');
+    expect(JSON.parse(s.writes[0]![1]!)).toEqual({ type: 'hello', v: PIPE_AUTH_VERSION, mac: serverMac(KEY, nonce, String(challenge.challenge), NAME) });
+  });
+
+  // #980 finding 4: the engine admits only a client that proves the key. A client that answers the
+  // challenge with the wrong key (or for another pipe name) is dropped, and the engine NEVER reveals
+  // its own proof to it — so a foreign client cannot use the engine as a signing oracle.
+  it('refuses a client whose challenge response does not prove the key, revealing no server proof', async () => {
+    for (const forgery of [{ key: randomBytes(32), pipeName: NAME }, { key: KEY, pipeName: `${NAME.slice(0, -1)}0` }]) {
+      const s = await serve();
+      const raw = await dial(s.path);
+      const nonce = randomBytes(32).toString('hex');
+      raw.write(`${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, nonce })}\n`);
+      const challenge = await oneLine(raw);
+      const mac = clientMac(forgery.key, nonce, String(challenge.challenge), forgery.pipeName);
+      raw.write(`${JSON.stringify({ type: 'auth', v: PIPE_AUTH_VERSION, mac })}\n`);
+      await closed(raw);
+      expect(s.ready).toEqual([]);
+      // The only thing the engine ever wrote was the challenge: no `{type:'hello',mac}`.
+      expect(s.writes[0]!.map((w) => JSON.parse(w).type)).toEqual(['challenge']);
+    }
+  });
+
+  it('refuses a client that sends no auth after the challenge (dropping it without its own proof)', async () => {
+    let fire: (() => void) | undefined;
+    const timers: PipeAuthTimers = { setTimer: (fn) => ((fire = fn), 1), clearTimer: () => undefined };
+    const s = await serve({ timers });
+    const raw = await dial(s.path);
+    const nonce = randomBytes(32).toString('hex');
+    raw.write(`${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, nonce })}\n`);
+    await oneLine(raw);
+    fire!();
+    await closed(raw);
+    expect(s.ready).toEqual([]);
+    expect(s.writes[0]!.map((w) => JSON.parse(w).type)).toEqual(['challenge']);
+    expect(s.gate.waiting).toBe(0);
+  });
+
+  it('a foreign engine that completes the handshake with the wrong key is foreign to the bridge', async () => {
+    // A server that follows the protocol shape but signs with another key does not prove itself.
+    const other = randomBytes(32);
+    const path = endpointPath();
+    const rogue = createServer((socket) => {
+      void oneLine(socket).then((hello) => {
+        const challenge = randomBytes(32).toString('hex');
+        socket.write(`${JSON.stringify({ type: 'challenge', v: PIPE_AUTH_VERSION, challenge })}\n`);
+        void oneLine(socket).then(() => socket.write(`${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, mac: serverMac(other, String(hello.nonce), challenge, NAME) })}\n`));
+      });
+    });
+    await new Promise<void>((resolve) => rogue.listen(path, resolve));
+    cleanups.push(() => rogue.close());
+    expect(await pipeHello(await dial(path), { key: KEY, pipeName: NAME }, 5_000)).toEqual({ ok: false, failure: 'foreign' });
   });
 
   it('a server that is not xezar (it echoes, or says nothing) is foreign, or a timeout', async () => {
@@ -114,8 +189,8 @@ describe('the pipe handshake (#963)', () => {
     const s = await serve();
     const lines = [
       'not json\n',
-      `${JSON.stringify({ type: 'hi', v: 1, nonce: 'a'.repeat(64) })}\n`,
-      `${JSON.stringify({ type: 'hello', v: 1, nonce: 'xyz' })}\n`,
+      `${JSON.stringify({ type: 'hi', v: PIPE_AUTH_VERSION, nonce: 'a'.repeat(64) })}\n`,
+      `${JSON.stringify({ type: 'hello', v: PIPE_AUTH_VERSION, nonce: 'xyz' })}\n`,
       `${'x'.repeat(2_000)}`,
       `{"v":${PIPE_AUTH_VERSION},"id":1,"method":"session/open"}\n`, // an IPC frame before the hello
     ];

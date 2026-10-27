@@ -1,6 +1,6 @@
 # MCP project leader
 
-Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar without administrator rights.
+Use a project leader when you want a coding-agent session to coordinate tasks through xezar: discover the project, start work, read results and respond to task events. The leader is a session you start in your agent application; `xezar mcp` connects it to the running cockpit on the same machine. On Windows, start xezar and the leader the same way – both as administrator or both without.
 
 ## Before setup
 

@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { resolveElevatedIpc } from '../platform/elevated-ipc.ts';
+import { processIsElevated } from '../platform/elevation.ts';
 import { samePath } from '../platform/path-identity.ts';
-import { windowsElevated } from '../../test/helpers/windows-elevation.ts';
 
 // #86 acceptance, against the REAL CLI: `xez serve` and `xez mcp` as separate
 // processes, exactly as a coding agent would meet them. `--import tsx` rather than
@@ -131,12 +132,18 @@ function mcp(cwd: string) {
 
 /**
  * The doors in the IPC folder, one per line. POSIX: `ls`, as before – `<id>.sock`. Windows (#963):
- * the pipe markers `<id>.pipe`, written after the endpoint, so a marker means the pipe can be dialled.
+ * the pipe markers `<id>.pipe`, written after the endpoint, so a marker means the pipe can be dialled
+ * – in the administrators-only %ProgramData% folder when the test runs elevated, as every GitHub
+ * runner step does (#980).
  */
+const ipcFolder = (): string => {
+  const user = join(home, 'ipc');
+  return processIsElevated() ? (resolveElevatedIpc(user)?.dir ?? user) : user;
+};
 function ipcDoors(): string {
   if (onWindows) {
     try {
-      return readdirSync(join(home, 'ipc')).filter((name) => name.endsWith('.pipe')).join('\n');
+      return readdirSync(ipcFolder()).filter((name) => name.endsWith('.pipe')).join('\n');
     } catch {
       return '';
     }
@@ -151,8 +158,7 @@ const DOOR_SUFFIX = onWindows ? '.pipe' : '.sock';
 
 const text = (m: Record<string, unknown>) => (m.result as { content: Array<{ text: string }> }).content[0]?.text ?? '';
 
-// win32-skip(#980): the real xezar is its own process, which refuses its MCP pipe when elevated, as every GitHub Windows runner step is
-describe.skipIf(windowsElevated())('xez mcp against a real xezar (#86 acceptance)', () => {
+describe('xez mcp against a real xezar (#86 acceptance)', () => {
   it('completes the MCP handshake against a running XEZ_DRY_RUN cockpit and reaches its project', async () => {
     await serve();
     const socket = await until('the MCP socket', async () => {
@@ -181,7 +187,9 @@ describe.skipIf(windowsElevated())('xez mcp against a real xezar (#86 acceptance
   }, 60_000);
 
   it('with the bridge entirely absent, `xez serve` still boots and the cockpit works', async () => {
-    // Make the socket impossible: a plain file where the ipc directory would go.
+    // Make the socket impossible: a plain file where the user ipc directory would go. (#980: an
+    // elevated engine uses the machine-protected %ProgramData% folder, so on an elevated runner MCP
+    // may still come up – the point of this case is only that `serve` boots and the cockpit works.)
     writeFileSync(join(home, 'ipc'), 'not a directory');
     const cockpit = await serve();
     const health = (await (await fetch(`${cockpit.base}/api/v1/health`)).json()) as { version?: string };
@@ -191,6 +199,8 @@ describe.skipIf(windowsElevated())('xez mcp against a real xezar (#86 acceptance
     // Since #467 PR 3 the warning is an activity line rather than a bare `console.warn`, so off
     // a terminal it arrives as one logfmt row. The guarantee is the same one this case always
     // made: it is on stderr, it says why, and it is printed exactly ONCE.
+    // Elevated, MCP comes up in the administrators-only folder: there is nothing to warn about.
+    if (processIsElevated()) return;
     await until('the MCP warning', async () =>
       cockpit.stderr().includes('event=mcp.unavailable') ? true : undefined,
     );

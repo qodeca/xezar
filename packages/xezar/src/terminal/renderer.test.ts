@@ -248,7 +248,7 @@ describe('lines output in a file', () => {
   });
 
   // #963: the reason MCP was unavailable ended in `…` in a log file, where nothing can show the rest.
-  const LONG = `unavailable — The private folder ${'C:\\a-long-folder'.repeat(8)}\\ipc cannot be used while xezar runs as administrator; start it without elevation. The cockpit works without it.`;
+  const LONG = `unavailable — The private folder ${'C:\\a-long-folder'.repeat(8)}\\ipc is for xezar without administrator rights, and this process runs as administrator. The cockpit works without it.`;
 
   it('writes a long message whole, at any width, because a file has no screen to keep to', () => {
     for (const columns of [80, 40]) {

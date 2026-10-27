@@ -47,9 +47,17 @@ Each entry below starts with the exact text xezar shows.
 
 A workflow check step runs in the Git Bash that comes with Git for Windows, and xezar could not find one. Install the full [Git for Windows](https://gitforwindows.org/) (not MinGit), make sure `git.exe` is on `PATH` in the terminal that starts xezar, then start xezar again. The `bash.exe` that Windows Subsystem for Linux (WSL) puts on `PATH` is never used, so having it does not help.
 
-#### “xezar's pipe for project … refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.”
+#### “xezar for project … runs as administrator and this leader does not: the cockpit and the leader differ in elevation.”
 
-Your agent's MCP bridge (`xezar mcp`) could not connect to the cockpit, usually because the cockpit was started as administrator and the agent was not. Stop the cockpit, start it again from a terminal that is not elevated, and run the agent as the same Windows user.
+Your agent's MCP bridge (`xezar mcp`) found a cockpit started as administrator (elevated), and the agent was not. An elevated cockpit only serves a leader that is elevated too, and a cockpit without administrator rights only a leader without them. Start both from an elevated terminal, or both from a normal one, as the same Windows user. The reverse message, “runs without administrator rights and this leader runs as administrator”, has the same fix. If the elevated cockpit stopped without cleaning up, starting it again as administrator clears the message.
+
+#### “The private folder C:\ProgramData\xezar … is owned by another account. An administrator can delete …”
+
+xezar running as administrator keeps its leader connection files in `C:\ProgramData\xezar`, a folder that only administrators may change. Any user on the computer can create a folder there, so if one already exists and xezar did not make it, xezar does not use, change or delete it. It turns the leader connection off and names the folder instead. An administrator who knows nothing else on this computer uses that folder can delete the path the message names. xezar creates it again, private to administrators, the next time it starts as administrator. Your xezar without administrator rights is not affected.
+
+#### “xezar's pipe for project … refused this user (permission denied). The bridge must run as the same user as the cockpit, and both as administrator or both without.”
+
+Your agent's MCP bridge could not open the cockpit's connection. Run the agent as the same Windows user as the cockpit, and start both as administrator or both without.
 
 #### “Git Bash could not start inside Codex's Windows sandbox (CreateFileMapping, Win32 error 5; …)”
 

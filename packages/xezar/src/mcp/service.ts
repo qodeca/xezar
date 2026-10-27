@@ -26,11 +26,14 @@ import {
 import { PipeAuthGate } from './pipe-auth.ts';
 import {
   endpointIsLive,
+  folderPrivacy,
   newPipeKey,
   newPipeName,
   readPipeEndpoint,
   removePipeFilesIfOurs,
+  writeEnginePipeFiles,
   writePipeFiles,
+  type CreateAdminFiles,
   type PipeFiles,
 } from './pipe-endpoint.ts';
 import { McpScopeError, bindMcpSession, type McpProjectContextSource, type McpSessionBinding } from './session-binding.ts';
@@ -103,8 +106,14 @@ export interface McpServiceOptions {
 export interface McpPipeSeams {
   readonly ensurePrivateDir?: typeof ensurePrivateDir;
   readonly checkPrivateDir?: typeof checkPrivateDir;
+  /** #980: create the staged files of the administrators-only folder, owned by Administrators from the start. */
+  readonly createAdminFiles?: CreateAdminFiles;
   /** Where a pipe name is listened on. Default: the name itself. */
   readonly listenAt?: (pipeName: string) => string;
+  /** #980: does this process run as administrator? Default: `processIsElevated` (asked on Windows only). */
+  readonly elevated?: () => boolean;
+  /** #980: how the administrators-only folder is located. Default: the real `%ProgramData%` chain. */
+  readonly resolveAdmin?: (scope: string) => import('../platform/elevated-ipc.ts').ElevatedIpc | null;
 }
 
 /**
@@ -201,7 +210,7 @@ const PIPE_LISTEN_ATTEMPTS = 3;
  * it never is (N-07): see `startMcpService` in ./index.ts.
  */
 export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServiceHandle> {
-  const location = mcpSocketLocation(opts.project, opts.env, opts.platform);
+  const location = mcpSocketLocation(opts.project, opts.env, opts.platform, undefined, opts.pipe?.elevated, opts.pipe?.resolveAdmin);
   if (location.kind === 'unavailable') throw new Error(location.reason);
   if (location.kind === 'pipe') return listenMcpPipe(location.files, opts);
   const dir = mcpSocketDir(opts.env);
@@ -270,8 +279,8 @@ async function clearStaleSocket(path: string): Promise<void> {
 }
 
 /**
- * Windows (#963): the project's named pipe. The folder is made private to this user first (an
- * elevated xezar is refused there), then, under the project's pipe lock: a live engine's endpoint
+ * Windows (#963): the project's named pipe. The folder is made private to this user first (for an
+ * elevated xezar, the administrators-only folder is made private to Administrators – #980), then, under the project's pipe lock: a live engine's endpoint
  * refuses the start; a stale one is replaced. The pipe is named afresh and its endpoint and marker
  * written once it listens. Every connection passes `PipeAuthGate` before `serveConnection` sees a
  * byte. Close removes the two files under the same lock, and only while they still name this pipe.
@@ -279,7 +288,10 @@ async function clearStaleSocket(path: string): Promise<void> {
 async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise<McpServiceHandle> {
   assertXezarHomeWriteIsSandboxed(files.dir, opts.env);
   const seams = opts.pipe ?? {};
-  const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid });
+  // #980: an elevated engine's folder is the administrators-only one under %ProgramData%, made and
+  // judged as such – the whole chain created inside the script with its access list set at creation.
+  const elevation = folderPrivacy(files);
+  const privacy = await (seams.ensurePrivateDir ?? ensurePrivateDir)(files.dir, {}, { startTimeOf: process.pid, ...elevation });
   if (!privacy.ok) throw new Error(privacy.message);
   const processStartTime = privacy.startedAt;
   if (typeof processStartTime !== 'number') throw new Error('xezar could not read its own start time, which the MCP pipe needs');
@@ -308,7 +320,7 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
       throw new Error(MCP_ALREADY_SERVING);
     }
     if (typeof existing !== 'string' && existing.pid !== process.pid) {
-      const check = await (seams.checkPrivateDir ?? checkPrivateDir)(files.dir, [files.endpoint], {}, { startTimeOf: existing.pid });
+      const check = await (seams.checkPrivateDir ?? checkPrivateDir)(files.dir, [files.endpoint], {}, { startTimeOf: existing.pid, ...elevation });
       if (check.ok && endpointIsLive(existing, check.startedAt)) throw new Error(MCP_ALREADY_SERVING);
     }
     for (let attempt = 1; ; attempt++) {
@@ -335,7 +347,10 @@ async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise
         if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || attempt >= PIPE_LISTEN_ATTEMPTS) throw err;
       }
     }
-    writePipeFiles(files, { v: 1, pipeName, key, pid: process.pid, processStartTime });
+    const written = { v: 1 as const, pipeName, key, pid: process.pid, processStartTime };
+    // #980: in the administrators-only folder each file is owned by Administrators from creation.
+    if (files.admin) await writeEnginePipeFiles(files, written, seams.createAdminFiles);
+    else writePipeFiles(files, written);
     servingPipes.set(files.endpoint, pipeName);
   } catch (err) {
     server?.close();
