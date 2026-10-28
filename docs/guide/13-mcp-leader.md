@@ -349,4 +349,4 @@ with no project MCP servers until the file is fixed.
 
 Next: [Remote access](14-remote-access.md)
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.
