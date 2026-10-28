@@ -25,12 +25,16 @@
  * verified, never created, and must be owned by SYSTEM, Administrators or TrustedInstaller; a level a
  * normal user pre-created (owned by anyone else) or a reparse point planted at any level STOPS the
  * walk — nothing is created inside it and nothing is ever deleted or taken over, it is simply
- * refused. No access entry may name the user, and every file in the folder must be owned by
- * Administrators or SYSTEM: there is no user-owned-file exception, because a non-elevated process of
- * the same user could otherwise rewrite the access list of a file it owns. The engine never lets Node
- * create a file there – `createAdminFiles` makes each one owned by Administrators and private from the
- * moment it exists, whatever owner the elevated token would give a new file (the built-in
- * Administrator's token gives the user). The elevation the check reads must match the folder's kind,
+ * refused. No access entry may name the user, and every file this check judges (the endpoint, which
+ * holds the key, and the marker) must be owned by Administrators or SYSTEM: there is no user-owned-file
+ * exception, because a non-elevated process of the same user could otherwise rewrite the access list
+ * of a file it owns. The engine never lets Node create either of them – `createAdminFiles` makes each
+ * one owned by Administrators and private from the moment it exists, whatever owner the elevated token
+ * would give a new file (the built-in Administrator's token gives the user). The one exception is the
+ * pipe lock (`<id>.lock` and its `.lock.takeover` guard, `core/file-lock.ts`): Node creates them, so
+ * they can take the user as owner, and this check does not judge them. They hold no secret – a pid, a
+ * time and a random token – and live only while a start or close holds them, so the most a
+ * non-elevated process could do through them is delay or block that start or close. The elevation the check reads must match the folder's kind,
  * or the folder is refused. The standard folder's rules did not change.
  *
  * Leaf layer: this folder imports only `node:*` and its own siblings.
