@@ -25,4 +25,4 @@ Start with Getting started below, then follow the Next links to read the guide i
 
 For contributing to xezar itself, read [CONTRIBUTING.md](../../CONTRIBUTING.md) and [AGENTS.md](../../AGENTS.md).
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.
