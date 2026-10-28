@@ -176,4 +176,4 @@ Settings → Agent config no longer follows an individual config-file symlink: r
 409 and the file is listed read-only (#363). Replace the link with a regular file; relocating a whole
 agent home still works.
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.

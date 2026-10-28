@@ -84,4 +84,4 @@ Start xezar, open a new task, pick **qwen** as the runner and your model, and ru
 
 Next: [User guide index](README.md)
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.

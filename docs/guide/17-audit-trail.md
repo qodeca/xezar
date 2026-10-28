@@ -50,4 +50,4 @@ The audit trail is best effort and local: there is no cockpit viewer, no cryptog
 
 Next: [Moving from pi or OpenCode](18-moving-from-pi-or-opencode.md)
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.
