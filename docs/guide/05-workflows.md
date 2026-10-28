@@ -118,4 +118,4 @@ Use **Import** to paste YAML into the builder. Parsing happens on the server; fi
 
 Next: [Skills](06-skills.md)
 
-Describes xezar 0.31.0.
+Describes xezar 0.32.0.

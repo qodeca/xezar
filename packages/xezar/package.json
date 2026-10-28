@@ -1,6 +1,6 @@
 {
   "name": "@qodeca/xezar",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex or Qwen Code CLI you already use — zero config, zero database.",
   "author": "Qodeca",
   "license": "MIT",
@@ -56,8 +56,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@qodeca/xezar-api-client": "^0.31.0",
-    "@qodeca/xezar-contract": "^0.31.0",
+    "@qodeca/xezar-api-client": "^0.32.0",
+    "@qodeca/xezar-contract": "^0.32.0",
     "@types/node": "^22.12.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",
