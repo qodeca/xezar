@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@qodeca/xezar-contract": "^0.32.0",
-    "hono": "^4.13.13"
+    "hono": "^4.13.14"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
